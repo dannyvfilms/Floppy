@@ -760,6 +760,11 @@ def season_details(
     if parent_media_type is None:
         parent_media_type = MediaTypes.TV.value
 
+    # AnonymousUser (public list viewers) has no watch_provider_region
+    watch_provider_region = (
+        request.user.watch_provider_region if request.user.is_authenticated else None
+    )
+
     context = {
         "user": request.user,
         "media": season_metadata,
@@ -779,9 +784,9 @@ def season_details(
         "item_id_for_polling": item_id_for_polling if not public_view else None,
         "trakt_score": trakt_score,
         "watch_providers": tmdb.filter_providers(
-            season_metadata.get("providers"), request.user.watch_provider_region
+            season_metadata.get("providers"), watch_provider_region
         ),
-        "watch_provider_region": request.user.watch_provider_region,
+        "watch_provider_region": watch_provider_region,
         "detail_link_sections": _build_detail_link_sections(
             season_metadata,
             MediaTypes.SEASON.value,

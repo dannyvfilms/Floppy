@@ -4789,6 +4789,53 @@ class MediaDetailsViewTests(TestCase):
 
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
+    def test_season_details_public_view_anonymous_user(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+    ):
+        """Anonymous public viewers should not 500 on the season page.
+
+        Regression for #372: AnonymousUser has no watch_provider_region.
+        """
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+            },
+        }
+        mock_process_episodes.return_value = []
+
+        self.client.logout()
+
+        response = self.client.get(
+            reverse(
+                "season_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                },
+            ),
+            {"public_view": "1"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["watch_provider_region"])
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
     def test_season_details_secondary_fragment_renders_episodes(
         self,
         mock_process_episodes,
