@@ -349,6 +349,8 @@ class StoryGraphImporter:
         self.tracked_reads = self._load_tracked_reads()
         self._overwritten = set()
         self.list_cache = {}
+        self.missing_read_dates = []
+        self.missing_start_dates = []
 
         logger.info(
             "Initialized StoryGraph CSV importer for user %s with mode %s",
@@ -386,7 +388,8 @@ class StoryGraphImporter:
             media_type: len(media_list)
             for media_type, media_list in self.bulk_media.items()
         }
-        return imported_counts, "\n".join(dict.fromkeys(self.warnings))
+        messages = list(dict.fromkeys(self.warnings)) + self._report_lines()
+        return imported_counts, "\n".join(messages)
 
     def _process_row(self, row):
         """Resolve one CSV row and queue its tracked entries."""
@@ -481,6 +484,17 @@ class StoryGraphImporter:
         max_progress = metadata.get("max_progress")
         return int(max_progress) if max_progress else 0
 
+    def _report_lines(self):
+        """Describe the date gaps worth fixing in StoryGraph and re-importing."""
+        lines = []
+        if self.missing_read_dates:
+            titles = ", ".join(dict.fromkeys(self.missing_read_dates))
+            lines.append(f"Imported as read with no read date: {titles}")
+        if self.missing_start_dates:
+            titles = ", ".join(dict.fromkeys(self.missing_start_dates))
+            lines.append(f"Imported with a finish date but no start date: {titles}")
+        return lines
+
     def _build_entries(self, item, row, metadata, tracked_dates):
         """Build one unsaved Book per untracked read, newest last."""
         status = determine_status(row.get("Read Status"))
@@ -499,6 +513,8 @@ class StoryGraphImporter:
             if read_day in tracked_dates:
                 continue
             tracked_dates.add(read_day)
+            if not read.start:
+                self.missing_start_dates.append(item.title)
             instances.append(
                 self._build_instance(
                     item,
@@ -512,6 +528,8 @@ class StoryGraphImporter:
 
         if not reads and not had_entries:
             tracked_dates.add(None)
+            if status == Status.COMPLETED.value:
+                self.missing_read_dates.append(item.title)
             instances.append(
                 self._build_instance(item, status, None, None, progress, fallback_date),
             )

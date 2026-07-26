@@ -621,3 +621,60 @@ class ImportStoryGraphDeduplication(TestCase):
         books = Book.objects.filter(user=self.user, item__title="The Blade Itself")
         self.assertEqual(books.count(), 1)
         self.assertEqual(float(books.get().score), 9.0)
+
+
+class ImportStoryGraphDateReport(TestCase):
+    """Tests for the incomplete-date report in the import summary."""
+
+    def setUp(self):
+        """Create the user and import the fixture."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",  # noqa: S106 - test credential
+        )
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=fake_search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=fake_metadata,
+        ), Path(mock_path / "import_storygraph.csv").open("rb") as file:
+            self.counts, self.messages = storygraph.importer(file, self.user, "new")
+
+    def test_books_read_without_dates_listed(self):
+        """A read with no dates at all is named in the summary."""
+        self.assertIn("No Isbn Book", self.messages)
+        self.assertIn("no read date", self.messages)
+
+    def test_reads_without_start_date_listed(self):
+        """A read with a finish date but no start date is named."""
+        self.assertIn("Kindle Only", self.messages)
+        self.assertIn("no start date", self.messages)
+
+    def test_complete_reads_not_listed(self):
+        """A read with both dates is not reported."""
+        report = [line for line in self.messages.splitlines() if "date" in line]
+        self.assertNotIn("The Blade Itself", "\n".join(report))
+
+    def test_report_absent_when_dates_complete(self):
+        """An export with complete dates produces no report lines."""
+        header = Path(mock_path / "import_storygraph.csv").read_text().splitlines()[0]
+        row = (
+            'The Blade Itself,Joe Abercrombie,"",9780575079793,digital,read,'
+            "2021/01/01,2021/02/09,2021/01/20-2021/02/09,1,"
+            '"",,,,,,,4.5,Grim and funny.,"",,"fantasy",No'
+        )
+        user = get_user_model().objects.create_user(
+            username="other",
+            password="12345",  # noqa: S106 - test credential
+        )
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=fake_search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=fake_metadata,
+        ), BytesIO(f"{header}\n{row}\n".encode()) as file:
+            _counts, messages = storygraph.importer(file, user, "new")
+
+        self.assertEqual(messages, "")
