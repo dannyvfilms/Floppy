@@ -9,9 +9,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from app.models import Book, Item, Sources, Status
+from app.providers import services
 from config.celery import app as celery_app
 from integrations import tasks
 from integrations.imports import storygraph
+from integrations.imports.helpers import MediaImportUnexpectedError
 from lists.models import CustomList, CustomListItem
 
 
@@ -281,15 +283,68 @@ class BookResolverTests(SimpleTestCase):
 
         self.assertIsNone(resolved)
 
-    def test_provider_error_does_not_propagate(self):
-        """A provider blowing up leaves the book unresolved, not the import."""
+    def test_provider_error_on_one_provider_falls_back_to_next(self):
+        """A Hardcover outage does not stop Open Library from being tried.
+
+        Open Library exists as a coverage fallback specifically for when
+        Hardcover is unavailable, so a ``ProviderAPIError`` on the first
+        provider must not stop the ladder - it is exactly when the fallback
+        matters most.
+        """
+
+        def search(_media_type, query, _page, source):
+            if source == Sources.HARDCOVER.value:
+                raise services.ProviderAPIError(
+                    Sources.HARDCOVER.value, Exception("boom"),
+                )
+            if (source, query) == (
+                Sources.OPENLIBRARY.value,
+                "The Blade Itself Joe Abercrombie",
+            ):
+                return {"results": [{"media_id": "1", "title": "The Blade Itself"}]}
+            return {"results": []}
+
         with patch(
             "integrations.imports.storygraph.services.search",
-            side_effect=Exception("provider down"),
+            side_effect=search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=self._metadata,
         ):
-            resolved = storygraph.BookResolver({}).resolve("Whatever", [], "")
+            resolved = storygraph.BookResolver({}).resolve(
+                "The Blade Itself", ["Joe Abercrombie"], "",
+            )
 
-        self.assertIsNone(resolved)
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved[0], Sources.OPENLIBRARY.value)
+
+    def test_provider_error_on_every_provider_propagates(self):
+        """A failure on every provider reaches the caller, not a silent None.
+
+        Swallowing this here would make ``_process_row`` treat a persistent
+        provider outage as "book not found", which is indistinguishable from
+        a book that genuinely does not exist.
+        """
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=services.ProviderAPIError(
+                Sources.HARDCOVER.value, Exception("boom"),
+            ),
+        ), self.assertRaises(services.ProviderAPIError):
+            storygraph.BookResolver({}).resolve("Whatever", [], "")
+
+    def test_unexpected_error_is_not_swallowed_by_the_resolver(self):
+        """A genuinely unexpected exception is not caught in the resolver.
+
+        The design spec requires anything other than a provider failure or
+        an unresolvable book to raise ``MediaImportUnexpectedError`` and
+        abort the task; that can only happen if the resolver lets it through.
+        """
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=ValueError("bug, not a provider failure"),
+        ), self.assertRaises(ValueError):
+            storygraph.BookResolver({}).resolve("Whatever", [], "")
 
     def test_resolution_is_cached(self):
         """Resolving the same book twice hits the provider once."""
@@ -600,6 +655,70 @@ class ImportStoryGraphDeduplication(TestCase):
             1,
         )
 
+    def test_planning_status_not_duplicated_on_reimport(self):
+        """A Planning row followed by the same Planning row creates nothing."""
+        self.assertEqual(
+            Book.objects.filter(user=self.user, item__title="Planned Book").count(),
+            1,
+        )
+        counts, _ = self._import()
+        self.assertEqual(counts.get("book", 0), 0)
+        self.assertEqual(
+            Book.objects.filter(user=self.user, item__title="Planned Book").count(),
+            1,
+        )
+
+    def test_dateless_status_transition_to_completed_is_not_dropped(self):
+        """A book finished with no recorded date must not get stuck at Planning.
+
+        The fixture imports "Planned Book" as ``to-read``. StoryGraph's most
+        common export gap is a ``read`` row with a blank ``Dates Read``, so a
+        later export marking the same book finished - with no date - must
+        still produce a Completed entry rather than being silently dropped
+        because a dateless Planning row already occupied the same sentinel.
+        """
+        self.assertEqual(
+            Book.objects.filter(user=self.user, item__title="Planned Book").count(),
+            1,
+        )
+        header = Path(mock_path / "import_storygraph.csv").read_text().splitlines()[0]
+        row = (
+            'Planned Book,Fifth Author,"",9783333333333,hardcover,read,'
+            '2026/02/04,"","",1,"",,,,,,,,,"",,"",No'
+        )
+        counts, _ = self._import(rows=f"{header}\n{row}\n")
+
+        self.assertEqual(counts.get("book", 0), 1)
+        books = Book.objects.filter(user=self.user, item__title="Planned Book")
+        self.assertEqual(books.count(), 2)
+        self.assertEqual(
+            books.filter(status=Status.PLANNING.value).count(), 1,
+        )
+        completed = books.get(status=Status.COMPLETED.value)
+        self.assertIsNone(completed.start_date)
+        self.assertIsNone(completed.end_date)
+
+    def test_dateless_completed_transition_not_duplicated_again(self):
+        """Once the dateless Completed entry exists, re-importing gains none."""
+        header = Path(mock_path / "import_storygraph.csv").read_text().splitlines()[0]
+        row = (
+            'Planned Book,Fifth Author,"",9783333333333,hardcover,read,'
+            '2026/02/04,"","",1,"",,,,,,,,,"",,"",No'
+        )
+        self._import(rows=f"{header}\n{row}\n")
+
+        counts, _ = self._import(rows=f"{header}\n{row}\n")
+
+        self.assertEqual(counts.get("book", 0), 0)
+        self.assertEqual(
+            Book.objects.filter(
+                user=self.user,
+                item__title="Planned Book",
+                status=Status.COMPLETED.value,
+            ).count(),
+            1,
+        )
+
     def test_overwrite_rebuilds_entries(self):
         """Overwrite mode replaces the book's entries rather than adding to them."""
         counts, _ = self._import(mode="overwrite")
@@ -624,6 +743,57 @@ class ImportStoryGraphDeduplication(TestCase):
         books = Book.objects.filter(user=self.user, item__title="The Blade Itself")
         self.assertEqual(books.count(), 1)
         self.assertEqual(float(books.get().score), 9.0)
+
+
+class ImportStoryGraphProviderErrors(TestCase):
+    """Tests that provider failures are reported distinctly from not-found."""
+
+    def setUp(self):
+        """Create the user importing a single-row CSV each test builds."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",  # noqa: S106 - test credential
+        )
+        self.header = Path(
+            mock_path / "import_storygraph.csv",
+        ).read_text().splitlines()[0]
+        self.row = (
+            'The Blade Itself,Joe Abercrombie,"",9780575079793,digital,read,'
+            "2021/01/01,2021/02/09,2021/01/20-2021/02/09,1,"
+            '"",,,,,,,4.5,Grim and funny.,"",,"fantasy",No'
+        )
+
+    def _import(self, **patches):
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            **patches,
+        ), BytesIO(f"{self.header}\n{self.row}\n".encode()) as file:
+            return storygraph.importer(file, self.user, "new")
+
+    def test_provider_failure_warns_distinctly_from_not_found(self):
+        """A persistent provider outage names the provider, not 'not found'.
+
+        ``services.search`` only raises ``ProviderAPIError`` once its own
+        429/backoff retries are exhausted, so this always represents a real,
+        persistent failure - it must not be collapsed into the generic
+        "couldn't find this book" warning used for a book that genuinely
+        does not exist on either provider.
+        """
+        counts, messages = self._import(
+            side_effect=services.ProviderAPIError(
+                Sources.HARDCOVER.value, Exception("boom"),
+            ),
+        )
+
+        self.assertEqual(counts, {})
+        self.assertNotIn("couldn't find this book", messages)
+        self.assertIn("Hardcover", messages)
+        self.assertFalse(Book.objects.filter(user=self.user).exists())
+
+    def test_unexpected_error_aborts_import(self):
+        """A genuinely unexpected exception aborts the task, per the design spec."""
+        with self.assertRaises(MediaImportUnexpectedError):
+            self._import(side_effect=ValueError("bug, not a provider failure"))
 
 
 class ImportStoryGraphDateReport(TestCase):

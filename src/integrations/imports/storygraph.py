@@ -19,7 +19,6 @@ from django.conf import settings
 from django.utils import timezone
 
 import app
-from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
 from integrations.imports import helpers
@@ -250,31 +249,52 @@ class BookResolver:
         return list(dict.fromkeys(query for query in queries if query))
 
     def _search_providers(self, title, authors, isbn):
-        """Walk the provider and query ladder, keeping the best candidate."""
+        """Walk the provider and query ladder, keeping the best candidate.
+
+        A ``ProviderAPIError`` on one query does not stop the ladder - Open
+        Library exists as a coverage fallback specifically for when
+        Hardcover is unavailable, so the next query or provider still gets
+        tried. Only when every query on every provider fails outright, with
+        no successful response from any of them, does the last failure
+        propagate - the caller must not be told the book was "not found"
+        when the truth is that nothing was ever actually checked. Any other
+        exception is genuinely unexpected and is not caught here at all, so
+        it can abort the import as the design spec requires.
+        """
         best_tier = 0
         best_result = None
+        last_error = None
+        any_success = False
 
         for source in BOOK_METADATA_PROVIDER_ORDER:
             for query in self._queries(title, authors, isbn):
-                tier, result = self._match_query(source, query, title, authors)
+                try:
+                    tier, result = self._match_query(source, query, title, authors)
+                except services.ProviderAPIError as error:
+                    last_error = error
+                    continue
+                any_success = True
                 if tier > best_tier:
                     best_tier, best_result = tier, result
                     if best_tier == BEST_TIER:
                         return best_result
 
+        if best_result is None and not any_success and last_error is not None:
+            raise last_error
+
         return best_result
 
     def _match_query(self, source, query, title, authors):
-        """Search one provider with one query, returning ``(tier, result)``."""
-        try:
-            response = services.search(MediaTypes.BOOK.value, query, 1, source)
-        except Exception as error:  # noqa: BLE001 - a bad provider must not stop the import
-            logger.debug(
-                "StoryGraph search failed source=%s error=%s",
-                source,
-                exception_summary(error),
-            )
-            return 0, None
+        """Search one provider with one query, returning ``(tier, result)``.
+
+        Provider failures are not caught here: ``services.search`` and
+        ``services.get_media_metadata`` only raise ``ProviderAPIError`` once
+        their own retries are exhausted, so it always represents a real
+        failure, and ``_search_providers`` is what decides whether to fall
+        back to the next provider or let it propagate. Any other exception
+        is unexpected and must propagate too.
+        """
+        response = services.search(MediaTypes.BOOK.value, query, 1, source)
 
         results = response.get("results", []) if isinstance(response, dict) else []
         best_tier = 0
@@ -285,19 +305,11 @@ class BookResolver:
             if not media_id:
                 continue
 
-            try:
-                metadata = services.get_media_metadata(
-                    MediaTypes.BOOK.value,
-                    str(media_id),
-                    source,
-                )
-            except Exception as error:  # noqa: BLE001 - same reasoning as above
-                logger.debug(
-                    "StoryGraph metadata fetch failed source=%s error=%s",
-                    source,
-                    exception_summary(error),
-                )
-                continue
+            metadata = services.get_media_metadata(
+                MediaTypes.BOOK.value,
+                str(media_id),
+                source,
+            )
 
             if not titles_match(title, str(metadata.get("title") or "")):
                 continue
@@ -346,7 +358,7 @@ class StoryGraphImporter:
         self.to_delete = defaultdict(lambda: defaultdict(set))
         self.bulk_media = defaultdict(list)
         self.resolver = BookResolver({})
-        self.tracked_reads = self._load_tracked_reads()
+        self.tracked_reads, self.tracked_statuses = self._load_tracked_reads()
         self._overwritten = set()
         self.list_cache = {}
         self.missing_read_dates = []
@@ -412,8 +424,10 @@ class StoryGraphImporter:
         item = self._create_or_update_item(source, media_id, metadata, row)
         self._sync_tags(item, row)
         self._record_date_gaps(item, row)
-        tracked_dates = self._tracked_dates(source, media_id)
-        for instance in self._build_entries(item, row, metadata, tracked_dates):
+        tracked_dates, tracked_statuses = self._tracked_state(source, media_id)
+        for instance in self._build_entries(
+            item, row, metadata, tracked_dates, tracked_statuses,
+        ):
             self.bulk_media[MediaTypes.BOOK.value].append(instance)
 
     def _record_date_gaps(self, item, row):
@@ -436,23 +450,44 @@ class StoryGraphImporter:
                 self.missing_start_dates.append(item.title)
 
     def _load_tracked_reads(self):
-        """Map each already-tracked book to the read dates it has."""
-        tracked = defaultdict(set)
+        """Map each already-tracked book to its completed dates and statuses.
+
+        ``tracked_dates`` is seeded only from existing ``Completed`` rows -
+        real end dates plus a ``None`` sentinel for a completed read that
+        was recorded with no date at all. ``tracked_statuses`` is seeded
+        from every other existing row, keyed to the status itself rather
+        than to a shared ``None`` sentinel.
+
+        Keeping these separate matters: every non-completed status
+        (Planning, In progress, Dropped) is created dateless by
+        construction, so a shared sentinel would make an existing Planning
+        row look identical to an existing dateless Completed row. That was
+        the bug - a Planning row left a ``None`` sentinel behind, so a later
+        export marking the same book finished with no recorded date (the
+        most common gap in real StoryGraph exports) was silently dropped
+        because the sentinel was already "used".
+        """
+        tracked_dates = defaultdict(set)
+        tracked_statuses = defaultdict(set)
         model = apps.get_model(app_label="app", model_name=MediaTypes.BOOK.value)
         for book in model.objects.filter(user=self.user).select_related("item"):
             key = (book.item.source, book.item.media_id)
-            tracked[key].add(book.end_date.date() if book.end_date else None)
-        return tracked
+            if book.status == Status.COMPLETED.value:
+                tracked_dates[key].add(book.end_date.date() if book.end_date else None)
+            else:
+                tracked_statuses[key].add(book.status)
+        return tracked_dates, tracked_statuses
 
-    def _tracked_dates(self, source, media_id):
-        """Return the read dates to skip, queueing a wipe in overwrite mode."""
+    def _tracked_state(self, source, media_id):
+        """Return the (dates, statuses) sets to skip, wiping both in overwrite mode."""
         key = (source, media_id)
         if self.mode == "overwrite" and key not in self._overwritten:
             self._overwritten.add(key)
             if media_id in self.existing_media[MediaTypes.BOOK.value][source]:
                 self.to_delete[MediaTypes.BOOK.value][source].add(media_id)
             self.tracked_reads[key] = set()
-        return self.tracked_reads[key]
+            self.tracked_statuses[key] = set()
+        return self.tracked_reads[key], self.tracked_statuses[key]
 
     def _create_or_update_item(self, source, media_id, metadata, row):
         """Create or update the item, filling in an empty format only."""
@@ -517,8 +552,17 @@ class StoryGraphImporter:
             )
         return lines
 
-    def _build_entries(self, item, row, metadata, tracked_dates):
-        """Build one unsaved Book per untracked read, newest last."""
+    def _build_entries(self, item, row, metadata, tracked_dates, tracked_statuses):
+        """Build one unsaved Book per untracked read, newest last.
+
+        A dateless entry is gated differently depending on whether the row
+        is Completed: a dateless Completed read is created once per item
+        (``tracked_dates`` carries the ``None`` sentinel for that), while a
+        dateless non-completed row is created once per status
+        (``tracked_statuses``) - so a Planning row followed by another
+        Planning row still does not duplicate, but a Planning row followed
+        by a dateless Completed row is not blocked by it.
+        """
         status = determine_status(row.get("Read Status"))
         progress = self._page_count(item, metadata, status)
         reads = (
@@ -546,11 +590,22 @@ class StoryGraphImporter:
                 ),
             )
 
-        if not reads and not had_entries:
-            tracked_dates.add(None)
-            instances.append(
-                self._build_instance(item, status, None, None, progress, fallback_date),
-            )
+        if not reads:
+            if status == Status.COMPLETED.value:
+                if not had_entries:
+                    tracked_dates.add(None)
+                    instances.append(
+                        self._build_instance(
+                            item, status, None, None, progress, fallback_date,
+                        ),
+                    )
+            elif status not in tracked_statuses:
+                tracked_statuses.add(status)
+                instances.append(
+                    self._build_instance(
+                        item, status, None, None, progress, fallback_date,
+                    ),
+                )
 
         if instances and not had_entries:
             # One StoryGraph rating covers the book, so it goes on the newest
