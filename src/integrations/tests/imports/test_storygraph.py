@@ -678,3 +678,19 @@ class ImportStoryGraphDateReport(TestCase):
             _counts, messages = storygraph.importer(file, user, "new")
 
         self.assertEqual(messages, "")
+
+    def test_gaps_still_reported_on_unfixed_reimport(self):
+        """Re-importing the same unfixed export in new mode still names the gaps."""
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=fake_search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=fake_metadata,
+        ), Path(mock_path / "import_storygraph.csv").open("rb") as file:
+            _counts, messages = storygraph.importer(file, self.user, "new")
+
+        self.assertIn("No Isbn Book", messages)
+        self.assertIn("no read date", messages)
+        self.assertIn("Kindle Only", messages)
+        self.assertIn("no start date", messages)

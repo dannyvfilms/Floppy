@@ -411,9 +411,29 @@ class StoryGraphImporter:
         source, media_id, metadata = resolved
         item = self._create_or_update_item(source, media_id, metadata, row)
         self._sync_tags(item, row)
+        self._record_date_gaps(item, row)
         tracked_dates = self._tracked_dates(source, media_id)
         for instance in self._build_entries(item, row, metadata, tracked_dates):
             self.bulk_media[MediaTypes.BOOK.value].append(instance)
+
+    def _record_date_gaps(self, item, row):
+        """Note date gaps in the row itself, regardless of dedup or mode.
+
+        The report describes the quality of the export, not what a given run
+        happened to write, so it is derived straight from the row's own
+        ``Read Status`` and ``Dates Read`` values every time the row is
+        processed - including on a re-import where every read is already
+        tracked and no new instance gets built.
+        """
+        if determine_status(row.get("Read Status")) != Status.COMPLETED.value:
+            return
+        reads = parse_reads(row.get("Dates Read"))
+        if not reads:
+            self.missing_read_dates.append(item.title)
+            return
+        for read in reads:
+            if not read.start:
+                self.missing_start_dates.append(item.title)
 
     def _load_tracked_reads(self):
         """Map each already-tracked book to the read dates it has."""
@@ -485,14 +505,16 @@ class StoryGraphImporter:
         return int(max_progress) if max_progress else 0
 
     def _report_lines(self):
-        """Describe the date gaps worth fixing in StoryGraph and re-importing."""
+        """Describe the date gaps in the export worth fixing in StoryGraph."""
         lines = []
         if self.missing_read_dates:
             titles = ", ".join(dict.fromkeys(self.missing_read_dates))
-            lines.append(f"Imported as read with no read date: {titles}")
+            lines.append(f"Marked read in StoryGraph with no read date: {titles}")
         if self.missing_start_dates:
             titles = ", ".join(dict.fromkeys(self.missing_start_dates))
-            lines.append(f"Imported with a finish date but no start date: {titles}")
+            lines.append(
+                f"Has a finish date in StoryGraph but no start date: {titles}",
+            )
         return lines
 
     def _build_entries(self, item, row, metadata, tracked_dates):
@@ -513,8 +535,6 @@ class StoryGraphImporter:
             if read_day in tracked_dates:
                 continue
             tracked_dates.add(read_day)
-            if not read.start:
-                self.missing_start_dates.append(item.title)
             instances.append(
                 self._build_instance(
                     item,
@@ -528,8 +548,6 @@ class StoryGraphImporter:
 
         if not reads and not had_entries:
             tracked_dates.add(None)
-            if status == Status.COMPLETED.value:
-                self.missing_read_dates.append(item.title)
             instances.append(
                 self._build_instance(item, status, None, None, progress, fallback_date),
             )
