@@ -1495,6 +1495,7 @@ class User(AbstractUser):
             "gpodder": ["Import from GPodder", "Import from GPodder (Recurring)"],
             "lastfm": ["Import from Last.fm History"],
             "hardcover": ["Import from Hardcover"],
+            "storygraph": ["Import from StoryGraph"],
         }
         schedule_task_names = {
             **result_task_names,

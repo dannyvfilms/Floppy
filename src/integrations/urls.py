@@ -61,6 +61,7 @@ urlpatterns = [
     path("import/imdb", views.import_imdb, name="import_imdb"),
     path("import/goodreads", views.import_goodreads, name="import_goodreads"),
     path("import/hardcover", views.import_hardcover, name="import_hardcover"),
+    path("import/storygraph", views.import_storygraph, name="import_storygraph"),
     path("import/audiobookshelf/connect", views.audiobookshelf_connect, name="audiobookshelf_connect"),
     path("import/audiobookshelf/disconnect", views.audiobookshelf_disconnect, name="audiobookshelf_disconnect"),
     path("import/audiobookshelf", views.import_audiobookshelf, name="import_audiobookshelf"),

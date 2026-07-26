@@ -27,6 +27,7 @@ from integrations.imports import (
     simkl,
     sonarr,
     steam,
+    storygraph,
     storyteller,
     stremio,
     trakt,
@@ -236,6 +237,12 @@ def import_goodreads_dotted(file, user_id, mode):
 def import_hardcover(file, user_id, mode):
     """Celery task for importing media data from Hardcover."""
     return import_media(hardcover.importer, _coerce_uploaded_file(file), user_id, mode)
+
+
+@shared_task(name="Import from StoryGraph")
+def import_storygraph(file, user_id, mode):
+    """Celery task for importing media data from StoryGraph."""
+    return import_media(storygraph.importer, _coerce_uploaded_file(file), user_id, mode)
 
 
 @shared_task(name="Import from Plex")

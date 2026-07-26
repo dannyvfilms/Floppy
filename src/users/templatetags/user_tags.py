@@ -97,6 +97,10 @@ SOURCES_CONFIG = {
         "name": "Hardcover",
         "logo": static("img/hardcover-logo.png"),
     },
+    "storygraph": {
+        "name": "StoryGraph",
+        "logo": static("img/storygraph-logo.svg"),
+    },
     "radarr": {
         "name": "Radarr",
         "logo": static("img/plex-logo.svg"),

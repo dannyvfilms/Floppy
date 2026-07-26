@@ -50,6 +50,7 @@ from integrations.tasks._media_imports import (
     import_sonarr,
     import_sonarr_recurring,
     import_steam,
+    import_storygraph,
     import_storyteller,
     import_storyteller_recurring,
     import_stremio,

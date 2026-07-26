@@ -34,6 +34,7 @@ _FILE_IMPORTS = {
     "imdb": (tasks.import_imdb, "IMDB CSV"),
     "goodreads": (tasks.import_goodreads, "Goodreads CSV"),
     "hardcover": (tasks.import_hardcover, "Hardcover CSV"),
+    "storygraph": (tasks.import_storygraph, "StoryGraph CSV"),
 }
 
 
@@ -51,8 +52,8 @@ class ImportDispatchView(drf_views.APIView):
 
     Username services (mal, anilist, kitsu, steam) take {"username", "mode"}.
     File services (yamtrack, trakt-collection, hltb, grouvee, imdb,
-    goodreads, hardcover) take a multipart upload in the "file" field plus
-    an optional "mode". Returns 202 with a task_id pollable at
+    goodreads, hardcover, storygraph) take a multipart upload in the "file"
+    field plus an optional "mode". Returns 202 with a task_id pollable at
     /api/v1/tasks/{task_id}. Recurring schedules stay web-only.
     """
 

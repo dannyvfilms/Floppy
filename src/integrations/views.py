@@ -2152,6 +2152,28 @@ def import_hardcover(request):
     return redirect("import_data")
 
 
+@require_POST
+def import_storygraph(request):
+    """View for importing books data from StoryGraph CSV."""
+    file = request.FILES.get("storygraph_csv")
+
+    if not file:
+        messages.error(request, "StoryGraph CSV file is required.")
+        return redirect("import_data")
+
+    mode = request.POST["mode"]
+    tasks.import_storygraph.delay(
+        user_id=request.user.id,
+        file=_read_uploaded_file(file),
+        mode=mode,
+    )
+    messages.info(
+        request,
+        "The task to import media from StoryGraph CSV file has been queued.",
+    )
+    return redirect("import_data")
+
+
 @require_GET
 def import_template_csv(request):
     """View for downloading a sample CSV demonstrating the import format."""

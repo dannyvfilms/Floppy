@@ -5,9 +5,12 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from app.models import Book, Item, Sources, Status
+from config.celery import app as celery_app
+from integrations import tasks
 from integrations.imports import storygraph
 from lists.models import CustomList, CustomListItem
 
@@ -694,3 +697,38 @@ class ImportStoryGraphDateReport(TestCase):
         self.assertIn("no read date", messages)
         self.assertIn("Kindle Only", messages)
         self.assertIn("no start date", messages)
+
+
+class StoryGraphWiring(TestCase):
+    """Tests that the importer is reachable from the app."""
+
+    def setUp(self):
+        """Create and sign in a user."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",  # noqa: S106 - test credential
+        )
+        self.client.force_login(self.user)
+
+    def test_task_registered(self):
+        """The celery task is registered under its display name."""
+        self.assertEqual(tasks.import_storygraph.name, "Import from StoryGraph")
+        self.assertIn("Import from StoryGraph", celery_app.tasks)
+
+    def test_view_requires_a_file(self):
+        """Posting without a file reports an error instead of queueing."""
+        response = self.client.post(reverse("import_storygraph"), {"mode": "new"})
+        self.assertEqual(response.status_code, 302)
+
+    def test_view_queues_the_task(self):
+        """Posting a CSV queues the import task."""
+        with Path(mock_path / "import_storygraph.csv").open("rb") as file, patch(
+            "integrations.tasks.import_storygraph.delay",
+        ) as delay:
+            response = self.client.post(
+                reverse("import_storygraph"),
+                {"mode": "new", "storygraph_csv": file},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        delay.assert_called_once()

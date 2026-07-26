@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="StoryGraph">
+  <rect width="32" height="32" rx="6" fill="#0f1c2e"/>
+  <rect x="7" y="18" width="5" height="8" rx="1.5" fill="#f4b942"/>
+  <rect x="13.5" y="12" width="5" height="14" rx="1.5" fill="#e8734a"/>
+  <rect x="20" y="6" width="5" height="20" rx="1.5" fill="#5bc0be"/>
+</svg>
