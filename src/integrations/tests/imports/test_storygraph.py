@@ -1,9 +1,10 @@
 from datetime import datetime
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 from django.utils import timezone
 
-from app.models import Status
+from app.models import Sources, Status
 from integrations.imports import storygraph
 
 
@@ -106,3 +107,208 @@ class ParseFields(SimpleTestCase):
         self.assertEqual(storygraph.map_format("hardcover"), "hardcover")
         self.assertEqual(storygraph.map_format(""), "")
         self.assertEqual(storygraph.map_format("something else"), "")
+
+
+class MatchingHelpers(SimpleTestCase):
+    """Tests for the title and author comparison helpers."""
+
+    def test_titles_match_tolerates_subtitles(self):
+        """A provider title with a subtitle still matches the CSV title."""
+        self.assertTrue(
+            storygraph.titles_match("Mistborn", "Mistborn: The Final Empire")
+        )
+        self.assertTrue(
+            storygraph.titles_match("The Blade Itself", "the blade itself")
+        )
+
+    def test_titles_do_not_match_across_books(self):
+        """Unrelated titles do not match."""
+        self.assertFalse(storygraph.titles_match("Mistborn", "The God Delusion"))
+        self.assertFalse(storygraph.titles_match("", "Mistborn"))
+
+    def test_author_classification(self):
+        """Authors classify as match, unknown, or conflict."""
+        self.assertEqual(
+            storygraph.classify_authors(["Joe Abercrombie"], ["Joe Abercrombie"]),
+            "match",
+        )
+        self.assertEqual(
+            storygraph.classify_authors(["Joe Abercrombie"], ["J. Abercrombie"]),
+            "match",
+        )
+        self.assertEqual(
+            storygraph.classify_authors(["Joe Abercrombie"], []), "unknown"
+        )
+        self.assertEqual(
+            storygraph.classify_authors(["Joe Abercrombie"], ["Robin Hobb"]),
+            "conflict",
+        )
+        self.assertEqual(storygraph.classify_authors([], ["Robin Hobb"]), "match")
+
+    def test_extract_provider_authors_handles_shapes(self):
+        """Provider metadata carries authors as strings, lists, or dicts."""
+        self.assertEqual(
+            storygraph.extract_provider_authors(
+                {"details": {"author": ["Robin Hobb"]}},
+            ),
+            ["Robin Hobb"],
+        )
+        self.assertEqual(
+            storygraph.extract_provider_authors(
+                {"details": {"authors": [{"name": "Robin Hobb"}]}},
+            ),
+            ["Robin Hobb"],
+        )
+        self.assertEqual(
+            storygraph.extract_provider_authors({"details": {"author": "Robin Hobb"}}),
+            ["Robin Hobb"],
+        )
+        self.assertEqual(storygraph.extract_provider_authors({}), [])
+
+
+class BookResolverTests(SimpleTestCase):
+    """Tests for resolving CSV rows against metadata providers."""
+
+    def setUp(self):
+        """Build the provider fixtures shared by these tests."""
+        self.metadata = {
+            "1": {
+                "media_id": "1",
+                "title": "The Blade Itself",
+                "image": "https://example.com/blade.jpg",
+                "max_progress": 515,
+                "details": {"author": ["Joe Abercrombie"]},
+            },
+            "2": {
+                "media_id": "2",
+                "title": "A Completely Different Book",
+                "image": "https://example.com/other.jpg",
+                "max_progress": 100,
+                "details": {"author": ["Someone Else"]},
+            },
+        }
+
+    def _search(self, results_by_query):
+        def search(_media_type, query, _page, source):
+            return {"results": results_by_query.get((source, query), [])}
+
+        return search
+
+    def _metadata(self, _media_type, media_id, _source):
+        return self.metadata[str(media_id)]
+
+    def test_isbn_hit_on_hardcover_wins(self):
+        """An ISBN search on Hardcover short circuits the ladder."""
+        search = self._search(
+            {
+                (Sources.HARDCOVER.value, "9780575079793"): [
+                    {"media_id": "1", "title": "The Blade Itself"}
+                ]
+            },
+        )
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=self._metadata,
+        ):
+            resolved = storygraph.BookResolver({}).resolve(
+                "The Blade Itself",
+                ["Joe Abercrombie"],
+                "9780575079793",
+            )
+
+        self.assertIsNotNone(resolved)
+        source, media_id, metadata = resolved
+        self.assertEqual(source, Sources.HARDCOVER.value)
+        self.assertEqual(media_id, "1")
+        self.assertEqual(metadata["max_progress"], 515)
+
+    def test_falls_back_to_openlibrary(self):
+        """A book Hardcover cannot find is looked up on Open Library."""
+        search = self._search(
+            {
+                (Sources.OPENLIBRARY.value, "The Blade Itself Joe Abercrombie"): [
+                    {"media_id": "1", "title": "The Blade Itself"},
+                ]
+            },
+        )
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=self._metadata,
+        ):
+            resolved = storygraph.BookResolver({}).resolve(
+                "The Blade Itself",
+                ["Joe Abercrombie"],
+                "",
+            )
+
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved[0], Sources.OPENLIBRARY.value)
+
+    def test_wrong_title_is_rejected(self):
+        """A search result for a different book is not accepted."""
+        search = self._search(
+            {
+                (Sources.HARDCOVER.value, "The Blade Itself Joe Abercrombie"): [
+                    {"media_id": "2", "title": "A Completely Different Book"},
+                ]
+            },
+        )
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=self._metadata,
+        ):
+            resolved = storygraph.BookResolver({}).resolve(
+                "The Blade Itself",
+                ["Joe Abercrombie"],
+                "",
+            )
+
+        self.assertIsNone(resolved)
+
+    def test_provider_error_does_not_propagate(self):
+        """A provider blowing up leaves the book unresolved, not the import."""
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=Exception("provider down"),
+        ):
+            resolved = storygraph.BookResolver({}).resolve("Whatever", [], "")
+
+        self.assertIsNone(resolved)
+
+    def test_resolution_is_cached(self):
+        """Resolving the same book twice hits the provider once."""
+        calls = []
+
+        def search(_media_type, query, _page, source):
+            calls.append(query)
+            if (source, query) == (Sources.HARDCOVER.value, "9780575079793"):
+                return {"results": [{"media_id": "1", "title": "The Blade Itself"}]}
+            return {"results": []}
+
+        cache = {}
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=self._metadata,
+        ):
+            resolver = storygraph.BookResolver(cache)
+            first = resolver.resolve(
+                "The Blade Itself", ["Joe Abercrombie"], "9780575079793"
+            )
+            second = resolver.resolve(
+                "The Blade Itself", ["Joe Abercrombie"], "9780575079793"
+            )
+
+        self.assertEqual(first, second)
+        self.assertEqual(calls.count("9780575079793"), 1)
