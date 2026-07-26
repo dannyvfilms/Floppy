@@ -346,6 +346,7 @@ class StoryGraphImporter:
         self.bulk_media = defaultdict(list)
         self.resolver = BookResolver({})
         self.tracked_reads = self._load_tracked_reads()
+        self._overwritten = set()
 
         logger.info(
             "Initialized StoryGraph CSV importer for user %s with mode %s",
@@ -419,11 +420,13 @@ class StoryGraphImporter:
 
     def _tracked_dates(self, source, media_id):
         """Return the read dates to skip, queueing a wipe in overwrite mode."""
-        if self.mode == "overwrite":
+        key = (source, media_id)
+        if self.mode == "overwrite" and key not in self._overwritten:
+            self._overwritten.add(key)
             if media_id in self.existing_media[MediaTypes.BOOK.value][source]:
                 self.to_delete[MediaTypes.BOOK.value][source].add(media_id)
-            self.tracked_reads[(source, media_id)] = set()
-        return self.tracked_reads[(source, media_id)]
+            self.tracked_reads[key] = set()
+        return self.tracked_reads[key]
 
     def _create_or_update_item(self, source, media_id, metadata, row):
         """Create or update the item, filling in an empty format only."""

@@ -529,8 +529,14 @@ class ImportStoryGraphDeduplication(TestCase):
         counts, _ = self._import(rows=f"{header}\n{row}\n")
 
         self.assertEqual(counts.get("book", 0), 1)
-        books = Book.objects.filter(user=self.user, item__title="The Blade Itself")
+        books = Book.objects.filter(
+            user=self.user, item__title="The Blade Itself",
+        ).order_by("end_date")
         self.assertEqual(books.count(), 2)
+        preexisting, new_read = books
+        self.assertEqual(float(preexisting.score), 9.0)
+        self.assertIsNone(new_read.score)
+        self.assertEqual(new_read.notes, "")
 
     def test_dateless_read_not_duplicated(self):
         """A read with no dates is added once and never again."""
@@ -543,9 +549,25 @@ class ImportStoryGraphDeduplication(TestCase):
 
     def test_overwrite_rebuilds_entries(self):
         """Overwrite mode replaces the book's entries rather than adding to them."""
-        self._import(mode="overwrite")
+        counts, _ = self._import(mode="overwrite")
+        self.assertEqual(counts.get("book", 0), 10)
         self.assertEqual(Book.objects.filter(user=self.user).count(), 10)
         self.assertEqual(
             Book.objects.filter(user=self.user, item__title="Re-read Book").count(),
             2,
         )
+
+    def test_overwrite_does_not_wipe_twice_for_duplicate_rows(self):
+        """Two CSV rows for one book in overwrite mode do not duplicate reads."""
+        header = Path(mock_path / "import_storygraph.csv").read_text().splitlines()[0]
+        row = (
+            'The Blade Itself,Joe Abercrombie,"",9780575079793,digital,read,'
+            "2021/01/01,2021/02/09,2021/01/20-2021/02/09,1,"
+            '"",,,,,,,4.5,Grim and funny.,"",,"fantasy",No'
+        )
+        counts, _ = self._import(mode="overwrite", rows=f"{header}\n{row}\n{row}\n")
+
+        self.assertEqual(counts.get("book", 0), 1)
+        books = Book.objects.filter(user=self.user, item__title="The Blade Itself")
+        self.assertEqual(books.count(), 1)
+        self.assertEqual(float(books.get().score), 9.0)
