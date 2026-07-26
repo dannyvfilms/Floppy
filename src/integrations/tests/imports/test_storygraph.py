@@ -1,10 +1,12 @@
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
-from app.models import Sources, Status
+from app.models import Book, Item, Sources, Status
 from integrations.imports import storygraph
 
 
@@ -312,3 +314,169 @@ class BookResolverTests(SimpleTestCase):
 
         self.assertEqual(first, second)
         self.assertEqual(calls.count("9780575079793"), 1)
+
+
+mock_path = Path(__file__).resolve().parent.parent / "mock_data"
+
+PROVIDER_BOOKS = {
+    "The Blade Itself": {"media_id": "1", "pages": 515, "author": "Joe Abercrombie"},
+    "Kindle Only": {"media_id": "2", "pages": 300, "author": "Some Author"},
+    "No Isbn Book": {"media_id": "3", "pages": 200, "author": "Another Author"},
+    "Re-read Book": {"media_id": "4", "pages": 400, "author": "Third Author"},
+    "Current Book": {"media_id": "5", "pages": 350, "author": "Fourth Author"},
+    "Planned Book": {"media_id": "6", "pages": 1007, "author": "Fifth Author"},
+    "Dnf Book": {"media_id": "7", "pages": 250, "author": "Sixth Author"},
+    "Tagged Only Book": {"media_id": "8", "pages": 150, "author": "Seventh Author"},
+    "Audio Book": {"media_id": "9", "pages": 320, "author": "Eighth Author"},
+}
+PROVIDER_BY_ID = {
+    book["media_id"]: (title, book) for title, book in PROVIDER_BOOKS.items()
+}
+
+
+def fake_search(_media_type, query, _page, source):
+    """Return a hit when the query names or identifies a fixture book."""
+    if source != Sources.HARDCOVER.value:
+        return {"results": []}
+    for title, book in PROVIDER_BOOKS.items():
+        if title.lower() in query.lower():
+            return {"results": [{"media_id": book["media_id"], "title": title}]}
+    return {"results": []}
+
+
+def fake_metadata(_media_type, media_id, _source):
+    """Return provider metadata for a fixture book."""
+    title, book = PROVIDER_BY_ID[str(media_id)]
+    return {
+        "media_id": book["media_id"],
+        "title": title,
+        "image": f"https://example.com/{book['media_id']}.jpg",
+        "max_progress": book["pages"],
+        "details": {"author": [book["author"]]},
+    }
+
+
+class ImportStoryGraph(TestCase):
+    """Tests for importing a StoryGraph export."""
+
+    def setUp(self):
+        """Import the fixture export with the providers mocked out."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",  # noqa: S106 - test credential
+        )
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=fake_search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=fake_metadata,
+        ), Path(mock_path / "import_storygraph.csv").open("rb") as file:
+            self.counts, self.messages = storygraph.importer(file, self.user, "new")
+
+    def _books(self, title):
+        return Book.objects.filter(
+            user=self.user, item__title=title,
+        ).order_by("end_date")
+
+    def test_entry_count(self):
+        """Nine resolvable rows produce ten entries, the re-read counting twice."""
+        self.assertEqual(Book.objects.filter(user=self.user).count(), 10)
+        self.assertEqual(self.counts["book"], 10)
+
+    def test_completed_read_dates(self):
+        """A dash separated read keeps its start and end date."""
+        book = self._books("The Blade Itself").get()
+        self.assertEqual(book.status, Status.COMPLETED.value)
+        self.assertEqual(book.start_date.date(), datetime(2021, 1, 20).date())  # noqa: DTZ001
+        self.assertEqual(book.end_date.date(), datetime(2021, 2, 9).date())  # noqa: DTZ001
+
+    def test_finish_date_only_leaves_start_null(self):
+        """A bare date is a finish date, not a one day read."""
+        book = self._books("Kindle Only").get()
+        self.assertIsNone(book.start_date)
+        self.assertEqual(book.end_date.date(), datetime(2025, 7, 16).date())  # noqa: DTZ001
+
+    def test_reread_creates_two_entries(self):
+        """Each read in Dates Read becomes its own entry."""
+        books = list(self._books("Re-read Book"))
+        self.assertEqual(len(books), 2)
+        self.assertEqual(books[0].end_date.date(), datetime(2021, 9, 14).date())  # noqa: DTZ001
+        self.assertEqual(books[1].end_date.date(), datetime(2022, 11, 28).date())  # noqa: DTZ001
+
+    def test_rating_only_on_newest_read(self):
+        """One StoryGraph rating must not be counted once per re-read."""
+        books = list(self._books("Re-read Book"))
+        self.assertIsNone(books[0].score)
+        self.assertEqual(float(books[1].score), 10.0)
+
+    def test_review_becomes_notes(self):
+        """The Review column lands in notes."""
+        book = self._books("The Blade Itself").get()
+        self.assertEqual(book.notes, "Grim and funny.")
+        self.assertEqual(float(book.score), 9.0)
+
+    def test_progress_from_provider_page_count(self):
+        """Completed books take their page count from provider metadata."""
+        self.assertEqual(self._books("The Blade Itself").get().progress, 515)
+        self.assertEqual(self._books("Planned Book").get().progress, 0)
+
+    def test_audiobook_keeps_zero_progress(self):
+        """Audiobook progress is minutes, so a page count would render wrong."""
+        book = self._books("Audio Book").get()
+        self.assertEqual(book.status, Status.COMPLETED.value)
+        self.assertEqual(book.progress, 0)
+        self.assertEqual(book.item.format, "audiobook")
+
+    def test_status_mapping_across_rows(self):
+        """Every read status maps through to the tracked entry."""
+        current_status = self._books("Current Book").get().status
+        self.assertEqual(current_status, Status.IN_PROGRESS.value)
+        planned_status = self._books("Planned Book").get().status
+        self.assertEqual(planned_status, Status.PLANNING.value)
+        dnf_status = self._books("Dnf Book").get().status
+        self.assertEqual(dnf_status, Status.DROPPED.value)
+        tagged_status = self._books("Tagged Only Book").get().status
+        self.assertEqual(tagged_status, Status.PLANNING.value)
+
+    def test_date_added_is_never_a_start_date(self):
+        """Date Added is when a book was shelved, not when reading began."""
+        self.assertIsNone(self._books("Current Book").get().start_date)
+        self.assertIsNone(self._books("Current Book").get().end_date)
+
+    def test_read_without_dates_has_no_dates(self):
+        """A read with no dates is completed but contributes no calendar day."""
+        book = self._books("No Isbn Book").get()
+        self.assertEqual(book.status, Status.COMPLETED.value)
+        self.assertIsNone(book.start_date)
+        self.assertIsNone(book.end_date)
+
+    def test_format_written_only_when_empty(self):
+        """Item.format is shared between users, so an existing value stands."""
+        item = Item.objects.get(title="The Blade Itself")
+        self.assertEqual(item.format, "ebook")
+
+        item.format = "hardcover"
+        item.save(update_fields=["format"])
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=fake_search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=fake_metadata,
+        ), Path(mock_path / "import_storygraph.csv").open("rb") as file:
+            storygraph.importer(file, self.user, "new")
+
+        item.refresh_from_db()
+        self.assertEqual(item.format, "hardcover")
+
+    def test_unresolvable_book_warns(self):
+        """A book no provider knows is reported, not imported."""
+        self.assertIn("Missing Book", self.messages)
+        self.assertFalse(Book.objects.filter(item__title="Missing Book").exists())
+
+    def test_history_record_dated_from_the_read(self):
+        """The history record is stamped with the read's end date."""
+        book = self._books("The Blade Itself").get()
+        record = book.history.first()
+        self.assertEqual(record.history_date.date(), datetime(2021, 2, 9).date())  # noqa: DTZ001

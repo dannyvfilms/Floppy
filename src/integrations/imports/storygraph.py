@@ -8,15 +8,22 @@ than from simple-history records.
 
 import logging
 import re
+from collections import defaultdict
+from csv import DictReader
 from datetime import datetime
 from difflib import SequenceMatcher
 from typing import NamedTuple
 
+from django.apps import apps
+from django.conf import settings
 from django.utils import timezone
 
+import app
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations.imports import helpers
+from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
 logger = logging.getLogger(__name__)
 
@@ -317,3 +324,158 @@ class BookResolver:
             scored.append((title_similarity(title, candidate_title), result))
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return [result for _score, result in scored[:MAX_TITLE_CANDIDATES]]
+
+
+def importer(file, user, mode):
+    """Import books from a StoryGraph export CSV."""
+    return StoryGraphImporter(file, user, mode).import_data()
+
+
+class StoryGraphImporter:
+    """Import a StoryGraph export, one tracked entry per read."""
+
+    def __init__(self, file, user, mode):
+        """Initialize the importer with the upload, user, and import mode."""
+        self.file = file
+        self.user = user
+        self.mode = mode
+        self.warnings = []
+
+        self.existing_media = helpers.get_existing_media(user)
+        self.to_delete = defaultdict(lambda: defaultdict(set))
+        self.bulk_media = defaultdict(list)
+        self.resolver = BookResolver({})
+
+        logger.info(
+            "Initialized StoryGraph CSV importer for user %s with mode %s",
+            user.username,
+            mode,
+        )
+
+    def import_data(self):
+        """Import every row of the CSV and return counts plus messages."""
+        try:
+            raw_file = self.file.read()
+            try:
+                decoded_file = raw_file.decode("utf-8-sig").splitlines()
+            except UnicodeDecodeError:
+                decoded_file = raw_file.decode("latin-1").splitlines()
+        except (UnicodeDecodeError, AttributeError) as error:
+            msg = "Invalid file format. Please upload a CSV file."
+            raise MediaImportError(msg) from error
+
+        for row in DictReader(decoded_file):
+            try:
+                self._process_row(row)
+            except services.ProviderAPIError as error:
+                title = (row.get("Title") or "").strip() or str(row)
+                self.warnings.append(f"Error processing entry: {title} - {error}")
+                continue
+            except Exception as error:
+                error_msg = f"Error processing entry: {row}"
+                raise MediaImportUnexpectedError(error_msg) from error
+
+        helpers.cleanup_existing_media(self.to_delete, self.user)
+        helpers.bulk_create_media(self.bulk_media, self.user)
+
+        imported_counts = {
+            media_type: len(media_list)
+            for media_type, media_list in self.bulk_media.items()
+        }
+        return imported_counts, "\n".join(dict.fromkeys(self.warnings))
+
+    def _process_row(self, row):
+        """Resolve one CSV row and queue its tracked entries."""
+        title = (row.get("Title") or "").strip()
+        if not title:
+            return
+
+        resolved = self.resolver.resolve(
+            title,
+            parse_authors(row.get("Authors")),
+            normalize_isbn(row.get("ISBN/UID")),
+        )
+        if not resolved:
+            self.warnings.append(
+                f"{title}: couldn't find this book on Hardcover or Open Library",
+            )
+            return
+
+        source, media_id, metadata = resolved
+        item = self._create_or_update_item(source, media_id, metadata, row)
+        for instance in self._build_entries(item, row, metadata):
+            self.bulk_media[MediaTypes.BOOK.value].append(instance)
+
+    def _create_or_update_item(self, source, media_id, metadata, row):
+        """Create or update the item, filling in an empty format only."""
+        item, _ = app.models.Item.objects.update_or_create(
+            media_id=media_id,
+            source=source,
+            media_type=MediaTypes.BOOK.value,
+            defaults={
+                **app.models.Item.title_fields_from_metadata(
+                    metadata,
+                    fallback_title=(row.get("Title") or "").strip(),
+                ),
+                "image": metadata.get("image") or settings.IMG_NONE,
+            },
+        )
+
+        book_format = map_format(row.get("Format"))
+        if book_format and not item.format:
+            item.format = book_format
+            item.save(update_fields=["format"])
+
+        return item
+
+    def _page_count(self, item, metadata, status):
+        """Return the progress to store, in pages, for a tracked entry."""
+        if status != Status.COMPLETED.value or item.format == "audiobook":
+            return 0
+        max_progress = metadata.get("max_progress")
+        return int(max_progress) if max_progress else 0
+
+    def _build_entries(self, item, row, metadata):
+        """Build one unsaved Book per read, newest last."""
+        status = determine_status(row.get("Read Status"))
+        progress = self._page_count(item, metadata, status)
+        reads = (
+            parse_reads(row.get("Dates Read"))
+            if status == Status.COMPLETED.value
+            else []
+        )
+        fallback_date = parse_date(row.get("Date Added"))
+
+        instances = [
+            self._build_instance(
+                item, status, read.start, read.end, progress, fallback_date,
+            )
+            for read in reads
+        ]
+        if not instances:
+            instances.append(
+                self._build_instance(item, status, None, None, progress, fallback_date),
+            )
+
+        newest = instances[-1]
+        newest.score = parse_rating(row.get("Star Rating"))
+        newest.notes = (row.get("Review") or "").strip()
+        return instances
+
+    def _build_instance(
+        self, item, status, start_date, end_date, progress, fallback_date,
+    ):
+        """Build a single unsaved Book instance for one read."""
+        model = apps.get_model(app_label="app", model_name=MediaTypes.BOOK.value)
+        instance = model(
+            item=item,
+            user=self.user,
+            status=status,
+            progress=progress,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        instance._history_date = (
+            end_date or start_date or fallback_date or timezone.now()
+        )
+        return instance
