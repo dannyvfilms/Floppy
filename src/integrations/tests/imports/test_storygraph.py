@@ -1,4 +1,5 @@
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -480,3 +481,71 @@ class ImportStoryGraph(TestCase):
         book = self._books("The Blade Itself").get()
         record = book.history.first()
         self.assertEqual(record.history_date.date(), datetime(2021, 2, 9).date())  # noqa: DTZ001
+
+
+class ImportStoryGraphDeduplication(TestCase):
+    """Tests that re-importing does not duplicate reads."""
+
+    def setUp(self):
+        """Create the user and import the fixture once."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",  # noqa: S106 - test credential
+        )
+        self._import()
+
+    def _import(self, mode="new", rows=None):
+        """Import the fixture, or a custom CSV body, with providers mocked."""
+        if rows is None:
+            source_file = Path(  # noqa: SIM115 - closed by the with-block below
+                mock_path / "import_storygraph.csv",
+            ).open("rb")
+        else:
+            source_file = BytesIO(rows.encode("utf-8"))
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=fake_search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=fake_metadata,
+        ), source_file as file:
+            return storygraph.importer(file, self.user, mode)
+
+    def test_reimport_creates_nothing(self):
+        """Importing the same export twice leaves the entry count unchanged."""
+        before = Book.objects.filter(user=self.user).count()
+        counts, _ = self._import()
+        self.assertEqual(Book.objects.filter(user=self.user).count(), before)
+        self.assertEqual(counts.get("book", 0), 0)
+
+    def test_new_read_creates_one_entry(self):
+        """A read added in StoryGraph after the first import arrives."""
+        header = Path(mock_path / "import_storygraph.csv").read_text().splitlines()[0]
+        row = (
+            'The Blade Itself,Joe Abercrombie,"",9780575079793,digital,read,'
+            '2021/01/01,2026/05/10,"2021/01/20-2021/02/09, 2026/05/01-2026/05/10",2,'
+            '"",,,,,,,4.5,Grim and funny.,"",,"fantasy",No'
+        )
+        counts, _ = self._import(rows=f"{header}\n{row}\n")
+
+        self.assertEqual(counts.get("book", 0), 1)
+        books = Book.objects.filter(user=self.user, item__title="The Blade Itself")
+        self.assertEqual(books.count(), 2)
+
+    def test_dateless_read_not_duplicated(self):
+        """A read with no dates is added once and never again."""
+        counts, _ = self._import()
+        self.assertEqual(counts.get("book", 0), 0)
+        self.assertEqual(
+            Book.objects.filter(user=self.user, item__title="No Isbn Book").count(),
+            1,
+        )
+
+    def test_overwrite_rebuilds_entries(self):
+        """Overwrite mode replaces the book's entries rather than adding to them."""
+        self._import(mode="overwrite")
+        self.assertEqual(Book.objects.filter(user=self.user).count(), 10)
+        self.assertEqual(
+            Book.objects.filter(user=self.user, item__title="Re-read Book").count(),
+            2,
+        )

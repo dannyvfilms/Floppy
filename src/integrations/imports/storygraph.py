@@ -345,6 +345,7 @@ class StoryGraphImporter:
         self.to_delete = defaultdict(lambda: defaultdict(set))
         self.bulk_media = defaultdict(list)
         self.resolver = BookResolver({})
+        self.tracked_reads = self._load_tracked_reads()
 
         logger.info(
             "Initialized StoryGraph CSV importer for user %s with mode %s",
@@ -403,8 +404,26 @@ class StoryGraphImporter:
 
         source, media_id, metadata = resolved
         item = self._create_or_update_item(source, media_id, metadata, row)
-        for instance in self._build_entries(item, row, metadata):
+        tracked_dates = self._tracked_dates(source, media_id)
+        for instance in self._build_entries(item, row, metadata, tracked_dates):
             self.bulk_media[MediaTypes.BOOK.value].append(instance)
+
+    def _load_tracked_reads(self):
+        """Map each already-tracked book to the read dates it has."""
+        tracked = defaultdict(set)
+        model = apps.get_model(app_label="app", model_name=MediaTypes.BOOK.value)
+        for book in model.objects.filter(user=self.user).select_related("item"):
+            key = (book.item.source, book.item.media_id)
+            tracked[key].add(book.end_date.date() if book.end_date else None)
+        return tracked
+
+    def _tracked_dates(self, source, media_id):
+        """Return the read dates to skip, queueing a wipe in overwrite mode."""
+        if self.mode == "overwrite":
+            if media_id in self.existing_media[MediaTypes.BOOK.value][source]:
+                self.to_delete[MediaTypes.BOOK.value][source].add(media_id)
+            self.tracked_reads[(source, media_id)] = set()
+        return self.tracked_reads[(source, media_id)]
 
     def _create_or_update_item(self, source, media_id, metadata, row):
         """Create or update the item, filling in an empty format only."""
@@ -435,8 +454,8 @@ class StoryGraphImporter:
         max_progress = metadata.get("max_progress")
         return int(max_progress) if max_progress else 0
 
-    def _build_entries(self, item, row, metadata):
-        """Build one unsaved Book per read, newest last."""
+    def _build_entries(self, item, row, metadata, tracked_dates):
+        """Build one unsaved Book per untracked read, newest last."""
         status = determine_status(row.get("Read Status"))
         progress = self._page_count(item, metadata, status)
         reads = (
@@ -445,21 +464,40 @@ class StoryGraphImporter:
             else []
         )
         fallback_date = parse_date(row.get("Date Added"))
+        had_entries = bool(tracked_dates)
 
-        instances = [
-            self._build_instance(
-                item, status, read.start, read.end, progress, fallback_date,
+        instances = []
+        for read in reads:
+            read_day = read.end.date() if read.end else None
+            if read_day in tracked_dates:
+                continue
+            tracked_dates.add(read_day)
+            instances.append(
+                self._build_instance(
+                    item,
+                    status,
+                    read.start,
+                    read.end,
+                    progress,
+                    fallback_date,
+                ),
             )
-            for read in reads
-        ]
-        if not instances:
+
+        if not reads and not had_entries:
+            tracked_dates.add(None)
             instances.append(
                 self._build_instance(item, status, None, None, progress, fallback_date),
             )
 
-        newest = instances[-1]
-        newest.score = parse_rating(row.get("Star Rating"))
-        newest.notes = (row.get("Review") or "").strip()
+        if instances and not had_entries:
+            # One StoryGraph rating covers the book, so it goes on the newest
+            # entry only - repeating it per re-read would double count it in
+            # statistics. A book that already has entries carries its rating
+            # there, so a newly added re-read is left unrated.
+            newest = instances[-1]
+            newest.score = parse_rating(row.get("Star Rating"))
+            newest.notes = (row.get("Review") or "").strip()
+
         return instances
 
     def _build_instance(
