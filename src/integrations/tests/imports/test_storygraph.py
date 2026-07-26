@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from app.models import Book, Item, Sources, Status
 from integrations.imports import storygraph
+from lists.models import CustomList, CustomListItem
 
 
 class ParseReads(SimpleTestCase):
@@ -481,6 +482,55 @@ class ImportStoryGraph(TestCase):
         book = self._books("The Blade Itself").get()
         record = book.history.first()
         self.assertEqual(record.history_date.date(), datetime(2021, 2, 9).date())  # noqa: DTZ001
+
+
+class ImportStoryGraphTags(TestCase):
+    """Tests for mapping StoryGraph tags onto custom lists."""
+
+    def setUp(self):
+        """Create the user and import the fixture."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",  # noqa: S106 - test credential
+        )
+        self._import()
+
+    def _import(self):
+        with patch(
+            "integrations.imports.storygraph.services.search",
+            side_effect=fake_search,
+        ), patch(
+            "integrations.imports.storygraph.services.get_media_metadata",
+            side_effect=fake_metadata,
+        ), Path(mock_path / "import_storygraph.csv").open("rb") as file:
+            return storygraph.importer(file, self.user, "new")
+
+    def test_lists_created_from_tags(self):
+        """Each tag becomes a local custom list owned by the user."""
+        names = set(
+            CustomList.objects.filter(owner=self.user).values_list("name", flat=True),
+        )
+        self.assertEqual(names, {"fantasy", "management", "spanish"})
+
+    def test_items_added_to_their_lists(self):
+        """A tagged book joins every list its tags name."""
+        tagged = Item.objects.get(title="Tagged Only Book")
+        list_names = set(
+            CustomListItem.objects.filter(item=tagged).values_list(
+                "custom_list__name",
+                flat=True,
+            ),
+        )
+        self.assertEqual(list_names, {"management", "spanish"})
+
+    def test_membership_is_idempotent(self):
+        """Re-importing does not duplicate lists or memberships."""
+        self._import()
+        self.assertEqual(CustomList.objects.filter(owner=self.user).count(), 3)
+        self.assertEqual(
+            CustomListItem.objects.filter(custom_list__owner=self.user).count(),
+            3,
+        )
 
 
 class ImportStoryGraphDeduplication(TestCase):

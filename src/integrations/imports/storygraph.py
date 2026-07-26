@@ -24,6 +24,7 @@ from app.models import MediaTypes, Sources, Status
 from app.providers import services
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
+from lists.models import CustomList, CustomListItem
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +348,7 @@ class StoryGraphImporter:
         self.resolver = BookResolver({})
         self.tracked_reads = self._load_tracked_reads()
         self._overwritten = set()
+        self.list_cache = {}
 
         logger.info(
             "Initialized StoryGraph CSV importer for user %s with mode %s",
@@ -405,6 +407,7 @@ class StoryGraphImporter:
 
         source, media_id, metadata = resolved
         item = self._create_or_update_item(source, media_id, metadata, row)
+        self._sync_tags(item, row)
         tracked_dates = self._tracked_dates(source, media_id)
         for instance in self._build_entries(item, row, metadata, tracked_dates):
             self.bulk_media[MediaTypes.BOOK.value].append(instance)
@@ -449,6 +452,27 @@ class StoryGraphImporter:
             item.save(update_fields=["format"])
 
         return item
+
+    def _sync_tags(self, item, row):
+        """Mirror the row's tags as custom lists holding this item."""
+        for tag in parse_tags(row.get("Tags")):
+            custom_list = self.list_cache.get(tag)
+            if custom_list is None:
+                custom_list = CustomList.objects.filter(
+                    owner=self.user,
+                    name=tag,
+                ).first() or CustomList.objects.create(
+                    owner=self.user,
+                    name=tag,
+                    source="local",
+                )
+                self.list_cache[tag] = custom_list
+
+            CustomListItem.objects.get_or_create(
+                item=item,
+                custom_list=custom_list,
+                defaults={"added_by": self.user},
+            )
 
     def _page_count(self, item, metadata, status):
         """Return the progress to store, in pages, for a tracked entry."""
