@@ -44,6 +44,8 @@ services:
     container_name: yamtrack-redis
     image: redis:8-alpine
     restart: unless-stopped
+    # Persist to disk so a restart doesn't drop the cache wholesale (#386).
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
 

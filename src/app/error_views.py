@@ -1,10 +1,11 @@
 import traceback
+from urllib.parse import urlparse
 
 from django.contrib import messages
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect, render
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
@@ -212,6 +213,20 @@ def server_error(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _is_entrance_url(path: str) -> bool:
+    """Return whether a path is a login/signup page.
+
+    Redirecting a CSRF failure to one of these produces an infinite loop.
+    """
+    entrance_paths = set()
+    for name in ("account_login", "account_signup"):
+        try:
+            entrance_paths.add(reverse(name))
+        except NoReverseMatch:  # pragma: no cover - both names are always wired
+            continue
+    return path in entrance_paths
+
+
 def _safe_return_url(request: HttpRequest) -> str:
     """Return a same-host URL to send the user back to, falling back to home."""
     referer = request.META.get("HTTP_REFERER")
@@ -241,9 +256,19 @@ def csrf_failure(
     if user is not None:
         return_url = _safe_return_url(request)
         if not user.is_authenticated:
-            return redirect_to_login(return_url)
-        messages.info(request, "That action needed a quick refresh - please try again.")
-        return redirect(return_url)
+            # Never bounce an unauthenticated user to a page that is itself an
+            # entrance page: the login POST would fail CSRF again and land back
+            # on the same form with no explanation, looping forever (#386).
+            if not _is_entrance_url(request.path) and not _is_entrance_url(
+                urlparse(return_url).path,
+            ):
+                return redirect_to_login(return_url)
+        else:
+            messages.info(
+                request,
+                "That action needed a quick refresh - please try again.",
+            )
+            return redirect(return_url)
 
     return render_error_page(
         request,
@@ -253,7 +278,10 @@ def csrf_failure(
         heading="Access Forbidden",
         error_message=(
             "CSRF verification failed for this request. This usually means the CSRF "
-            "cookie was missing, expired, or didn't match the form token."
+            "cookie was missing, expired, or didn't match the form token. If "
+            "Yamtrack is behind an HTTPS reverse proxy, set the CSRF (or URLS) "
+            "environment variable to the address you use to reach it, and set "
+            "USE_X_FORWARDED=true."
         ),
         traceback_text=(
             "Traceback unavailable. Django rejected the request during CSRF "

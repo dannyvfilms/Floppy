@@ -82,10 +82,15 @@ class CollectionQuickAddTest(TestCase):
         self.assertFalse(CollectionEntry.objects.filter(user=self.user).exists())
 
     def test_quick_add_requires_login(self):
-        """Anonymous requests are redirected to login."""
+        """Anonymous htmx requests get HX-Redirect to login, not a 302.
+
+        htmx would follow a 302 and swap the whole login page into the page
+        (#386), so the redirect is handed to the client instead.
+        """
         self.client.logout()
         response = self._post_episode()
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 204)
+        self.assertIn("/accounts/login/", response.headers["HX-Redirect"])
         self.assertFalse(CollectionEntry.objects.exists())
 
     @patch("app.providers.services.get_media_metadata")

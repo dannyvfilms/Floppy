@@ -1,11 +1,13 @@
 import logging
 import time
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib.auth import get_user_model, login
 from django.db import connection
 from django.db.utils import OperationalError
-from django.http import HttpRequest
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import resolve_url
 from django.urls import reverse
 
 from app.db_retry import is_retryable_error
@@ -45,6 +47,38 @@ class AutoLoginMiddleware:
                 pass
 
         return self.get_response(request)
+
+
+class HtmxAuthRedirectMiddleware:
+    """Turn login redirects into HX-Redirect for htmx requests.
+
+    ``LoginRequiredMiddleware`` answers a lost session with a plain 302 to the
+    login page. htmx follows that redirect transparently, gets a 200 carrying
+    the whole login document, and swaps it into whatever fragment slot made the
+    request - so a poller paints a login form partway down the page (#386).
+    Answering with 204 + HX-Redirect makes htmx navigate instead.
+    """
+
+    def __init__(self, get_response):
+        """Initialize the middleware with the get_response callable."""
+        self.get_response = get_response
+
+    def __call__(self, request):
+        """Rewrite login redirects on htmx requests into HX-Redirect."""
+        response = self.get_response(request)
+
+        if not request.headers.get("HX-Request"):
+            return response
+        if response.status_code not in {301, 302}:
+            return response
+
+        location = response.headers.get("Location", "")
+        if urlparse(location).path != urlparse(resolve_url(settings.LOGIN_URL)).path:
+            return response
+
+        redirect_response = HttpResponse(status=204)
+        redirect_response.headers["HX-Redirect"] = location
+        return redirect_response
 
 
 class RequestPerformanceLoggingMiddleware:

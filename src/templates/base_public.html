@@ -12,6 +12,9 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-title" content="Yamtrack">
+    {# Lets base.html's htmx guard recognize an entrance page that arrived as a
+       fragment response and navigate instead of swapping it in (#386). #}
+    <meta name="yamtrack-page" content="entrance">
 
     <title>
       {% block title %}

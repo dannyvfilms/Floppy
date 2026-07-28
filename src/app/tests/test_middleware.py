@@ -1,7 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.middleware import AuthenticationMiddleware
 from django.contrib.sessions.middleware import SessionMiddleware
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import Client, RequestFactory, TestCase, override_settings
+from django.urls import reverse
 
 from app.middleware import AutoLoginMiddleware
 
@@ -73,3 +74,66 @@ class AutoLoginMiddlewareTest(TestCase):
         self.run_middleware(request)
 
         self.assertFalse(request.user.is_authenticated)
+
+
+class HtmxAuthRedirectMiddlewareTest(TestCase):
+    """Test cases for HtmxAuthRedirectMiddleware (#386)."""
+
+    def setUp(self):
+        """Use a logged-out client against a login-required fragment."""
+        self.client = Client()
+        self.url = reverse("active_playback_fragment")
+
+    def test_htmx_request_gets_hx_redirect(self):
+        """An htmx request must get 204 + HX-Redirect, not a followable 302.
+
+        Following the 302 returns the whole login page with a 200, which htmx
+        would happily swap into the fragment slot that made the request.
+        """
+        response = self.client.get(self.url, HTTP_HX_REQUEST="true")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertIn(
+            reverse("account_login"),
+            response.headers["HX-Redirect"],
+        )
+        self.assertEqual(response.content, b"")
+
+    def test_plain_request_still_redirects(self):
+        """A non-htmx request keeps the normal 302 to the login page."""
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertNotIn("HX-Redirect", response.headers)
+        self.assertIn(reverse("account_login"), response.headers["Location"])
+
+    def test_non_login_redirect_is_untouched(self):
+        """Redirects that aren't to the login page pass through unchanged."""
+        user = UserModel.objects.create_user(
+            username="htmx_user",
+            password="htmx_user_password",  # noqa: S106
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(self.url, HTTP_HX_REQUEST="true")
+
+        self.assertNotEqual(response.status_code, 204)
+
+
+class SessionDurabilityTest(TestCase):
+    """A cache loss must not log the user out (#386)."""
+
+    def test_session_survives_cache_flush(self):
+        """Redis restart/eviction falls back to the database session row."""
+        from django.core.cache import cache  # noqa: PLC0415
+
+        user = UserModel.objects.create_user(
+            username="session_user",
+            password="session_user_password",  # noqa: S106
+        )
+        self.client.force_login(user)
+        self.assertEqual(self.client.get("/").status_code, 200)
+
+        cache.clear()
+
+        self.assertEqual(self.client.get("/").status_code, 200)

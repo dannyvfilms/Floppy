@@ -236,6 +236,9 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
+    # Answer htmx requests with HX-Redirect instead of a followable 302 to the
+    # login page, which htmx would otherwise swap into a fragment slot (#386)
+    "app.middleware.HtmxAuthRedirectMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "app.middleware.ProviderAPIErrorMiddleware",
@@ -411,10 +414,17 @@ CACHES = {
 warnings.simplefilter("ignore", CacheKeyWarning)
 
 # Sessions
-# Use Redis cache backend for sessions to avoid database dependency
-# This improves resilience to disk I/O errors
-SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+# Read through Redis for speed, but persist to the database too. The pure cache
+# backend silently treats any Redis error - a restart, an eviction, a socket
+# timeout - as "no session", logging the user out with no log line (#386).
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 SESSION_CACHE_ALIAS = "default"
+
+# Deliberately NOT setting SESSION_SAVE_EVERY_REQUEST: it would slide the
+# expiry on activity, but at the cost of a session UPDATE on every request.
+# On SQLite that is write-lock pressure on the hot path - the same class of
+# fragility this section exists to fix. Session lifetime therefore stays fixed
+# from login, per the user's session_duration preference.
 
 
 # Password validation

@@ -58,6 +58,24 @@
           htmx.config.historyCacheSize = 0;
           htmx.config.refreshOnHistoryMiss = true;
 
+          // Belt-and-braces for HtmxAuthRedirectMiddleware: if a fragment
+          // response is actually a login/signup page (a redirect htmx followed
+          // transparently), navigate to it instead of swapping a whole
+          // document into a fragment slot (#386).
+          document.body.addEventListener("htmx:beforeSwap", function(event) {
+            const xhr = event.detail && event.detail.xhr;
+            if (!xhr) {
+              return;
+            }
+            const body = xhr.responseText || "";
+            if (body.indexOf('name="yamtrack-page" content="entrance"') === -1) {
+              return;
+            }
+            event.detail.shouldSwap = false;
+            event.detail.isError = false;
+            window.location.assign(xhr.responseURL || "{% url 'account_login' %}");
+          });
+
           document.body.addEventListener("htmx:configRequest", function(event) {
             // Send CSRF via header rather than relying on a body-encoded
             // token, so htmx-driven POSTs don't depend on a native form's
