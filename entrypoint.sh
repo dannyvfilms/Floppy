@@ -7,23 +7,31 @@ set -e
 # opaque "file is not a database" traceback (issue #508). Corruption here
 # often means the db directory sits on a network filesystem that doesn't
 # support SQLite's WAL locking - see README's SQLite persistence note.
-if [ -z "$DB_HOST" ] && [ -f /floppy/db/db.sqlite3 ]; then
-    python -c "
+DB_FILE="${FLOPPY_DB_PATH:-${FLOPPY_DATA_DIR:-db}/db.sqlite3}"
+
+if [ -z "$DB_HOST" ] && [ -f "$DB_FILE" ]; then
+    DB_FILE="$DB_FILE" python - <<'PY'
+import os
 import sqlite3
 import sys
 
+path = os.environ["DB_FILE"]
 try:
-    conn = sqlite3.connect('/floppy/db/db.sqlite3')
-    conn.execute('PRAGMA quick_check').fetchone()
-except sqlite3.DatabaseError as e:
-    print(f'[entrypoint] Database integrity check failed: {e}', file=sys.stderr)
+    with sqlite3.connect(path) as connection:
+        result = connection.execute("PRAGMA quick_check").fetchone()
+except sqlite3.DatabaseError as exc:
+    print(f"[entrypoint] Database integrity check failed: {exc}", file=sys.stderr)
     print(
-        '[entrypoint] The SQLite file may be corrupt (see README: SQLite '
-        'network filesystem caveat)',
+        "[entrypoint] The SQLite file may be corrupt (see README: SQLite "
+        "network filesystem caveat)",
         file=sys.stderr,
     )
     sys.exit(1)
-" || exit 1
+
+if not result or result[0] != "ok":
+    print(f"[entrypoint] Database quick_check failed: {result!r}", file=sys.stderr)
+    sys.exit(1)
+PY
 fi
 
 # Bounded, retrying migrate: a blocked migration must fail loudly and retry
@@ -64,7 +72,7 @@ chown abc:abc /floppy
 #
 # Bound each recursive chown: a stalled bind mount (e.g. network storage)
 # must degrade to a warning instead of hanging the boot silently (issue #341).
-for dir in db logs staticfiles /var/log/nginx /var/lib/nginx; do
+for dir in "${FLOPPY_DATA_DIR:-db}" "${LOG_DIR:-logs}" staticfiles /var/log/nginx /var/lib/nginx; do
     timeout 600 chown -R abc:abc "$dir" || \
         echo "[entrypoint] WARNING: chown of ${dir} failed or timed out (stalled mount?); continuing" >&2
 done

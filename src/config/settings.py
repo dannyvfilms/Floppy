@@ -50,6 +50,17 @@ REDIS_PREFIX = config("REDIS_PREFIX", default=None)
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+FLOPPY_DATA_DIR = Path(
+    config("FLOPPY_DATA_DIR", default=str(BASE_DIR / "db"))
+).expanduser()
+
+FLOPPY_DB_PATH = Path(
+    config(
+        "FLOPPY_DB_PATH",
+        default=str(FLOPPY_DATA_DIR / "db.sqlite3"),
+    )
+).expanduser()
+
 
 def secret(key, default=undefined, **kwargs):
     """Try to read a config value from a secret file.
@@ -111,7 +122,7 @@ if not SECRET_KEY:
         import secrets as _secrets
         import warnings
 
-        _secret_file = BASE_DIR / "db" / "secret_key"
+        _secret_file = FLOPPY_DATA_DIR / "secret_key"
         if _secret_file.exists():
             SECRET_KEY = _secret_file.read_text().strip()
         else:
@@ -320,9 +331,6 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/stable/ref/settings/#databases
 
-# create db folder if it doesn't exist
-Path(BASE_DIR / "db").mkdir(parents=True, exist_ok=True)
-
 DB_HOST = config("DB_HOST", default=None)
 USING_SQLITE_DATABASE = not bool(DB_HOST)
 
@@ -383,12 +391,14 @@ else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db" / "db.sqlite3",
+            "NAME": FLOPPY_DB_PATH,
             "OPTIONS": {
                 "timeout": SQLITE_BUSY_TIMEOUT_SECONDS,
             },
         },
     }
+
+    FLOPPY_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     def configure_sqlite_connection(sender, connection, **_kwargs):
         """Ensure SQLite connections wait for locks and use WAL."""
@@ -439,6 +449,27 @@ else:
 # https://docs.djangoproject.com/en/stable/topics/cache/
 CACHE_TIMEOUT = 86400  # 24 hours
 REDIS_URL = config("REDIS_URL", default="redis://localhost:6379")
+
+REDIS_CACHE_URL = config(
+    "REDIS_CACHE_URL",
+    default=REDIS_URL,
+)
+
+CELERY_BROKER_URL = config(
+    "CELERY_BROKER_URL",
+    default=REDIS_URL,
+)
+
+CELERY_RESULT_BACKEND = config(
+    "CELERY_RESULT_BACKEND",
+    default=REDIS_URL,
+)
+
+REDIS_ADMIN_URL = config(
+    "REDIS_ADMIN_URL",
+    default=REDIS_CACHE_URL,
+)
+
 # Byte count or a redis.conf-style size ("256mb"). Unset means "derive one from
 # the host"; 0 means "never touch the operator's Redis". See app/redis_tuning.py.
 FLOPPY_REDIS_MAXMEMORY = config(
@@ -449,7 +480,7 @@ KEY_PREFIX = f"{REDIS_PREFIX}" if REDIS_PREFIX else ""
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": REDIS_URL,
+        "LOCATION": REDIS_CACHE_URL,
         "TIMEOUT": CACHE_TIMEOUT,
         "VERSION": 14,
         "KEY_PREFIX": KEY_PREFIX,
@@ -1168,7 +1199,6 @@ SELECT2_THEME = "tailwindcss-4"
 
 # Celery settings
 
-CELERY_BROKER_URL = REDIS_URL
 CELERY_TIMEZONE = TIME_ZONE
 
 CELERY_BROKER_TRANSPORT_OPTIONS = {
@@ -1264,7 +1294,6 @@ CELERY_TASK_DEFAULT_PRIORITY = 5
 CELERY_TASK_PRIORITY_BACKGROUND = 9
 
 CELERY_RESULT_EXTENDED = True
-CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_CACHE_BACKEND = "default"
 CELERY_RESULT_EXPIRES = 60 * 60 * 24 * 7  # 7 days
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
@@ -1583,11 +1612,13 @@ REDIRECT_LOGIN_TO_SSO = config("REDIRECT_LOGIN_TO_SSO", default=False, cast=bool
 
 DEMO_ACCOUNT_ENABLED = config("DEMO_ACCOUNT_ENABLED", default=True, cast=bool)
 
+import re
+
 # Configure LoginRequiredMiddleware to exclude static files
-LOGIN_REQUIRED_EXEMPT = [
-    r"^/static/.*$",
-    r"^/favicon\.ico$",
-    r"^/health/.*$",
-    r"^/list/[^/]+/rss/?$",  # Public list RSS feeds
-    r"^/list/[^/]+/json/?$",  # Public list JSON exports
+LOGIN_REQUIRED_IGNORE_PATHS = [
+    re.compile(r"^/static/.*$"),
+    re.compile(r"^/favicon\.ico$"),
+    re.compile(r"^/health/.*$"),
+    re.compile(r"^/list/[^/]+/rss/?$"),  # Public list RSS feeds
+    re.compile(r"^/list/[^/]+/json/?$"),  # Public list JSON exports
 ]

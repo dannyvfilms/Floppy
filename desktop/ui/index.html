@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Floppy - Starting...</title>
+    <style>
+      body {
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color: #111827; /* Tailwind gray-900 */
+        color: #f3f4f6; /* Tailwind gray-100 */
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid rgba(255,255,255,0.1);
+        border-radius: 50%;
+        border-top-color: #3b82f6; /* Tailwind blue-500 */
+        animation: spin 1s ease-in-out infinite;
+        margin-bottom: 20px;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      #status {
+        font-size: 1.125rem;
+        font-weight: 500;
+        margin-bottom: 10px;
+      }
+      #error {
+        color: #ef4444; /* Tailwind red-500 */
+        margin-top: 20px;
+        max-width: 80%;
+        text-align: center;
+        font-family: monospace;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="spinner" id="spinner"></div>
+    <div id="status">Starting Floppy...</div>
+    <div id="error"></div>
+    
+    <script>
+      const { listen } = window.__TAURI__.event;
+      
+      listen('boot-status', (event) => {
+        document.getElementById('status').innerText = event.payload.message;
+      });
+      
+      listen('boot-error', (event) => {
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('status').innerText = 'Failed to start Floppy';
+        document.getElementById('error').innerText = event.payload.error;
+      });
+      
+      listen('server-ready', (event) => {
+        document.getElementById('status').innerText = 'Connecting...';
+        window.location.href = event.payload.url;
+      });
+    </script>
+  </body>
+</html>

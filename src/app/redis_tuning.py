@@ -136,7 +136,7 @@ def tune_redis(*, dry_run: bool = False) -> dict:
     """
     summary: dict = {"applied": {}, "skipped": {}, "errors": []}
 
-    redis_url = getattr(settings, "REDIS_URL", "") or ""
+    redis_url = getattr(settings, "REDIS_ADMIN_URL", "") or ""
     if not redis_url.startswith(("redis://", "rediss://")):
         summary["skipped"]["reason"] = "not_a_redis_url"
         return summary

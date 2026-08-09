@@ -1,0 +1,1 @@
+/target\n/flatpak-venv\n/flatpak-sdk-venv\n/*.whl\n/.gstack\n/python-deps\n

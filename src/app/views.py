@@ -1844,6 +1844,7 @@ def date_range_script(request):
         )
 
 
+@login_not_required
 @require_GET
 def service_worker(request):
     """Serve the service worker file from static files."""
