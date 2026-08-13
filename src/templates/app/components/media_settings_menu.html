@@ -5,6 +5,7 @@
           title="View settings"
           @click="open = !open"
           type="button">{% include "app/icons/settings.svg" with classes="w-5 h-5" %}</button>
+
   <div class="absolute right-0 z-40 mt-2 w-56 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
        x-cloak
        x-show="open"
@@ -14,6 +15,7 @@
        x-transition:leave="transition ease-in duration-75"
        x-transition:leave-start="transform opacity-100 scale-100"
        x-transition:leave-end="transform opacity-0 scale-95">
+
     <a :href="layoutHref(layout === 'grid' ? 'table' : 'grid')"
        class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
        @click="open = false">
@@ -21,6 +23,7 @@
       <span x-show="layout !== 'grid'">{% include "app/icons/four-square.svg" with classes="w-4 h-4" %}</span>
       <span x-text="layout === 'grid' ? 'Table View' : 'Grid View'"></span>
     </a>
+
     <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
             type="button"
             :disabled="sharing"
@@ -28,89 +31,45 @@
       {% include "app/icons/link.svg" with classes="w-4 h-4" %}
       <span x-text="sharing ? 'Sharing…' : 'Share View'"></span>
     </button>
+
     <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
             type="button"
             @click="open = false; toggleSelectMode()">
       {% include "app/icons/tag.svg" with classes="w-4 h-4" %}
       <span x-text="selectMode ? 'Cancel Select' : 'Select Items'"></span>
     </button>
-	<div class="flex items-center gap-2 w-full px-3 py-2 text-sm text-[var(--color-text-secondary)]">
-		<form method="get" id="separate-plays-form" class="inline-form mr-2">
-		  <input type="hidden" name="search" value="{{ request.GET.search|default:'' }}">
-		  <input type="hidden" name="sort" value="{{ current_sort|default:'' }}">
-		  <input type="hidden" name="direction" value="{{ current_direction|default:'' }}">
-		  {% for s in current_status %}
-			<input type="hidden" name="status" value="{{ s }}">
-		  {% endfor %}
 
-		  <!-- Ensure a value is always submitted: hidden input 0, checkbox overrides with 1 when checked -->
-		  <input type="hidden" name="separate_plays" value="0" />
-			<label class="toggle-wrapper">
-			  <span class="toggle-label">Show all plays</span>
+    {# New menu button: Show all plays / Aggregate plays #}
+    <form method="get" id="separate-plays-form" class="w-full m-0">
+      <!-- preserve current filters so toggling keeps state -->
+      <input type="hidden" name="search" value="{{ request.GET.search|default:'' }}">
+      <input type="hidden" name="sort" value="{{ request.GET.sort|default:current_sort|default:'' }}">
+      <input type="hidden" name="direction" value="{{ request.GET.direction|default:current_direction|default:'' }}">
+      {% for s in current_status %}
+        <input type="hidden" name="status" value="{{ s }}">
+      {% endfor %}
 
-			  <input
-				type="checkbox"
-				name="separate_plays"
-				value="1"
-				{% if show_each_play %}checked{% endif %}
-				onchange="this.form.querySelector('input[name=separate_plays][type=hidden]').disabled = this.checked; this.form.submit()"
-				class="toggle-checkbox"
-			  />
+      <!-- submit the opposite of current state so button toggles preference -->
+      <input type="hidden" name="separate_plays" value="{% if show_each_play %}0{% else %}1{% endif %}" />
 
-			  <span class="toggle-slider"></span>
-			</label>
+      <button
+        type="submit"
+        @click="open = false"
+        class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+      >
+        <span class="w-4 h-4 flex-shrink-0">
+          {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
+        </span>
 
-			<style>
-			.toggle-wrapper {
-			  display: inline-flex;
-			  align-items: center;
-			  gap: 8px;
-			}
+        <span class="ml-2">
+          {% if show_each_play %}
+            Aggregate plays
+          {% else %}
+            Show all plays
+          {% endif %}
+        </span>
+      </button>
+    </form>
 
-			.toggle-label {
-			  font-size: 0.85rem;
-			  color: var(--color-text-secondary);
-			}
-
-			.toggle-checkbox {
-			  opacity: 0;
-			  width: 0;
-			  height: 0;
-			}
-
-			.toggle-slider {
-			  position: relative;
-			  width: 32px;   /* smaller width */
-			  height: 16px;  /* smaller height */
-			  background-color: #ccc;
-			  border-radius: 16px;
-			  cursor: pointer;
-			  transition: background-color 0.2s;
-			}
-
-			.toggle-slider::before {
-			  content: "";
-			  position: absolute;
-			  width: 12px;   /* smaller knob */
-			  height: 12px;
-			  left: 2px;
-			  top: 2px;
-			  background-color: white;
-			  border-radius: 50%;
-			  transition: transform 0.2s;
-			}
-
-			.toggle-checkbox:checked + .toggle-slider {
-			  background-color: #4CAF50;
-			}
-
-			.toggle-checkbox:checked + .toggle-slider::before {
-			  transform: translateX(16px); /* adjusted for smaller size */
-			}
-			</style>
-
-
-		</form>
-	</div>
   </div>
 </div>
