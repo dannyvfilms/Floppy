@@ -1226,6 +1226,27 @@
 
       <div class="ml-auto flex items-center gap-2 shrink-0">
         {% url 'medialist_columns' media_type as media_list_columns_url %}
+		<form method="get" id="separate-plays-form" class="inline-form mr-2">
+		  <input type="hidden" name="search" value="{{ request.GET.search|default:'' }}">
+		  <input type="hidden" name="sort" value="{{ current_sort|default:'' }}">
+		  <input type="hidden" name="direction" value="{{ current_direction|default:'' }}">
+		  {% for s in current_status %}
+			<input type="hidden" name="status" value="{{ s }}">
+		  {% endfor %}
+
+		  <!-- Ensure a value is always submitted: hidden input 0, checkbox overrides with 1 when checked -->
+		  <input type="hidden" name="separate_plays" value="0" />
+		  <label class="inline-flex items-center text-sm text-[var(--color-text-secondary)]">
+			<input
+			  type="checkbox"
+			  name="separate_plays"
+			  value="1"
+			  {% if show_each_play %}checked{% endif %}
+			  onchange="document.querySelector('input[name=separate_plays][type=hidden]').disabled = this.checked; this.form.submit();"
+			/>
+			<span class="ml-2">Show each play</span>
+		  </label>
+		</form>
         {% include "app/components/table_column_menu.html" with table_column_update_url=media_list_columns_url table_refresh_url=filter_hx_endpoint table_refresh_target=".media-table" table_refresh_include_selector="#filter-form" table_loading_indicator="#loading-indicator" table_type=table_type|default:'media' %}
 
         {% include "app/components/media_settings_menu.html" with menu_class="media-settings-menu-desktop" %}

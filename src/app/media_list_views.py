@@ -1550,6 +1550,11 @@ def media_list(request, media_type):
             logger.info("=== [FLOPPY DEBUG] updating preference %s_show_each_play -> %s", route_media_type, new_val)
             try:
                 request.user.update_preference(f"{route_media_type}_show_each_play", new_val)
+                try:
+                    _media_list_cached = None
+                except NameError:
+                    # If that variable doesn't exist yet, ignore
+                    pass
             except Exception:
                 logger.exception("Failed to persist %s_show_each_play", route_media_type)
 
