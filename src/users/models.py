@@ -494,6 +494,10 @@ class User(AbstractUser):
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
+    movie_show_each_play = models.BooleanField(
+        default=False,
+        help_text="Show each play/entry as its own row instead of aggregating duplicates",
+    )
 
     # Media type preferences: Anime
     anime_enabled = models.BooleanField(default=True)
