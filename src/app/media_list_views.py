@@ -473,6 +473,8 @@ def build_filter_data_from_items(
 def media_list(request, media_type):
     """Return the media list page."""
     route_media_type = media_type
+    context_show_each_play = False
+    aggregate_duplicates = True
     comic_subview = None
     if route_media_type == MediaTypes.COMIC.value:
         comic_subview = request.GET.get("subview", "comics")
@@ -1530,6 +1532,43 @@ def media_list(request, media_type):
             # Sentinel: skips the list build below; the page is hydrated
             # from _time_left_cached_order in the time_left branch.
             _media_list_cached = []
+            
+    # Read in context_show_each_play
+    # Read and persist the preference (toggle via ?separate_plays=1/0)
+    separate_param = request.GET.get("separate_plays")  # will be '0' or '1' if you use the hidden input
+    logger.info(
+        "=== [FLOPPY DEBUG] incoming separate_plays=%s user=%s media=%s",
+        separate_param,
+        getattr(request.user, "id", "anon"),
+        route_media_type,
+    )
+
+    if request.user.is_authenticated:
+        # If user provided the param, persist it
+        if separate_param is not None:
+            new_val = str(separate_param).lower() in ("1", "true", "yes")
+            logger.info("=== [FLOPPY DEBUG] updating preference %s_show_each_play -> %s", route_media_type, new_val)
+            try:
+                request.user.update_preference(f"{route_media_type}_show_each_play", new_val)
+            except Exception:
+                logger.exception("Failed to persist %s_show_each_play", route_media_type)
+
+        # Always read persisted preference for authenticated users
+        context_show_each_play = bool(getattr(request.user, f"{route_media_type}_show_each_play", False))
+    else:
+        # Anonymous: use the param for the current request only (no DB write)
+        if separate_param is not None:
+            context_show_each_play = str(separate_param).lower() in ("1", "true", "yes")
+        else:
+            context_show_each_play = False
+
+    aggregate_duplicates = not context_show_each_play
+
+    logger.info(
+        "=== [FLOPPY DEBUG] final context_show_each_play=%s aggregate_duplicates=%s",
+        context_show_each_play,
+        aggregate_duplicates,
+    )
 
     if _media_list_cached is None:
         media_queryset = BasicMedia.objects.get_media_list(
@@ -1540,7 +1579,7 @@ def media_list(request, media_type):
             search=search_query,
             direction=direction,
             list_sql_filters=list_sql_filters,            
-            aggregate_duplicates=False,
+            aggregate_duplicates=aggregate_duplicates,
         )
 
         # Convert to list for filtering (rating and collection filters work on lists)
@@ -2102,6 +2141,7 @@ def media_list(request, media_type):
         "is_artist_list": False,
         "is_album_list": False,
         "supports_critic_rating_sort": media_type in critic_rating_media_types,
+        "show_each_play": context_show_each_play,
     }
     if comic_subview:
         context["current_subview"] = comic_subview
