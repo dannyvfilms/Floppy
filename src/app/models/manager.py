@@ -253,7 +253,7 @@ class MediaManager(models.Manager):
         direction=None,
         *,
         list_sql_filters=None,
-        aggregate_duplicates=False,
+        aggregate_duplicates=True,
     ):
         """Get a media list by type with filtering and sorting."""
         model = apps.get_model(app_label="app", model_name=media_type)

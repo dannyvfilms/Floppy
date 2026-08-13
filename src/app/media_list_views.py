@@ -1539,7 +1539,8 @@ def media_list(request, media_type):
             sort_filter=query_sort_filter,
             search=search_query,
             direction=direction,
-            list_sql_filters=list_sql_filters,
+            list_sql_filters=list_sql_filters,            
+            aggregate_duplicates=False,
         )
 
         # Convert to list for filtering (rating and collection filters work on lists)
