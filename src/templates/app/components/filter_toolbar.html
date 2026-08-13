@@ -1236,16 +1236,71 @@
 
 		  <!-- Ensure a value is always submitted: hidden input 0, checkbox overrides with 1 when checked -->
 		  <input type="hidden" name="separate_plays" value="0" />
-		  <label class="inline-flex items-center text-sm text-[var(--color-text-secondary)]">
-			<input
-			  type="checkbox"
-			  name="separate_plays"
-			  value="1"
-			  {% if show_each_play %}checked{% endif %}
-			  onchange="document.querySelector('input[name=separate_plays][type=hidden]').disabled = this.checked; this.form.submit();"
-			/>
-			<span class="ml-2">Show each play</span>
-		  </label>
+			<label class="toggle-wrapper">
+			  <span class="toggle-label">Show all plays</span>
+
+			  <input
+				type="checkbox"
+				name="separate_plays"
+				value="1"
+				{% if show_each_play %}checked{% endif %}
+				onchange="this.form.querySelector('input[name=separate_plays][type=hidden]').disabled = this.checked; this.form.submit()"
+				class="toggle-checkbox"
+			  />
+
+			  <span class="toggle-slider"></span>
+			</label>
+
+			<style>
+			.toggle-wrapper {
+			  display: inline-flex;
+			  align-items: center;
+			  gap: 8px;
+			}
+
+			.toggle-label {
+			  font-size: 0.85rem;
+			  color: var(--color-text-secondary);
+			}
+
+			.toggle-checkbox {
+			  opacity: 0;
+			  width: 0;
+			  height: 0;
+			}
+
+			.toggle-slider {
+			  position: relative;
+			  width: 32px;   /* smaller width */
+			  height: 16px;  /* smaller height */
+			  background-color: #ccc;
+			  border-radius: 16px;
+			  cursor: pointer;
+			  transition: background-color 0.2s;
+			}
+
+			.toggle-slider::before {
+			  content: "";
+			  position: absolute;
+			  width: 12px;   /* smaller knob */
+			  height: 12px;
+			  left: 2px;
+			  top: 2px;
+			  background-color: white;
+			  border-radius: 50%;
+			  transition: transform 0.2s;
+			}
+
+			.toggle-checkbox:checked + .toggle-slider {
+			  background-color: #4CAF50;
+			}
+
+			.toggle-checkbox:checked + .toggle-slider::before {
+			  transform: translateX(16px); /* adjusted for smaller size */
+			}
+			</style>
+
+
 		</form>
         {% include "app/components/table_column_menu.html" with table_column_update_url=media_list_columns_url table_refresh_url=filter_hx_endpoint table_refresh_target=".media-table" table_refresh_include_selector="#filter-form" table_loading_indicator="#loading-indicator" table_type=table_type|default:'media' %}
 
