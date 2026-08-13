@@ -1,18 +1,17 @@
 services:
   floppy:
-    container_name: myfloppy2
+    container_name: floppy
     # Image defaults to :latest tag (latest commit on the latest branch)
     # Use :release or :vX.X.X for stable builds from the release branch/GitHub Releases
-    #image: ghcr.io/dannyvfilms/floppy:latest
-    build: .
-    image: floppy-dev:latest
+    image: ghcr.io/dannyvfilms/floppy:latest
     restart: unless-stopped
     depends_on:
       - redis
     environment:
-      - SECRET=41352871ad0fa71a5fb7d5fb4d543971
+      - TZ=Europe/Berlin
+      - SECRET=longstring
       - REDIS_URL=redis://redis:6379
-      - ADMIN_ENABLED=True
+      - ADMIN_ENABLED=False
       # Off by default: otherwise a publicly known demo/demodemo
       # account is provisioned after migrations.
       - DEMO_ACCOUNT_ENABLED=False
@@ -24,14 +23,14 @@ services:
       # WEB_CONCURRENCY/GUNICORN_THREADS only when you intentionally want to
       # override the detected resource tier.
     volumes:
-      - ./db2:/floppy/db
+      - ./db:/floppy/db
     ports:
-      - "8008:8000"
+      - "8000:8000"
     networks:
       - floppy-net
 
   redis:
-    container_name: floppy-redis2
+    container_name: floppy-redis
     image: redis:8-alpine
     restart: unless-stopped
     # Persist to disk so a restart doesn't drop the cache wholesale (#386), but
@@ -43,12 +42,12 @@ services:
     # Floppy applies equivalent limits at runtime if this is left off.
     command: redis-server --appendonly yes --save "" --maxmemory 256mb --maxmemory-policy volatile-lru
     volumes:
-      - redis_data2:/data
+      - redis_data:/data
     networks:
       - floppy-net
 
 volumes:
-  redis_data2:
+  redis_data:
 
 
 networks:
