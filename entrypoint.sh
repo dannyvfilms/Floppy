@@ -5,15 +5,23 @@ set -e
 # Keep the application virtual environment first even if an orchestrator
 # restores a stale PATH. A matching entry later in PATH is not sufficient,
 # because an earlier system Python would still be selected (issue #762).
-VIRTUAL_ENV="${VIRTUAL_ENV:-/opt/venv}"
-if [ ! -d "$VIRTUAL_ENV" ] && [ -d "/floppy/.venv" ]; then
+if [ -d "/opt/venv/bin" ]; then
+    VIRTUAL_ENV="/opt/venv"
+elif [ -d "/floppy/.venv/bin" ]; then
     VIRTUAL_ENV="/floppy/.venv"
+elif [ -n "$VIRTUAL_ENV" ] && [ -d "$VIRTUAL_ENV/bin" ] && [ "$VIRTUAL_ENV" != "$PWD/.venv" ]; then
+    VIRTUAL_ENV="$VIRTUAL_ENV"
+else
+    VIRTUAL_ENV=""
 fi
-case "$PATH" in
-    "$VIRTUAL_ENV/bin"|"$VIRTUAL_ENV/bin:"*) ;;
-    *) PATH="$VIRTUAL_ENV/bin${PATH:+:$PATH}" ;;
-esac
-export VIRTUAL_ENV PATH
+
+if [ -n "$VIRTUAL_ENV" ]; then
+    case "$PATH" in
+        "$VIRTUAL_ENV/bin"|"$VIRTUAL_ENV/bin:"*) ;;
+        *) PATH="$VIRTUAL_ENV/bin${PATH:+:$PATH}" ;;
+    esac
+    export VIRTUAL_ENV PATH
+fi
 
 reject_unsafe_managed_directory() {
     managed_name=$1

@@ -74,3 +74,37 @@ class ContainerEntrypointPathTests(SimpleTestCase):
 
             self.assertEqual(path, original_path)
             self.assertEqual(Path(resolved_python), virtual_env_bin / "python")
+
+    def test_virtualenv_prepended_when_absent_from_path(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            system_bin = root / "system-bin"
+            virtual_env_bin = root / "virtual-env" / "bin"
+            system_bin.mkdir()
+            virtual_env_bin.mkdir(parents=True)
+            self.write_executable(virtual_env_bin / "python")
+            original_path = f"{system_bin}:/usr/bin:/bin"
+
+            path, resolved_python = self.run_bootstrap(
+                path=original_path,
+                virtual_env=virtual_env_bin.parent,
+            )
+
+            self.assertEqual(path, f"{virtual_env_bin}:{original_path}")
+            self.assertEqual(Path(resolved_python), virtual_env_bin / "python")
+
+    def test_empty_path_prepends_virtualenv_cleanly(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            virtual_env_bin = root / "virtual-env" / "bin"
+            virtual_env_bin.mkdir(parents=True)
+            self.write_executable(virtual_env_bin / "python")
+
+            path, resolved_python = self.run_bootstrap(
+                path="",
+                virtual_env=virtual_env_bin.parent,
+            )
+
+            self.assertEqual(path, str(virtual_env_bin))
+            self.assertEqual(Path(resolved_python), virtual_env_bin / "python")
+
