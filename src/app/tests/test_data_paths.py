@@ -193,6 +193,7 @@ class DataPathSettingsTests(SimpleTestCase):
                 "PATH": os.environ["PATH"],
                 "PYTHONPATH": str(SRC),
                 "PYTHONDONTWRITEBYTECODE": "1",
+                "SECRET": "",
                 "FLOPPY_DATA_DIR": str(data_dir),
                 "LOG_DIR": str(root / "logs"),
             }
