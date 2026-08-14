@@ -448,10 +448,6 @@ class User(AbstractUser):
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
-    tv_show_each_play = models.BooleanField(
-    default=False,
-    help_text="Show each play/entry as its own row instead of aggregating duplicates",
-    )
 
     # Media type preferences: TV Seasons
     season_enabled = models.BooleanField(default=True)
@@ -474,10 +470,6 @@ class User(AbstractUser):
         max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
-    )
-    season_show_each_play = models.BooleanField(
-    default=False,
-    help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Movies

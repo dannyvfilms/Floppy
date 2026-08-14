@@ -11,22 +11,6 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="user",
-            name="tv_show_each_play",
-            field=models.BooleanField(
-                default=False,
-                help_text="Show each play/entry as its own row instead of aggregating duplicates",
-            ),
-        ),
-        migrations.AddField(
-            model_name="user",
-            name="season_show_each_play",
-            field=models.BooleanField(
-                default=False,
-                help_text="Show each play/entry as its own row instead of aggregating duplicates",
-            ),
-        ),
-        migrations.AddField(
-            model_name="user",
             name="anime_show_each_play",
             field=models.BooleanField(
                 default=False,

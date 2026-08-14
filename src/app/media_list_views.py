@@ -609,8 +609,6 @@ def media_list(request, media_type):
     # Change this set to include any other types you want (e.g. MediaTypes.TV.value).
     _show_separate_plays_allowed = {
         MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-        MediaTypes.SEASON.value,
         MediaTypes.ANIME.value,
         MediaTypes.MANGA.value,
         MediaTypes.GAME.value,
