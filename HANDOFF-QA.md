@@ -62,16 +62,17 @@ Constraints that still bind and that QA should check against:
 
 ## What this branch (W2 — JSON-LD) adds
 
-Two commits:
+Three commits:
 
 - `39a79d31` — generate the context from the vocabulary
 - `1c6dc98c` — serve it and expose it to MCP
+- `eca2292d` — close the review findings (see "Review round already applied")
 
 Changes:
 
 | File | Change |
 |---|---|
-| `src/app/domain_vocabulary.py` | `render_jsonld_context()`, `class_name()`, `property_name()`, `CONTEXT_PATH`, namespace constants; `main()` now writes/checks both artifacts; relationship labels validated unique |
+| `src/app/domain_vocabulary.py` | `render_jsonld_context()`, `class_name()`, `property_name()`, `CONTEXT_PATH`, namespace constants; `main()` now writes/checks both artifacts; projected property names validated unique |
 | `src/api/contracts/context.jsonld` | **new** generated artifact (JSON-LD 1.1) |
 | `src/api/contract_views.py` | `jsonld_context` view — `application/ld+json`, byte-derived ETag, 1h public cache |
 | `src/config/urls.py` | route `api/context.jsonld`, name `jsonld-context` |
@@ -79,8 +80,10 @@ Changes:
 | `mcp_server/floppy_mcp/server.py` | optional `floppy://domain-context` resource |
 | `src/templates/users/about.html` | "Domain Context (JSON-LD)" link |
 | `src/templates/api/docs.html` | domain-context entry on the offline index |
-| `src/app/tests/test_api_contracts.py` | `JSONLDContextTests` — 8 gates |
+| `src/app/tests/test_api_contracts.py` | `JSONLDContextTests` — 10 gates |
 | `src/users/tests/views/test_about.py` | expects the new link; still asserts AsyncAPI absent |
+| `src/app/tests/test_domain_vocabulary.py` | `--check` now covers context drift; tests isolated from committed artifacts |
+| `mcp_server/tests/test_tools.py` | resource success + failure-does-not-block-tools |
 | `pyproject.toml` / `uv.lock` | `pyld==2.0.4` in the **test** group only |
 
 Design decisions worth knowing before you judge the code:
@@ -100,25 +103,42 @@ Design decisions worth knowing before you judge the code:
 
 ### Verification already done (do not redo)
 
-- `app.tests.test_api_contracts` + `test_domain_vocabulary` + `users.tests.views.test_about`: **54/54 OK**
+- Full fast suite on this branch: **3636 tests, OK (1 skipped)**. Note
+  `test_data_paths` **passes here**, because this worktree lives at
+  `/home/ryan/code/floppy-jsonld`, outside the main repo, so python-decouple
+  never finds `/home/ryan/code/Floppy/.env`. That confirms the root cause.
+- `app.tests.test_api_contracts` + `test_domain_vocabulary` + `users.tests.views.test_about`: **56/56 OK**
 - `mcp_server/tests`: **58/58 passed**
 - `ruff check src mcp_server/floppy_mcp mcp_server/tests`: **All checks passed**
 - Drift-gate mutation proof: changing `floppy:consumption` → `floppy:MUTATED`
   in the committed context failed `test_committed_context_matches_the_vocabulary_renderer`
   and `test_pyld_expands_the_context_to_absolute_iris`; restoring made them green.
   **The gate is load-bearing.**
-- PyLD expansion verified to produce absolute IRIs.
+- PyLD expansion verified across **every** class and relationship in the
+  vocabulary (not a subset).
+
+### Review round already applied
+
+An independent review (Gemini 3.7 via `agy`) found three real defects, all
+fixed in `eca2292d`:
+
+1. `validate_terms()` checked **raw** relationship labels for uniqueness while
+   the context maps the **projected** camelCase name. `"has user"` and
+   `"Has  user"` both render as `hasUser`, so a collision could have silently
+   collapsed two relationships into one property IRI. Now validated on the
+   projected name, with a proof case.
+2. `fetch_public_contract()` did not follow redirects, so an instance behind a
+   proxy doing http→https would have returned redirect HTML as the context body.
+3. The `--check` gate never covered `context.jsonld` alone, and the entry-point
+   tests patched only `GUIDE_PATH`, so `main([])` **wrote the real committed
+   artifact** during a test run. Both fixed; tests are now isolated.
+
+It also named two gate gaps, both closed: property terms are now asserted to be
+`@id`-typed, and PyLD expansion covers the whole vocabulary.
 
 ## What is NOT done — your work starts here
 
-### 1. Full-suite confirmation
-
-A full `SECRET=test-only scripts/test.sh` run was started on this branch but its
-result is not recorded here. Re-run it and report. Expect ~3630 tests and the
-one known environmental `test_data_paths` failure described above. Any *other*
-failure is real.
-
-### 2. Browser QA of the new surfaces
+### 1. Browser QA of the new surfaces
 
 Not done at all for this branch. Needed:
 
@@ -135,7 +155,7 @@ Not done at all for this branch. Needed:
   and reduced motion on `/api/docs/`, since a row was added.
 - Confirm `/floppy` subpath rendering still produces correct URLs.
 
-### 3. Package-size gate
+### 2. Package-size gate
 
 The design requires recording artifact bytes and a before/after container image
 comparison, failing at 1 MiB or 0.1% growth, whichever is smaller. The new
@@ -143,7 +163,7 @@ comparison, failing at 1 MiB or 0.1% growth, whichever is smaller. The new
 branch. PyLD must **not** appear in the image — verify with a clean Podman/Docker
 build that `uv sync --no-default-groups` excluded it.
 
-### 4. Open the PR
+### 3. Open the PR
 
 Not opened yet. Base must be `codex/openapi-grounding-contracts`, not `latest`.
 
