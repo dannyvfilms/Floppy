@@ -39,38 +39,39 @@
       <span x-text="selectMode ? 'Cancel Select' : 'Select Items'"></span>
     </button>
 
-	
-    {# New menu button: Show all plays / Aggregate plays #}
-    <form method="get" id="separate-plays-form" class="w-full m-0">
-      <!-- preserve current filters so toggling keeps state -->
-      <input type="hidden" name="search" value="{{ request.GET.search|default:'' }}">
-      <input type="hidden" name="sort" value="{{ request.GET.sort|default:current_sort|default:'' }}">
-      <input type="hidden" name="direction" value="{{ request.GET.direction|default:current_direction|default:'' }}">
-      {% for s in current_status %}
-        <input type="hidden" name="status" value="{{ s }}">
-      {% endfor %}
+	{% if show_separate_plays %}
+		{# New menu button: Show all plays / Aggregate plays #}
+		<form method="get" id="separate-plays-form" class="w-full m-0">
+		  <!-- preserve current filters so toggling keeps state -->
+		  <input type="hidden" name="search" value="{{ request.GET.search|default:'' }}">
+		  <input type="hidden" name="sort" value="{{ request.GET.sort|default:current_sort|default:'' }}">
+		  <input type="hidden" name="direction" value="{{ request.GET.direction|default:current_direction|default:'' }}">
+		  {% for s in current_status %}
+			<input type="hidden" name="status" value="{{ s }}">
+		  {% endfor %}
 
-      <!-- submit the opposite of current state so button toggles preference -->
-      <input type="hidden" name="separate_plays" value="{% if show_each_play %}0{% else %}1{% endif %}" />
+		  <!-- submit the opposite of current state so button toggles preference -->
+		  <input type="hidden" name="separate_plays" value="{% if show_each_play %}0{% else %}1{% endif %}" />
 
-      <button
-        type="submit"
-        @click="open = false"
-        class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
-      >
-        <span class="w-4 h-4 flex-shrink-0">
-          {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
-        </span>
+		  <button
+			type="submit"
+			@click="open = false"
+			class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+		  >
+			<span class="w-4 h-4 flex-shrink-0">
+			  {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
+			</span>
 
-        <span>
-          {% if show_each_play %}
-            Group Multiple Plays
-          {% else %}
-            Show All Plays
-          {% endif %}
-        </span>
-      </button>
-    </form>
+			<span>
+			  {% if show_each_play %}
+				Group Multiple Plays
+			  {% else %}
+				Show All Plays
+			  {% endif %}
+			</span>
+		  </button>
+		</form>
+	{% endif %}
 
   </div>
 </div>

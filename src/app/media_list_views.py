@@ -604,6 +604,11 @@ def media_list(request, media_type):
             )
         request.user.update_preference(direction_field, direction)
     media_type = effective_media_type
+    
+    # Which media types should show the "Show all plays" menu item.
+    # Change this set to include any other types you want (e.g. MediaTypes.TV.value).
+    _show_separate_plays_allowed = {MediaTypes.MOVIE.value}
+    show_separate_plays = media_type in _show_separate_plays_allowed
 
     # Pre-filter sort choices to only include those valid for the current media type.
     # critic_rating and author remain template-gated via supports_critic_rating_sort /
@@ -2134,6 +2139,7 @@ def media_list(request, media_type):
         "is_album_list": False,
         "supports_critic_rating_sort": media_type in critic_rating_media_types,
         "show_each_play": context_show_each_play,
+        "show_separate_plays": show_separate_plays,
     }
     if comic_subview:
         context["current_subview"] = comic_subview
