@@ -1536,18 +1536,11 @@ def media_list(request, media_type):
     # Read in context_show_each_play
     # Read and persist the preference (toggle via ?separate_plays=1/0)
     separate_param = request.GET.get("separate_plays")  # will be '0' or '1' if you use the hidden input
-    logger.info(
-        "=== [FLOPPY DEBUG] incoming separate_plays=%s user=%s media=%s",
-        separate_param,
-        getattr(request.user, "id", "anon"),
-        route_media_type,
-    )
 
     if request.user.is_authenticated:
         # If user provided the param, persist it
         if separate_param is not None:
             new_val = str(separate_param).lower() in ("1", "true", "yes")
-            logger.info("=== [FLOPPY DEBUG] updating preference %s_show_each_play -> %s", route_media_type, new_val)
             try:
                 request.user.update_preference(f"{route_media_type}_show_each_play", new_val)
                 try:
@@ -1568,12 +1561,6 @@ def media_list(request, media_type):
             context_show_each_play = False
 
     aggregate_duplicates = not context_show_each_play
-
-    logger.info(
-        "=== [FLOPPY DEBUG] final context_show_each_play=%s aggregate_duplicates=%s",
-        context_show_each_play,
-        aggregate_duplicates,
-    )
 
     if _media_list_cached is None:
         media_queryset = BasicMedia.objects.get_media_list(
