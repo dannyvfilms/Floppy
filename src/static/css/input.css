@@ -287,13 +287,14 @@ html.light .theme-toggle-icon-moon {
 }
 
 .preferences-display-grid > div:nth-child(1) { grid-area: theme; }
-.preferences-display-grid > div:nth-child(2) { grid-area: date; }
-.preferences-display-grid > div:nth-child(3) { grid-area: time; }
-.preferences-display-grid > div:nth-child(4) { grid-area: mobile; }
-.preferences-display-grid > div:nth-child(5) { grid-area: subtitle; }
-.preferences-display-grid > div:nth-child(6) { grid-area: progress; }
-.preferences-display-grid > div:nth-child(7) { grid-area: title; }
-.preferences-display-grid > div:nth-child(8) { grid-area: talent; }
+.preferences-display-grid > div:nth-child(2) { grid-area: logo; }
+.preferences-display-grid > div:nth-child(3) { grid-area: date; }
+.preferences-display-grid > div:nth-child(4) { grid-area: time; }
+.preferences-display-grid > div:nth-child(5) { grid-area: mobile; }
+.preferences-display-grid > div:nth-child(6) { grid-area: subtitle; }
+.preferences-display-grid > div:nth-child(7) { grid-area: progress; }
+.preferences-display-grid > div:nth-child(8) { grid-area: title; }
+.preferences-display-grid > div:nth-child(9) { grid-area: talent; }
 
 .preferences-actions {
   position: sticky;
@@ -331,10 +332,10 @@ html.light .theme-toggle-icon-moon {
 
   .preferences-display-grid {
     grid-template-areas:
-      "theme mobile"
+      "theme logo"
       "date time"
       "title talent"
-      "subtitle subtitle"
+      "subtitle mobile"
       "progress progress";
   }
 

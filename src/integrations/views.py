@@ -119,6 +119,29 @@ def _integration_redirect(request, *, connected_slug=None, next_url=None):
     return redirect(destination or "import_data")
 
 
+def _consume_oauth_state(request, provider):
+    """Consume a provider OAuth state value and reject missing or replayed state."""
+    state_token = request.GET.get("state")
+    if not state_token:
+        logger.warning("%s OAuth callback missing state parameter", provider)
+        messages.error(
+            request,
+            f"Invalid or expired {provider} authorization request.",
+        )
+        return None
+
+    state_data = request.session.pop(state_token, None)
+    if not isinstance(state_data, dict):
+        logger.warning("%s OAuth callback state not found in session", provider)
+        messages.error(
+            request,
+            f"Invalid or expired {provider} authorization request.",
+        )
+        return None
+
+    return state_data
+
+
 def _save_plex_usernames(user, raw_usernames):
     """Persist de-duplicated Plex usernames for webhook filtering."""
     if raw_usernames is None:
@@ -469,15 +492,18 @@ def trakt_oauth(request):
 @require_GET
 def import_trakt_private(request):
     """View for handling Trakt OAuth2 callback and scheduling private import."""
-    state_token = request.GET["state"]
-    redirect_uri = request.session[state_token].get("redirect_uri")
+    state_data = _consume_oauth_state(request, "Trakt")
+    if state_data is None:
+        return _integration_redirect(request)
+
+    redirect_uri = state_data.get("redirect_uri")
     oauth_callback = trakt.handle_oauth_callback(request, redirect_uri=redirect_uri)
     enc_token = helpers.encrypt(oauth_callback["refresh_token"])
 
-    frequency = request.session[state_token]["frequency"]
-    mode = request.session[state_token]["mode"]
-    import_time = request.session[state_token]["time"]
-    return_to = request.session[state_token].get("return_to")
+    frequency = state_data["frequency"]
+    mode = state_data["mode"]
+    import_time = state_data["time"]
+    return_to = state_data.get("return_to")
 
     if frequency == "once":
         tasks.import_trakt.delay(
@@ -818,16 +844,19 @@ def simkl_oauth(request):
 @require_GET
 def import_simkl_private(request):
     """View for getting the SIMKL OAuth2 token."""
-    state_token = request.GET["state"]
-    redirect_uri = request.session[state_token].get("redirect_uri")
+    state_data = _consume_oauth_state(request, "SIMKL")
+    if state_data is None:
+        return _integration_redirect(request)
+
+    redirect_uri = state_data.get("redirect_uri")
     oauth_callback = simkl.get_token(request, redirect_uri=redirect_uri)
     enc_token = helpers.encrypt(oauth_callback["access_token"])
 
-    frequency = request.session[state_token]["frequency"]
-    mode = request.session[state_token]["mode"]
-    import_time = request.session[state_token]["time"]
-    anime_destination = request.session[state_token].get("anime_destination", "anime")
-    return_to = request.session[state_token].get("return_to")
+    frequency = state_data["frequency"]
+    mode = state_data["mode"]
+    import_time = state_data["time"]
+    anime_destination = state_data.get("anime_destination", "anime")
+    return_to = state_data.get("return_to")
 
     if frequency == "once":
         tasks.import_simkl.delay(
@@ -909,20 +938,23 @@ def anilist_oauth(request):
 @require_GET
 def import_anilist_private(request):
     """View for getting the AniList OAuth2 token."""
-    state_token = request.GET["state"]
-    redirect_uri = request.session[state_token].get("redirect_uri")
+    state_data = _consume_oauth_state(request, "AniList")
+    if state_data is None:
+        return _integration_redirect(request)
+
+    redirect_uri = state_data.get("redirect_uri")
     oauth_callback = anilist.get_token(request, redirect_uri=redirect_uri)
     enc_token = helpers.encrypt(oauth_callback["access_token"])
     username = oauth_callback["username"]
-    return_to = request.session[state_token].get("return_to")
+    return_to = state_data.get("return_to")
 
     if not username:
         messages.error(request, "AniList username is required.")
         return _integration_redirect(request, next_url=return_to)
 
-    frequency = request.session[state_token]["frequency"]
-    mode = request.session[state_token]["mode"]
-    import_time = request.session[state_token]["time"]
+    frequency = state_data["frequency"]
+    mode = state_data["mode"]
+    import_time = state_data["time"]
 
     if frequency == "once":
         tasks.import_anilist.delay(

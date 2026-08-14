@@ -186,6 +186,13 @@
                  :class="isMobileMenuOpen ? 'translate-x-0' : ''">
             <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
               <h1 class="flex items-center">
+                {% if user.is_authenticated and user.logo_style == 'monochrome' %}
+                  <img src="{% static 'img/floppy-logo-white.png' %}"
+                       alt="Floppy"
+                       width="158"
+                       height="48"
+                       class="h-9 w-[158px] object-cover object-center">
+                {% else %}
                 <img src="{% static 'img/floppy-logo.png' %}"
                      srcset="{% static 'img/floppy-logo.png' %} 1x,
                              {% static 'img/floppy-logo@2x.png' %} 2x"
@@ -193,6 +200,7 @@
                      width="158"
                      height="48"
                      class="h-9 w-auto">
+                {% endif %}
               </h1>
             </div>
             {# hx-boost: swap the body instead of reloading on sidebar navigation #}

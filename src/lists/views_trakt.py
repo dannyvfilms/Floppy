@@ -97,7 +97,7 @@ def trakt_lists_callback(request):
 
     if not state_data:
         logger.error(
-            "Trakt OAuth callback: state token '%s' not found in session", state_token
+            "Trakt OAuth callback state not found in session",
         )
         messages.error(
             request,

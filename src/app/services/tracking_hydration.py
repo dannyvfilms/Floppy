@@ -21,6 +21,7 @@ from app.models import (
     HardcoverEditionPreference,
     Item,
     MediaTypes,
+    MetadataBackfillField,
     PodcastShow,
     Sources,
     Track,
@@ -30,6 +31,10 @@ from app.services.metadata_resolution import (
     get_library_media_type,
     get_tracking_media_type,
     upsert_provider_links,
+)
+from app.tasks_backfill_state import (
+    WATCH_PROVIDERS_BACKFILL_VERSION,
+    _record_backfill_pending,
 )
 
 
@@ -363,6 +368,9 @@ def ensure_item_metadata(
     if not isinstance(creators, list):
         creators = []
     runtime = _coerce_text(details.get("runtime"))
+    watch_providers = metadata.get("providers")
+    if not isinstance(watch_providers, dict):
+        watch_providers = {}
     tracking_media_type = get_tracking_media_type(
         media_type,
         source=source,
@@ -404,6 +412,7 @@ def ensure_item_metadata(
             "source_material": source_material,
             "creators": creators,
             "runtime": runtime,
+            "watch_providers": watch_providers,
             "metadata_fetched_at": timezone.now(),
         },
     )
@@ -486,6 +495,9 @@ def ensure_item_metadata(
     if not item.runtime and runtime:
         item.runtime = runtime
         update_fields.append("runtime")
+    if watch_providers and item.watch_providers != watch_providers:
+        item.watch_providers = watch_providers
+        update_fields.append("watch_providers")
     if (
         title_fields["original_title"]
         and item.original_title != title_fields["original_title"]
@@ -516,6 +528,26 @@ def ensure_item_metadata(
         MediaTypes.SEASON.value,
     ):
         credits.sync_item_credits_from_metadata(item, metadata)
+
+    if (
+        created
+        and source == Sources.TMDB.value
+        and tracking_media_type
+        in (
+            MediaTypes.MOVIE.value,
+            MediaTypes.TV.value,
+            MediaTypes.ANIME.value,
+        )
+        and not watch_providers
+    ):
+        # Keep empty titles in the retry queue so a later TMDB listing
+        # (Netflix added months after tracking) can still be picked up.
+        _record_backfill_pending(
+            item,
+            MetadataBackfillField.WATCH_PROVIDERS,
+            "empty providers",
+            strategy_version=WATCH_PROVIDERS_BACKFILL_VERSION,
+        )
 
     artist = None
     album = None

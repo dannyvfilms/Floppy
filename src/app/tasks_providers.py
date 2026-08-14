@@ -9,6 +9,8 @@ import logging
 
 from celery import shared_task
 from django.conf import settings
+from django.db.models import Q
+from django.utils import timezone
 
 from app import backfill_queue, reconcile_state
 from app.interactive_requests import interactive_request_active
@@ -17,10 +19,12 @@ from app.models import Item, MediaTypes, MetadataBackfillField, Sources
 from app.providers import services
 from app.task_cooperation import CooperativeRun
 from app.tasks_backfill_state import (
+    WATCH_PROVIDERS_BACKFILL_VERSION,
     _apply_backfill_state_filters,
     _filter_backfill_item_ids,
     _normalize_item_ids,
     _record_backfill_failure,
+    _record_backfill_pending,
     _record_backfill_success,
 )
 
@@ -28,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 
-WATCH_PROVIDERS_BACKFILL_VERSION = 1
 PROVIDER_MEDIA_TYPES = (
     MediaTypes.MOVIE.value,
     MediaTypes.TV.value,
@@ -97,6 +100,17 @@ def _populate_providers_for_items(items):
             providers = metadata.get("providers")
             if not isinstance(providers, dict):
                 providers = {}
+
+            if not providers:
+                # An empty TMDB payload is not a completed backfill: the title
+                # may gain a provider later, so keep retrying without giving up.
+                _record_backfill_pending(
+                    item,
+                    MetadataBackfillField.WATCH_PROVIDERS,
+                    "empty providers",
+                    strategy_version=WATCH_PROVIDERS_BACKFILL_VERSION,
+                )
+                continue
 
             item.watch_providers = providers
             item.save(update_fields=["watch_providers"])
@@ -195,6 +209,37 @@ def populate_provider_backfill_queue(batch_size: int = 50):
     return populate_provider_data_for_items(batch)
 
 
+def enqueue_due_provider_backfill_retries(
+    batch_size: int = _WATCH_PROVIDERS_BATCH_SIZE_DEFAULT,
+) -> int:
+    """Queue empty or failed provider backfills whose retry time has arrived.
+
+    Reconcile only discovers never-attempted items (issue #521). Retries of
+    empty TMDB payloads and earlier failures are this bounded queue, so they
+    keep running after the whole-library sweep has been marked complete.
+    """
+    from app.models import MetadataBackfillState
+
+    batch_size = max(int(batch_size), 1)
+    now = timezone.now()
+    due_ids = list(
+        MetadataBackfillState.objects.filter(
+            field=MetadataBackfillField.WATCH_PROVIDERS,
+            give_up=False,
+            last_success_at__isnull=True,
+            item__media_type__in=PROVIDER_MEDIA_TYPES,
+            item__source=Sources.TMDB.value,
+            item__watch_providers={},
+        )
+        .filter(Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now))
+        .order_by("next_retry_at", "item_id")
+        .values_list("item_id", flat=True)[:batch_size]
+    )
+    if not due_ids:
+        return 0
+    return enqueue_provider_backfill_items(due_ids, countdown=10)
+
+
 @shared_task(name="app.tasks.reconcile_provider_backfill")
 def reconcile_provider_backfill(
     strategy_version: int | None = None,
@@ -274,21 +319,33 @@ def ensure_provider_backfill_reconcile(
         )
         return {"skipped": True, "reason": "interactive_request_active"}
 
+    retry_enqueued = enqueue_due_provider_backfill_retries(batch_size=batch_size)
+
     resolved_version = int(strategy_version or WATCH_PROVIDERS_BACKFILL_VERSION)
     # Answered from the state row alone - no Item query, no cache read - so a
     # finished or backing-off reconcile costs one indexed row lookup rather than
     # a NOT IN subquery over the whole library.
     state = reconcile_state.should_run(RECONCILE_KEY, resolved_version)
     if state is None:
-        return {"skipped": True, "reason": "not_due"}
+        return {
+            "skipped": True,
+            "reason": "not_due",
+            "retry_enqueued": retry_enqueued,
+        }
 
     if not reconcile_state.acquire(RECONCILE_KEY, state):
-        return {"skipped": True, "reason": "already_running"}
+        return {
+            "skipped": True,
+            "reason": "already_running",
+            "retry_enqueued": retry_enqueued,
+        }
 
     try:
-        return reconcile_provider_backfill(
+        result = reconcile_provider_backfill(
             strategy_version=resolved_version,
             batch_size=batch_size,
         )
+        result["retry_enqueued"] = retry_enqueued
+        return result
     finally:
         reconcile_state.release(RECONCILE_KEY)

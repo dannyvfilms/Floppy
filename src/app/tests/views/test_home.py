@@ -707,8 +707,20 @@ class HomeViewTests(TestCase):
         self.assertEqual(card["image_source"], "fallback")
 
     def test_home_view_htmx_load_more(self):
-        """HTMX row expansion should return only the overflow items."""
-        for i in range(6, 20):  # Create 14 more TV shows (we already have 1)
+        """HTMX row expansion should page filtered rows through a partial tail."""
+        for i in range(6, 42):  # 37 raw entries; 8 are filtered out below.
+            tv_item = Item.objects.create(
+                media_id=str(i),
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title=f"Test TV Show {i}",
+                image="http://example.com/image.jpg",
+            )
+            tv = TV.objects.create(
+                item=tv_item,
+                user=self.user,
+                status=Status.IN_PROGRESS.value,
+            )
             season_item = Item.objects.create(
                 media_id=str(i),
                 source=Sources.TMDB.value,
@@ -716,29 +728,28 @@ class HomeViewTests(TestCase):
                 title=f"Test TV Show {i}",
                 image="http://example.com/image.jpg",
                 season_number=1,
+                release_datetime=(
+                    timezone.now() + timezone.timedelta(days=1)
+                    if i < 34
+                    else timezone.now() - timezone.timedelta(days=1)
+                ),
             )
-            season = Season.objects.create(
+            Season.objects.create(
                 item=season_item,
                 user=self.user,
                 status=Status.IN_PROGRESS.value,
+                related_tv=tv,
             )
 
-            episode_item, _ = Item.objects.get_or_create(
-                media_id=str(i),
-                source=Sources.TMDB.value,
-                media_type=MediaTypes.EPISODE.value,
-                season_number=1,
-                episode_number=1,
-                defaults={
-                    "title": f"Test TV Show {i}",
-                    "image": "http://example.com/image.jpg",
-                },
-            )
-            Episode.objects.create(
-                item=episode_item,
-                related_season=season,
-                end_date=timezone.now(),
-            )
+        self.client.get(reverse("home"))  # seed the default row configuration
+        row_config = HomeScreenRow.objects.get(
+            user=self.user,
+            media_type=MediaTypes.SEASON.value,
+            row_type="library_query",
+            position=0,
+        )
+        row_config.filters = {**row_config.filters, "release": "not_released"}
+        row_config.save(update_fields=["filters"])
 
         initial_response = self.client.get(reverse("home"))
         season_row = self._get_first_row(initial_response, MediaTypes.SEASON.value)
@@ -766,12 +777,22 @@ class HomeViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "app/components/home_grid.html")
         self.assertIn("media_list", response.context)
-        self.assertEqual(season_row["total"], 15)
-        self.assertEqual(len(response.context["media_list"]["items"]), 1)
-        self.assertEqual(response.context["media_list"]["total"], 15)
+        self.assertEqual(season_row["total"], 29)
+        self.assertEqual(len(response.context["media_list"]["items"]), 14)
+        self.assertEqual(response.context["media_list"]["total"], 29)
         self.assertContains(response, 'class="home-row-card w-44 shrink-0"', html=False)
-        self.assertEqual(response["X-Home-Row-Total"], "15")
-        self.assertEqual(response["X-Home-Row-Loaded"], "15")
+        self.assertEqual(response["X-Home-Row-Total"], "29")
+        self.assertEqual(response["X-Home-Row-Loaded"], "28")
+
+        final_response = self.client.get(
+            reverse("home") + f"?load_row={season_row['row_id']}&offset=28",
+            headers={"hx-request": "true"},
+        )
+
+        self.assertEqual(final_response.status_code, 200)
+        self.assertEqual(len(final_response.context["media_list"]["items"]), 1)
+        self.assertEqual(final_response["X-Home-Row-Total"], "29")
+        self.assertEqual(final_response["X-Home-Row-Loaded"], "29")
 
     def test_home_view_htmx_load_more_zero_progress(self):
         """A load-more request past the true total returns 0 cards.
@@ -828,6 +849,32 @@ class HomeViewTests(TestCase):
         self.assertEqual(response.context["media_list"]["total"], 15)
         self.assertEqual(response["X-Home-Row-Total"], "15")
         self.assertEqual(response["X-Home-Row-Loaded"], "15")
+
+    def test_home_view_htmx_load_more_duplicate_entries_still_progress(self):
+        """Duplicate cards in a response still advance the pagination offset."""
+        initial_response = self.client.get(reverse("home"))
+        season_row = self._get_first_row(initial_response, MediaTypes.SEASON.value)
+        duplicate_entry = season_row["items"][0]
+
+        with patch(
+            "users.home_screen._library_query_entries",
+            return_value=[duplicate_entry] * 37,
+        ):
+            response = self.client.get(
+                reverse("home") + f"?load_row={season_row['row_id']}&offset=14",
+                headers={"hx-request": "true"},
+            )
+            final_response = self.client.get(
+                reverse("home") + f"?load_row={season_row['row_id']}&offset=28",
+                headers={"hx-request": "true"},
+            )
+
+        self.assertEqual(len(response.context["media_list"]["items"]), 14)
+        self.assertEqual(response["X-Home-Row-Total"], "37")
+        self.assertEqual(response["X-Home-Row-Loaded"], "28")
+        self.assertEqual(len(final_response.context["media_list"]["items"]), 9)
+        self.assertEqual(final_response["X-Home-Row-Total"], "37")
+        self.assertEqual(final_response["X-Home-Row-Loaded"], "37")
 
     def test_active_playback_fragment_empty(self):
         """Fragment endpoint returns empty body when nothing is playing."""

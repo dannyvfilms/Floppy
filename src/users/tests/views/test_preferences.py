@@ -31,12 +31,54 @@ class PreferencesViewTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.theme, "light")
 
+    def test_preferences_post_persists_logo_style(self):
+        """POSTing a supported logo style should persist to the DB."""
+        response = self.client.post(
+            reverse("preferences"),
+            {"logo_style": "monochrome"},
+        )
+        self.assertRedirects(response, reverse("preferences"))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.logo_style, "monochrome")
+
+    def test_preferences_post_rejects_invalid_logo_style(self):
+        """POSTing an invalid logo style should be ignored."""
+        response = self.client.post(
+            reverse("preferences"),
+            {"logo_style": "neon"},
+        )
+        self.assertRedirects(response, reverse("preferences"))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.logo_style, "colorful")
+
     def test_preferences_post_rejects_invalid_theme(self):
         """POSTing an invalid theme value should be ignored, not persisted."""
         response = self.client.post(reverse("preferences"), {"theme": "solarized"})
         self.assertRedirects(response, reverse("preferences"))
         self.user.refresh_from_db()
         self.assertEqual(self.user.theme, "system")
+
+    def test_preferences_display_labels_and_logo(self):
+        """The display cards expose the simplified labels and logo choice."""
+        response = self.client.get(reverse("preferences"))
+
+        self.assertContains(response, 'name="logo_style"')
+        self.assertContains(response, "Colorful")
+        self.assertContains(response, "System default — Aug 12, 2025 / 12 Aug 2025")
+        self.assertContains(response, "System default — 6:45 PM / 18:45")
+        self.assertNotContains(response, "System default (locale)")
+        self.assertContains(response, "/static/img/floppy-logo.png")
+        self.assertNotContains(response, "/static/img/floppy-logo-white.png")
+
+    def test_preferences_uses_monochrome_logo_for_authenticated_user(self):
+        """Authenticated branding should follow the saved logo style."""
+        self.user.logo_style = "monochrome"
+        self.user.save(update_fields=["logo_style"])
+
+        response = self.client.get(reverse("preferences"))
+
+        self.assertContains(response, "/static/img/floppy-logo-white.png")
+        self.assertNotContains(response, "/static/img/floppy-logo@2x.png")
 
     def test_preferences_save_button_is_inside_form(self):
         """Regression test for #345.

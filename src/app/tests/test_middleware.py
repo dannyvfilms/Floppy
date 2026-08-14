@@ -1,6 +1,9 @@
+from unittest.mock import patch
+
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.middleware import AuthenticationMiddleware
+from django.contrib.sessions.backends.cached_db import SessionStore
 from django.contrib.sessions.exceptions import SessionInterrupted
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.http import HttpResponse
@@ -150,6 +153,36 @@ class SessionInterruptedMiddlewareTest(TestCase):
             reverse(django_settings.LOGIN_REDIRECT_URL),
             response.headers["Location"],
         )
+
+    @override_settings(SESSION_ENGINE="django.contrib.sessions.backends.cached_db")
+    def test_cached_db_session_save_race_redirects_without_logging_secret(self):
+        """The real session middleware save path is recovered safely."""
+
+        def view(request):
+            request.session["oauth_state"] = "super-secret-state"
+            return HttpResponse("ok")
+
+        request = self.factory.post("/import/simkl-oauth")
+        session_middleware = SessionMiddleware(view)
+
+        middleware = SessionInterruptedMiddleware(session_middleware)
+        with (
+            patch.object(
+                SessionStore,
+                "save",
+                side_effect=SessionInterrupted(
+                    "The request's session was deleted before the request completed."
+                ),
+            ),
+            self.assertLogs("app.middleware", level="WARNING") as logs,
+        ):
+            response = middleware(request)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse(django_settings.LOGIN_REDIRECT_URL), response.url)
+        log_output = "\n".join(logs.output)
+        self.assertIn("POST /import/simkl-oauth", log_output)
+        self.assertNotIn("super-secret-state", log_output)
 
     def test_unaffected_requests_pass_through(self):
         """Requests that don't hit the race are untouched."""

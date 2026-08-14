@@ -8,7 +8,7 @@
 
 {% block settings_content %}
   <div class="space-y-6"
-       x-data="{ backupFrequency: 'once', backupTime: '03:00' }">
+       x-data="{ backupFrequency: 'once', backupTime: '03:00', exportContentSelected: true, updateExportAvailability() { this.exportContentSelected = this.$refs.exportForm.querySelectorAll('input[name=media_types]:checked, input[name=include_lists]:checked, input[name=include_collection]:checked').length > 0 } }">
 
     {# Export Data + Scheduled Backup #}
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
@@ -21,7 +21,7 @@
         Scheduled exports are saved to: <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">{{ backup_dir }}</code>
       </p>
 
-      <form method="post" action="{% url 'create_export_schedule' %}" id="exportForm">
+      <form method="post" action="{% url 'create_export_schedule' %}" id="exportForm" x-ref="exportForm">
         {% csrf_token %}
         <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-5">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -101,7 +101,7 @@
             <h3 class="text-lg font-semibold">Export Content</h3>
           </div>
           <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-            Select which media types to include in the export. Uncheck all of them (keeping only Custom Lists or Collection on) to export just your lists or collection. Uncheck everything to export all data.
+            Keep at least one media type, Custom Lists, or Collection enabled. Keep every media type and both additional content options enabled for a full export; turn off all media types and leave Lists or Collection enabled for a subset export.
           </p>
 
           <div class="grid gap-3 md:grid-cols-3">
@@ -116,6 +116,7 @@
                          type="checkbox"
                          name="media_types"
                          value="{{ media_type }}"
+                         @change="updateExportAvailability()"
                          checked>
                   <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
                   </div>
@@ -133,6 +134,7 @@
                        type="checkbox"
                        name="include_lists"
                        value="on"
+                       @change="updateExportAvailability()"
                        checked>
                 <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
                 </div>
@@ -149,6 +151,7 @@
                        type="checkbox"
                        name="include_collection"
                        value="on"
+                       @change="updateExportAvailability()"
                        checked>
                 <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
                 </div>
@@ -158,7 +161,9 @@
         </div>
 
         <button type="submit"
-                class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+                x-bind:disabled="!exportContentSelected"
+                x-bind:class="!exportContentSelected ? 'opacity-50 cursor-not-allowed' : ''"
+                class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer disabled:hover:bg-indigo-600">
           <span x-show="backupFrequency === 'once'">Export as CSV</span>
           <span x-show="backupFrequency !== 'once'">Export as CSV and Save Schedule</span>
         </button>
@@ -194,10 +199,12 @@
               </form>
             </div>
             <div class="text-sm text-[var(--color-text-muted)] space-y-1">
-              {% if scheduled_backup.media_types %}
+              {% if scheduled_backup.media_types is None %}
+                <div>Media Types: All</div>
+              {% elif scheduled_backup.media_types %}
                 <div>Media Types: {{ scheduled_backup.media_types|join:", " }}</div>
               {% else %}
-                <div>Media Types: All</div>
+                <div>Media Types: None (Lists/Collection only)</div>
               {% endif %}
               <div>Lists: {% if scheduled_backup.include_lists %}Included{% else %}Excluded{% endif %}</div>
               <div>Collection: {% if scheduled_backup.include_collection %}Included{% else %}Excluded{% endif %}</div>
