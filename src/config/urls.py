@@ -22,6 +22,8 @@ from health_check.views import MainView
 from api.contract_views import api_docs, openapi_contract
 from app.media_list_entry_grouping_views import (
     media_list as media_list_with_entry_grouping,
+)
+from app.media_list_entry_grouping_views import (
     update_entry_grouping,
 )
 from users.views import CustomSignupView, CustomSocialSignupView

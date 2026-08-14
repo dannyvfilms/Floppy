@@ -2,6 +2,19 @@
 
 set -e
 
+# Guarantee that the virtual environment binaries are first on PATH even if
+# the container was recreated with a stale or custom PATH from an external
+# orchestrator (e.g. Portainer recreate, issue #762).
+VIRTUAL_ENV="${VIRTUAL_ENV:-/opt/venv}"
+if [ ! -d "$VIRTUAL_ENV" ] && [ -d "/floppy/.venv" ]; then
+    VIRTUAL_ENV="/floppy/.venv"
+fi
+case ":$PATH:" in
+    *":$VIRTUAL_ENV/bin:"*) ;;
+    *) PATH="$VIRTUAL_ENV/bin:$PATH" ;;
+esac
+export VIRTUAL_ENV PATH
+
 reject_unsafe_managed_directory() {
     managed_name=$1
     managed_dir=$2
