@@ -448,6 +448,10 @@ class User(AbstractUser):
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
+    tv_show_each_play = models.BooleanField(
+    default=False,
+    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+    )
 
     # Media type preferences: TV Seasons
     season_enabled = models.BooleanField(default=True)
@@ -470,6 +474,10 @@ class User(AbstractUser):
         max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
+    )
+    season_show_each_play = models.BooleanField(
+    default=False,
+    help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Movies
@@ -521,6 +529,10 @@ class User(AbstractUser):
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
+    anime_show_each_play = models.BooleanField(
+    default=False,
+    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+    )
 
     # Media type preferences: Manga
     manga_enabled = models.BooleanField(default=True)
@@ -544,6 +556,10 @@ class User(AbstractUser):
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
+    manga_show_each_play = models.BooleanField(
+    default=False,
+    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+    )
 
     # Media type preferences: Games
     game_enabled = models.BooleanField(default=True)
@@ -566,6 +582,10 @@ class User(AbstractUser):
         max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
+    )
+    game_show_each_play = models.BooleanField(
+    default=False,
+    help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Board Games
@@ -612,6 +632,10 @@ class User(AbstractUser):
         max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
+    )
+    book_show_each_play = models.BooleanField(
+    default=False,
+    help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Comics

@@ -607,7 +607,15 @@ def media_list(request, media_type):
     
     # Which media types should show the "Show all plays" menu item.
     # Change this set to include any other types you want (e.g. MediaTypes.TV.value).
-    _show_separate_plays_allowed = {MediaTypes.MOVIE.value}
+    _show_separate_plays_allowed = {
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.SEASON.value,
+        MediaTypes.ANIME.value,
+        MediaTypes.MANGA.value,
+        MediaTypes.GAME.value,
+        MediaTypes.BOOK.value,
+    }
     show_separate_plays = media_type in _show_separate_plays_allowed
 
     # Pre-filter sort choices to only include those valid for the current media type.
