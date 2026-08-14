@@ -66,6 +66,12 @@
             <span>Verified API Schema</span>
           </a>
 
+          <a href="{% url 'jsonld-context' %}"
+             class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
+            {% include "app/icons/page.svg" with classes="w-4 h-4" %}
+            <span>Domain Context (JSON-LD)</span>
+          </a>
+
           <a href="{% url 'schema' %}"
              class="flex items-center gap-2 text-indigo-400 hover:text-indigo-300 transition-colors">
             {% include "app/icons/page.svg" with classes="w-4 h-4" %}

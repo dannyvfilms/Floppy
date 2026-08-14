@@ -121,6 +121,21 @@ class FloppyClient:
         return body
 
 
+async def fetch_public_contract(path: str) -> str:
+    """Fetch a public contract artifact served outside ``/api/v1/``.
+
+    Contract routes (``/api/context.jsonld``, ``/api/openapi.yaml``) are public
+    and read-only, so no token is sent. Uses a one-off client because these are
+    rare reads and the shared client's base URL is pinned to ``/api/v1/``.
+    """
+    url = f"{_base_url()}/{path.lstrip('/')}"
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        response = await client.get(url)
+        if response.is_error:
+            raise FloppyAPIError(response.status_code, response.text)
+        return response.text
+
+
 _client: FloppyClient | None = None
 
 

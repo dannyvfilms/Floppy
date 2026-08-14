@@ -1,5 +1,6 @@
 import ast
 import inspect
+import json
 from unittest.mock import patch
 from urllib.parse import urljoin
 
@@ -29,9 +30,17 @@ from api.schema_contract import (
     generate_static_schema_contract,
     normalize_schema_findings,
 )
-from app.domain_vocabulary import render_glossary_rows
+from app.domain_vocabulary import (
+    DOMAIN_TERMS,
+    FLOPPY_NAMESPACE,
+    SCHEMA_ORG_NAMESPACE,
+    class_name,
+    render_glossary_rows,
+    render_jsonld_context,
+)
 
 OPENAPI_CONTRACT_PATH = settings.BASE_DIR / "api" / "contracts" / "openapi.yaml"
+JSONLD_CONTEXT_PATH = settings.BASE_DIR / "api" / "contracts" / "context.jsonld"
 
 
 class OfflineAPIDocsTests(SimpleTestCase):
@@ -636,6 +645,107 @@ class OpenAPIArtifactTests(SimpleTestCase):
                     if method != "delete" and status.startswith("2"):
                         with self.subTest(path=path, method=method, status=status):
                             self.assertIn("schema", response["content"]["application/json"])
+
+
+class JSONLDContextTests(SimpleTestCase):
+    """Gate the committed JSON-LD context and its public route."""
+
+    def _context(self):
+        return json.loads(JSONLD_CONTEXT_PATH.read_text(encoding="utf-8"))["@context"]
+
+    def test_committed_context_matches_the_vocabulary_renderer(self):
+        self.assertEqual(
+            JSONLD_CONTEXT_PATH.read_bytes(),
+            render_jsonld_context().encode("utf-8"),
+        )
+
+    def test_context_is_jsonld_11_with_the_stable_project_namespace(self):
+        context = self._context()
+
+        self.assertEqual(context["@version"], 1.1)
+        self.assertEqual(context["floppy"], FLOPPY_NAMESPACE)
+        self.assertEqual(context["schema"], SCHEMA_ORG_NAMESPACE)
+        self.assertEqual(FLOPPY_NAMESPACE, "https://github.com/dannyvfilms/Floppy/ns#")
+
+    def test_context_reads_linked_data_fields_only(self):
+        """Definitions, aliases and bounded contexts stay out of the artifact."""
+        raw = JSONLD_CONTEXT_PATH.read_text(encoding="utf-8")
+
+        for term in DOMAIN_TERMS:
+            with self.subTest(term=term.key):
+                self.assertNotIn(term.definition, raw)
+                self.assertNotIn(f'"{term.bounded_context}"', raw)
+                for alias in term.aliases:
+                    self.assertNotIn(f'"{alias}"', raw)
+
+    def test_every_term_has_a_context_entry_and_schema_org_is_mapped(self):
+        context = self._context()
+
+        for term in DOMAIN_TERMS:
+            with self.subTest(term=term.key):
+                self.assertIn(class_name(term.key), context)
+        mapped = {
+            term.schema_org.replace(SCHEMA_ORG_NAMESPACE, "schema:")
+            for term in DOMAIN_TERMS
+            if term.schema_org
+        }
+        self.assertTrue(mapped)
+        for mapping in mapped:
+            self.assertIn(mapping, context.values())
+
+    def test_pyld_expands_the_context_to_absolute_iris(self):
+        from pyld import jsonld
+
+        expanded = jsonld.expand(
+            {
+                "@context": self._context(),
+                "@type": "Item",
+                "hasUserTrackingRecord": {"@type": "Consumption"},
+                "isClassifiedBy": {"@type": "MediaType"},
+            },
+        )
+
+        self.assertEqual(expanded[0]["@type"], ["https://schema.org/CreativeWork"])
+        self.assertEqual(
+            expanded[0][f"{FLOPPY_NAMESPACE}hasUserTrackingRecord"][0]["@type"],
+            [f"{FLOPPY_NAMESPACE}consumption"],
+        )
+        self.assertEqual(
+            expanded[0][f"{FLOPPY_NAMESPACE}isClassifiedBy"][0]["@type"],
+            [f"{FLOPPY_NAMESPACE}media_type"],
+        )
+
+    def test_context_route_is_public_and_serves_the_committed_bytes(self):
+        response = self.client.get(reverse("jsonld-context"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/ld+json")
+        self.assertEqual(
+            b"".join(response.streaming_content),
+            JSONLD_CONTEXT_PATH.read_bytes(),
+        )
+        self.assertEqual(
+            set(response["Cache-Control"].split(", ")),
+            {"public", "max-age=3600"},
+        )
+
+    def test_context_route_supports_etag_revalidation_and_head(self):
+        first = self.client.get(reverse("jsonld-context"))
+
+        matched = self.client.get(
+            reverse("jsonld-context"), HTTP_IF_NONE_MATCH=first["ETag"]
+        )
+        self.assertEqual(matched.status_code, 304)
+
+        missed = self.client.get(
+            reverse("jsonld-context"), HTTP_IF_NONE_MATCH='"stale"'
+        )
+        self.assertEqual(missed.status_code, 200)
+
+        self.assertEqual(self.client.head(reverse("jsonld-context")).status_code, 200)
+
+    def test_context_route_rejects_unsafe_methods(self):
+        self.assertEqual(self.client.post(reverse("jsonld-context")).status_code, 405)
 
 
 class SchemaFindingContractTests(SimpleTestCase):

@@ -8,12 +8,18 @@ FLOPPY_TOKEN environment variables (see client.py).
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
 
-from .client import FloppyAPIError, FloppyConfigError, get_client
+from .client import (
+    FloppyAPIError,
+    FloppyConfigError,
+    fetch_public_contract,
+    get_client,
+)
 
 mcp = FastMCP(
     name="floppy",
@@ -40,6 +46,22 @@ async def _call(method: str, path: str, **kwargs: Any) -> Any:
         return await get_client().request(method, path, **kwargs)
     except (FloppyAPIError, FloppyConfigError, httpx.RequestError) as exc:
         return _error_payload(exc)
+
+
+@mcp.resource("floppy://domain-context")
+async def domain_context() -> str:
+    """Return the instance's JSON-LD domain context.
+
+    Optional grounding aid: it types Floppy's own nouns (Item, Consumption,
+    Media type, Celery queue) and maps them to schema.org where an equivalent
+    exists. No tool reads this resource, so an instance that cannot serve it
+    still supports every tool - a fetch failure returns a structured error
+    here and nowhere else.
+    """
+    try:
+        return await fetch_public_contract("api/context.jsonld")
+    except (FloppyAPIError, FloppyConfigError, httpx.RequestError) as exc:
+        return json.dumps(_error_payload(exc))
 
 
 # The REST API's wire format for status is a numeric code, not the display

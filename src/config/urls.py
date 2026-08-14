@@ -19,7 +19,7 @@ from django.views.static import serve
 from drf_spectacular.views import SpectacularAPIView
 from health_check.views import MainView
 
-from api.contract_views import api_docs, openapi_contract
+from api.contract_views import api_docs, jsonld_context, openapi_contract
 from users.views import CustomSignupView, CustomSocialSignupView
 
 handler400 = "app.error_views.bad_request"
@@ -33,6 +33,7 @@ urlpatterns = [
     path("apis/listenbrainz/1/", include("api.listenbrainz_urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/openapi.yaml", openapi_contract, name="openapi-contract"),
+    path("api/context.jsonld", jsonld_context, name="jsonld-context"),
     path("api/docs/", api_docs, name="swagger-ui"),
     path("", include("app.urls")),
     path("", include("integrations.urls")),
