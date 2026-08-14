@@ -1,0 +1,32 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "@protected": true,
+    "floppy": "https://github.com/dannyvfilms/Floppy/ns#",
+    "schema": "https://schema.org/",
+    "Item": "schema:CreativeWork",
+    "Consumption": "floppy:consumption",
+    "MediaType": "floppy:media_type",
+    "CeleryQueue": "floppy:celery_queue",
+    "hasUserTrackingRecord": {
+      "@id": "floppy:hasUserTrackingRecord",
+      "@type": "@id"
+    },
+    "isClassifiedBy": {
+      "@id": "floppy:isClassifiedBy",
+      "@type": "@id"
+    },
+    "tracks": {
+      "@id": "floppy:tracks",
+      "@type": "@id"
+    },
+    "classifies": {
+      "@id": "floppy:classifies",
+      "@type": "@id"
+    },
+    "processesCalendarUpdatesFor": {
+      "@id": "floppy:processesCalendarUpdatesFor",
+      "@type": "@id"
+    }
+  }
+}
