@@ -35,6 +35,7 @@ from app.domain_vocabulary import (
     FLOPPY_NAMESPACE,
     SCHEMA_ORG_NAMESPACE,
     class_name,
+    property_name,
     render_glossary_rows,
     render_jsonld_context,
 )
@@ -692,6 +693,52 @@ class JSONLDContextTests(SimpleTestCase):
         self.assertTrue(mapped)
         for mapping in mapped:
             self.assertIn(mapping, context.values())
+
+    def test_every_relationship_has_an_id_typed_property_term(self):
+        context = self._context()
+        relationships = [
+            relationship
+            for term in DOMAIN_TERMS
+            for relationship, _ in term.relationships
+        ]
+        self.assertTrue(relationships)
+
+        for relationship in relationships:
+            name = property_name(relationship)
+            with self.subTest(relationship=relationship):
+                self.assertEqual(
+                    context[name],
+                    {"@id": f"floppy:{name}", "@type": "@id"},
+                )
+
+    def test_pyld_expands_every_class_and_relationship(self):
+        """Cover the whole vocabulary, not a hand-picked subset."""
+        from pyld import jsonld
+
+        context = self._context()
+        document = {"@context": context, "@type": class_name(DOMAIN_TERMS[0].key)}
+        for term in DOMAIN_TERMS:
+            for relationship, target in term.relationships:
+                document[property_name(relationship)] = {
+                    "@type": class_name(target),
+                }
+
+        expanded = jsonld.expand(document)[0]
+
+        for term in DOMAIN_TERMS:
+            for relationship, target in term.relationships:
+                name = property_name(relationship)
+                expected = (
+                    DOMAIN_TERMS[
+                        [t.key for t in DOMAIN_TERMS].index(target)
+                    ].schema_org
+                    or f"{FLOPPY_NAMESPACE}{target}"
+                )
+                with self.subTest(relationship=relationship):
+                    self.assertEqual(
+                        expanded[f"{FLOPPY_NAMESPACE}{name}"][0]["@type"],
+                        [expected],
+                    )
 
     def test_pyld_expands_the_context_to_absolute_iris(self):
         from pyld import jsonld

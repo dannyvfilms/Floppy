@@ -129,7 +129,11 @@ async def fetch_public_contract(path: str) -> str:
     rare reads and the shared client's base URL is pinned to ``/api/v1/``.
     """
     url = f"{_base_url()}/{path.lstrip('/')}"
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+    # An instance behind a proxy commonly redirects http->https or
+    # normalizes the path; without this the body would be redirect HTML.
+    async with httpx.AsyncClient(
+        timeout=DEFAULT_TIMEOUT, follow_redirects=True
+    ) as client:
         response = await client.get(url)
         if response.is_error:
             raise FloppyAPIError(response.status_code, response.text)

@@ -77,6 +77,17 @@ DOMAIN_TERMS: tuple[DomainTerm, ...] = (
 )
 
 
+def class_name(key: str) -> str:
+    """Return the PascalCase JSON-LD class term for a vocabulary key."""
+    return "".join(part.capitalize() for part in key.split("_"))
+
+
+def property_name(relationship: str) -> str:
+    """Return the camelCase JSON-LD property term for a relationship label."""
+    head, *tail = relationship.split()
+    return head.lower() + "".join(part.capitalize() for part in tail)
+
+
 def validate_terms(terms: tuple[DomainTerm, ...]) -> None:
     """Reject ambiguous terms and unresolved relationships."""
     keys = [term.key.casefold() for term in terms]
@@ -104,11 +115,16 @@ def validate_terms(terms: tuple[DomainTerm, ...]) -> None:
                 raise ValueError(msg)
 
     # The JSON-LD context maps every relationship label to one property IRI, so
-    # a duplicate label across terms would silently collapse two relationships
-    # into one. Reject it here rather than emitting an ambiguous @context.
-    labels = [relationship for term in terms for relationship, _ in term.relationships]
-    if len(labels) != len(set(labels)):
-        msg = "Domain relationship labels must be unique."
+    # a collision across terms would silently collapse two relationships into
+    # one. Check the *projected* property name, not the raw label: "has user"
+    # and "Has  user" are different labels that both render as `hasUser`.
+    properties = [
+        property_name(relationship)
+        for term in terms
+        for relationship, _ in term.relationships
+    ]
+    if len(properties) != len(set(properties)):
+        msg = "Domain relationship labels must render unique property names."
         raise ValueError(msg)
 
 
@@ -123,17 +139,6 @@ GENERATED_WARNING = (
 CONTEXT_PATH = Path(__file__).resolve().parents[1] / "api" / "contracts" / "context.jsonld"
 FLOPPY_NAMESPACE = "https://github.com/dannyvfilms/Floppy/ns#"
 SCHEMA_ORG_NAMESPACE = "https://schema.org/"
-
-
-def class_name(key: str) -> str:
-    """Return the PascalCase JSON-LD class term for a vocabulary key."""
-    return "".join(part.capitalize() for part in key.split("_"))
-
-
-def property_name(relationship: str) -> str:
-    """Return the camelCase JSON-LD property term for a relationship label."""
-    head, *tail = relationship.split()
-    return head.lower() + "".join(part.capitalize() for part in tail)
 
 
 def render_glossary_rows() -> tuple[dict[str, str], ...]:
