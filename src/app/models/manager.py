@@ -253,7 +253,6 @@ class MediaManager(models.Manager):
         direction=None,
         *,
         list_sql_filters=None,
-        aggregate_duplicates=True,
     ):
         """Get a media list by type with filtering and sorting."""
         model = apps.get_model(app_label="app", model_name=media_type)
@@ -294,39 +293,37 @@ class MediaManager(models.Manager):
         )
 
         # Handle duplicate entries by selecting the most recent record for each item
-        # Only process if aggregate_duplicates is True
-        if aggregate_duplicates:
-            has_progress_field = any(
-                getattr(field, "attname", "") == "progress"
-                for field in model._meta.get_fields()
-                if getattr(field, "concrete", False)
-            )
-            if sort_filter == "progress" and has_progress_field:
-                # For progress sorting, select the record with highest individual progress
-                queryset = queryset.annotate(
-                    repeats=Window(
-                        expression=Count("id"),
-                        partition_by=[F("item")],
-                    ),
-                    row_number=Window(
-                        expression=RowNumber(),
-                        partition_by=[F("item")],
-                        order_by=F("progress").desc(),
-                    ),
-                ).filter(row_number=1)
-            else:
-                # For non-progress sorting, select the most recent record
-                queryset = queryset.annotate(
-                    repeats=Window(
-                        expression=Count("id"),
-                        partition_by=[F("item")],
-                    ),
-                    row_number=Window(
-                        expression=RowNumber(),
-                        partition_by=[F("item")],
-                        order_by=F("created_at").desc(),
-                    ),
-                ).filter(row_number=1)
+        has_progress_field = any(
+            getattr(field, "attname", "") == "progress"
+            for field in model._meta.get_fields()
+            if getattr(field, "concrete", False)
+        )
+        if sort_filter == "progress" and has_progress_field:
+            # For progress sorting, select the record with highest individual progress
+            queryset = queryset.annotate(
+                repeats=Window(
+                    expression=Count("id"),
+                    partition_by=[F("item")],
+                ),
+                row_number=Window(
+                    expression=RowNumber(),
+                    partition_by=[F("item")],
+                    order_by=F("progress").desc(),
+                ),
+            ).filter(row_number=1)
+        else:
+            # For non-progress sorting, select the most recent record
+            queryset = queryset.annotate(
+                repeats=Window(
+                    expression=Count("id"),
+                    partition_by=[F("item")],
+                ),
+                row_number=Window(
+                    expression=RowNumber(),
+                    partition_by=[F("item")],
+                    order_by=F("created_at").desc(),
+                ),
+            ).filter(row_number=1)
 
         queryset = queryset.select_related("item").defer(
             "item__isbn",
@@ -373,12 +370,7 @@ class MediaManager(models.Manager):
 
         # Re-apply duplicate aggregation because SQL queryset operations in sorting
         # can materialize fresh model instances and drop dynamic aggregated attrs.
-        if not aggregate_duplicates: 
-            # materialize and return rows as-is (no aggregated_* attributes)
-            return list(queryset)
-        else:
-            # re-apply aggregate duplicate data
-            return self._aggregate_duplicate_data(queryset, user, media_type, dup_state)
+        return self._aggregate_duplicate_data(queryset, user, media_type, dup_state)
 
     def _aggregate_duplicate_data(self, queryset, user, media_type, dup_state=None):
         """Aggregate data from duplicate entries for each item."""

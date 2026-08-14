@@ -522,8 +522,8 @@ class User(AbstractUser):
         choices=MediaStatusChoices,
     )
     anime_show_each_play = models.BooleanField(
-    default=False,
-    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+        default=False,
+        help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Manga
@@ -549,8 +549,8 @@ class User(AbstractUser):
         choices=MediaStatusChoices,
     )
     manga_show_each_play = models.BooleanField(
-    default=False,
-    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+        default=False,
+        help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Games
@@ -576,8 +576,8 @@ class User(AbstractUser):
         choices=MediaStatusChoices,
     )
     game_show_each_play = models.BooleanField(
-    default=False,
-    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+        default=False,
+        help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Board Games
@@ -626,8 +626,8 @@ class User(AbstractUser):
         choices=MediaStatusChoices,
     )
     book_show_each_play = models.BooleanField(
-    default=False,
-    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+        default=False,
+        help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Comics

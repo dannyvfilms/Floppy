@@ -1,12 +1,20 @@
+{% load media_list_entry_grouping %}
+{% media_list_entry_grouping_control request as entry_grouping %}
 <div class="relative filter-control {{ menu_class|default:'' }}"
      x-data="{ open: false, sharing: false }"
-     @click.outside="open = false">
+     @click.outside="open = false"
+     @keydown.escape.window="if (open) { open = false; $refs.trigger.focus(); }">
   <button class="p-2 rounded-md border border-gray-700 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] transition-colors cursor-pointer"
           title="View settings"
+          aria-label="View settings"
+          :aria-expanded="open.toString()"
+          x-ref="trigger"
           @click="open = !open"
           type="button">{% include "app/icons/settings.svg" with classes="w-5 h-5" %}</button>
 
-  <div class="absolute right-0 z-40 mt-2 w-56 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
+  <div class="absolute right-0 z-40 mt-2 w-64 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
+       aria-label="View settings"
+       role="group"
        x-cloak
        x-show="open"
        x-transition:enter="transition ease-out duration-100"
@@ -24,6 +32,30 @@
       <span x-text="layout === 'grid' ? 'Table View' : 'Grid View'"></span>
     </a>
 
+    {% if entry_grouping.supported %}
+      <form method="post"
+            action="{% url 'medialist_entry_grouping' media_type %}"
+            class="w-full m-0">
+        {% csrf_token %}
+        <input type="hidden"
+               name="show_separate_entries"
+               value="{{ entry_grouping.next_value }}">
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                type="submit"
+                aria-pressed="{% if entry_grouping.enabled %}true{% else %}false{% endif %}"
+                @click="open = false">
+          {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
+          <span>Show matching entries separately</span>
+          <span class="ml-auto text-xs text-[var(--color-text-muted)]">
+            {{ entry_grouping.state_label }}
+          </span>
+        </button>
+      </form>
+    {% endif %}
+
+    <div class="border-t border-gray-700 my-1" role="separator"></div>
+
     <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
             type="button"
             :disabled="sharing"
@@ -38,40 +70,5 @@
       {% include "app/icons/tag.svg" with classes="w-4 h-4" %}
       <span x-text="selectMode ? 'Cancel Select' : 'Select Items'"></span>
     </button>
-
-	{% if show_separate_plays %}
-		{# New menu button: Show all plays / Aggregate plays #}
-		<form method="get" id="separate-plays-form" class="w-full m-0">
-		  <!-- preserve current filters so toggling keeps state -->
-		  <input type="hidden" name="search" value="{{ request.GET.search|default:'' }}">
-		  <input type="hidden" name="sort" value="{{ request.GET.sort|default:current_sort|default:'' }}">
-		  <input type="hidden" name="direction" value="{{ request.GET.direction|default:current_direction|default:'' }}">
-		  {% for s in current_status %}
-			<input type="hidden" name="status" value="{{ s }}">
-		  {% endfor %}
-
-		  <!-- submit the opposite of current state so button toggles preference -->
-		  <input type="hidden" name="separate_plays" value="{% if show_each_play %}0{% else %}1{% endif %}" />
-
-		  <button
-			type="submit"
-			@click="open = false"
-			class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
-		  >
-			<span class="w-4 h-4 flex-shrink-0">
-			  {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
-			</span>
-
-			<span>
-			  {% if show_each_play %}
-				Group Multiple Plays
-			  {% else %}
-				Show All Plays
-			  {% endif %}
-			</span>
-		  </button>
-		</form>
-	{% endif %}
-
   </div>
 </div>
