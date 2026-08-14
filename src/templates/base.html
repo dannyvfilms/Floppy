@@ -114,7 +114,7 @@
     <script defer src="{% static 'js/libraries/alpinejs-3.14.9.min.js' %}"></script>
     <script src="{% static 'js/libraries/lazysizes-5.3.2.min.js' %}" async></script>
     {# ZXing library for barcode decoding #}
-    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest/umd/index.min.js"
+    <script src="{% static 'js/libraries/zxing-library-0.21.3.min.js' %}"
             onload="console.log('ZXing library loaded');"></script>
     <script src="{% static 'js/barcode-scanner.js' %}{% get_static_file_mtime 'js/barcode-scanner.js' %}"
             onload="console.log('barcode-scanner.js loaded, barcodeScannerUtils available:', typeof window.barcodeScannerUtils);"></script>
@@ -162,7 +162,10 @@
       replaces the whole body, which would otherwise throw away the bar that
       is reporting the very request doing the replacing.
     {% endcomment %}
-    <div id="nav-progress" class="nav-progress" aria-hidden="true" hx-preserve="true">
+    <div id="nav-progress"
+         class="nav-progress"
+         aria-hidden="true"
+         hx-preserve="true">
       <div class="nav-progress-bar"></div>
     </div>
     <p id="nav-progress-status"
@@ -440,9 +443,10 @@
                                   @click="$refs.barcodeInput?.click()"
                                   x-bind:disabled="barcodeScanning"
                                   class="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                  title="Scan barcode">
+                                  title="Scan barcode"
+                                  aria-label="Scan book barcode">
                             <span x-show="barcodeScanning" class="block">
-                              <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+                              <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-[var(--color-text-muted)]"></div>
                             </span>
                             <span x-show="!barcodeScanning" class="block">{% include "app/icons/camera.svg" with classes="w-5 h-5" %}</span>
                           </button>
@@ -493,7 +497,9 @@
                         <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info">
                           {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0" %}
                           <p class="text-sm font-medium flex-1" x-text="barcodeError"></p>
-                          <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                          <button type="button"
+                                  class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                                  aria-label="Dismiss error"
                                   @click="clearBarcodeError()">
                             {% include "app/icons/x.svg" with classes="w-4 h-4" %}
                           </button>
