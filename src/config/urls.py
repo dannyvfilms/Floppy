@@ -20,6 +20,10 @@ from drf_spectacular.views import SpectacularAPIView
 from health_check.views import MainView
 
 from api.contract_views import api_docs, openapi_contract
+from app.media_list_entry_grouping_views import (
+    media_list as media_list_with_entry_grouping,
+    update_entry_grouping,
+)
 from users.views import CustomSignupView, CustomSocialSignupView
 
 handler400 = "app.error_views.bad_request"
@@ -34,6 +38,14 @@ urlpatterns = [
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/openapi.yaml", openapi_contract, name="openapi-contract"),
     path("api/docs/", api_docs, name="swagger-ui"),
+    path(
+        "medialist/<str:media_type>/entry-grouping/",
+        update_entry_grouping,
+        name="medialist_entry_grouping",
+    ),
+    # Keep the established named route in app.urls. This earlier route handles
+    # requests for the same URL and applies the request-scoped display policy.
+    path("medialist/<str:media_type>", media_list_with_entry_grouping),
     path("", include("app.urls")),
     path("", include("integrations.urls")),
     path("", include("users.urls")),
