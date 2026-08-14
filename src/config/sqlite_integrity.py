@@ -504,7 +504,13 @@ def _quote_identifier(identifier: str) -> str:
     return f'"{escaped}"'
 
 
-def _snapshot_conflicts(conn: sqlite3.Connection, *, require_row_ids: bool) -> None:
+def _drop_conflict_snapshot(conn: sqlite3.Connection) -> None:
+    """Remove the snapshot. The table may not exist if the build failed."""
+    with suppress(sqlite3.DatabaseError):
+        conn.execute("DROP TABLE floppy_fk_conflicts")
+
+
+def _snapshot_conflicts(conn: sqlite3.Connection, *, require_row_ids: bool) -> int:
     """Record every conflicting row id in a temporary table.
 
     The delete path must refuse a row it cannot address, so it sets
@@ -515,6 +521,7 @@ def _snapshot_conflicts(conn: sqlite3.Connection, *, require_row_ids: bool) -> N
         "table_name TEXT NOT NULL, row_id INTEGER NOT NULL, "
         "PRIMARY KEY (table_name, row_id))"
     )
+    skipped = 0
     cursor = conn.execute("PRAGMA foreign_key_check")
     while rows := cursor.fetchmany(500):
         if require_row_ids and any(
@@ -525,6 +532,7 @@ def _snapshot_conflicts(conn: sqlite3.Connection, *, require_row_ids: bool) -> N
                 "because the child table has no rowid"
             )
             raise ValueError(message)
+        skipped += sum(1 for _t, row_id, _p, _k in rows if row_id is None)
         conn.executemany(
             "INSERT OR IGNORE INTO floppy_fk_conflicts VALUES (?, ?)",
             (
@@ -533,6 +541,9 @@ def _snapshot_conflicts(conn: sqlite3.Connection, *, require_row_ids: bool) -> N
                 if row_id is not None
             ),
         )
+    # A row we cannot address is still an affected row. Report it rather than
+    # let the breakdown quietly add up to less than the total.
+    return skipped
 
 
 def _describe_affected(conn: sqlite3.Connection) -> dict:
@@ -544,8 +555,8 @@ def _describe_affected(conn: sqlite3.Connection) -> dict:
     """
     described: Counter = Counter()
     unidentified = 0
-    _snapshot_conflicts(conn, require_row_ids=False)
     try:
+        unidentified += _snapshot_conflicts(conn, require_row_ids=False)
         has_item_table = conn.execute(
             "SELECT 1 FROM main.sqlite_schema "
             "WHERE type = 'table' AND name = 'app_item' COLLATE NOCASE",
@@ -586,7 +597,7 @@ def _describe_affected(conn: sqlite3.Connection) -> dict:
                 named += count
             unidentified += total - named
     finally:
-        conn.execute("DROP TABLE floppy_fk_conflicts")
+        _drop_conflict_snapshot(conn)
 
     affected = [
         {"count": count, "season": season, "title": title}
@@ -603,8 +614,14 @@ def _describe_affected(conn: sqlite3.Connection) -> dict:
 
 def _delete_orphaned_rows(conn: sqlite3.Connection) -> int:
     """Delete every child row named by the stable foreign-key snapshot."""
-    _snapshot_conflicts(conn, require_row_ids=True)
+    try:
+        return _delete_snapshotted_rows(conn)
+    finally:
+        _drop_conflict_snapshot(conn)
 
+
+def _delete_snapshotted_rows(conn: sqlite3.Connection) -> int:
+    _snapshot_conflicts(conn, require_row_ids=True)
     tables = [
         row[0]
         for row in conn.execute(
@@ -620,7 +637,6 @@ def _delete_orphaned_rows(conn: sqlite3.Connection) -> int:
             [table],
         )
         deleted += result.rowcount
-    conn.execute("DROP TABLE floppy_fk_conflicts")
     return deleted
 
 

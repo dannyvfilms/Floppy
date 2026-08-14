@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import html
 import json
+import secrets
+import socket
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,6 +29,34 @@ from config.sqlite_integrity import (
 
 _PORT = 8000
 _HEALTH_PATHS = frozenset({"/health", "/health/"})
+_MAX_BODY_BYTES = 4096
+_SOCKET_TIMEOUT_SECONDS = 15
+# The approval code proves that the person has read the report file. The page
+# must never show it, or the code proves only that they opened the page.
+_SECRET_REPORT_KEYS = frozenset({"actions", "incident_token"})
+
+_HELP_LINKS = (
+    ("Report a problem", "https://github.com/dannyvfilms/Floppy/issues"),
+    ("Read the wiki", "https://github.com/dannyvfilms/Floppy/wiki"),
+    ("Ask on Discord", "https://discord.gg/QfNA6zJ5Ws"),
+)
+
+# navigator.clipboard exists only in a secure context. Floppy is usually opened
+# over plain HTTP on a local address, where it is undefined. The button falls
+# back to the older command, and the text stays on the page to select by hand.
+_COPY_SCRIPT = """
+document.addEventListener('click',function(e){
+ var b=e.target.closest('[data-copy]');if(!b)return;
+ var t=document.getElementById(b.getAttribute('data-copy'));if(!t)return;
+ var s=t.innerText,done=function(){b.textContent='Copied';
+  setTimeout(function(){b.textContent='Copy details'},2000)};
+ if(navigator.clipboard&&window.isSecureContext){
+  navigator.clipboard.writeText(s).then(done,function(){b.textContent='Press Ctrl+C'})}
+ else{var r=document.createRange();r.selectNodeContents(t);
+  var sel=window.getSelection();sel.removeAllRanges();sel.addRange(r);
+  try{document.execCommand('copy');done()}catch(err){b.textContent='Press Ctrl+C'}}
+});
+"""
 
 # Copied from src/static/css/input.css. The page must not request an external
 # stylesheet, because it also opens as a file from the database folder.
@@ -59,6 +89,7 @@ details{margin-top:1.5rem;color:var(--muted)}
 pre{overflow-x:auto;background:var(--panel);border:1px solid var(--border);
 border-radius:8px;padding:1rem;font-size:.85rem}
 .note{font-size:.9rem}
+a{color:var(--accent)}
 """
 
 
@@ -96,6 +127,7 @@ def render_page(report: dict | None, *, interactive: bool) -> str:
             "<h1>Your data is safe. Nothing was deleted.</h1>"
             "<p>Floppy paused before it started. It cannot read the report that "
             "explains why. Look at the container log for the reason.</p>"
+            + _help_card()
         )
         return _document(body)
 
@@ -147,12 +179,34 @@ def render_page(report: dict | None, *, interactive: bool) -> str:
         "<p>Stop Floppy. Replace <code>db.sqlite3</code> with your backup. "
         "Start Floppy again.</p></div>",
     )
+    parts.append(_help_card())
+    public = {
+        key: value
+        for key, value in report.items()
+        if key not in _SECRET_REPORT_KEYS
+    }
     parts.append(
-        "<details><summary>Technical details for a bug report</summary><pre>"
-        + html.escape(json.dumps(report, indent=2, sort_keys=True))
+        "<details><summary>Technical details for a bug report</summary>"
+        "<p><button data-copy='details'>Copy details</button></p>"
+        "<pre id='details'>"
+        + html.escape(json.dumps(public, indent=2, sort_keys=True))
         + "</pre></details>",
     )
     return _document("".join(parts))
+
+
+def _help_card() -> str:
+    """Offer the places where a person can get help."""
+    links = " · ".join(
+        f"<a href='{url}' target='_blank' rel='noopener noreferrer'>"
+        f"{html.escape(label)}</a>"
+        for label, url in _HELP_LINKS
+    )
+    return (
+        "<div class='card'><h2>Get help</h2>"
+        "<p>Copy the details below and send them with your question.</p>"
+        f"<p>{links}</p></div>"
+    )
 
 
 def _document(body: str) -> str:
@@ -160,7 +214,8 @@ def _document(body: str) -> str:
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>Floppy needs a decision</title>"
-        f"<style>{_STYLE}</style></head><body><main>{body}</main></body></html>"
+        f"<style>{_STYLE}</style></head><body><main>{body}</main>"
+        f"<script>{_COPY_SCRIPT}</script></body></html>"
     )
 
 
@@ -189,6 +244,7 @@ def _write_decision(db_path: str, report: dict, action: str) -> None:
 
 class _Handler(BaseHTTPRequestHandler):
     db_path = ""
+    timeout = _SOCKET_TIMEOUT_SECONDS
 
     def log_message(self, *_args) -> None:
         """Keep the container log free of one line per request."""
@@ -214,18 +270,49 @@ class _Handler(BaseHTTPRequestHandler):
             "text/html; charset=utf-8",
         )
 
+    def _read_body(self) -> dict | None:
+        """Read a small form body. Refuse a large or malformed one."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return None
+        if length < 0 or length > _MAX_BODY_BYTES:
+            return None
+        return parse_qs(self.rfile.read(length).decode(errors="replace"))
+
+    def _is_same_origin(self) -> bool:
+        """Refuse a form sent from another site.
+
+        A page on another site must not be able to make this choice for the
+        person who runs Floppy.
+        """
+        site = self.headers.get("Sec-Fetch-Site")
+        if site is not None:
+            return site in {"same-origin", "none"}
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        return origin.rstrip("/").endswith(self.headers.get("Host", "\0"))
+
     def do_POST(self) -> None:
         action = {"/accept": "accept", "/quarantine": "quarantine"}.get(self.path)
         report = _read_incident_report(self.db_path)
         if action is None or not report:
             self._send(404, "not found", "text/plain; charset=utf-8")
             return
+        if not self._is_same_origin():
+            self._send(403, "cross-site request", "text/plain; charset=utf-8")
+            return
         if action == "quarantine":
-            length = int(self.headers.get("Content-Length") or 0)
-            fields = parse_qs(self.rfile.read(length).decode(errors="replace"))
+            fields = self._read_body()
+            if fields is None:
+                self._send(400, "bad request", "text/plain; charset=utf-8")
+                return
             supplied = (fields.get("token") or [""])[0].strip()
-            if not report.get("can_quarantine") or supplied != report.get(
-                "incident_token",
+            expected = report.get("incident_token") or ""
+            if not report.get("can_quarantine") or not secrets.compare_digest(
+                supplied,
+                expected,
             ):
                 self._send(
                     403,
@@ -258,6 +345,7 @@ def serve(db_path: str) -> None:
         _log(f"[entrypoint] Could not write the recovery page: {error}")
 
     _Handler.db_path = db_path
+    socket.setdefaulttimeout(_SOCKET_TIMEOUT_SECONDS)
     try:
         server = ThreadingHTTPServer(("", _PORT), _Handler)
     except OSError as error:

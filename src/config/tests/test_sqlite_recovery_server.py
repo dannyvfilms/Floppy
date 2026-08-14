@@ -288,14 +288,71 @@ class RecoveryPageTests(SimpleTestCase):
         self.assertIn("Your data is safe", page)
         self.assertNotIn("<form", page)
 
-    def test_the_page_does_not_request_anything_external(self):
+    def test_the_page_loads_no_external_resource(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_incident(tmp_dir)
             report = self.block_startup(db_path)
             page = recovery.render_page(report, interactive=True)
-            # The file opens from disk, where no external request can resolve.
-            for marker in ("http://", "https://", "<script", "<link"):
-                self.assertNotIn(marker, page.replace("http://127.0.0.1", ""))
+            # The page also opens from disk, where a subresource request cannot
+            # resolve. Styles and scripts stay inline. A link is different: the
+            # person clicks it, so the page requests nothing.
+            for marker in ("src=", "<link ", "@import"):
+                self.assertNotIn(marker, page)
+
+    def test_the_page_never_shows_the_approval_code(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_incident(tmp_dir)
+            report = self.block_startup(db_path)
+            token = report["incident_token"]
+            self.assertTrue(token)
+            for interactive in (True, False):
+                page = recovery.render_page(report, interactive=interactive)
+                # The code proves that the person read the report file. If the
+                # page shows it, the code proves only that they opened a page
+                # that anyone on the network can open.
+                self.assertNotIn(token, page)
+                self.assertNotIn(f"quarantine:{token}", page)
+
+    def test_the_page_offers_places_to_get_help(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_incident(tmp_dir)
+            report = self.block_startup(db_path)
+            for candidate in (report, None):
+                page = recovery.render_page(candidate, interactive=True)
+                self.assertIn("github.com/dannyvfilms/Floppy/issues", page)
+                self.assertIn("github.com/dannyvfilms/Floppy/wiki", page)
+                self.assertIn("discord.gg/QfNA6zJ5Ws", page)
+
+    def test_a_cross_site_form_cannot_make_the_choice(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_incident(tmp_dir)
+            self.block_startup(db_path)
+            base = self.serve(db_path)
+
+            request = urllib.request.Request(  # noqa: S310
+                f"{base}/accept",
+                data=b"",
+                headers={"Sec-Fetch-Site": "cross-site"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(request)  # noqa: S310
+            self.assertEqual(ctx.exception.code, 403)
+            self.assertFalse(Path(f"{db_path}.integrity.decision").exists())
+
+    def test_an_oversized_body_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_incident(tmp_dir)
+            self.block_startup(db_path)
+            base = self.serve(db_path)
+
+            request = urllib.request.Request(  # noqa: S310
+                f"{base}/quarantine",
+                data=b"token=" + b"a" * 9000,
+            )
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(request)  # noqa: S310
+            self.assertEqual(ctx.exception.code, 400)
+            self.assertFalse(Path(f"{db_path}.integrity.decision").exists())
 
     def test_a_busy_port_does_not_stop_the_page_from_being_written(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
