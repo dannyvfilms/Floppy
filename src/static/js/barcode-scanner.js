@@ -5,7 +5,7 @@
 
 // Barcode scanning functionality using ZXing
 async function initBarcodeScanner() {
-  // ZXing is loaded from CDN in base.html
+  // ZXing is loaded from self-hosted static library in base.html
   console.log('[BARCODE] initBarcodeScanner called, window.ZXing:', typeof window.ZXing, window.ZXing ? 'exists' : 'undefined');
   if (typeof window.ZXing === 'undefined') {
     console.error('[BARCODE] ZXing library not loaded - make sure the script tag loaded correctly');
@@ -75,25 +75,20 @@ function computeIsbn13CheckDigit(isbn12) {
 function normalizeIsbn(code) {
   if (!code) return null;
 
-  const cleaned = code.replace(/\D/g, '');
+  const raw = String(code).trim().replace(/[-\s]/g, '').toUpperCase();
 
-  if (cleaned.length === 10) {
-    const isbn12 = `978${cleaned.slice(0, 9)}`;
+  if (/^\d{9}[\dX]$/.test(raw)) {
+    const isbn12 = `978${raw.slice(0, 9)}`;
     const checkDigit = computeIsbn13CheckDigit(isbn12);
     return checkDigit === null ? null : `${isbn12}${checkDigit}`;
   }
 
-  if (cleaned.length > 13) {
+  const cleaned = raw.replace(/\D/g, '');
+
+  if (cleaned.length >= 13) {
     const candidate = cleaned.slice(0, 13);
     if (candidate.startsWith('978') || candidate.startsWith('979')) {
       return candidate;
-    }
-    return null;
-  }
-
-  if (cleaned.length === 13) {
-    if (cleaned.startsWith('978') || cleaned.startsWith('979')) {
-      return cleaned;
     }
     return null;
   }
