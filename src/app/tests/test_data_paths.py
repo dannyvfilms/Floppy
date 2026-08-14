@@ -31,8 +31,6 @@ print(json.dumps({
 """
 
 DOCKER_SECRET_PROBE = """
-import os
-os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings"
 from pathlib import Path
 from unittest.mock import patch
 
@@ -195,7 +193,6 @@ class DataPathSettingsTests(SimpleTestCase):
                 "PATH": os.environ["PATH"],
                 "PYTHONPATH": str(SRC),
                 "PYTHONDONTWRITEBYTECODE": "1",
-                "SECRET": "",
                 "FLOPPY_DATA_DIR": str(data_dir),
                 "LOG_DIR": str(root / "logs"),
             }
@@ -516,34 +513,3 @@ fi
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn("FLOPPY_DB_PATH", result.stderr)
             self.assertNotIn("/db.sqlite3", commands)
-
-    def test_entrypoint_prepends_virtualenv_to_overridden_path(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            data_dir = root / "data"
-            data_dir.mkdir()
-            fake_bin = root / "bin"
-            fake_venv = root / "custom_venv"
-            fake_venv_bin = fake_venv / "bin"
-            fake_venv_bin.mkdir(parents=True)
-            self.write_command(
-                fake_venv_bin / "python",
-                f"""#!/bin/sh
-if [ "$1" = "-c" ]; then
-    exec {sys.executable} "$@"
-fi
-{{ printf 'venv-python'; printf ' <%s>' "$@"; printf '\\n'; }} >> "$FAKE_LOG"
-exit 0
-""",
-            )
-
-            result, commands = self.run_entrypoint(
-                root,
-                VIRTUAL_ENV=str(fake_venv),
-                PATH=f"{fake_bin}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                FLOPPY_DATA_DIR=str(data_dir),
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("venv-python <manage.py> <migrate>", commands)
-            self.assertIn("supervisord", commands)

@@ -2,16 +2,16 @@
 
 set -e
 
-# Guarantee that the virtual environment binaries are first on PATH even if
-# the container was recreated with a stale or custom PATH from an external
-# orchestrator (e.g. Portainer recreate, issue #762).
+# Keep the application virtual environment first even if an orchestrator
+# restores a stale PATH. A matching entry later in PATH is not sufficient,
+# because an earlier system Python would still be selected (issue #762).
 VIRTUAL_ENV="${VIRTUAL_ENV:-/opt/venv}"
 if [ ! -d "$VIRTUAL_ENV" ] && [ -d "/floppy/.venv" ]; then
     VIRTUAL_ENV="/floppy/.venv"
 fi
-case ":$PATH:" in
-    *":$VIRTUAL_ENV/bin:"*) ;;
-    *) PATH="$VIRTUAL_ENV/bin:$PATH" ;;
+case "$PATH" in
+    "$VIRTUAL_ENV/bin"|"$VIRTUAL_ENV/bin:"*) ;;
+    *) PATH="$VIRTUAL_ENV/bin${PATH:+:$PATH}" ;;
 esac
 export VIRTUAL_ENV PATH
 
