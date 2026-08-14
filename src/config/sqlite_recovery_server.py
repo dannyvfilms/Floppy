@@ -17,7 +17,7 @@ import socket
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
 from config.sqlite_integrity import (
     _RECOVERY_PAGE_NAME,
@@ -93,23 +93,38 @@ a{color:var(--accent)}
 """
 
 
+def _count(value: object) -> int:
+    """Read a number from a damaged database without failing.
+
+    The page exists because the database is damaged, so a value in it can be
+    the wrong type. A wrong number must never stop the page from opening.
+    """
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
 def _affected_list(report: dict) -> str:
     rows = []
     for entry in report.get("affected", []):
         title = html.escape(str(entry.get("title") or "Unknown"))
         season = entry.get("season")
-        label = f"{title}, Season {int(season)}" if season is not None else title
+        label = title
+        if season is not None:
+            label = f"{title}, Season {html.escape(str(season))}"
         rows.append(
-            f"<li><span>{label}</span><span>{int(entry['count'])} entries</span></li>",
+            f"<li><span>{label}</span>"
+            f"<span>{_count(entry.get('count'))} entries</span></li>",
         )
-    other = int(report.get("affected_other_titles", 0) or 0)
+    other = _count(report.get("affected_other_titles"))
     if other:
-        count = int(report.get("affected_other_titles_count", 0) or 0)
+        count = _count(report.get("affected_other_titles_count"))
         rows.append(
             f"<li><span>and {other} other titles</span>"
             f"<span>{count} entries</span></li>",
         )
-    unknown = int(report.get("affected_unidentified", 0) or 0)
+    unknown = _count(report.get("affected_unidentified"))
     if unknown:
         rows.append(
             f"<li><span>Entries we cannot identify</span>"
@@ -131,7 +146,7 @@ def render_page(report: dict | None, *, interactive: bool) -> str:
         )
         return _document(body)
 
-    total = int(report.get("total_conflicts", 0) or 0)
+    total = _count(report.get("total_conflicts"))
     can_quarantine = bool(report.get("can_quarantine"))
     parts = [
         "<h1>Your data is safe. Nothing was deleted.</h1>",
@@ -292,7 +307,10 @@ class _Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         if not origin:
             return True
-        return origin.rstrip("/").endswith(self.headers.get("Host", "\0"))
+        host = self.headers.get("Host", "")
+        # Compare the whole name. A name that merely ends with the host, such
+        # as "notfloppy.local" against "floppy.local", is another site.
+        return bool(host) and urlsplit(origin).netloc == host
 
     def do_POST(self) -> None:
         action = {"/accept": "accept", "/quarantine": "quarantine"}.get(self.path)

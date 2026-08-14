@@ -1268,3 +1268,33 @@ class SqliteIntegrityTests(SimpleTestCase):
         self.assertIn("parking_pid=$!", script)
         self.assertIn('wait "$parking_pid" || :', script)
         self.assertNotIn("tail -f /dev/null", script)
+
+    def test_the_report_survives_a_failure_to_name_the_titles(self):
+        """The report is the only way out. Nothing may suppress it."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir, rows=3)
+
+            def raise_damaged(_conn):
+                message = "database disk image is malformed"
+                raise sqlite3.DatabaseError(message)
+
+            with (
+                mock.patch.object(
+                    sqlite_integrity,
+                    "_describe_affected",
+                    raise_damaged,
+                ),
+                self.assertRaises(SystemExit) as ctx,
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            self.assertEqual(ctx.exception.code, 1)
+            output = stderr.getvalue()
+            self.assertIn("Could not name the affected entries", output)
+            # The operator still gets the report and the way out of the incident.
+            report = self.read_incident_report(db_path)
+            self.assertEqual(report["status"], "blocked")
+            self.assertIn(f"accept:{report['incident_token']}", output)
+            self.assertEqual(report["affected"], [])
+

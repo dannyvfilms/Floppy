@@ -372,3 +372,36 @@ class RecoveryPageTests(SimpleTestCase):
             page_path = Path(tmp_dir) / "floppy-recovery.html"
             self.assertTrue(page_path.is_file())
             self.assertIn("Your data is safe", page_path.read_text())
+
+    def test_a_damaged_value_does_not_stop_the_page(self):
+        # The page exists because the database is damaged. SQLite gives an
+        # INTEGER column integer affinity only for values that look numeric,
+        # so a damaged season number can be text.
+        report = {
+            "total_conflicts": "many",
+            "can_quarantine": True,
+            "affected": [{"title": "Breaking Bad", "season": "S1", "count": "x"}],
+            "affected_other_titles": None,
+            "affected_unidentified": "?",
+        }
+        page = recovery.render_page(report, interactive=True)
+        self.assertIn("Breaking Bad, Season S1", page)
+        self.assertIn("0 entries", page)
+
+    def test_a_lookalike_host_cannot_make_the_choice(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_incident(tmp_dir)
+            self.block_startup(db_path)
+            base = self.serve(db_path)
+            host = base.split("//", 1)[1]
+
+            request = urllib.request.Request(  # noqa: S310
+                f"{base}/accept",
+                data=b"",
+                headers={"Origin": f"http://not{host}"},
+            )
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(request)  # noqa: S310
+            self.assertEqual(ctx.exception.code, 403)
+            self.assertFalse(Path(f"{db_path}.integrity.decision").exists())
+

@@ -555,12 +555,16 @@ def _describe_affected(conn: sqlite3.Connection) -> dict:
     """
     described: Counter = Counter()
     unidentified = 0
+    # The scan below reads every foreign key, so test the one thing that makes
+    # it worth doing before paying for it.
+    has_item_table = conn.execute(
+        "SELECT 1 FROM main.sqlite_schema "
+        "WHERE type = 'table' AND name = 'app_item' COLLATE NOCASE",
+    ).fetchone()
+    if not has_item_table:
+        return {}
     try:
         unidentified += _snapshot_conflicts(conn, require_row_ids=False)
-        has_item_table = conn.execute(
-            "SELECT 1 FROM main.sqlite_schema "
-            "WHERE type = 'table' AND name = 'app_item' COLLATE NOCASE",
-        ).fetchone()
         tables = [
             row[0]
             for row in conn.execute(
@@ -580,7 +584,7 @@ def _describe_affected(conn: sqlite3.Connection) -> dict:
                     [table],
                 )
             }
-            if not has_item_table or "item_id" not in columns:
+            if "item_id" not in columns:
                 unidentified += total
                 continue
             named = 0
@@ -728,7 +732,12 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
                 )
         return
 
-    incident.update(_describe_affected(conn))
+    # Naming the affected titles is a convenience. The report is the only way
+    # out of the incident, so a failure here must never stop it being written.
+    try:
+        incident.update(_describe_affected(conn))
+    except Exception as error:
+        _log(f"[entrypoint] Could not name the affected entries: {error}")
     _print_incident(db_path, incident)
     if (
         prior_report
