@@ -53,9 +53,11 @@ class MetadataSnapshotTests(TestCase):
 
     def _save_ready_snapshot(self, *, payload=None, fetched_at=None, media_id="1"):
         identity = self._identity(media_id)
+        stored_payload = payload or self._complete_payload()
+        stored_payload = {**stored_payload, "media_id": media_id}
         return metadata_snapshots._save_snapshot(
             identity,
-            payload or self._complete_payload(),
+            stored_payload,
             policy=metadata_snapshots.get_metadata_policy(),
             state=MetadataSnapshot.State.READY,
             origin=MetadataSnapshot.Origin.PROVIDER,
@@ -143,6 +145,31 @@ class MetadataSnapshotTests(TestCase):
             "Refreshed title",
         )
 
+    @override_settings(FLOPPY_METADATA_FAILURE_RETRY_SECONDS=3600)
+    @patch("app.providers.tmdb.movie")
+    def test_forced_refresh_ignores_automatic_retry_delay(self, mock_movie):
+        snapshot = self._save_ready_snapshot(
+            fetched_at=timezone.now() - timedelta(days=2),
+        )
+        snapshot.state = MetadataSnapshot.State.FAILED
+        snapshot.last_failure_at = timezone.now()
+        snapshot.failure_code = "connection_error"
+        snapshot.save(
+            update_fields=["failure_code", "last_failure_at", "state", "updated_at"],
+        )
+        mock_movie.return_value = self._complete_payload(title="Manual refresh")
+
+        result = services.get_media_metadata(
+            MediaTypes.MOVIE.value,
+            "1",
+            Sources.TMDB.value,
+            _floppy_refresh=True,
+        )
+
+        mock_movie.assert_called_once()
+        self.assertEqual(result["title"], "Manual refresh")
+        self.assertEqual(result["_floppy_cache"]["state"], "current")
+
     @patch("app.providers.tmdb.movie")
     def test_failed_refresh_keeps_last_known_good_payload(self, mock_movie):
         self._save_ready_snapshot(
@@ -186,6 +213,38 @@ class MetadataSnapshotTests(TestCase):
         self.assertEqual(result["synopsis"], "Stored synopsis")
         self.assertEqual(snapshot.payload["synopsis"], "Stored synopsis")
         self.assertEqual(snapshot.payload["details"]["runtime_minutes"], 120)
+
+    @override_settings(FLOPPY_METADATA_MERGE_MODE="replace")
+    def test_item_update_retains_provider_only_snapshot_fields(self):
+        item = Item.objects.create(
+            media_id="tracked-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Imported title",
+            original_title="Imported title",
+            localized_title="Imported title",
+            synopsis="Imported synopsis",
+        )
+        provider_payload = self._complete_payload(title="Provider title")
+        provider_payload["related"] = {
+            "recommendations": [{"media_id": "next-1", "title": "Next title"}],
+        }
+        self._save_ready_snapshot(
+            media_id=item.media_id,
+            payload=provider_payload,
+        )
+
+        item.title = "Edited local title"
+        item.save(update_fields=["title"])
+
+        snapshot = MetadataSnapshot.objects.get(
+            cache_key=self._identity(item.media_id).cache_key,
+        )
+        self.assertEqual(snapshot.payload["title"], "Edited local title")
+        self.assertEqual(
+            snapshot.payload["related"]["recommendations"][0]["media_id"],
+            "next-1",
+        )
 
     @override_settings(FLOPPY_METADATA_REFRESH_MODE="background")
     @patch("app.tasks_metadata_snapshots.refresh_metadata_snapshot.apply_async")
@@ -274,7 +333,9 @@ class MetadataSnapshotTests(TestCase):
         self.assertEqual(payload["title"], "Safe title")
 
     def test_oversized_payload_is_rejected_before_database_write(self):
-        with self.assertRaises(metadata_snapshots.MetadataSnapshotRejected) as raised:
+        with self.assertRaises(
+            metadata_snapshots.MetadataSnapshotRejectedError,
+        ) as raised:
             metadata_snapshots.sanitize_metadata_payload(
                 {"title": "x" * 4096},
                 max_payload_bytes=1024,
