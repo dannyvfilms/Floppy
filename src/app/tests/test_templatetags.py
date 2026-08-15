@@ -607,8 +607,8 @@ class AppTagsTests(TestCase):
             content,
         )
 
-    def test_history_card_episode_edit_uses_track_modal(self):
-        """Episode history cards should open the track modal so ratings can be edited."""
+    def test_history_card_episode_shows_watched_status_and_uses_track_modal(self):
+        """Episode history cards show watched status and open the track modal."""
         item = Item.objects.create(
             media_id="episode-history-1",
             source=Sources.TMDB.value,
@@ -664,6 +664,8 @@ class AppTagsTests(TestCase):
         self.assertIn('"instance_id": "7"', content)
         self.assertIn('"standard_modal": "1"', content)
         self.assertNotIn('hx-get="/history_modal/', content)
+        self.assertIn("media-status-chip", content)
+        self.assertIn('d="M21.801 10A10 10 0 1 1 17 3.335"', content)
 
     def test_history_card_teleports_alt_title_tooltip(self):
         """History cards should teleport alternate-title tooltips outside the clipped shell."""
