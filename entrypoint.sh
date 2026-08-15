@@ -185,5 +185,17 @@ export FLOPPY_CELERY_ROLE="${FLOPPY_CELERY_ROLE:-background}"
 export FLOPPY_START_INTERACTIVE_WORKER="${FLOPPY_START_INTERACTIVE_WORKER:-true}"
 export FLOPPY_START_DISCOVER_WORKER="${FLOPPY_START_DISCOVER_WORKER:-true}"
 
+if [ "$FLOPPY_START_INTERACTIVE_WORKER" = "true" ]; then
+    interactive_topology="on(interactive)"
+else
+    interactive_topology="off(combined)"
+fi
+if [ "$FLOPPY_START_DISCOVER_WORKER" = "true" ]; then
+    discover_topology="on(discover)"
+else
+    discover_topology="off(merged)"
+fi
+echo "[entrypoint] celery workers background=on(${FLOPPY_CELERY_QUEUES}) interactive=${interactive_topology} discover=${discover_topology}" >&2
+
 echo "[entrypoint] Starting services" >&2
 exec supervisord -c /etc/supervisord.conf

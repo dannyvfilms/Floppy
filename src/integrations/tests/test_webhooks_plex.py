@@ -2303,6 +2303,50 @@ class PlexWebhookTests(TestCase):
                     self.assertEqual(response.status_code, 200)
                     self.assertEqual(Movie.objects.count(), 0)
 
+    @patch.object(PlexWebhookProcessor, "_process_media")
+    @patch.object(
+        PlexWebhookProcessor,
+        "resolve_external_ids",
+        return_value={"tmdb_id": "123"},
+    )
+    def test_shared_username_list_matches_any_identity(
+        self,
+        mock_resolve_external_ids,
+        mock_process_media,
+    ):
+        """Shared webhook usernames accept any comma-separated identity."""
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "Second Friend"},
+            "Metadata": {
+                "type": "movie",
+                "title": "Test Movie",
+                "Guid": [{"id": "tmdb://123"}],
+            },
+        }
+
+        PlexWebhookProcessor().process_payload(
+            payload,
+            self.user,
+            source_username="First Friend, Second Friend",
+        )
+
+        mock_resolve_external_ids.assert_called_once()
+        mock_process_media.assert_called_once()
+
+        mock_resolve_external_ids.reset_mock()
+        mock_process_media.reset_mock()
+        payload["Account"] = {"title": "Unshared Friend"}
+
+        PlexWebhookProcessor().process_payload(
+            payload,
+            self.user,
+            source_username="First Friend, Second Friend",
+        )
+
+        mock_resolve_external_ids.assert_not_called()
+        mock_process_media.assert_not_called()
+
     def test_account_id_matching_accepts_connected_plex_owner(self):
         """Webhook user matching should accept the connected Plex account ID."""
         PlexAccount.objects.create(

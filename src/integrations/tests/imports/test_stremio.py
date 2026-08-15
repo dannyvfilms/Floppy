@@ -5,6 +5,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils.dateparse import parse_datetime
 from django_celery_beat.models import PeriodicTask
 
 from app.models import (
@@ -176,6 +177,16 @@ def fake_tv_with_seasons(media_id, season_numbers):
     return metadata
 
 
+def fake_tv_with_seasons_with_future_episode(media_id, season_numbers):
+    """Return TV metadata with an extra episode beyond max_progress."""
+    metadata = fake_tv_with_seasons(media_id, season_numbers)
+    for season_number in season_numbers:
+        metadata[f"season/{season_number}"]["episodes"].append(
+            {"episode_number": 4, "still_path": "/e4.jpg"},
+        )
+    return metadata
+
+
 class ImportStremioTests(TestCase):
     """Test importing library watch state from Stremio."""
 
@@ -197,6 +208,7 @@ class ImportStremioTests(TestCase):
         mode="new",
         trakt_configured=False,
         tmdb_find=None,
+        tmdb_tv_with_seasons=None,
     ):
         with (
             patch(
@@ -211,7 +223,7 @@ class ImportStremioTests(TestCase):
             patch("app.providers.tmdb.find", side_effect=tmdb_find or fake_tmdb_find),
             patch(
                 "app.providers.tmdb.tv_with_seasons",
-                side_effect=fake_tv_with_seasons,
+                side_effect=tmdb_tv_with_seasons or fake_tv_with_seasons,
             ),
             patch("app.providers.tmdb.movie", side_effect=fake_tmdb_movie),
             patch("app.providers.trakt.is_configured", return_value=trakt_configured),
@@ -374,6 +386,102 @@ class ImportStremioTests(TestCase):
         )
         self.assertEqual(episode_numbers, {1, 2})
 
+    def test_series_bitfield_gaps_do_not_complete_season(self):
+        """A final watched episode does not hide gaps in the season."""
+        video_ids = [f"tt0903747:1:{episode}" for episode in range(1, 4)]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "state": {
+                    "watched": encode_watched_bitfield(
+                        video_ids,
+                        {"tt0903747:1:1", "tt0903747:1:3"},
+                    ),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                    "video_id": "tt0903747:1:2",
+                },
+            },
+        ]
+
+        self._run_import(
+            library_items,
+            cinemeta_videos={"tt0903747": video_ids},
+        )
+
+        season = Season.objects.get(item__media_id="1396")
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+        self.assertEqual(
+            set(
+                Episode.objects.filter(item__media_id="1396").values_list(
+                    "item__episode_number",
+                    flat=True,
+                ),
+            ),
+            {1, 3},
+        )
+
+    def test_existing_season_completion_does_not_fan_out_unwatched_episodes(self):
+        """Stremio completion never creates episodes absent from its bitfield."""
+        video_ids = [f"tt0903747:1:{episode}" for episode in range(1, 5)]
+        first_sync_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "state": {
+                    "watched": encode_watched_bitfield(
+                        video_ids,
+                        {"tt0903747:1:1", "tt0903747:1:2"},
+                    ),
+                    "lastWatched": "2023-01-01T00:00:00Z",
+                },
+            },
+        ]
+        self._run_import(
+            first_sync_items,
+            cinemeta_videos={"tt0903747": video_ids},
+            tmdb_tv_with_seasons=fake_tv_with_seasons_with_future_episode,
+        )
+
+        second_sync_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "state": {
+                    "watched": encode_watched_bitfield(
+                        video_ids,
+                        {
+                            "tt0903747:1:1",
+                            "tt0903747:1:2",
+                            "tt0903747:1:3",
+                        },
+                    ),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                },
+            },
+        ]
+        self._run_import(
+            second_sync_items,
+            cinemeta_videos={"tt0903747": video_ids},
+            tmdb_tv_with_seasons=fake_tv_with_seasons_with_future_episode,
+        )
+
+        season = Season.objects.get(item__media_id="1396")
+        self.assertEqual(season.status, Status.COMPLETED.value)
+        self.assertEqual(Episode.objects.filter(item__media_id="1396").count(), 3)
+        self.assertEqual(
+            set(
+                Episode.objects.filter(item__media_id="1396").values_list(
+                    "item__episode_number",
+                    flat=True,
+                ),
+            ),
+            {1, 2, 3},
+        )
+
     def test_exact_anime_series_uses_grouped_buckets(self):
         """An exact anime match imports Stremio history into grouped buckets."""
         video_ids = ["tt0903747:1:1"]
@@ -463,6 +571,15 @@ class ImportStremioTests(TestCase):
         tv_obj = TV.objects.get(item__media_id="1396")
         self.assertEqual(tv_obj.status, Status.IN_PROGRESS.value)
 
+        historical_end_date = parse_datetime("2022-12-01T00:00:00Z")
+        first_episode = Episode.objects.get(
+            item__media_id="1396",
+            item__episode_number=1,
+        )
+        Episode.objects.filter(pk=first_episode.pk).update(
+            end_date=historical_end_date,
+        )
+
         second_sync_items = [
             {
                 "_id": "tt0903747",
@@ -490,6 +607,16 @@ class ImportStremioTests(TestCase):
         )
         self.assertEqual(episode_numbers, {1, 2})
         self.assertEqual(Episode.objects.filter(item__media_id="1396").count(), 2)
+
+        episodes = {
+            episode.item.episode_number: episode
+            for episode in Episode.objects.filter(item__media_id="1396")
+        }
+        self.assertEqual(episodes[1].end_date, historical_end_date)
+        self.assertEqual(
+            episodes[2].end_date,
+            parse_datetime("2023-01-02T00:00:00Z"),
+        )
 
         tv_obj.refresh_from_db()
         self.assertEqual(tv_obj.status, Status.IN_PROGRESS.value)

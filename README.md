@@ -471,11 +471,11 @@ Plan a service change before you select new URLs:
 
 Floppy sizes itself to the machine it finds. On startup it reads the container's cgroup
 memory and CPU limits plus `/proc/meminfo`, picks a resource tier, and scales its process
-count, batch sizes, and background task cadence accordingly. The chosen tier is logged on
-the first line of the container's output:
+count, batch sizes, and background task cadence accordingly. The chosen tier and effective
+Celery worker topology are logged on the first line of the container's output:
 
 ```
-[entrypoint] resources tier=minimal mem=1.9GiB swap=0 cpus=2 -> gunicorn 1x2, celery queues "celery,interactive,discover"
+[entrypoint] resources tier=minimal mem=1.9GiB swap=0 cpus=2 -> gunicorn 1x2, celery workers background=on(celery,interactive,discover) interactive=off(combined) discover=off(merged)
 ```
 
 - **standard** (3 GB+): one threaded gunicorn worker and two Celery workers. Discover and
@@ -504,6 +504,13 @@ Two things worth knowing:
 
 Override any of it with `FLOPPY_RESOURCE_TIER`, `WEB_CONCURRENCY`, `GUNICORN_THREADS`, or
 `FLOPPY_REDIS_MAXMEMORY`.
+
+To verify the standard-tier worker split in a disposable Compose project after building an
+image, run:
+
+```bash
+scripts/smoke_worker_topology.sh --image floppy:worker-topology
+```
 
 ### Measuring container memory
 

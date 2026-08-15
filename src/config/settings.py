@@ -1489,6 +1489,12 @@ def _scaled(value: int) -> int:
 
 
 CELERY_BEAT_SCHEDULE = {
+    "cleanup_task_results": {
+        "task": "Cleanup task results",
+        "schedule": 60 * 15,
+        "kwargs": {"batch_size": 5000},
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
     "reload_calendar": {
         "task": "Reload calendar",
         "schedule": 60 * 60 * 24,  # every 24 hours

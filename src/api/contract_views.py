@@ -12,12 +12,21 @@ from django.views.decorators.http import condition, require_safe
 from app.domain_vocabulary import render_glossary_rows
 from app.helpers import build_absolute_app_url
 
-OPENAPI_CONTRACT = (settings.BASE_DIR / "api" / "contracts" / "openapi.yaml").read_bytes()
+_CONTRACTS_DIR = settings.BASE_DIR / "api" / "contracts"
+
+OPENAPI_CONTRACT = (_CONTRACTS_DIR / "openapi.yaml").read_bytes()
 OPENAPI_CONTRACT_ETAG = f'"{sha256(OPENAPI_CONTRACT).hexdigest()}"'
+
+JSONLD_CONTEXT = (_CONTRACTS_DIR / "context.jsonld").read_bytes()
+JSONLD_CONTEXT_ETAG = f'"{sha256(JSONLD_CONTEXT).hexdigest()}"'
 
 
 def _contract_etag(_request):
     return OPENAPI_CONTRACT_ETAG
+
+
+def _context_etag(_request):
+    return JSONLD_CONTEXT_ETAG
 
 
 def _api_example_url(route_name):
@@ -47,3 +56,15 @@ def api_docs(request):
 def openapi_contract(_request):
     """Serve the committed OpenAPI contract with public cache validation."""
     return FileResponse(BytesIO(OPENAPI_CONTRACT), content_type="application/yaml")
+
+
+@login_not_required
+@require_safe
+@cache_control(public=True, max_age=3600)
+@condition(etag_func=_context_etag)
+def jsonld_context(_request):
+    """Serve the committed JSON-LD domain context.
+
+    The representation does not vary by host, so no ``Vary: Host`` is needed.
+    """
+    return FileResponse(BytesIO(JSONLD_CONTEXT), content_type="application/ld+json")

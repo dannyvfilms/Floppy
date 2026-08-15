@@ -21,6 +21,7 @@ class AboutViewTests(TestCase):
         expected_links = {
             "API Reference": reverse("swagger-ui"),
             "Verified API Schema": reverse("openapi-contract"),
+            "Domain Context (JSON-LD)": reverse("jsonld-context"),
             "Full Diagnostic API Schema": reverse("schema"),
         }
         api_links = [
@@ -40,5 +41,6 @@ class AboutViewTests(TestCase):
                 icon = link.find("svg")
                 self.assertEqual(icon.get("aria-hidden"), "true")
                 self.assertEqual(icon.get("focusable"), "false")
-        self.assertNotContains(response, "JSON-LD")
+        # AsyncAPI (W3) is not shipped yet, so About must not advertise it.
+        # The rule is unchanged: link only artifacts that actually exist.
         self.assertNotContains(response, "AsyncAPI")

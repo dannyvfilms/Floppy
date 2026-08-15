@@ -550,6 +550,257 @@
       </div>
 
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
+        <h4 class="text-sm font-medium mb-3">Share Plex Webhook</h4>
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          Share this server's webhook with another Floppy user without sharing your Plex token. The recipient must enable the share before events are recorded.
+        </p>
+        {% if plex_connected %}
+          <form method="post"
+                action="{% url 'update_plex_webhook_share' %}"
+                class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end"
+                x-data="{
+                  dropdownOpen: false,
+                  selectedRecipient: '',
+                  selectedLibraries: JSON.parse('{{ plex_library_options_json|escapejs }}').map((library) => library.value),
+                  availableLibraries: JSON.parse('{{ plex_library_options_json|escapejs }}'),
+                  selectedLabel() {
+                    if (!this.availableLibraries.length) {
+                      return 'No libraries available';
+                    }
+                    if (this.selectedLibraries.length === this.availableLibraries.length) {
+                      return 'All Libraries';
+                    }
+                    if (!this.selectedLibraries.length) {
+                      return 'No Libraries';
+                    }
+                    return `${this.selectedLibraries.length} selected`;
+                  },
+                  toggleLibrary(value) {
+                    if (this.selectedLibraries.includes(value)) {
+                      this.selectedLibraries = this.selectedLibraries.filter((entry) => entry !== value);
+                    } else {
+                      this.selectedLibraries = [...this.selectedLibraries, value];
+                    }
+                  },
+                  isLibrarySelected(value) {
+                    return this.selectedLibraries.includes(value);
+                  },
+                  allLibrariesSelected() {
+                    return this.availableLibraries.length > 0
+                      && this.selectedLibraries.length === this.availableLibraries.length;
+                  },
+                  toggleAllLibraries() {
+                    if (this.allLibrariesSelected()) {
+                      this.selectedLibraries = [];
+                    } else {
+                      this.selectedLibraries = this.availableLibraries.map((library) => library.value);
+                    }
+                  },
+                }">
+            {% csrf_token %}
+            <div>
+              <label class="block text-sm text-[var(--color-text-secondary)] mb-1" for="plex-webhook-share-recipient">Floppy user</label>
+              <div class="relative">
+                <select id="plex-webhook-share-recipient"
+                        name="plex_webhook_share_recipient"
+                        x-model="selectedRecipient"
+                        class="w-full py-2 px-3 pr-9 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none"
+                        required>
+                  <option value="">Select a user</option>
+                  {% for recipient in plex_share_recipients %}
+                    <option value="{{ recipient.pk }}">{{ recipient.username }}</option>
+                  {% endfor %}
+                </select>
+                {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center gap-1 mb-1">
+                <label class="block text-sm text-[var(--color-text-secondary)]" for="plex-webhook-share-username">Plex username</label>
+                <div class="relative" x-data="{ tooltipOpen: false }">
+                  <button @mouseenter="tooltipOpen = true"
+                          @mouseleave="tooltipOpen = false"
+                          @click="tooltipOpen = !tooltipOpen"
+                          @click.outside="tooltipOpen = false"
+                          class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
+                          type="button"
+                          aria-label="Show Plex username filtering information">
+                    {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
+                  </button>
+                  <div x-show="tooltipOpen"
+                       x-cloak
+                       x-transition:enter="transition ease-out duration-200"
+                       x-transition:enter-start="opacity-0 scale-95"
+                       x-transition:enter-end="opacity-100 scale-100"
+                       x-transition:leave="transition ease-in duration-150"
+                       x-transition:leave-start="opacity-100 scale-100"
+                       x-transition:leave-end="opacity-0 scale-95"
+                       class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 bg-[var(--color-surface-strong)] border border-[var(--color-surface-border)] text-[var(--color-text)] text-xs rounded-lg shadow-lg z-50"
+                       style="display: none;">
+                    This username (or several, comma-separated) will be used to filter which events are sent to your webhook.
+                    <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent" style="border-top-color: var(--color-surface-strong);"></div>
+                  </div>
+                </div>
+              </div>
+              <input id="plex-webhook-share-username"
+                     name="plex_webhook_share_username"
+                     class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                     type="text"
+                     placeholder="username1, username2, username3"
+                     maxlength="255"
+                     required>
+            </div>
+            {% include "users/components/plex_library_selector.html" %}
+
+            <button type="submit"
+                    class="h-10 flex items-center justify-center px-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer whitespace-nowrap">
+              {% include "app/icons/link.svg" with classes="w-4 h-4 mr-2" %}
+              Share
+            </button>
+          </form>
+          {% if plex_webhook_shares %}
+            <div class="mt-5 space-y-3">
+              <h5 class="text-sm font-medium text-[var(--color-text-secondary)]">Current shares</h5>
+              {% for share in plex_webhook_shares %}
+                <div class="bg-[var(--color-surface-strong)] rounded-md p-3 space-y-3">
+                  <form method="post"
+                        action="{% url 'update_plex_webhook_share' %}"
+                        class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end"
+                        x-data="{
+                          dropdownOpen: false,
+                          selectedLibraries: JSON.parse('{{ share.selected_libraries_json|escapejs }}'),
+                          availableLibraries: JSON.parse('{{ plex_library_options_json|escapejs }}'),
+                          selectedLabel() {
+                            if (!this.availableLibraries.length) {
+                              return 'No libraries available';
+                            }
+                            if (this.selectedLibraries.length === this.availableLibraries.length) {
+                              return 'All Libraries';
+                            }
+                            if (!this.selectedLibraries.length) {
+                              return 'No Libraries';
+                            }
+                            return `${this.selectedLibraries.length} selected`;
+                          },
+                          toggleLibrary(value) {
+                            if (this.selectedLibraries.includes(value)) {
+                              this.selectedLibraries = this.selectedLibraries.filter((entry) => entry !== value);
+                            } else {
+                              this.selectedLibraries = [...this.selectedLibraries, value];
+                            }
+                          },
+                          isLibrarySelected(value) {
+                            return this.selectedLibraries.includes(value);
+                          },
+                          allLibrariesSelected() {
+                            return this.availableLibraries.length > 0
+                              && this.selectedLibraries.length === this.availableLibraries.length;
+                          },
+                          toggleAllLibraries() {
+                            if (this.allLibrariesSelected()) {
+                              this.selectedLibraries = [];
+                            } else {
+                              this.selectedLibraries = this.availableLibraries.map((library) => library.value);
+                            }
+                          },
+                        }">
+                    {% csrf_token %}
+                    <input type="hidden" name="plex_webhook_share_id" value="{{ share.pk }}">
+                    <div>
+                      <label class="block text-sm text-[var(--color-text-secondary)] mb-1">Floppy user</label>
+                      <div class="h-10 flex items-center px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600">
+                        {{ share.recipient.username }}
+                      </div>
+                    </div>
+                    <div>
+                      <div class="flex items-center gap-1 mb-1">
+                        <label class="block text-sm text-[var(--color-text-secondary)]" for="plex-webhook-share-username-{{ share.pk }}">Plex username</label>
+                        <div class="relative" x-data="{ tooltipOpen: false }">
+                          <button @mouseenter="tooltipOpen = true"
+                                  @mouseleave="tooltipOpen = false"
+                                  @click="tooltipOpen = !tooltipOpen"
+                                  @click.outside="tooltipOpen = false"
+                                  class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
+                                  type="button"
+                                  aria-label="Show Plex username filtering information">
+                            {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
+                          </button>
+                          <div x-show="tooltipOpen"
+                               x-cloak
+                               x-transition:enter="transition ease-out duration-200"
+                               x-transition:enter-start="opacity-0 scale-95"
+                               x-transition:enter-end="opacity-100 scale-100"
+                               x-transition:leave="transition ease-in duration-150"
+                               x-transition:leave-start="opacity-100 scale-100"
+                               x-transition:leave-end="opacity-0 scale-95"
+                               class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 bg-[var(--color-surface-strong)] border border-[var(--color-surface-border)] text-[var(--color-text)] text-xs rounded-lg shadow-lg z-50"
+                               style="display: none;">
+                            This username (or several, comma-separated) will be used to filter which events are sent to your webhook.
+                            <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent" style="border-top-color: var(--color-surface-strong);"></div>
+                          </div>
+                        </div>
+                      </div>
+                      <input id="plex-webhook-share-username-{{ share.pk }}"
+                             name="plex_webhook_share_username"
+                             class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                             type="text"
+                             value="{{ share.plex_username }}"
+                             maxlength="255"
+                             required>
+                    </div>
+                    {% include "users/components/plex_library_selector.html" %}
+                    <button type="submit"
+                            class="h-10 flex items-center justify-center px-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer whitespace-nowrap">
+                      {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
+                      Save
+                    </button>
+                  </form>
+                  <div class="flex items-center justify-between gap-3 flex-wrap">
+                    <span class="text-xs text-[var(--color-text-muted)]">{% if share.recipient_enabled %}Enabled by recipient{% else %}Waiting for recipient opt-in{% endif %}</span>
+                    <form method="post" action="{% url 'delete_plex_webhook_share' %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="plex_webhook_share_id" value="{{ share.pk }}">
+                      <button type="submit"
+                              class="px-3 py-1.5 text-xs rounded-md bg-red-500/10 text-red-300 border border-red-400/30 hover:bg-red-500/20 transition-colors cursor-pointer">
+                        Revoke Access
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% else %}
+          <p class="text-sm text-amber-300">Connect Plex from the Import page before sharing its webhook.</p>
+        {% endif %}
+      </div>
+
+      {% if received_plex_webhook_shares %}
+        <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
+          <h4 class="text-sm font-medium mb-3">Shared Plex Webhooks</h4>
+          <div class="space-y-3">
+            {% for share in received_plex_webhook_shares %}
+              <div class="bg-[var(--color-surface-strong)] rounded-md p-3 flex items-center justify-between gap-3 flex-wrap">
+                <div class="text-sm text-[var(--color-text-secondary)]">
+                  <p>Shared by <strong>{{ share.owner.username }}</strong> for Plex username <strong>{{ share.plex_username }}</strong>.</p>
+                  <p class="text-xs text-[var(--color-text-muted)] mt-1">{% if share.all_libraries %}All libraries{% elif share.allowed_libraries %}Selected libraries only{% else %}No libraries{% endif %}</p>
+                </div>
+                <form method="post" action="{% url 'toggle_plex_webhook_share' %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="plex_webhook_share_id" value="{{ share.pk }}">
+                  <input type="hidden" name="enabled" value="{% if share.recipient_enabled %}0{% else %}1{% endif %}">
+                  <button type="submit"
+                          class="px-3 py-1.5 text-xs rounded-md {% if share.recipient_enabled %}bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20{% else %}bg-indigo-600 text-white hover:bg-indigo-700{% endif %} transition-colors cursor-pointer">
+                    {% if share.recipient_enabled %}Turn Off{% else %}Turn On{% endif %}
+                  </button>
+                </form>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
         <h4 class="text-sm font-medium mb-3">Webhook Status</h4>
         {% if plex_webhook_needs_update %}
           <div class="flex items-start gap-2">

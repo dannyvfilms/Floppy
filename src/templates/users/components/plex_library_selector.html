@@ -1,0 +1,53 @@
+<div>
+  <label class="block text-sm text-[var(--color-text-secondary)] mb-1">Libraries</label>
+  <div class="relative" @click.outside="dropdownOpen = false">
+    <button type="button"
+            class="h-10 px-3 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center gap-2 w-full cursor-pointer"
+            @click="dropdownOpen = !dropdownOpen"
+            :aria-expanded="dropdownOpen">
+      {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
+      <span class="block min-w-0 truncate" x-text="selectedLabel()"></span>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="w-4 h-4 ml-auto" aria-hidden="true">
+        <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+      </svg>
+    </button>
+
+    <div x-cloak
+         x-show="dropdownOpen"
+         x-transition:enter="transition ease-out duration-100"
+         x-transition:enter-start="transform opacity-0 scale-95"
+         x-transition:enter-end="transform opacity-100 scale-100"
+         x-transition:leave="transition ease-in duration-75"
+         x-transition:leave-start="transform opacity-100 scale-100"
+         x-transition:leave-end="transform opacity-0 scale-95"
+         class="absolute left-0 mt-2 w-full rounded-md bg-[var(--color-surface-strong)] border border-gray-700 shadow-lg overflow-hidden z-40">
+      <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700">
+        <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Plex Libraries</div>
+        <button type="button"
+                class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
+                @click="toggleAllLibraries()"
+                x-text="allLibrariesSelected() ? 'Hide all' : 'Show all'"></button>
+      </div>
+      <div class="max-h-64 overflow-y-auto">
+        <template x-for="library in availableLibraries" :key="library.value">
+          <button type="button"
+                  class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                  @click="toggleLibrary(library.value)">
+            <span class="block min-w-0 truncate" x-text="library.server_name ? `${library.label} (${library.server_name})` : library.label"></span>
+            <span class="ml-auto" x-show="isLibrarySelected(library.value)">
+              {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+            </span>
+          </button>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <input type="hidden"
+         name="plex_webhook_share_all_libraries"
+         value="1"
+         :disabled="!allLibrariesSelected()">
+  <template x-for="library in selectedLibraries" :key="`share-selected-${library}`">
+    <input type="hidden" name="plex_webhook_share_libraries" :value="library">
+  </template>
+</div>

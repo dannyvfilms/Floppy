@@ -6,7 +6,7 @@ never block a web worker.
 """
 
 import json
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -15,7 +15,7 @@ from django.urls import reverse
 from simple_history.models import HistoricalRecords
 
 from integrations import tasks
-from integrations.models import JellyfinAccount
+from integrations.models import JellyfinAccount, PlexAccount, PlexWebhookShare
 
 
 class WebhookViewEnqueueTests(TestCase):
@@ -49,6 +49,69 @@ class WebhookViewEnqueueTests(TestCase):
         url = reverse("plex_webhook", kwargs={"token": "hook-token"})
         payload = {"event": "media.scrobble"}
         response = self.client.post(url, data={"payload": json.dumps(payload)})
+        self.assertEqual(response.status_code, 200)
+        mock_delay.assert_called_once_with("plex", payload, self.user.id)
+
+    @patch("integrations.tasks.process_webhook.delay")
+    def test_plex_enqueues_enabled_shared_recipient(self, mock_delay):
+        """A matching enabled share receives the same Plex payload."""
+        recipient = get_user_model().objects.create_user(username="recipient")
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="owner-plex-token",
+            plex_username="webhookuser",
+        )
+        share = PlexWebhookShare.objects.create(
+            owner=self.user,
+            recipient=recipient,
+            plex_username="PlexFriend",
+            recipient_enabled=True,
+            allowed_libraries=["machine-a::1"],
+        )
+        url = reverse("plex_webhook", kwargs={"token": "hook-token"})
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "plexfriend"},
+        }
+
+        response = self.client.post(url, data={"payload": json.dumps(payload)})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            mock_delay.call_args_list,
+            [
+                call("plex", payload, self.user.id),
+                call("plex", payload, recipient.id, share_id=share.id),
+            ],
+        )
+
+    @patch("integrations.tasks.process_webhook.delay")
+    def test_plex_does_not_enqueue_disabled_or_unmatched_shares(self, mock_delay):
+        """Disabled and differently named shares do not receive events."""
+        recipient = get_user_model().objects.create_user(username="recipient")
+        PlexWebhookShare.objects.create(
+            owner=self.user,
+            recipient=recipient,
+            plex_username="someone-else",
+            recipient_enabled=True,
+        )
+        disabled_recipient = get_user_model().objects.create_user(
+            username="disabled-recipient",
+        )
+        PlexWebhookShare.objects.create(
+            owner=self.user,
+            recipient=disabled_recipient,
+            plex_username="testuser",
+            recipient_enabled=False,
+        )
+        url = reverse("plex_webhook", kwargs={"token": "hook-token"})
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+        }
+
+        response = self.client.post(url, data={"payload": json.dumps(payload)})
+
         self.assertEqual(response.status_code, 200)
         mock_delay.assert_called_once_with("plex", payload, self.user.id)
 
@@ -112,6 +175,61 @@ class ProcessWebhookTaskTests(TestCase):
         mock_process.assert_called_once()
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.plex_webhook_last_received_at)
+
+    @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
+    def test_shared_plex_task_uses_owner_account_and_recipient(self, mock_process):
+        """Shared processing attributes data to the recipient without sharing tokens."""
+        recipient = get_user_model().objects.create_user(username="recipient")
+        account = PlexAccount.objects.create(
+            user=self.user,
+            plex_token="owner-plex-token",
+            plex_username="taskuser",
+        )
+        share = PlexWebhookShare.objects.create(
+            owner=self.user,
+            recipient=recipient,
+            plex_username="plex-friend",
+            allowed_libraries=["machine-a::1"],
+            recipient_enabled=True,
+        )
+        payload = {"event": "media.scrobble"}
+
+        tasks.process_webhook(
+            "plex",
+            payload,
+            recipient.id,
+            share_id=share.id,
+        )
+
+        mock_process.assert_called_once_with(
+            payload,
+            recipient,
+            source_account=account,
+            source_username="plex-friend",
+            source_libraries=["machine-a::1"],
+        )
+        recipient.refresh_from_db()
+        self.assertIsNone(recipient.plex_webhook_last_received_at)
+
+    @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
+    def test_revoked_shared_plex_task_is_skipped(self, mock_process):
+        """A queued task does nothing after the recipient disables the share."""
+        recipient = get_user_model().objects.create_user(username="recipient")
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="owner-plex-token",
+            plex_username="taskuser",
+        )
+        share = PlexWebhookShare.objects.create(
+            owner=self.user,
+            recipient=recipient,
+            plex_username="plex-friend",
+            recipient_enabled=False,
+        )
+
+        tasks.process_webhook("plex", {"event": "media.scrobble"}, recipient.id, share_id=share.id)
+
+        mock_process.assert_not_called()
 
     @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
     def test_plex_failure_marks_error_and_reraises(self, mock_process):

@@ -10,6 +10,7 @@ from simple_history.models import HistoricalRecords
 
 from app.providers.services import ProviderAPIError
 from integrations import anime_mapping
+from integrations.models import PlexWebhookShare
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +39,48 @@ def _webhook_history_user(user):
             del HistoricalRecords.context.request
 
 
-def _process_webhook(provider, payload, user_id):
+def _process_webhook(provider, payload, user_id, share_id=None):
     """Process a validated media server webhook payload in the worker."""
     user_model = get_user_model()
-    try:
-        user = user_model.objects.get(pk=user_id)
-    except user_model.DoesNotExist:
-        logger.warning("Skipping %s webhook for missing user id %s", provider, user_id)
-        return
+    share = None
+    source_account = None
+    source_username = None
+    source_libraries = None
+
+    if share_id is not None:
+        try:
+            share = (
+                PlexWebhookShare.objects.select_related(
+                    "owner__plex_account",
+                    "recipient",
+                )
+                .get(
+                    pk=share_id,
+                    recipient_id=user_id,
+                    recipient_enabled=True,
+                )
+            )
+        except PlexWebhookShare.DoesNotExist:
+            logger.info("Skipping disabled or missing Plex webhook share id %s", share_id)
+            return
+
+        if not share.owner.is_active:
+            logger.info("Skipping Plex webhook share from inactive owner id %s", share.owner_id)
+            return
+
+        user = share.recipient
+        source_account = getattr(share.owner, "plex_account", None)
+        if not source_account or not source_account.plex_token:
+            logger.info("Skipping Plex webhook share %s without an owner Plex account", share.id)
+            return
+        source_username = share.plex_username
+        source_libraries = share.allowed_libraries
+    else:
+        try:
+            user = user_model.objects.get(pk=user_id)
+        except user_model.DoesNotExist:
+            logger.warning("Skipping %s webhook for missing user id %s", provider, user_id)
+            return
 
     processor = import_string(WEBHOOK_PROCESSORS[provider])()
     if user.anime_enabled:
@@ -66,15 +101,28 @@ def _process_webhook(provider, payload, user_id):
 
     try:
         with _webhook_history_user(user):
-            processor.process_payload(payload, user)
+            if share is None:
+                processor.process_payload(payload, user)
+            else:
+                processor.process_payload(
+                    payload,
+                    user,
+                    source_account=source_account,
+                    source_username=source_username,
+                    source_libraries=source_libraries,
+                )
     except Exception:
-        logger.exception("Error processing %s webhook payload", provider)
-        if provider == "plex":
+        logger.exception(
+            "Error processing %s webhook payload%s",
+            provider,
+            f" for Plex webhook share {share.id}" if share else "",
+        )
+        if provider == "plex" and share is None:
             user.mark_plex_webhook_error(
                 "Plex webhook processing failed. Check server logs for details.",
             )
         raise
-    if provider == "plex":
+    if provider == "plex" and share is None:
         user.mark_plex_webhook_received()
 
     if provider == "jellyfin":
@@ -96,13 +144,13 @@ def _process_webhook(provider, payload, user_id):
     retry_backoff=True,
     retry_jitter=True,
 )
-def process_webhook(provider, payload, user_id):
+def process_webhook(provider, payload, user_id, share_id=None):
     """Process a media-server webhook using its provider-specific processor.
 
     Keeps webhook HTTP handlers fast: external metadata lookups and DB writes
     run on the worker instead of blocking a web worker.
     """
-    return _process_webhook(provider, payload, user_id)
+    return _process_webhook(provider, payload, user_id, share_id=share_id)
 
 
 @shared_task(

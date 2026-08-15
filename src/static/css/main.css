@@ -1785,6 +1785,12 @@
       border-color: color-mix(in oklab, var(--color-orange-400) 28%, transparent);
     }
   }
+  .border-red-400\/30 {
+    border-color: color-mix(in srgb, oklch(70.4% 0.191 22.216) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-red-400) 30%, transparent);
+    }
+  }
   .border-red-500 {
     border-color: var(--color-red-500);
   }
@@ -2702,6 +2708,9 @@
   }
   .pr-4 {
     padding-right: calc(var(--spacing) * 4);
+  }
+  .pr-9 {
+    padding-right: calc(var(--spacing) * 9);
   }
   .pr-10 {
     padding-right: calc(var(--spacing) * 10);

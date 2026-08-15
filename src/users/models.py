@@ -6,6 +6,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from celery import states
 from celery.result import AsyncResult
 from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -49,6 +50,20 @@ MAX_INTERNAL_RATING_SCORE = 10
 def generate_token():
     """Generate a user token."""
     return secrets.token_urlsafe(24)
+
+
+class FloppyUserManager(DjangoUserManager):
+    """User manager with an explicit helper for disposable test accounts."""
+
+    def create_test_user(self, username, email=None, password=None, **extra_fields):
+        """Create a user that is excluded from normal user pickers."""
+        extra_fields["is_test_account"] = True
+        return self.create_user(
+            username=username,
+            email=email,
+            password=password,
+            **extra_fields,
+        )
 
 
 class HomeSortChoices(models.TextChoices):
@@ -414,6 +429,13 @@ class User(AbstractUser):
     """Custom user model."""
 
     is_demo = models.BooleanField(default=False)
+    is_test_account = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Exclude this account from normal user pickers and sharing controls.",
+    )
+
+    objects = FloppyUserManager()
 
     last_search_type = models.CharField(
         max_length=10,

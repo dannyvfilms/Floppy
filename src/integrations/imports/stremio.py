@@ -22,6 +22,7 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from simple_history.utils import bulk_update_with_history
 
 import app
 import app.providers.mal
@@ -733,10 +734,23 @@ class StremioImporter:
                     },
                 )
 
-            if max(episode_numbers) == season_metadata["max_progress"]:
-                season_status = Status.COMPLETED.value
-            else:
-                season_status = tv_instance.status
+            max_progress = int(season_metadata.get("max_progress") or 0)
+            watched_episode_numbers = {
+                int(number)
+                for number in episode_numbers
+                if int(number) > 0
+            }
+            season_complete = (
+                max_progress > 0
+                and set(range(1, max_progress + 1)).issubset(
+                    watched_episode_numbers,
+                )
+            )
+            season_status = (
+                Status.COMPLETED.value
+                if season_complete
+                else Status.IN_PROGRESS.value
+            )
 
             # An already-tracked show reaches here on re-sync (tv_instance may
             # be the existing, saved TV row) - a season already created by a
@@ -746,7 +760,22 @@ class StremioImporter:
                 item=season_item,
             ).first()
             if existing_season is not None:
-                self._advance_status_in_place(existing_season, season_status)
+                old_rank = _STATUS_RANK.get(existing_season.status)
+                new_rank = _STATUS_RANK.get(season_status)
+                if (
+                    old_rank is not None
+                    and new_rank is not None
+                    and new_rank > old_rank
+                ):
+                    # Season.save() treats completion as a manual action and
+                    # creates every episode after the latest watched one.
+                    # Stremio already supplied the authoritative episode set.
+                    existing_season.status = season_status
+                    bulk_update_with_history(
+                        [existing_season],
+                        app.models.Season,
+                        ["status"],
+                    )
                 season_instance = existing_season
             else:
                 season_instance = app.models.Season(
@@ -799,7 +828,7 @@ class StremioImporter:
                 episode_instance = app.models.Episode(
                     item=episode_item,
                     related_season=season_instance,
-                    end_date=None,
+                    end_date=history_date,
                 )
                 episode_instance._history_date = history_date
                 self.bulk_media[MediaTypes.EPISODE.value].append(episode_instance)

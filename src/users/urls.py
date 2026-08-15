@@ -162,6 +162,21 @@ urlpatterns = [
         name="update_plex_webhook_libraries",
     ),
     path(
+        "update_plex_webhook_share",
+        views.update_plex_webhook_share,
+        name="update_plex_webhook_share",
+    ),
+    path(
+        "toggle_plex_webhook_share",
+        views.toggle_plex_webhook_share,
+        name="toggle_plex_webhook_share",
+    ),
+    path(
+        "delete_plex_webhook_share",
+        views.delete_plex_webhook_share,
+        name="delete_plex_webhook_share",
+    ),
+    path(
         "update_jellyfin_webhook_events",
         views.update_jellyfin_webhook_events,
         name="update_jellyfin_webhook_events",

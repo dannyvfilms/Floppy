@@ -23,7 +23,12 @@ _INTERACTIVE_REQUEST_EXCLUDED_PREFIXES = (
     # backfills defer forever, one item per cycle.
     "/__debug__/",
 )
-_INTERACTIVE_REQUEST_EXCLUDED_PATHS = {"/serviceworker.js"}
+_INTERACTIVE_REQUEST_EXCLUDED_PATHS = {
+    "/health/",
+    "/health/full/",
+    "/ping/",
+    "/serviceworker.js",
+}
 
 
 def should_mark_interactive_request(request: HttpRequest) -> bool:

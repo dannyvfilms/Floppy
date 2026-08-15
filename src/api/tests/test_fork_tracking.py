@@ -441,6 +441,32 @@ class HistoryTimelineTests(FloppyApiTestCase):
             any(entry["media_type"] == "movie" for entry in all_entries),
         )
 
+    @patch(
+        "app.history_cache_reader.get_history_days",
+        side_effect=AssertionError("unfiltered API history must use the cached window"),
+    )
+    def test_unfiltered_history_limit_uses_bounded_cached_path(
+        self,
+        _mock_get_history_days,
+    ):
+        """Pagination must not rebuild the user's complete history inline."""
+        with self.assertLogs("app.history_cache_reader", level="INFO") as logs:
+            response = self.call_api(
+                "get",
+                "api_history",
+                params={"limit": 1},
+                headers=self.auth_headers,
+            )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertLessEqual(len(response.json()["results"]), 1)
+        self.assertTrue(
+            any("history_cached_window" in record for record in logs.output),
+        )
+        self.assertFalse(
+            any("history_cache_bypass" in record for record in logs.output),
+        )
+
     def test_history_media_type_filter(self):
         """media_type filters the timeline."""
         response = self.call_api(

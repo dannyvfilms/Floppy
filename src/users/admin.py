@@ -8,13 +8,13 @@ from users.models import User
 
 
 class CustomUserCreationForm(UserCreationForm):
-    """A custom user creation form that only includes the username field."""
+    """A custom user creation form with an optional test-account flag."""
 
     class Meta:
         """Meta class for the custom user creation form."""
 
         model = User
-        fields = ("username",)
+        fields = ("username", "is_test_account")
 
 
 @admin.register(User)
@@ -27,12 +27,19 @@ class CustomUserAdmin(UserAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("username", "password1", "password2"),
+                "fields": ("username", "is_test_account", "password1", "password2"),
             },
         ),
     )
-    list_display = ("username", "is_staff", "is_active", "is_demo", "last_login")
-    list_filter = ("is_staff", "is_active", "is_demo")
+    list_display = (
+        "username",
+        "is_staff",
+        "is_active",
+        "is_demo",
+        "is_test_account",
+        "last_login",
+    )
+    list_filter = ("is_staff", "is_active", "is_demo", "is_test_account")
 
     def get_fieldsets(self, _, obj=None):
         """Customize the fieldsets for the User model in the admin interface."""

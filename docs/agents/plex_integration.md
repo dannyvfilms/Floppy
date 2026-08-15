@@ -92,6 +92,12 @@ Real-time webhooks (`src/integrations/webhooks/plex.py`) share the same ID resol
 -   **Reliability**: Webhooks are best-effort with no ordering guarantees. If a scrobble is missed, rerun the Plex history import (manual or scheduled) to reconcile gaps.
 -   **Metadata**: Webhooks fetch TMDB metadata inline (cached); there is no separate refresh queue.
 
+### Shared webhook routing
+
+A Plex webhook owner can share the existing tokenized webhook endpoint with other Floppy users from **Settings → Integrations**. Each share stores one or more comma-separated Plex usernames for the recipient and an owner-selected library allow-list. Shares are disabled until the recipient explicitly enables them.
+
+The webhook URL and Plex token remain owned by the sharing user. Incoming events are matched to enabled shares when the Plex username matches any configured username, then processed into the recipient's history and playback state. Plex API lookups and collection metadata use the owner's Plex account, so recipients do not need to connect Plex separately. Share IDs, rather than Plex tokens, are passed to Celery; the worker reloads the share and rechecks that it is still enabled before processing.
+
 ## Troubleshooting & logging
 
 ### Common Log Messages

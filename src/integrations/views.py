@@ -75,6 +75,7 @@ from integrations.models import (
     LastFMAccount,
     MDBListAccount,
     PlexAccount,
+    PlexWebhookShare,
     PocketCastsAccount,
     RadarrAccount,
     SonarrAccount,
@@ -87,6 +88,7 @@ from integrations.plex_watchlist import (
     WATCHLIST_TASK_NAME,
 )
 from integrations.pocketcasts_api import PocketCastsAuthError
+from integrations.webhooks.plex import extract_plex_webhook_usernames
 
 logger = logging.getLogger(__name__)
 ARR_SYNC_INTERVAL_HOURS = 2
@@ -723,6 +725,7 @@ def plex_callback(request):
 def plex_disconnect(request):
     """Remove stored Plex credentials."""
     _disable_plex_watchlist_schedule(request.user)
+    PlexWebhookShare.objects.filter(owner=request.user).delete()
     PlexAccount.objects.filter(user=request.user).delete()
     messages.info(request, "Disconnected Plex.")
     return redirect("import_data")
@@ -2846,6 +2849,19 @@ def plex_webhook(request, token):
     )
 
     tasks.process_webhook.delay("plex", payload, user.id)
+    payload_usernames = extract_plex_webhook_usernames(payload)
+    for share in PlexWebhookShare.objects.filter(
+        owner=user,
+        recipient_enabled=True,
+        recipient__is_active=True,
+    ).only("id", "recipient_id", "plex_username"):
+        if share.plex_username.strip().casefold() in payload_usernames:
+            tasks.process_webhook.delay(
+                "plex",
+                payload,
+                share.recipient_id,
+                share_id=share.id,
+            )
     return HttpResponse(status=200)
 
 
