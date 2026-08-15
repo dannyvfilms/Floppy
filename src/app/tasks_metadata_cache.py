@@ -83,6 +83,10 @@ def _clear_item_metadata_cache(item: Item):
 
 
 def _fetch_item_metadata(item: Item):
+    refresh_kwargs = {
+        "_floppy_origin": "refresh",
+        "_floppy_refresh": True,
+    }
     if item.media_type == MediaTypes.SEASON.value:
         if item.season_number is None:
             msg = "season item missing season_number"
@@ -92,6 +96,7 @@ def _fetch_item_metadata(item: Item):
             item.media_id,
             item.source,
             [item.season_number],
+            **refresh_kwargs,
         )
     if item.media_type == MediaTypes.EPISODE.value:
         if item.season_number is None or item.episode_number is None:
@@ -103,9 +108,11 @@ def _fetch_item_metadata(item: Item):
             item.source,
             [item.season_number],
             item.episode_number,
+            **refresh_kwargs,
         )
     return services.get_media_metadata(
         item.media_type,
         item.media_id,
         item.source,
+        **refresh_kwargs,
     )
