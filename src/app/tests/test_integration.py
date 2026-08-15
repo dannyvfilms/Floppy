@@ -100,6 +100,7 @@ class IntegrationTest(StaticLiveServerTestCase):
             self.credentials["password"],
         )
         self.page.get_by_role("button", name="Sign in").click()
+        expect(self.page.locator("#global-search")).to_be_visible()
 
     def search_and_submit(self, query):
         """Run a global search via the submit button.
