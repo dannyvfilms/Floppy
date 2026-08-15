@@ -67,6 +67,7 @@ class AppConfig(AppConfig):
     def ready(self):
         """Import signals when the app is ready."""
         import_module("app.signals")
+        import_module("app.network_policy").install_provider_network_guard()
         if _is_management_command_process():
             # One-off manage.py commands (migrate, shell, check, ...) must
             # not enqueue startup tasks or consume the once-per-day startup
