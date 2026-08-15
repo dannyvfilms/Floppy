@@ -1092,7 +1092,7 @@
               <div class="flex items-center gap-1 text-xs sm:text-sm text-[var(--color-text-muted)]">
                 <span x-text="'Longest: ' + currentTypeSummary.longest_streak + ' day' + (currentTypeSummary.longest_streak === 1 ? '' : 's')"></span>
                 <div x-show="currentTypeSummary.longest_streak_start" class="relative" x-data="{ tooltipOpen: false }">
-                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show information" style="transform: translateY(1px);">
+                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show information" style="transform: translateY(1px);">
                     {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                   </button>
                   <div x-show="tooltipOpen"
@@ -1133,7 +1133,7 @@
                 <span>vs {{ activity_comparison_period_label }}</span>
                 {% if total_activity_comparison.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show comparison totals" style="transform: translateY(1px);">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show comparison totals" style="transform: translateY(1px);">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -1183,7 +1183,7 @@
       <div class="text-xs text-[var(--color-text-muted)] mb-3 flex items-center gap-1">
         <span id="timeWorldsSubtitle">Where your hours go.</span>
         <div id="timeWorldsInfo" class="relative hidden" x-data="{ tooltipOpen: false }">
-          <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show information">
+          <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show information">
             {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
           </button>
           <div x-show="tooltipOpen"

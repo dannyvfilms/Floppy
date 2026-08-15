@@ -39,7 +39,7 @@
                         @mouseleave="tooltipOpen = false"
                         @click="tooltipOpen = !tooltipOpen"
                         @click.outside="tooltipOpen = false"
-                        class="text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
+                        class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                         type="button"
                         aria-label="Show alternative title">
                   {% include "app/icons/info.svg" with classes="w-4 h-4" %}
@@ -137,7 +137,7 @@
                     {% for tv_season in tv.related.seasons %}
                       <a href="{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_season_details' source=media.source media_id=media.media_id title=media.title|slug season_number=tv_season.season_number %}{% else %}{% url 'season_details' source=media.source media_id=media.media_id title=media.title|slug season_number=tv_season.season_number %}{% endif %}"
                          hx-boost="true"
-                         class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-gray-700 hover:text-gray-100 transition-colors duration-200 cursor-pointer {% if tv_season.season_number == media.season_number %}bg-[var(--color-surface-muted)]{% endif %}">
+                         class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors duration-200 cursor-pointer {% if tv_season.season_number == media.season_number %}bg-[var(--color-surface-muted)]{% endif %}">
                         <div class="w-8 h-8 rounded-full flex items-center justify-center bg-indigo-600 text-white">
                           {{ tv_season.season_number }}
                         </div>
@@ -174,7 +174,7 @@
                           @mouseleave="tooltipOpen = false"
                           @click="tooltipOpen = !tooltipOpen"
                           @click.outside="tooltipOpen = false"
-                          class="text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
+                          class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                           type="button"
                           aria-label="Show alternative title">
                     {% include "app/icons/info.svg" with classes="w-4 h-4" %}
@@ -395,7 +395,7 @@
                       {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
                     </button>
                   </div>
-                  <div class="absolute left-0 top-full mt-2 w-52 rounded-md border border-gray-700 bg-[var(--color-surface-strong)] py-1 shadow-lg overflow-hidden z-50"
+                  <div class="absolute left-0 top-full mt-2 w-52 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] py-1 shadow-lg overflow-hidden z-50"
                        x-cloak
                        x-show="trackMenuOpen"
                        x-transition:enter="transition ease-out duration-100"

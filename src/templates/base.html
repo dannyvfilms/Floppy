@@ -575,7 +575,10 @@
               {% endif %}
 
               <p class="text-sm font-medium flex-1">{{ message }}</p>
-              <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+              <button type="button"
+                      class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1 rounded focus:outline-none focus:ring-2 focus:ring-white/50"
+                      aria-label="Dismiss message"
+                      title="Dismiss message"
                       @click="$el.parentElement.remove()">
                 {% include "app/icons/x.svg" with classes="w-4 h-4" %}
               </button>

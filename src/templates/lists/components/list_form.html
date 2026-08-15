@@ -140,7 +140,7 @@
           {% elif field.name|slice:':6' == 'smart_' %}
           {% else %}
             <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ field.label }}</label>
-            {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
+            {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
           {% endif %}
         </div>
       {% endfor %}

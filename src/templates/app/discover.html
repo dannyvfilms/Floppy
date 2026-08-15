@@ -42,7 +42,7 @@
                 class="rounded-full border px-3 py-1.5 text-sm transition-colors cursor-pointer"
                 :class="selectedMedia === '{{ option.value }}'
                   ? 'border-indigo-500 bg-indigo-600 text-white'
-                  : 'border-gray-700 bg-[var(--color-surface)] text-gray-300 hover:border-gray-500 hover:text-white'">
+                  : 'border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'">
           {{ option.label }}
         </button>
       {% endfor %}

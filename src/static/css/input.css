@@ -84,6 +84,22 @@ html.light {
 }
 
 html.dark {
+  --color-surface: #2a2f35;
+  --color-surface-strong: #39404b;
+  --color-surface-hover: #454d5a;
+  --color-panel: #272c31;
+  --color-accent: #4a9eff;
+  --color-surface-alt: #3e454d;
+  --color-surface-muted: #343a40;
+  --color-surface-dim: #262a2f;
+  --color-border: #2c3136;
+  --color-hover-dim: #23272b;
+  --color-page-bg: #212529;
+  --color-surface-border: #454d59;
+  --color-sidebar: #1a1d20;
+  --color-text: #f3f4f6;
+  --color-text-secondary: #d1d5db;
+  --color-text-muted: #adb5bd;
   --color-warning-text: #fde68a;
   --color-info-text: #c7d2fe;
   --color-error-text: #fca5a5;

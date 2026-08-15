@@ -42,7 +42,7 @@
               <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
                    data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}"
                    data-status-label="no-status">
-                <span class="text-xs font-medium text-[var(--color-text)] drop-shadow-sm truncate min-w-0">No Status</span>
+                <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">No Status</span>
               </div>
             {% elif media %}
               {% with has_watched=media.end_date|default_if_none:media|safe_attr:"aggregated_end_date"|default_if_none:media.status %}
@@ -51,8 +51,8 @@
                     <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
                          data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}">
                       {% if show_next_event_chip|default:False and media.next_event and not media.next_event.is_max_datetime %}
-                        {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-[var(--color-link)]" %}
-                        <span class="text-xs font-medium text-[var(--color-text)] drop-shadow-sm truncate min-w-0">
+                        {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-indigo-300" %}
+                        <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">
                           {% if media.next_event.content_number %}
                             {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }}
                           {% else %}
@@ -96,8 +96,8 @@
                   {% elif show_next_event_chip|default:False and media.next_event and not media.next_event.is_max_datetime %}
                     <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
                          data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}">
-                      {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-[var(--color-link)]" %}
-                      <span class="text-xs font-medium text-[var(--color-text)] drop-shadow-sm truncate min-w-0">
+                      {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-indigo-300" %}
+                      <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">
                         {% if media.next_event.content_number %}
                           {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }}
                         {% else %}
@@ -109,8 +109,8 @@
                 {% elif show_next_event_chip|default:False and media.next_event and not media.next_event.is_max_datetime %}
                   <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
                        data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}">
-                    {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-[var(--color-link)]" %}
-                    <span class="text-xs font-medium text-[var(--color-text)] drop-shadow-sm truncate min-w-0">
+                    {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5 text-indigo-300" %}
+                    <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">
                       {% if media.next_event.content_number %}
                         {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }}
                       {% else %}
@@ -504,7 +504,7 @@
                           @focus="openTooltip()"
                           @blur="closeTooltip()"
                           @click.prevent.stop="toggleTooltip()"
-                          class="text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
+                          class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                           type="button"
                           aria-label="Show alternative title">
                     {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
