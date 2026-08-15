@@ -1,24 +1,36 @@
 ## Summary
 - Describe what changed and why.
+- Link related issues in relationship fields (e.g., `Fixes #123` / `Refs #456`).
 
-## AI Assistance
-- If an AI agent generated or substantially shaped this change, name the specific model (e.g. `claude-sonnet-4-6`, `gpt-5.1-codex`). A tool or subscription name alone ("Claude Code", "Copilot", "Codex Subscription") is NOT sufficient — say which model actually did the work. Delete this section only if no AI assistance was used.
+## Post-Mortem / Root Cause Analysis (Bug Fixes)
+<!-- If fixing a defect: what caused the issue, what broke, and how this fix prevents recurrence? (Omit if feature/enhancement) -->
+
+## AI Assistance & Workflows
+- **AI Model**: <!-- Specific model identifier, e.g. claude-3-7-sonnet, gemini-2.5-pro, gpt-5.1-codex, or "None (human authored)" -->
+- **Workflows & Tools**: <!-- Workflows used, e.g. gstack QA, Ponytail complexity audit, OpenSpec, manual testing -->
+*(Note: A tool/subscription wrapper name alone like "Cursor" or "Claude Code" is insufficient — name the exact underlying model.)*
+
+## Engineering, Security & UX Checklist
+- [ ] **Single Source of Truth & Simplicity**: Reused existing models/helpers where possible; avoided speculative abstractions.
+- [ ] **Domain Boundaries & Vocabulary**: Respected bounded domain contexts (`app`, `users`, `lists`, `integrations`, `events`) and ubiquitous language.
+- [ ] **Security (OWASP Avoidance)**: Verified tenancy/IDOR scoping (`user=request.user`), ORM injection safety, SSRF validation on external fetch, SecretBox credential storage, and CSRF tokens.
+- [ ] **UI/UX & Accessibility**: Checked Gestalt visual hierarchy, Nielsen heuristics, WCAG a11y (keyboard/contrast/labels), and cognitive/ADHD scannability.
+- [ ] **Living Docs & OpenAPI**: Checked and updated OpenAPI spec, domain vocabulary, or developer docs if payloads/contracts changed.
 
 ## Validation
-- List commands run and outcomes.
+- List commands run and test outcomes.
 
-## Contract Handoff
+## Contract & Documentation Handoff
 - Domain guide regeneration/check outcome: <!-- result or not applicable -->
 - Verified OpenAPI regeneration outcome: <!-- result or not applicable -->
 - Contract-test outcome: <!-- result or not applicable -->
 
-## Human Review
-- [ ] Pending human review.
-- [ ] Completed — reviewer/evidence: <!-- link or concise evidence -->
+## UI Screenshots
+<!-- Required for all CSS, template, or visual UI changes (Before/After for fixes, After for new features) -->
 
-## Gstack QA
-- [ ] Pending `/gstack-qa`.
-- [ ] Completed — report/outcome: <!-- link or concise outcome -->
+## Review & QA Gates
+- [ ] **Human Review**: <!-- Pending / Completed with reviewer name -->
+- [ ] **Gstack QA / Browser Testing**: <!-- Pending / Completed with outcome -->
 
 ## Migration Sync Gate (Required for `upstream` -> `latest` sync PRs)
 - [ ] Conflicts resolved with upstream files preserved and fork behavior merged intentionally.
@@ -29,4 +41,4 @@
 - [ ] `uv run --no-sync coverage run src/manage.py test app users integrations lists events --parallel` passed.
 
 ## Notes
-- Link relevant issues (for example: `Refs #101`).
+- Additional context or follow-ups.

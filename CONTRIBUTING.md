@@ -1,144 +1,164 @@
-# Contributing
+# Contributing to Floppy
 
-Floppy is a personally maintained project, originally forked from [FuzzyGrim/Yamtrack](https://github.com/FuzzyGrim/Yamtrack). Contributions are welcome but the bar is practical: changes should be clean, minimal, and safe to land.
+Floppy is a self-hosted media tracking platform forked from [FuzzyGrim/Yamtrack](https://github.com/FuzzyGrim/Yamtrack). We welcome contributions from developers and AI-assisted workflows alike.
 
----
-
-## PR Size and Scope
-
-**Default to small.** A PR that does one thing clearly is easier to review and more likely to land than a large PR that does several things.
-
-Large line counts are not automatically a problem. A large PR that adds a complete new integration in one focused area, with clean commits and screenshots, is fine. A large PR that adds a UI feature, fixes pre-existing lint violations, restructures unrelated templates, and introduces UI patterns that don't exist elsewhere in the app is not — even if each individual change is reasonable.
-
-The question to ask before opening: **Is every line in this PR directly load-bearing for the stated goal?**
-
-If the answer is no, split it. Common offsets worth their own PR:
-
-- Lint/ruff/style cleanup — easy to review in isolation, gets closed when bundled with behavior changes
-- Refactors that aren't required by the feature
-- Test additions for existing behavior
-- Unrelated template or CSS tidying spotted along the way
-
-**For agents:** Before opening a PR, check the diff stat. If the line count or commit count feels high relative to the stated goal, stop and ask the user whether to proceed, split the work, or descope. A PR that surprises the reviewer is a PR that gets closed.
+Our bar is practical: **make changes clean, minimal, safe, and well-understood.** This guide provides clear instructions to help contributors build, test, and ship high-leverage pull requests that land quickly.
 
 ---
 
-## Commits
+## Quick Reference
 
-**One logical commit per reviewable unit of work** — not one commit per agentic turn or tool call.
-
-**For agents:** Scan commit titles before opening a PR. Capitalization and minor phrasing are not worth raising. Stop and ask the user if any message would make a reviewer wince — `wip`, `fix`, `asdf`, `update stuff`, `agent turn 4`, a bare timestamp, or anything that gives no indication of what changed.
-
-**Commit message quality:** Use a short imperative title that describes what the commit does. Capitalization, missing periods, and minor phrasing preferences are not worth flagging. What is worth flagging — and an agent must stop and raise with the user before opening the PR — are messages that would make a reviewer genuinely wince: `wip`, `fix`, `asdf`, `changes`, `update stuff`, `agent turn 4`, timestamps as the title, or anything that gives no indication of what changed. If the history has messages like that, ask the user whether to clean them up before the PR opens.
-
----
-
-## Branch Policy
-
-**All PRs must target `latest`, not `upstream` or `release`.**
-
-- `upstream` is a utility branch that must remain a byte-for-byte mirror of upstream Yamtrack. Never edit it directly and never target it with a PR.
-- `latest` is the fork integration branch. This is where all feature work, fixes, and upstream syncs land.
-- `release` is for container publication and is not a development target.
-- Upstream changes usually need to be adapted to the fork. Do not assume an upstream commit can be cherry-picked cleanly or applied without reviewing the surrounding fork-specific behavior; integrate the intent into `latest` and resolve differences deliberately.
-
-Opening a PR against `upstream` or `release` will be closed and redirected.
+| Area | Requirement | Command / Reference |
+|---|---|---|
+| **Branch Target** | Always target `latest` (never `upstream` or `release`) | `git checkout -b feat/my-feature latest` |
+| **PR Template** | Mandatory; do not delete or strip sections | [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) |
+| **Python Tooling** | Python 3.12 + `uv` | `uv sync --locked` |
+| **Tailwind CSS** | Pinned repo CLI output to `src/static/css/main.css` | `npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css` |
+| **Fast Tests** | Targeted test runner | `SECRET=test-only scripts/test.sh <dotted.path>` |
+| **Lint / Style** | Ruff (line length 88, migrations excluded) | `uv run --no-sync ruff check src` |
 
 ---
 
-## Pull Request Requirements
+## 1. Core Engineering & Quality Standards
 
-Every PR must include these in the description:
+Every contribution should maintain and elevate our codebase baseline.
 
-**1. Problem** — What is broken, missing, or suboptimal? Link the issue if one exists (`Fixes #123` / `Refs #456`).
+### Single Source of Truth & Zero Duplication
+- **Eliminate duplicate logic**: Keep a single source of truth for every business rule, model query, and view helper.
+- **Reuse existing components**: Before adding a new helper, filter, or UI element, inspect the codebase. Reuse established templates, model methods, and provider adapters rather than copy-pasting similar blocks across apps.
+- **Reference**: For foundational principles, see [Don't Repeat Yourself (DRY)](https://en.wikipedia.org/wiki/Don%27t_repeat_yourself).
 
-**2. Solution** — What did you change and why? One or two sentences is fine; complex changes may need more.
+### Explicit Domain Boundaries & Consistent Vocabulary
+- **Separation by bounded context**: Floppy organizes code into distinct domain areas:
+  - `app`: Core media entities, metadata providers, and detail views.
+  - `users`: User authentication, account management, and profile preferences.
+  - `lists`: Collections, custom watchlists, and smart filters.
+  - `integrations`: Third-party synchronization, webhooks, and background sync adapters.
+  - `events`: Activity history and release calendar schedules.
+- **Ubiquitous language**: Use consistent names across database models, API routes, template variables, and documentation. Consult the [Domain Vocabulary Guide](docs/agents/domain_model.md).
+- **Domain logic placement**: Keep business rules and state transitions inside models and dedicated domain services, not scattered across view controllers or template filters.
 
-**3. Validation** — What did you run? List commands and outcomes. See the validation section below for guidance on what's required.
+### Security by Design & Vulnerability Avoidance
+Security is critical. Every change touching authentication, user data, or network integrations must prevent common security risks (including the OWASP Top 10):
+- **Injection Safety**: Use Django ORM parameterized queries. Never construct raw SQL queries with string formatting or pass unsanitized input to shell commands.
+- **Access Control & Tenancy (IDOR Prevention)**: Always scope database queries to the authenticated user (`MediaItem.objects.filter(user=request.user, ...)`). Never assume an identifier in a URL or request body belongs to the active session.
+- **Credential Storage & Secrets**: Never commit tokens, passwords, or API keys. Store secrets in environment variables or use encrypted database fields (`SecretBox` for external provider credentials).
+- **Server-Side Request Forgery (SSRF)**: Validate and restrict URLs when fetching third-party provider metadata or processing webhook destinations.
+- **XSS & CSRF Prevention**: Rely on Django template auto-escaping. Never mark user-supplied data as `|safe`. Include `{% csrf_token %}` on all state-modifying POST/PUT forms.
 
-**4. Screenshots** — Required for any change that touches templates, CSS, layout, or UI behavior. Before and after if the change is a visual fix. A single "after" shot is fine for new UI. Skip only for backend-only or migration-only changes.
+### Human-Centered UI/UX & Cognitive Accessibility
+User interfaces in Floppy should be intuitive, accessible, and fatigue-free:
+- **Gestalt Principles**: Group related elements logically using consistent proximity, visual similarity, and clear alignment.
+- **Nielsen Usability Heuristics**:
+  - Keep system status visible (loading states, success banners, clear progress feedback).
+  - Prevent errors before they happen with safe input validation and destructive action confirmations.
+  - Prioritize recognition over recall with clear labels and intuitive navigation.
+- **Accessibility (a11y)**: Write semantic HTML5, provide explicit form labels, maintain WCAG AA color contrast, and verify keyboard navigation and touch target sizes.
+- **Cognitive & ADHD/AuDHD Ergonomics**: Structure pages with clear visual hierarchy, scannable headings, and concise copy. Avoid dense walls of text, unnecessary modal interruptions, or visual clutter.
+
+### Simplified Technical English (ASD-STE100)
+- Write documentation, commit descriptions, and PR explanations in clear, direct English.
+- Use short sentences, active verbs, and specific nouns.
+- State instructions directly: say what the system does, why it does it, and what actions are required.
 
 ---
 
-## AI-Assisted Contributions
+## 2. Modern Workflows, Tooling & Learnings
 
-If an AI agent (Claude Code, Cursor, GitHub Copilot, Codex, Hermes Agent, etc.) generated or substantially shaped the code you're submitting, say so in the PR description under an **AI Assistance** section.
+Modern development workflows accelerate review cycles and guard against complexity. We encourage contributors to use specialized workflows:
 
-**The tool or subscription name alone is never sufficient.** "Generated by Claude Code", "Generated with GitHub Copilot", "Codex Subscription" — none of these say which model actually wrote the code, and tools like Claude Code can run on several different underlying models. You must name the specific model that did the work:
+| Tool / Workflow | Role in Development | Resource |
+|---|---|---|
+| **gstack** | Fast headless browser QA, visual regression checks, design audits, and pre-landing PR inspection | [gstack.lol](https://gstack.lol/) / [garrytan/gstack](https://github.com/garrytan/gstack) |
+| **Ponytail** | Complexity auditor and anti-bloat discipline — removes unnecessary abstractions, deletes unused helpers, and keeps changes lean | [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail/pulls?page=4&q=is%3Apr+is%3Aopen) / [GitHub](https://github.com/DietrichGebert/ponytail) |
+| **OpenSpec** | Spec-driven requirement refinement and intent verification before writing code | [openspec.dev](https://openspec.dev/) |
 
-```
-## AI Assistance
-Generated with Claude Code (claude-sonnet-4-6). Reviewed and tested manually.
-```
+### Workflow Execution Rule
+- **Review to Implementation**: Once requirements are refined and review gates (design, architecture, and security) are verified, proceed directly to implementation without pausing for redundant review loops.
 
-**For agents:** do not guess or omit this. If you don't already know your own model identifier from context, check your system prompt / environment configuration for it before opening the PR — do not submit a PR with only the tool name. A PR description or commit footer that says only "Generated by Claude Code" (or any other tool name with no model) is treated as missing this requirement and will be sent back.
-
-This is not a disqualifier. It helps with review triage and lets the maintainer calibrate how closely to inspect the change. Undisclosed AI-generated PRs that contain subtle bugs are harder to catch and harder to attribute; disclosed ones get the right level of scrutiny.
-
-If an agent submitted the PR directly (no human author), the agent must:
-
-- Target `latest` (not `upstream` or `release`)
-- Include the problem, solution, validation, and screenshots sections above
-- Include the AI Assistance section with the model/tool name
-- Confirm screenshots were captured for any UI change
-- Check the diff stat before opening: if the scope feels large relative to the stated goal, pause and confirm with the user before submitting
-- Confirm commits are organized by logical unit, not by agentic turn
-- Confirm no pre-existing lint in unrelated code was fixed as a side effect of the PR (fixing lint in lines you already touched is fine)
+### Compound Knowledge & Learnings
+When you discover a non-obvious database nuance, integration quirk, or operational edge case, record it inline in code comments or update project documentation. Shared knowledge makes the repository and future contributors faster over time.
 
 ---
 
-## Validation
+## 3. Living Documentation & API Contract Hygiene
 
-Match validation to risk. See `AGENTS.md` for the full matrix. Short version:
+Documentation in Floppy is a **first-class product surface**, not an afterthought. When changing functionality, actively consider and update all affected documentation surfaces in the same PR.
 
-Django/manage.py commands require `SECRET` in the environment or `.env`.
+### OpenAPI Specification & API Contracts
+Floppy maintains an OpenAPI schema contract verified by automated test suites.
+- When you add, modify, or deprecate API endpoints or serializers, regenerate and validate the OpenAPI schema:
+  ```bash
+  SECRET=test-only uv run --no-sync python src/manage.py spectacular --custom-settings api.schema_contract.STATIC_SPECTACULAR_SETTINGS --fail-on-warn --validate --file src/api/contracts/openapi.yaml
+  ```
+- Run the contract tests:
+  ```bash
+  SECRET=test-only scripts/test.sh users.tests.views.test_about app.tests.test_api_contracts app.tests.test_domain_vocabulary
+  ```
 
-| Change type | Minimum check |
+### Domain Vocabulary & Developer Documentation
+- **Domain vocabulary guide**: When introducing or altering core entity concepts, update and verify the guide:
+  ```bash
+  PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary
+  PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary --check
+  ```
+- **Architecture & Agent Docs**: Consult and update specialized playbooks under `docs/architecture/` and `docs/agents/` (e.g., `media_type_integration.md`, `music_integration.md`, `pocketcasts_workflow.md`).
+- **Wiki**: User-facing documentation lives in `wiki/`. When updating features that alter user workflows, propose matching wiki updates.
+
+> [!IMPORTANT]
+> **Active Consideration of Stale Surfaces**: If your code change invalidates existing documentation, configuration examples, or API payloads, updating those surfaces is part of your Definition of Done.
+
+---
+
+## 4. Pull Request Requirements & AI Assistance
+
+### Mandatory PR Template
+Every pull request **must use [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)**. Do not delete, bypass, or strip template sections.
+
+The template requires:
+1. **Summary & Linked Issues**: Describe what changed and why. Always link related issues in relationship fields (`Fixes #123`, `Refs #456`).
+2. **Post-Mortem / Root Cause**: For bug fixes, provide a concise post-mortem explaining what caused the defect and how the fix prevents recurrence.
+3. **AI Assistance & Workflows**: If an AI coding agent or tool generated or shaped the code:
+   - **Disclose the specific model**: Name the exact underlying model identifier (e.g., `claude-3-7-sonnet`, `gemini-2.5-pro`, `gpt-5.1-codex`).
+   - **Disclose workflows used**: State tools and review workflows utilized (e.g., gstack QA, Ponytail review, OpenSpec, manual testing).
+   > Note: A generic tool wrapper name alone ("Cursor", "Claude Code", "Copilot") is **insufficient**. You must state the underlying model.
+4. **Validation**: List exact commands executed and resulting outcomes.
+5. **Screenshots**: Required for all UI, CSS, template, and visual layout changes (before/after for bug fixes, after for new UI).
+6. **Engineering & Security Checklist**: Confirm adherence to single-source-of-truth, domain boundaries, security rules, and living documentation updates.
+
+---
+
+## 5. Validation Matrix
+
+Match validation depth to risk. Always run targeted tests before opening a PR:
+
+| Change Type | Minimum Validation Required |
 |---|---|
-| Copy, labels, static content | None required |
-| CSS / Tailwind spacing | Visual screenshot |
-| Template or UI logic | Screenshot + `uv run --no-sync ruff check src` |
-| Python behavior | `uv run --no-sync ruff check src` + targeted test |
-| Model or migration change | `uv run --no-sync python src/manage.py check_migration_hygiene --strict` + full test suite |
-| `upstream` → `latest` upstream sync | Full migration sync gate (see PR template) |
-
-Never skip validation for migrations, models, auth, permissions, webhooks, Celery tasks, or cache behavior.
-
-When domain or API contract facts change, run the contract tests and regenerate the reviewed artifacts:
-
-```bash
-SECRET=test-only scripts/test.sh users.tests.views.test_about app.tests.test_api_contracts app.tests.test_domain_vocabulary
-PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary
-PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary --check
-SECRET=test-only uv run --no-sync python src/manage.py spectacular --custom-settings api.schema_contract.STATIC_SPECTACULAR_SETTINGS --fail-on-warn --validate --file src/api/contracts/openapi.yaml
-```
-
-Review and commit generated artifact changes. If regeneration makes no change, report that result in the pull request.
+| **Copy / Labels / Static Docs** | Review formatting, links, and STE clarity |
+| **CSS / Spacing / Template Layout** | Visual screenshots + `uv run --no-sync ruff check src` |
+| **Python View / Business Logic** | `uv run --no-sync ruff check src` + targeted test (`scripts/test.sh <dotted.label>`) |
+| **API Endpoints / Serialization** | Targeted test + Spectacular OpenAPI regeneration + Contract tests |
+| **Database Models / Migrations** | `uv run --no-sync python src/manage.py check_migration_hygiene --strict` + full test suite |
+| **Upstream Sync (`upstream` → `latest`)** | Migration sync gate + `scripts/replay_upgrade_matrix.sh` |
 
 ---
 
-## Style
+## 6. What Gets Merged vs. Closed Without Review
 
-- Python 3.12. Ruff configured in `pyproject.toml` (88-char line limit, migrations excluded).
-- Python dependencies are declared in `pyproject.toml` and locked in `uv.lock`; use uv 0.12.3 and `uv sync --locked` rather than maintaining requirements files.
-- Templates: djlint config in `pyproject.toml`. CSS: Stylelint config in `.stylelintrc`.
-- Tailwind output is committed at `src/static/css/main.css`. Run `npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css` after any template or class changes — this uses the version pinned in `package.json`, so it always matches the committed output. Do not use a bare/global `tailwindcss` binary or unpinned `npx`; a version mismatch regenerates the file with a different (larger) utility set and produces spurious diffs.
-- Commit messages: short imperative title, optional 1–3 bullet body, then issue lines.
-- Do not mix behavior changes, refactors, and tests in a single PR unless the scope clearly demands it.
+### Fast Path to Merge
+- Clean, focused PR targeting `latest`.
+- Completed PR template with clear Problem, Solution, Issue links, and Validation.
+- Post-mortem included for bug fixes.
+- Specific AI model and workflow disclosure (if applicable).
+- Screenshots included for all UI modifications.
+- All tests, lint checks, and contract tests passing.
+- Living documentation and OpenAPI spec updated to match code changes.
 
-**UI consistency:** New UI must match existing patterns in the app — spacing, card styles, chip styles, color tokens, layout conventions. If your change introduces a visual pattern that doesn't appear anywhere else in the app, flag it explicitly in the PR description and justify it. Unexplained novel UI is a reason to close a PR.
-
-**Lint cleanup:** If you spot pre-existing ruff/lint violations while working, do not fix them in the same PR. Either open a separate lint-only PR (welcome and easy to review) or leave a note. Fixing unrelated lint mid-feature PR inflates the diff and obscures the actual change.
-
----
-
-## What Gets Closed Without Review
-
-- PRs targeting `upstream` or `release`
-- PRs with no description
-- PRs with no problem/solution statement
-- UI changes with no screenshots
-- PRs that introduce UI patterns with no precedent elsewhere in the app and no explanation
-- PRs where lint/style cleanup is bundled with behavior changes
-- AI-assisted PRs that disclose only a tool/subscription name ("Claude Code", "Copilot") without naming the specific model
-- PRs where commit count suggests the history was never organized (17 commits for a single UI feature is a signal)
+### What Gets Closed Without Review
+- PRs targeting `upstream` or `release`.
+- PRs that delete or ignore the PR template.
+- PRs with blank, vague, or generic descriptions ("fixes stuff", "update").
+- UI modifications without screenshots.
+- Undisclosed or ambiguously disclosed AI PRs (stating only "Copilot" or "Claude" without the model).
+- PRs bundling massive unrelated formatting or lint cleanup with feature changes.
+- PRs introducing unpatterned UI paradigms without justification.
