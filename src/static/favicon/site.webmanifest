@@ -1,9 +1,9 @@
 {
     "name": "Floppy - Media Tracker",
     "short_name": "Floppy",
-    "description": "Track your movies, TV shows, anime, manga, games and books",
-    "start_url": "/",
-    "id": "/",
+    "description": "Track movies, TV shows, anime, manga, games, books, and other media.",
+    "start_url": "../../",
+    "id": "../../",
     "display": "standalone",
     "display_override": [
         "standalone"
@@ -11,28 +11,29 @@
     "theme_color": "#181a1b",
     "background_color": "#212529",
     "orientation": "portrait-primary",
-    "scope": "/",
+    "scope": "../../",
+    "prefer_related_applications": false,
     "icons": [
         {
-            "src": "/static/favicon/android-chrome-192x192.png",
+            "src": "android-chrome-192x192.png",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "any"
         },
         {
-            "src": "/static/favicon/android-chrome-512x512.png",
+            "src": "android-chrome-512x512.png",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "any"
         },
         {
-            "src": "/static/favicon/android-chrome-192x192-maskable.png",
+            "src": "android-chrome-192x192-maskable.png",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "maskable"
         },
         {
-            "src": "/static/favicon/android-chrome-512x512-maskable.png",
+            "src": "android-chrome-512x512-maskable.png",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
@@ -47,11 +48,11 @@
         {
             "name": "Home",
             "short_name": "Home",
-            "description": "Home",
-            "url": "/",
+            "description": "Open your Floppy home page.",
+            "url": "../../",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/home.svg",
+                    "src": "../img/shortcuts/home.svg",
                     "sizes": "192x192"
                 }
             ]
@@ -59,11 +60,11 @@
         {
             "name": "TV Shows",
             "short_name": "TV",
-            "description": "View your TV Shows",
-            "url": "/medialist/tv",
+            "description": "View your TV shows.",
+            "url": "../../medialist/tv",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/tv.svg",
+                    "src": "../img/shortcuts/tv.svg",
                     "sizes": "192x192"
                 }
             ]
@@ -71,11 +72,11 @@
         {
             "name": "Movies",
             "short_name": "Movies",
-            "description": "View your Movies",
-            "url": "/medialist/movie",
+            "description": "View your movies.",
+            "url": "../../medialist/movie",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/movies.svg",
+                    "src": "../img/shortcuts/movies.svg",
                     "sizes": "192x192"
                 }
             ]
@@ -83,11 +84,11 @@
         {
             "name": "Anime",
             "short_name": "Anime",
-            "description": "View your Anime",
-            "url": "/medialist/anime",
+            "description": "View your anime.",
+            "url": "../../medialist/anime",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/anime.svg",
+                    "src": "../img/shortcuts/anime.svg",
                     "sizes": "192x192"
                 }
             ]
@@ -95,11 +96,11 @@
         {
             "name": "Manga",
             "short_name": "Manga",
-            "description": "View your Mangas",
-            "url": "/medialist/manga",
+            "description": "View your manga.",
+            "url": "../../medialist/manga",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/manga.svg",
+                    "src": "../img/shortcuts/manga.svg",
                     "sizes": "192x192"
                 }
             ]
@@ -107,11 +108,11 @@
         {
             "name": "Games",
             "short_name": "Games",
-            "description": "View your Games",
-            "url": "/medialist/game",
+            "description": "View your games.",
+            "url": "../../medialist/game",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/games.svg",
+                    "src": "../img/shortcuts/games.svg",
                     "sizes": "192x192"
                 }
             ]
@@ -119,11 +120,11 @@
         {
             "name": "Books",
             "short_name": "Books",
-            "description": "View your Books",
-            "url": "/medialist/book",
+            "description": "View your books.",
+            "url": "../../medialist/book",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/books.svg",
+                    "src": "../img/shortcuts/books.svg",
                     "sizes": "192x192"
                 }
             ]
@@ -131,11 +132,11 @@
         {
             "name": "Comics",
             "short_name": "Comics",
-            "description": "View your Comics",
-            "url": "/medialist/comic",
+            "description": "View your comics.",
+            "url": "../../medialist/comic",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/comics.svg",
+                    "src": "../img/shortcuts/comics.svg",
                     "sizes": "192x192"
                 }
             ]
@@ -143,11 +144,11 @@
         {
             "name": "Board Games",
             "short_name": "Boardgames",
-            "description": "View your Board Games",
-            "url": "/medialist/boardgame",
+            "description": "View your board games.",
+            "url": "../../medialist/boardgame",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/boardgames.svg",
+                    "src": "../img/shortcuts/boardgames.svg",
                     "sizes": "192x192"
                 }
             ]
@@ -155,11 +156,11 @@
         {
             "name": "Statistics",
             "short_name": "Stats",
-            "description": "View your Statistics",
-            "url": "/statistics",
+            "description": "View your statistics.",
+            "url": "../../statistics",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/stats.svg",
+                    "src": "../img/shortcuts/stats.svg",
                     "sizes": "192x192"
                 }
             ]
@@ -167,11 +168,11 @@
         {
             "name": "Your Lists",
             "short_name": "Lists",
-            "description": "View your Lists",
-            "url": "/lists",
+            "description": "View your lists.",
+            "url": "../../lists",
             "icons": [
                 {
-                    "src": "/static/img/shortcuts/lists.svg",
+                    "src": "../img/shortcuts/lists.svg",
                     "sizes": "192x192"
                 }
             ]
