@@ -1,6 +1,7 @@
-import requests
+from datetime import timedelta
 from unittest.mock import patch
 
+import requests
 from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -145,7 +146,7 @@ class MetadataSnapshotTests(TestCase):
     @patch("app.providers.tmdb.movie")
     def test_failed_refresh_keeps_last_known_good_payload(self, mock_movie):
         self._save_ready_snapshot(
-            fetched_at=timezone.now() - timezone.timedelta(days=2),
+            fetched_at=timezone.now() - timedelta(days=2),
         )
         mock_movie.side_effect = services.ProviderAPIError(
             Sources.TMDB.value,
@@ -195,7 +196,7 @@ class MetadataSnapshotTests(TestCase):
         mock_apply_async,
     ):
         self._save_ready_snapshot(
-            fetched_at=timezone.now() - timezone.timedelta(days=2),
+            fetched_at=timezone.now() - timedelta(days=2),
         )
 
         result = services.get_media_metadata(
@@ -222,7 +223,7 @@ class MetadataSnapshotTests(TestCase):
         mock_apply_async,
     ):
         self._save_ready_snapshot(
-            fetched_at=timezone.now() - timezone.timedelta(days=2),
+            fetched_at=timezone.now() - timedelta(days=2),
         )
 
         result = services.get_media_metadata(
