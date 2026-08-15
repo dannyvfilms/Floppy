@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#181a1b">
+    <title>Floppy is offline</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --page-bg: #f8f9fa;
+        --surface: #ffffff;
+        --text: #181a1b;
+        --muted: #50575e;
+        --border: #c7ccd1;
+        --action: #005fcc;
+        --action-text: #ffffff;
+        --focus: #ffbf47;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page-bg: #181a1b;
+          --surface: #232629;
+          --text: #f8f9fa;
+          --muted: #c7ccd1;
+          --border: #596168;
+          --action: #79b8ff;
+          --action-text: #101214;
+          --focus: #ffd65c;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+        margin: 0;
+        padding: 1rem;
+        display: grid;
+        place-items: center;
+        background: var(--page-bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.5;
+      }
+
+      main {
+        width: min(100%, 34rem);
+        padding: clamp(1.25rem, 5vw, 2.5rem);
+        border: 1px solid var(--border);
+        border-radius: 0.75rem;
+        background: var(--surface);
+        box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 12%);
+      }
+
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: clamp(1.75rem, 8vw, 2.5rem);
+        line-height: 1.15;
+      }
+
+      p {
+        margin: 0 0 1rem;
+      }
+
+      .detail {
+        color: var(--muted);
+      }
+
+      button {
+        min-width: 8rem;
+        min-height: 2.75rem;
+        margin: 0.25rem 0 1.25rem;
+        padding: 0.75rem 1rem;
+        border: 2px solid transparent;
+        border-radius: 0.5rem;
+        background: var(--action);
+        color: var(--action-text);
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button:hover {
+        filter: brightness(1.08);
+      }
+
+      button:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 3px;
+      }
+
+      .privacy {
+        margin-bottom: 0;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 0.9375rem;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main aria-labelledby="offline-title">
+      <h1 id="offline-title">Floppy is offline</h1>
+      <p role="status">The Floppy server cannot be reached.</p>
+      <p class="detail">Check this device's connection or the Floppy server, then try again.</p>
+      <button type="button" onclick="window.location.reload()">Try again</button>
+      <p class="privacy">
+        This status page does not contain private account data. Floppy does not store authenticated pages in the shared browser cache.
+      </p>
+    </main>
+  </body>
+</html>
