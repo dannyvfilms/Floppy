@@ -90,6 +90,7 @@ class ProviderNetworkUnavailable(services.ProviderAPIError):
     """Report an intentional provider block without leaking request data."""
 
     def __init__(self, provider, mode):
+        """Store safe policy context and build a user-facing error."""
         provider_id = _normalize_provider(provider)
         self.provider = provider_id
         self.response = None
