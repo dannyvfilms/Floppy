@@ -1,3 +1,4 @@
+import pickle
 from unittest.mock import Mock, patch
 
 from django.core.exceptions import ImproperlyConfigured
@@ -86,6 +87,10 @@ class ProviderNetworkPolicyTests(SimpleTestCase):
 
         session_get.assert_not_called()
 
+    def test_explicit_invalid_mode_fails_closed(self):
+        with self.assertRaises(ImproperlyConfigured):
+            network_policy.provider_access_allowed("tvdb", mode="unexpected")
+
     @override_settings(
         FLOPPY_NETWORK_MODE="restricted",
         FLOPPY_NETWORK_ALLOWLIST="https://api.example.invalid",
@@ -96,6 +101,16 @@ class ProviderNetworkPolicyTests(SimpleTestCase):
                 services.api_request("tvdb", "GET", "https://example.invalid")
 
         session_get.assert_not_called()
+
+    def test_blocked_provider_error_serializes_without_request_data(self):
+        error = network_policy.ProviderNetworkUnavailable("tvdb", "offline")
+
+        restored = pickle.loads(pickle.dumps(error))
+
+        self.assertIsInstance(restored, network_policy.ProviderNetworkUnavailable)
+        self.assertEqual(restored.provider, "tvdb")
+        self.assertEqual(restored.mode, "offline")
+        self.assertNotIn("http", str(restored))
 
     def test_guard_installation_is_idempotent(self):
         first = network_policy.install_provider_network_guard()
