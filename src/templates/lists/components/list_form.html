@@ -161,7 +161,7 @@
                 class="px-4 py-2 rounded-md transition duration-300 bg-red-700 text-white hover:bg-red-800 cursor-pointer">Delete</button>
             {% else %}
               <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
-                class="px-4 py-2 rounded-md transition duration-300 bg-gray-600 text-[var(--color-text-secondary)] cursor-not-allowed" disabled>Delete</button>
+                class="px-4 py-2 rounded-md transition duration-300 bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)] cursor-not-allowed" disabled>Delete</button>
             {% endif %}
           </div>
         </div>

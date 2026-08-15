@@ -73,7 +73,7 @@
           <span class="px-3 py-1 bg-rose-600 text-white rounded-full text-sm">Album</span>
         {% endif %}
         {% if album.release_date %}
-          <span class="px-3 py-1 bg-gray-600 text-[var(--color-text)] rounded-full text-sm">{{ album.release_date|date:"Y" }}</span>
+          <span class="px-3 py-1 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-full text-sm">{{ album.release_date|date:"Y" }}</span>
         {% endif %}
         {# Collection metadata chips (aggregated from tracks) #}
         {% if collection_metadata.has_collection %}
