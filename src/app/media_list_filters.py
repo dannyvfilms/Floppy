@@ -738,7 +738,7 @@ def _sort_value(entry, sort, next_episode):
     item = entry.item
     if sort in {"title", ""}:
         return getattr(item, "title", "").lower()
-    if sort in {"score"}:
+    if sort == "score":
         score = getattr(media, "aggregated_score", None)
         return score if score is not None else getattr(media, "score", None)
     if sort == "critic_rating":
