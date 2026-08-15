@@ -35,8 +35,14 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
         "Bearer [REDACTED]",
     ),
     (
+        # Matches "name=value"/"Name: value" (URL/form/header style) as well as
+        # JSON's quoted "name": "value" — the optional quotes around the key
+        # and the value's opening quote let the same pattern catch a raw
+        # payload dict that's been json.dumps()'d before logging.
         re.compile(
-            r"(?i)\b(" + "|".join(_SECRET_PARAM_NAMES) + r")\s*[=:]\s*[^&\s\"'<>]+"
+            r"(?i)\b("
+            + "|".join(_SECRET_PARAM_NAMES)
+            + r")\"?\s*[=:]\s*\"?[^&\s\"'<>]+"
         ),
         r"\1=[REDACTED]",
     ),

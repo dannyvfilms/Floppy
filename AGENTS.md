@@ -302,6 +302,8 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/music_integration.md`: music-specific data model and UI integration notes.
 - `docs/agents/pocketcasts_workflow.md`: Pocket Casts import/schedule workflow details.
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
+- `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
+
 
 ## Local Commands
 - Install locked dev dependencies: `uv sync --locked`
