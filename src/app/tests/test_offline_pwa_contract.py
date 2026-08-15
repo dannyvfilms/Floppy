@@ -98,6 +98,10 @@ class OfflinePWAContractTests(SimpleTestCase):
 
     def test_offline_page_is_self_contained_and_accessible(self):
         self.assertIn('<meta name="viewport"', self.offline_page)
+        self.assertIn('<meta name="referrer" content="no-referrer">', self.offline_page)
+        self.assertIn("default-src 'none'", self.offline_page)
+        self.assertIn("form-action 'self'", self.offline_page)
+        self.assertIn("base-uri 'none'", self.offline_page)
         self.assertIn('<h1 id="offline-title">', self.offline_page)
         self.assertIn('role="status"', self.offline_page)
         self.assertIn('aria-labelledby="offline-title"', self.offline_page)
