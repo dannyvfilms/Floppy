@@ -50,6 +50,7 @@ from app.models.media import (
     Movie,
     MoviePlay,
 )
+from app.models.metadata_snapshot import MetadataSnapshot
 from app.models.music import (
     Album,
     AlbumArtist,
@@ -117,6 +118,7 @@ __all__ = [
     "MetadataBackfillField",
     "MetadataBackfillState",
     "MetadataProviderPreference",
+    "MetadataSnapshot",
     "Movie",
     "MoviePlay",
     "Music",
