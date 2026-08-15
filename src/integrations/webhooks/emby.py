@@ -194,4 +194,5 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
             episode_number=episode_number,
             view_offset_seconds=offset_seconds,
             duration_seconds=duration_seconds,
+            store_progress=True,
         )

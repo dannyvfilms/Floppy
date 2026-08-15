@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.urls import reverse
 from django.utils import timezone
@@ -12,7 +13,7 @@ from django.utils.text import slugify
 
 from app import helpers
 from app.metadata_utils import ANIME_SUPPLEMENT_GENRE, genre_list_has_name
-from app.models import Item, MediaTypes, Sources
+from app.models import Item, MediaTypes, PlaybackProgress, Sources
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,25 @@ PLAYBACK_STOP_GRACE_SECONDS = 60
 PLAYBACK_STATUS_PLAYING = "playing"
 PLAYBACK_STATUS_PAUSED = "paused"
 PLAYBACK_STATUS_STOPPED = "stopped"
+
+# Events that carry a meaningful resume position. "media.play" is excluded:
+# it starts a title rather than reporting where the viewer is, and Plex
+# sends it with the offset still at 0, which would overwrite a good stored
+# position with a useless one.  "media.resume" is included because that is
+# how Plex reports a seek — its offset is where the viewer jumped to.
+# Not every source emits all of these (Jellyfin has no scrobble or resume,
+# Emby only start/stop).
+PLAYBACK_PROGRESS_EVENTS = (
+    "media.pause",
+    "media.resume",
+    "media.stop",
+    "media.scrobble",
+)
+# How close to the end a stop must be to keep an existing completion mark.
+# Matches the default watched threshold of the media servers (~90%); a
+# server configured to scrobble earlier than this simply keeps the mark
+# for a shorter stretch of the title.
+PLAYBACK_COMPLETION_TAIL_RATIO = 0.1
 
 IMAGE_RESOLVE_GUARD_PREFIX = "playback_img_fill"
 IMAGE_RESOLVE_GUARD_SECONDS = 60
@@ -124,6 +144,142 @@ def _state_matches(
     return False
 
 
+def _identifiers_from_state(
+    state: dict | None,
+    *,
+    rating_key: str | None,
+    media_id: str | None,
+    season_number: int | None,
+    episode_number: int | None,
+) -> tuple[str | None, int | None, int | None]:
+    """Fill in identifiers a pause/stop event does not carry itself.
+
+    Plex only resolves the show id on play/resume/scrobble, so pause and
+    stop arrive without one.  The cached state of the same playback still
+    has it — but it is only safe to reuse when the rating key proves both
+    events refer to the same item.
+    """
+    if media_id is not None or not rating_key or not state:
+        return media_id, season_number, episode_number
+
+    if str(state.get("rating_key") or "") != str(rating_key):
+        return media_id, season_number, episode_number
+
+    return (
+        state.get("media_id"),
+        season_number if season_number is not None else state.get("season_number"),
+        episode_number if episode_number is not None else state.get("episode_number"),
+    )
+
+
+def _keeps_completion(user, item, position_seconds, duration_seconds) -> bool:
+    """Return whether a stop should keep an existing completion mark.
+
+    Plex scrobbles at its own completion threshold and then sends a stop
+    when playback ends.  That trailing stop must not undo the mark, but a
+    later rewatch has to be able to clear it — so the mark is only kept
+    while the reported position is still near the end of the title.
+    """
+    if not duration_seconds or position_seconds < duration_seconds * (
+        1 - PLAYBACK_COMPLETION_TAIL_RATIO
+    ):
+        return False
+
+    return PlaybackProgress.objects.filter(
+        user=user,
+        item=item,
+        completed=True,
+    ).exists()
+
+
+def _store_playback_progress(
+    user_id: int,
+    *,
+    event_type: str,
+    playback_media_type: str | None,
+    media_id: str | None,
+    source: str,
+    season_number: int | None,
+    episode_number: int | None,
+    view_offset_seconds: int | None,
+    duration_seconds: int | None,
+) -> None:
+    """Mirror a webhook playback position into the durable progress store.
+
+    Built from the event's own fields rather than the cached card state, so
+    a position is still stored when the cache is cold, expired, or holds a
+    different title.  Identifiers a pause/stop event omits are recovered by
+    the caller via ``_identifiers_from_state``.
+
+    Failures are logged, never raised: a webhook must not fail because the
+    resume position could not be written.
+    """
+    if event_type not in PLAYBACK_PROGRESS_EVENTS:
+        return
+
+    # A scrobble is the media server's completion mark. Plex sends it
+    # without a view offset, so it must still land — as a completion,
+    # leaving whatever position is already stored untouched.
+    completion_only = event_type == "media.scrobble" and view_offset_seconds is None
+
+    # Guard before any coercion: an event without an offset carries no
+    # position, and writing 0 would destroy a good stored one.
+    if view_offset_seconds is None and not completion_only:
+        return
+
+    try:
+        item = _resolve_state_item(
+            {
+                "media_id": media_id,
+                "source": source,
+                "media_type": playback_media_type,
+                "season_number": season_number,
+                "episode_number": episode_number,
+            },
+        )
+        # _resolve_state_item falls back to the show/season row when the
+        # episode isn't known yet; a resume position belongs to the episode
+        # itself, so anything but an exact movie/episode match is dropped.
+        if item is None or item.media_type != playback_media_type:
+            return
+
+        from api.fork_views_playback import upsert_playback_progress
+
+        user = get_user_model().objects.get(pk=user_id)
+        duration = _coerce_int(duration_seconds) or None
+
+        if completion_only:
+            stored = PlaybackProgress.objects.filter(user=user, item=item).first()
+            upsert_playback_progress(
+                user,
+                item,
+                stored.position_seconds if stored else 0,
+                (stored.duration_seconds if stored else None) or duration,
+                completed=True,
+            )
+            return
+
+        position = max(0, view_offset_seconds)
+        if duration is None:
+            duration = (
+                PlaybackProgress.objects.filter(user=user, item=item)
+                .values_list("duration_seconds", flat=True)
+                .first()
+            )
+        upsert_playback_progress(
+            user,
+            item,
+            position,
+            max(0, duration) if duration else None,
+            # A completion mark is a statement about the whole title, so it
+            # must survive the media.stop Plex sends straight afterwards.
+            completed=event_type == "media.scrobble"
+            or _keeps_completion(user, item, position, duration),
+        )
+    except Exception:
+        logger.warning("Webhook playback-progress update failed", exc_info=True)
+
+
 def apply_playback_event(
     *,
     user_id: int,
@@ -139,12 +295,18 @@ def apply_playback_event(
     episode_number: int | None = None,
     view_offset_seconds: int | None = None,
     duration_seconds: int | None = None,
+    store_progress: bool = False,
 ) -> None:
     """Update live playback cache state from a webhook event.
 
     All fields are pre-extracted by the caller (Plex / Jellyfin
     processor) so this function is source-agnostic.  Event types
     use the normalised ``media.*`` naming regardless of origin.
+
+    ``store_progress`` additionally mirrors the position into
+    ``PlaybackProgress`` so it survives the cache and is readable via
+    ``/api/v1/playback/progress/``.  The media-server webhooks opt in;
+    the scrobble API does not, because it writes that store itself.
     """
     if playback_media_type not in (
         MediaTypes.MOVIE.value,
@@ -155,6 +317,9 @@ def apply_playback_event(
     if not event_type:
         return
 
+    # Kept for the progress store: the card treats resume like play, but a
+    # resume is how Plex reports a seek, so its offset is a real position.
+    source_event_type = event_type
     if event_type == "media.resume":
         event_type = "media.play"
 
@@ -187,6 +352,27 @@ def apply_playback_event(
             existing_state["status"] = PLAYBACK_STATUS_STOPPED
             existing_state["stop_expires_at_ts"] = now_ts + PLAYBACK_STOP_GRACE_SECONDS
             set_user_playback_state(user_id, existing_state)
+        # Outside the cache branch on purpose: the stop event carries its own
+        # position, so it must be stored even when no card state matched.
+        if store_progress:
+            stop_media_id, stop_season, stop_episode = _identifiers_from_state(
+                existing_state,
+                rating_key=rating_key,
+                media_id=media_id,
+                season_number=season_number,
+                episode_number=episode_number,
+            )
+            _store_playback_progress(
+                user_id,
+                event_type=event_type,
+                playback_media_type=playback_media_type,
+                media_id=stop_media_id,
+                source=source,
+                season_number=stop_season,
+                episode_number=stop_episode,
+                view_offset_seconds=view_offset_seconds,
+                duration_seconds=duration_seconds,
+            )
         return
 
     if event_type not in ("media.play", "media.pause", "media.scrobble"):
@@ -285,6 +471,28 @@ def apply_playback_event(
 
     set_user_playback_state(user_id, state)
 
+    if store_progress:
+        store_media_id, store_season, store_episode = _identifiers_from_state(
+            existing_state,
+            rating_key=rating_key,
+            media_id=media_id,
+            season_number=season_number,
+            episode_number=episode_number,
+        )
+        # The event's own offset, not the cache-backfilled one: a play that
+        # reports no position must not be stored as a position of zero.
+        _store_playback_progress(
+            user_id,
+            event_type=source_event_type,
+            playback_media_type=playback_media_type,
+            media_id=store_media_id,
+            source=source,
+            season_number=store_season,
+            episode_number=store_episode,
+            view_offset_seconds=view_offset_seconds,
+            duration_seconds=duration_seconds,
+        )
+
 
 def apply_plex_event(
     *,
@@ -326,6 +534,7 @@ def apply_plex_event(
         ),
         view_offset_seconds=_extract_offset_seconds(payload),
         duration_seconds=_extract_duration_seconds(payload),
+        store_progress=True,
     )
 
 

@@ -446,8 +446,9 @@ class PlaybackProgressView(drf_views.APIView):
 
     Complements /api/v1/scrobble/, which can push playback progress in but
     can't read saved positions back out. Positions here are written by API
-    clients and by scrobble 'stop'; Plex/Jellyfin/Emby webhook playback is
-    not mirrored into this store.
+    clients, by scrobble 'stop', and by media-server webhooks reporting a
+    position (Plex pause/resume/stop/scrobble, Jellyfin pause/stop,
+    Emby stop).
     """
 
     @extend_schema(

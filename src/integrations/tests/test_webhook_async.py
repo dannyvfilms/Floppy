@@ -6,16 +6,23 @@ never block a web worker.
 """
 
 import json
+from datetime import timedelta
 from unittest.mock import call, patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils import timezone
 from simple_history.models import HistoricalRecords
 
+from app import live_playback
+from app.models import Item, MediaTypes, PlaybackProgress, Sources
 from integrations import tasks
 from integrations.models import JellyfinAccount, PlexAccount, PlexWebhookShare
+from integrations.webhooks.jellyfin import JellyfinWebhookProcessor
+from integrations.webhooks.plex import PlexWebhookProcessor
 
 
 class WebhookViewEnqueueTests(TestCase):
@@ -308,6 +315,388 @@ class ProcessWebhookTaskTests(TestCase):
         tasks.process_webhook("jellyfin", {"Event": "Stop"}, self.user.id)
 
         mock_push_delay.assert_not_called()
+
+
+class WebhookPlaybackProgressTests(TestCase):
+    """Webhook playback events persist a durable resume position.
+
+    Exercised through app.live_playback.apply_playback_event, which the
+    Plex, Jellyfin and Emby processors all delegate to.
+    """
+
+    def setUp(self):
+        """Create a user and the items webhook events resolve to."""
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="playbackuser",
+            password="12345",
+        )
+        self.movie_item = Item.objects.create(
+            media_id="701",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+        self.episode_item = Item.objects.create(
+            media_id="103516",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Episode Four",
+            season_number=4,
+            episode_number=4,
+        )
+
+    def _apply(self, event_type, **overrides):
+        kwargs = {
+            "user_id": self.user.id,
+            "event_type": event_type,
+            "playback_media_type": MediaTypes.MOVIE.value,
+            "media_id": "701",
+            "source": Sources.TMDB.value,
+            "rating_key": "rk-1",
+            "title": "The Matrix",
+            "view_offset_seconds": 1380,
+            "duration_seconds": 8160,
+            "store_progress": True,
+        }
+        kwargs.update(overrides)
+        live_playback.apply_playback_event(**kwargs)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_pause_stores_position(self, _mock_image):
+        """A pause part-way through a movie is written to the store."""
+        self._apply("media.pause")
+
+        progress = PlaybackProgress.objects.get(
+            user=self.user,
+            item=self.movie_item,
+        )
+        self.assertEqual(progress.position_seconds, 1380)
+        self.assertEqual(progress.duration_seconds, 8160)
+        self.assertFalse(progress.completed)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_stop_stores_episode_position(self, _mock_image):
+        """Stopping an episode records its own position, not the show's."""
+        self._apply(
+            "media.play",
+            playback_media_type=MediaTypes.EPISODE.value,
+            media_id="103516",
+            season_number=4,
+            episode_number=4,
+            view_offset_seconds=60,
+        )
+        self._apply(
+            "media.stop",
+            playback_media_type=MediaTypes.EPISODE.value,
+            media_id="103516",
+            season_number=4,
+            episode_number=4,
+            view_offset_seconds=1500,
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertEqual(progress.item, self.episode_item)
+        self.assertEqual(progress.position_seconds, 1500)
+        self.assertFalse(progress.completed)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_scrobble_marks_completed(self, _mock_image):
+        """The media server's own completion mark sets completed."""
+        self._apply("media.scrobble", view_offset_seconds=8000)
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertEqual(progress.position_seconds, 8000)
+        self.assertTrue(progress.completed)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_play_does_not_store_position(self, _mock_image):
+        """Play events are ignored: their offset is usually a reset to 0."""
+        self._apply("media.play", view_offset_seconds=0)
+
+        self.assertFalse(PlaybackProgress.objects.exists())
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_resume_after_seek_stores_new_position(self, _mock_image):
+        """Plex reports a seek as a resume carrying the new offset."""
+        self._apply("media.pause", view_offset_seconds=600)
+        self._apply("media.resume", view_offset_seconds=4800)
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertEqual(progress.position_seconds, 4800)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_resume_without_offset_keeps_stored_position(self, _mock_image):
+        """A resume that reports no position must not zero the stored one."""
+        self._apply("media.pause", view_offset_seconds=600)
+        cache.clear()
+        self._apply("media.resume", view_offset_seconds=None)
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertEqual(progress.position_seconds, 600)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_position_is_updated_not_duplicated(self, _mock_image):
+        """Repeated pauses overwrite the single row for that item."""
+        self._apply("media.pause", view_offset_seconds=600)
+        self._apply("media.pause", view_offset_seconds=1800)
+
+        self.assertEqual(PlaybackProgress.objects.count(), 1)
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertEqual(progress.position_seconds, 1800)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_unknown_item_is_skipped(self, _mock_image):
+        """An event for media that isn't in the library writes nothing."""
+        self._apply("media.pause", media_id="999999")
+
+        self.assertFalse(PlaybackProgress.objects.exists())
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_episode_without_episode_item_is_skipped(self, _mock_image):
+        """A show-level fallback match must not be stored as a position."""
+        Item.objects.create(
+            media_id="555",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Unwatched Show",
+        )
+
+        self._apply(
+            "media.pause",
+            playback_media_type=MediaTypes.EPISODE.value,
+            media_id="555",
+            season_number=1,
+            episode_number=1,
+        )
+
+        self.assertFalse(PlaybackProgress.objects.exists())
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_scrobble_api_path_does_not_double_write(self, _mock_image):
+        """Without store_progress the cache is updated but nothing persisted."""
+        self._apply("media.pause", store_progress=False)
+
+        self.assertFalse(PlaybackProgress.objects.exists())
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_write_failure_does_not_break_the_webhook(self, _mock_image):
+        """A failing progress write is swallowed; the cache still updates."""
+        with patch(
+            "api.fork_views_playback.upsert_playback_progress",
+            side_effect=OSError("db gone"),
+        ):
+            self._apply("media.pause")
+
+        self.assertFalse(PlaybackProgress.objects.exists())
+        self.assertIsNotNone(live_playback.get_user_playback_state(self.user.id))
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_stop_after_scrobble_keeps_completed(self, _mock_image):
+        """Plex sends stop right after scrobble; that must not un-complete."""
+        self._apply("media.scrobble", view_offset_seconds=8100)
+        self._apply("media.stop", view_offset_seconds=8160)
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 8160)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_stop_stores_position_with_cold_cache(self, _mock_image):
+        """A stop must persist even when no card state is cached."""
+        cache.clear()
+
+        self._apply("media.stop", view_offset_seconds=2400)
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertEqual(progress.position_seconds, 2400)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_event_without_offset_keeps_stored_position(self, _mock_image):
+        """A missing offset means "no position", not position zero."""
+        self._apply("media.pause", view_offset_seconds=1200)
+        cache.clear()  # no cached offset to fall back on
+        self._apply("media.pause", view_offset_seconds=None)
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertEqual(progress.position_seconds, 1200)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_scrobble_without_offset_marks_completed(self, _mock_image):
+        """Plex scrobbles carry no offset; they must still complete."""
+        self._apply("media.pause", view_offset_seconds=5000)
+        self._apply("media.scrobble", view_offset_seconds=None)
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 5000)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_rewatch_from_the_start_clears_completion(self, _mock_image):
+        """Restarting a finished title must clear its completion mark."""
+        self._apply("media.scrobble", view_offset_seconds=8100)
+
+        self._apply("media.pause", view_offset_seconds=120)
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertFalse(progress.completed)
+        self.assertEqual(progress.position_seconds, 120)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_stop_long_after_scrobble_keeps_completed(self, _mock_image):
+        """Elapsed time must not decide whether a completion survives.
+
+        Plex scrobbles at ~90%, so on a long film the trailing stop can
+        arrive far later in wall-clock terms while still being at the end
+        of the title.
+        """
+        self._apply("media.scrobble", view_offset_seconds=7300)
+        # queryset update() bypasses auto_now, so the row really ages.
+        PlaybackProgress.objects.filter(user=self.user).update(
+            updated_at=timezone.now() - timedelta(minutes=30),
+        )
+
+        self._apply("media.stop", view_offset_seconds=8160)
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertTrue(progress.completed)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_stop_with_foreign_rating_key_writes_nothing(self, _mock_image):
+        """Identifiers are only reused when the rating key matches."""
+        self._apply("media.pause", view_offset_seconds=600)
+        self.assertEqual(PlaybackProgress.objects.count(), 1)
+
+        self._apply(
+            "media.stop",
+            media_id=None,
+            rating_key="some-other-playback",
+            view_offset_seconds=4200,
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertEqual(progress.position_seconds, 600)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_stop_without_identifiers_writes_nothing(self, _mock_image):
+        """A stop that identifies nothing must not adopt a cached title."""
+        self._apply("media.pause", view_offset_seconds=600)
+        self.assertEqual(PlaybackProgress.objects.count(), 1)
+
+        self._apply(
+            "media.stop",
+            media_id=None,
+            rating_key=None,
+            view_offset_seconds=4200,
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertEqual(progress.position_seconds, 600)
+
+
+class JellyfinWebhookProgressTests(TestCase):
+    """The Jellyfin processor stores positions end to end."""
+
+    def setUp(self):
+        """Create a user and the movie the payload resolves to."""
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="jellyfinuser")
+        self.item = Item.objects.create(
+            media_id="701",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_stop_payload_stores_position(self, _mock_image):
+        """A Jellyfin stop payload persists the position from its ticks."""
+        processor = JellyfinWebhookProcessor()
+        processor._update_live_playback_state(
+            {
+                "Event": "Stop",
+                "Item": {
+                    "Id": "jf-1",
+                    "Name": "The Matrix",
+                    "RunTimeTicks": 81_600_000_000,  # 8160s
+                    "PlaybackPositionTicks": 13_800_000_000,  # 1380s
+                },
+            },
+            self.user,
+            {"tmdb_id": "701"},
+            MediaTypes.MOVIE.value,
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user, item=self.item)
+        self.assertEqual(progress.position_seconds, 1380)
+        self.assertEqual(progress.duration_seconds, 8160)
+
+
+class PlexWebhookProgressTests(TestCase):
+    """The Plex processor stores episode positions end to end.
+
+    Plex only resolves the show id on play/resume/scrobble, so a pause or
+    stop has to recover it from the cached state of the same playback.
+    """
+
+    def setUp(self):
+        """Create a user and the episode the payload resolves to.
+
+        Plex resolves episodes to the *show* TMDB id, so the episode Item
+        is keyed on that id rather than an episode-level one.
+        """
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="plexuser")
+        self.episode_item = Item.objects.create(
+            media_id="1416",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Episode Four",
+            season_number=4,
+            episode_number=4,
+        )
+
+    def _payload(self, event, offset_ms):
+        return {
+            "event": event,
+            "Metadata": {
+                "ratingKey": "plex-rk-1",
+                "type": "episode",
+                "title": "Episode Four",
+                "grandparentTitle": "Some Show",
+                "parentIndex": 4,
+                "index": 4,
+                "viewOffset": offset_ms,
+                "duration": 2_700_000,
+            },
+        }
+
+    @patch(
+        "integrations.webhooks.plex.PlexWebhookProcessor._find_tv_media_id",
+        return_value=("1416", None, None),
+    )
+    @patch("app.live_playback._attach_resolved_image")
+    def test_episode_pause_stores_position_after_play(self, _mock_image, _mock_find):
+        """Play resolves the show id; the following pause reuses it."""
+        processor = PlexWebhookProcessor()
+        # Play: Plex resolves the show-level id from the payload ids.
+        processor._update_live_playback_state(
+            self._payload("media.play", 30_000),
+            self.user,
+            {"tmdb_id": "1416", "tvdb_id": None, "imdb_id": None},
+            MediaTypes.EPISODE.value,
+        )
+        # Pause: the processor deliberately leaves media_id unresolved.
+        processor._update_live_playback_state(
+            self._payload("media.pause", 1_500_000),
+            self.user,
+            {"tmdb_id": None, "tvdb_id": None, "imdb_id": None},
+            MediaTypes.EPISODE.value,
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user)
+        self.assertEqual(progress.item, self.episode_item)
+        self.assertEqual(progress.position_seconds, 1500)
 
 
 class WebhookTaskRoutingTests(SimpleTestCase):
