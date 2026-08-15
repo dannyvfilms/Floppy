@@ -75,7 +75,7 @@
                  @click.away="open = false"
                  @keydown.escape.window="open = false">
               <button @click="open = !open"
-                      class="flex w-full items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
+                      class="flex w-full items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded-md transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
                 <span class="text-sm font-medium">{{ episode.display_episode_number|default:episode_number }}. {{ episode_title }}</span>
                 <div class="w-4 h-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</div>
               </button>
@@ -91,7 +91,7 @@
                   {% for ep in episodes %}
                     <a href="{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=ep.episode_number %}{% else %}{% url 'episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=ep.episode_number %}{% endif %}"
                        hx-boost="true"
-                       class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-gray-700 transition-colors duration-200 cursor-pointer {% if ep.episode_number == episode_number %}bg-[var(--color-surface-muted)]{% endif %}">
+                       class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-gray-700 hover:text-gray-100 transition-colors duration-200 cursor-pointer {% if ep.episode_number == episode_number %}bg-[var(--color-surface-muted)]{% endif %}">
                       <div class="w-8 h-8 rounded-full flex items-center justify-center bg-indigo-600 text-white shrink-0">
                         {{ ep.display_episode_number|default:ep.episode_number }}
                       </div>

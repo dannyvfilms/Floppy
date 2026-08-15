@@ -115,7 +115,7 @@
       <div class="fixed top-24 right-0 left-0 z-50 flex justify-center pointer-events-none">
         <div class="w-full max-w-xl px-4 space-y-2 pointer-events-auto">
           {% for message in messages %}
-            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-{{ message.tags }} opacity-0"
+            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-{{ message.tags }} opacity-0"
               x-data="{
                   init() {
                     // Start entrance animation after a tiny delay

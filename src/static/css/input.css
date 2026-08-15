@@ -517,19 +517,19 @@ html.light .theme-toggle-icon-moon {
 @custom-variant parent-hover-tap (.hover-tap:hover &);
 
 .toast-error {
-  @apply bg-red-700/95 border-red-600;
+  @apply bg-red-700/95 border-red-600 text-white;
 }
 
 .toast-warning {
-  @apply bg-amber-700/95 border-amber-600;
+  @apply bg-amber-700/95 border-amber-600 text-white;
 }
 
 .toast-success {
-  @apply bg-emerald-700/95 border-emerald-600;
+  @apply bg-emerald-700/95 border-emerald-600 text-white;
 }
 
 .toast-info {
-  @apply bg-indigo-700/95 border-indigo-600;
+  @apply bg-indigo-700/95 border-indigo-600 text-white;
 }
 
 /*

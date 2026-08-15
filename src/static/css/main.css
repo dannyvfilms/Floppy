@@ -1616,6 +1616,9 @@
   .border-\[var\(--color-surface-strong\)\] {
     border-color: var(--color-surface-strong);
   }
+  .border-\[var\(--color-text-muted\)\] {
+    border-color: var(--color-text-muted);
+  }
   .border-amber-400\/18 {
     border-color: color-mix(in srgb, oklch(82.8% 0.189 84.429) 18%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1639,9 +1642,6 @@
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-amber-500) 30%, transparent);
     }
-  }
-  .border-amber-700 {
-    border-color: var(--color-amber-700);
   }
   .border-blue-700\/50 {
     border-color: color-mix(in srgb, oklch(48.8% 0.243 264.376) 50%, transparent);
@@ -1693,9 +1693,6 @@
   }
   .border-gray-300 {
     border-color: var(--color-gray-300);
-  }
-  .border-gray-400 {
-    border-color: var(--color-gray-400);
   }
   .border-gray-400\/18 {
     border-color: color-mix(in srgb, oklch(70.7% 0.022 261.325) 18%, transparent);
@@ -1925,12 +1922,6 @@
       border-color: color-mix(in oklab, var(--color-white) 10%, transparent);
     }
   }
-  .border-white\/15 {
-    border-color: color-mix(in srgb, #fff 15%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-white) 15%, transparent);
-    }
-  }
   .border-white\/30 {
     border-color: color-mix(in srgb, #fff 30%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2031,12 +2022,6 @@
     background-color: color-mix(in srgb, oklch(66.6% 0.179 58.318) 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-amber-600) 20%, transparent);
-    }
-  }
-  .bg-amber-900\/40 {
-    background-color: color-mix(in srgb, oklch(41.4% 0.112 45.904) 40%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-amber-900) 40%, transparent);
     }
   }
   .bg-black {
@@ -2450,12 +2435,6 @@
       background-color: color-mix(in oklab, var(--color-red-900) 20%, transparent);
     }
   }
-  .bg-red-900\/40 {
-    background-color: color-mix(in srgb, oklch(39.6% 0.141 25.723) 40%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-red-900) 40%, transparent);
-    }
-  }
   .bg-red-900\/50 {
     background-color: color-mix(in srgb, oklch(39.6% 0.141 25.723) 50%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2563,12 +2542,6 @@
   }
   .bg-white {
     background-color: var(--color-white);
-  }
-  .bg-white\/\[0\.04\] {
-    background-color: color-mix(in srgb, #fff 4%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-white) 4%, transparent);
-    }
   }
   .bg-white\/\[0\.07\] {
     background-color: color-mix(in srgb, #fff 7.000000000000001%, transparent);
@@ -3109,6 +3082,9 @@
   .text-red-500 {
     color: var(--color-red-500);
   }
+  .text-red-600 {
+    color: var(--color-red-600);
+  }
   .text-rose-100 {
     color: var(--color-rose-100);
   }
@@ -3142,11 +3118,11 @@
   .text-violet-100 {
     color: var(--color-violet-100);
   }
-  .text-violet-300 {
-    color: var(--color-violet-300);
-  }
   .text-violet-400 {
     color: var(--color-violet-400);
+  }
+  .text-violet-600 {
+    color: var(--color-violet-600);
   }
   .text-white {
     color: var(--color-white);
@@ -3184,6 +3160,11 @@
   }
   .underline {
     text-decoration-line: underline;
+  }
+  .placeholder-\[var\(--color-text-muted\)\] {
+    &::placeholder {
+      color: var(--color-text-muted);
+    }
   }
   .placeholder-gray-500 {
     &::placeholder {
@@ -4023,16 +4004,6 @@
       }
     }
   }
-  .hover\:bg-white\/10 {
-    &:hover {
-      @media (hover: hover) {
-        background-color: color-mix(in srgb, #fff 10%, transparent);
-        @supports (color: color-mix(in lab, red, red)) {
-          background-color: color-mix(in oklab, var(--color-white) 10%, transparent);
-        }
-      }
-    }
-  }
   .hover\:text-\[var\(--color-text\)\] {
     &:hover {
       @media (hover: hover) {
@@ -4117,10 +4088,10 @@
       }
     }
   }
-  .hover\:text-violet-200 {
+  .hover\:text-violet-700 {
     &:hover {
       @media (hover: hover) {
-        color: var(--color-violet-200);
+        color: var(--color-violet-700);
       }
     }
   }
@@ -4356,11 +4327,11 @@
       opacity: 75%;
     }
   }
-  .disabled\:hover\:bg-gray-700 {
+  .disabled\:hover\:bg-\[var\(--color-surface-dim\)\] {
     &:disabled {
       &:hover {
         @media (hover: hover) {
-          background-color: var(--color-gray-700);
+          background-color: var(--color-surface-dim);
         }
       }
     }
@@ -5415,6 +5386,25 @@
       flex-direction: column;
     }
   }
+  .dark\:text-red-300 {
+    @media (prefers-color-scheme: dark) {
+      color: var(--color-red-300);
+    }
+  }
+  .dark\:text-violet-300 {
+    @media (prefers-color-scheme: dark) {
+      color: var(--color-violet-300);
+    }
+  }
+  .dark\:hover\:text-violet-200 {
+    @media (prefers-color-scheme: dark) {
+      &:hover {
+        @media (hover: hover) {
+          color: var(--color-violet-200);
+        }
+      }
+    }
+  }
   .pointer-coarse\:hidden {
     @media (pointer: coarse) {
       display: none;
@@ -5882,6 +5872,7 @@ html.light .theme-toggle-icon-moon {
   @supports (color: color-mix(in lab, red, red)) {
     background-color: color-mix(in oklab, var(--color-red-700) 95%, transparent);
   }
+  color: var(--color-white);
 }
 .toast-warning {
   border-color: var(--color-amber-600);
@@ -5889,6 +5880,7 @@ html.light .theme-toggle-icon-moon {
   @supports (color: color-mix(in lab, red, red)) {
     background-color: color-mix(in oklab, var(--color-amber-700) 95%, transparent);
   }
+  color: var(--color-white);
 }
 .toast-success {
   border-color: var(--color-emerald-600);
@@ -5896,6 +5888,7 @@ html.light .theme-toggle-icon-moon {
   @supports (color: color-mix(in lab, red, red)) {
     background-color: color-mix(in oklab, var(--color-emerald-700) 95%, transparent);
   }
+  color: var(--color-white);
 }
 .toast-info {
   border-color: var(--color-indigo-600);
@@ -5903,6 +5896,7 @@ html.light .theme-toggle-icon-moon {
   @supports (color: color-mix(in lab, red, red)) {
     background-color: color-mix(in oklab, var(--color-indigo-700) 95%, transparent);
   }
+  color: var(--color-white);
 }
 .bg-card-body {
   position: relative;

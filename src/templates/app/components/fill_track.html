@@ -98,12 +98,12 @@
                 {% endif %}
                 <div class="relative flex items-stretch">
                   {% if field.name == "status" %}
-                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
+                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
                     <div class="absolute inset-y-0 right-2 flex items-center pointer-events-none">
                       {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
                     </div>
                   {% elif field.field.widget.input_type == 'number' %}
-                    {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-white text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
+                    {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
                     <div class="absolute inset-y-0 right-0 flex flex-col border-l border-gray-600">
                       <button type="button"
                               class="flex-1 px-2 hover:bg-gray-700 transition-colors rounded-tr-md border-t border-r border-gray-600"
@@ -121,7 +121,7 @@
                   {% elif field.name == "end_date" %}
                     {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label="End:" track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
                   {% else %}
-                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
+                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
                   {% endif %}
                 </div>
               </div>

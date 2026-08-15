@@ -270,56 +270,56 @@
                   @click="activeMediaTag = 'all'"
                   :aria-pressed="activeMediaTag === 'all'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                  :class="activeMediaTag === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
             All Sources
           </button>
           <button type="button"
                   @click="activeMediaTag = 'screen'"
                   :aria-pressed="activeMediaTag === 'screen'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'screen' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                  :class="activeMediaTag === 'screen' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
             Movies & TV
           </button>
           <button type="button"
                   @click="activeMediaTag = 'anime_manga'"
                   :aria-pressed="activeMediaTag === 'anime_manga'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'anime_manga' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                  :class="activeMediaTag === 'anime_manga' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
             Anime & Manga
           </button>
           <button type="button"
                   @click="activeMediaTag = 'reading'"
                   :aria-pressed="activeMediaTag === 'reading'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'reading' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                  :class="activeMediaTag === 'reading' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
             Books & Comics
           </button>
           <button type="button"
                   @click="activeMediaTag = 'games'"
                   :aria-pressed="activeMediaTag === 'games'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'games' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                  :class="activeMediaTag === 'games' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
             Games
           </button>
           <button type="button"
                   @click="activeMediaTag = 'podcasts'"
                   :aria-pressed="activeMediaTag === 'podcasts'"
-                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'podcasts' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                  :class="activeMediaTag === 'podcasts' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'"
+                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer">
             Podcasts
           </button>
           <button type="button"
                   @click="activeMediaTag = 'music'"
                   :aria-pressed="activeMediaTag === 'music'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'music' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                  :class="activeMediaTag === 'music' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
             Music
           </button>
           <button type="button"
                   @click="activeMediaTag = 'backup'"
                   :aria-pressed="activeMediaTag === 'backup'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'backup' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-gray-300 border-gray-600 hover:border-indigo-500 hover:text-white'">
+                  :class="activeMediaTag === 'backup' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
             Backups
           </button>
         </div>
@@ -2464,7 +2464,7 @@
               <div class="text-sm text-[var(--color-text-muted)]">Last sync: {{ xbox_account.last_sync_at|user_datetime_format:user }}</div>
             {% endif %}
             {% if xbox_account.last_error_message %}
-              <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+              <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
                 <strong>Error:</strong> {{ xbox_account.last_error_message }}
               </div>
             {% endif %}

@@ -494,7 +494,7 @@
                            x-cloak
                            x-transition
                            class="absolute z-50 mt-2 w-full max-w-2xl">
-                        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info">
+                        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-info">
                           {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0" %}
                           <p class="text-sm font-medium flex-1" x-text="barcodeError"></p>
                           <button type="button"
@@ -550,7 +550,7 @@
         <div class="w-full max-w-xl px-4 space-y-2 pointer-events-auto">
           {% for message in messages %}
             {# djlint:off #}
-            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-{{ message.tags }} opacity-0"
+            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-{{ message.tags }} opacity-0"
               x-data="{ 
                   init() { 
                     // Start entrance animation after a tiny delay

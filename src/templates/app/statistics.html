@@ -632,7 +632,7 @@
       <div x-show="cacheRefreshing && !metadataRefreshing"
            x-cloak
            x-transition
-           class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info opacity-0"
+           class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-info opacity-0"
            x-init="setTimeout(() => $el.classList.add('opacity-100', 'transform-none'), 10); $el.classList.add('transition-all', 'duration-300', 'ease-out', 'transform', 'translate-y-[-1rem]')">
         {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 animate-pulse" %}
         <p class="text-sm font-medium flex-1">Refreshing statistics in background...</p>
@@ -644,7 +644,7 @@
       <div x-show="metadataRefreshing"
            x-cloak
            x-transition
-           class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info opacity-0"
+           class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-info opacity-0"
            x-init="setTimeout(() => $el.classList.add('opacity-100', 'transform-none'), 10); $el.classList.add('transition-all', 'duration-300', 'ease-out', 'transform', 'translate-y-[-1rem]')">
         {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 animate-pulse" %}
         <p class="text-sm font-medium flex-1">Updating metadata in background...</p>
@@ -1505,7 +1505,7 @@
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <h2 class="text-2xl font-semibold text-[var(--color-text)]">Most Played</h2>
-                <span class="text-sm text-gray-500" x-text="selectedRange"></span>
+                <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
               </div>
               <a href="{% url 'medialist' 'movie' %}" class="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
                 See all your top movies →
@@ -1595,7 +1595,7 @@
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <h2 class="text-2xl font-semibold text-[var(--color-text)]">Most Played</h2>
-                <span class="text-sm text-gray-500" x-text="selectedRange"></span>
+                <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
               </div>
               <a href="{% url 'medialist' 'tv' %}" class="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
                 See all your top TV shows →
@@ -1678,7 +1678,7 @@
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <h2 class="text-2xl font-semibold text-[var(--color-text)]">Most Played</h2>
-                <span class="text-sm text-gray-500" x-text="selectedRange"></span>
+                <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
               </div>
               <a href="{% url 'medialist' 'boardgame' %}" class="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
                 See all your top board games →
