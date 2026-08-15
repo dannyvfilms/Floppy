@@ -1,96 +1,159 @@
-const CACHE_NAME = "floppy-v2";
-const urlsToCache = [
-  "/static/css/main.css",
-  "/static/favicon/android-chrome-192x192.png",
-  "/static/favicon/android-chrome-512x512.png",
-  "/static/fonts/roboto-flex.woff2",
-];
+const APP_SCOPE = new URL(self.registration.scope);
+const STATIC_BASE_URL = new URL("static/", APP_SCOPE);
+const OFFLINE_URL = new URL("static/offline.html", APP_SCOPE).toString();
+const SCOPE_KEY = APP_SCOPE.pathname.replace(/[^a-z0-9]+/gi, "-")
+  .replace(/^-|-$/g, "") || "root";
+const CACHE_PREFIX = `floppy-${SCOPE_KEY}-`;
+const CACHE_NAME = `${CACHE_PREFIX}public-shell-v3`;
+const LEGACY_CACHE_NAMES = new Set(["floppy-v2"]);
+const PRECACHE_URLS = [
+  "static/offline.html",
+  "static/css/main.css",
+  "static/favicon/site.webmanifest",
+  "static/favicon/android-chrome-192x192.png",
+  "static/favicon/android-chrome-512x512.png",
+  "static/fonts/roboto-flex.woff2",
+].map((path) => new URL(path, APP_SCOPE).toString());
 
-// Install event
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(urlsToCache);
+function isSameOrigin(url) {
+  return url.origin === APP_SCOPE.origin;
+}
+
+function isAppNavigation(request, url) {
+  return (
+    request.method === "GET"
+    && request.mode === "navigate"
+    && isSameOrigin(url)
+    && url.pathname.startsWith(APP_SCOPE.pathname)
+    && request.headers.get("HX-Request") !== "true"
+  );
+}
+
+function isPublicStaticRequest(request, url) {
+  return (
+    request.method === "GET"
+    && isSameOrigin(url)
+    && url.pathname.startsWith(STATIC_BASE_URL.pathname)
+    && request.headers.get("HX-Request") !== "true"
+  );
+}
+
+function canCacheStaticResponse(response) {
+  return response.ok && response.type === "basic";
+}
+
+async function precachePublicFiles() {
+  const cache = await caches.open(CACHE_NAME);
+  await Promise.allSettled(
+    PRECACHE_URLS.map(async (url) => {
+      const request = new Request(url, {
+        cache: "reload",
+        credentials: "same-origin",
+      });
+      const response = await fetch(request);
+      if (!canCacheStaticResponse(response)) {
+        throw new Error("A public PWA file could not be cached.");
+      }
+      await cache.put(request, response);
     }),
   );
-  // Activate this worker immediately; don't wait for old one to finish
-  self.skipWaiting();
+}
+
+async function offlineNavigationResponse(event) {
+  try {
+    const preloadResponse = await event.preloadResponse;
+    if (preloadResponse) {
+      return preloadResponse;
+    }
+    return await fetch(event.request);
+  } catch (error) {
+    const cachedFallback = await caches.match(OFFLINE_URL, {
+      ignoreSearch: true,
+    });
+    if (cachedFallback) {
+      return cachedFallback;
+    }
+
+    return new Response(
+      "Floppy is offline. The Floppy server cannot be reached. Try again after the connection is restored.",
+      {
+        status: 503,
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      },
+    );
+  }
+}
+
+async function publicStaticResponse(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const exactMatch = await cache.match(request);
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  try {
+    const networkResponse = await fetch(request);
+    if (canCacheStaticResponse(networkResponse)) {
+      await cache.put(request, networkResponse.clone());
+    }
+    return networkResponse;
+  } catch (error) {
+    const previousVersion = await cache.match(request, {
+      ignoreSearch: true,
+    });
+    if (previousVersion) {
+      return previousVersion;
+    }
+    throw error;
+  }
+}
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    precachePublicFiles().then(() => self.skipWaiting()),
+  );
 });
 
-// Fetch event
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
-  // Only cache same-origin static assets.
-  const isSameOrigin = url.origin === self.location.origin;
-  const isHtmxRequest = request.headers.get("HX-Request") === "true";
-
-  // Keep app routes and HTMX requests on network to avoid stale dynamic HTML.
-  //
-  // Return before respondWith. The browser then makes the request on its own
-  // network path. Calling respondWith(fetch(request)) here made the worker
-  // repeat a request that the browser can do without help. It also replaced
-  // the browser offline page with a failed promise, and it stopped navigation
-  // preload.
-  if (
-    request.method !== "GET" ||
-    !isSameOrigin ||
-    isHtmxRequest ||
-    !url.pathname.startsWith("/static/")
-  ) {
+  if (isAppNavigation(request, url)) {
+    event.respondWith(offlineNavigationResponse(event));
     return;
   }
 
-  // Cache-first for static assets only.
-  event.respondWith(
-    caches.match(request).then((response) => {
-      if (response) {
-        return response;
-      }
-
-      return fetch(request)
-        .then((networkResponse) => {
-          if (networkResponse.ok) {
-            const responseClone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
-          }
-          return networkResponse;
-        })
-        .catch(async (error) => {
-          // The network is not available. Static URLs contain a file
-          // modification time (main.css?1786502224). An exact match fails
-          // after each rebuild, because the time changes. Give the previous
-          // version instead. A previous version is better than a page that
-          // cannot load.
-          const previousVersion = await caches.match(request, {
-            ignoreSearch: true,
-          });
-          if (previousVersion) {
-            return previousVersion;
-          }
-          throw error;
-        });
-    }),
-  );
+  if (isPublicStaticRequest(request, url)) {
+    event.respondWith(publicStaticResponse(request));
+  }
 });
 
-// Activate event
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((cacheNames) =>
-        Promise.all(
-          cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
-              return caches.delete(cacheName);
-            }
+    (async () => {
+      if (self.registration.navigationPreload) {
+        await self.registration.navigationPreload.enable();
+      }
 
-            return undefined;
-          }),
-        ),
-      )
-      .then(() => self.clients.claim()),
+      const cacheNames = await caches.keys();
+      await Promise.all(
+        cacheNames
+          .filter(
+            (cacheName) => (
+              cacheName !== CACHE_NAME
+              && (
+                cacheName.startsWith(CACHE_PREFIX)
+                || LEGACY_CACHE_NAMES.has(cacheName)
+              )
+            ),
+          )
+          .map((cacheName) => caches.delete(cacheName)),
+      );
+
+      await self.clients.claim();
+    })(),
   );
 });
