@@ -8,6 +8,8 @@ from collections.abc import Iterable
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
+from app.providers import services
+
 VALID_NETWORK_MODES = frozenset({"online", "offline", "restricted"})
 _PROVIDER_IDENTIFIER_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
@@ -29,6 +31,16 @@ def _normalize_provider(provider):
     return normalized
 
 
+def _normalize_mode(mode):
+    """Return one supported network mode or fail closed."""
+    normalized = str(mode or "").strip().casefold()
+    if normalized not in VALID_NETWORK_MODES:
+        valid_modes = ", ".join(sorted(VALID_NETWORK_MODES))
+        msg = f"FLOPPY_NETWORK_MODE must be one of: {valid_modes}."
+        raise ImproperlyConfigured(msg)
+    return normalized
+
+
 def get_network_mode():
     """Return the configured provider-network mode."""
     raw_mode = _configured_value(
@@ -36,12 +48,7 @@ def get_network_mode():
         "YAMTRACK_NETWORK_MODE",
         default="online",
     )
-    mode = str(raw_mode or "").strip().casefold()
-    if mode not in VALID_NETWORK_MODES:
-        valid_modes = ", ".join(sorted(VALID_NETWORK_MODES))
-        msg = f"FLOPPY_NETWORK_MODE must be one of: {valid_modes}."
-        raise ImproperlyConfigured(msg)
-    return mode
+    return _normalize_mode(raw_mode)
 
 
 def get_provider_allowlist():
@@ -71,7 +78,7 @@ def get_provider_allowlist():
 
 def provider_access_allowed(provider, *, mode=None):
     """Return whether one provider may use the shared HTTP boundary."""
-    active_mode = mode or get_network_mode()
+    active_mode = get_network_mode() if mode is None else _normalize_mode(mode)
     if active_mode == "online":
         return True
     if active_mode == "offline":
@@ -79,33 +86,32 @@ def provider_access_allowed(provider, *, mode=None):
     return _normalize_provider(provider) in get_provider_allowlist()
 
 
+class ProviderNetworkUnavailable(services.ProviderAPIError):
+    """Report an intentional provider block without leaking request data."""
+
+    def __init__(self, provider, mode):
+        provider_id = _normalize_provider(provider)
+        self.provider = provider_id
+        self.response = None
+        self.status_code = None
+        self.mode = _normalize_mode(mode)
+        try:
+            self.provider_label = services.Sources(provider_id).label
+        except (TypeError, ValueError):
+            self.provider_label = provider_id.replace("_", " ").title()
+
+        message = (
+            f"Network access to {self.provider_label} is disabled "
+            f"by Floppy's {self.mode} mode."
+        )
+        Exception.__init__(self, message)
+
+
 def install_provider_network_guard():
     """Install one fail-closed guard around the shared provider request function."""
-    from app.providers import services
-
     current_request = services.api_request
     if getattr(current_request, "_floppy_network_guard", False):
         return current_request
-
-    class ProviderNetworkUnavailable(services.ProviderAPIError):
-        """Report an intentional provider block without leaking request data."""
-
-        def __init__(self, provider, mode):
-            provider_id = _normalize_provider(provider)
-            self.provider = provider_id
-            self.response = None
-            self.status_code = None
-            self.mode = mode
-            try:
-                self.provider_label = services.Sources(provider_id).label
-            except (TypeError, ValueError):
-                self.provider_label = provider_id.replace("_", " ").title()
-
-            message = (
-                f"Network access to {self.provider_label} is disabled "
-                f"by Floppy's {mode} mode."
-            )
-            Exception.__init__(self, message)
 
     @functools.wraps(current_request)
     def guarded_request(*args, **kwargs):
