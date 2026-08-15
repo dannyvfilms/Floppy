@@ -10,6 +10,7 @@ from app.models import (
     Item,
     ItemProviderLink,
     MetadataProviderPreference,
+    MetadataSnapshot,
     MoviePlay,
     PlaybackProgress,
 )
@@ -46,6 +47,54 @@ class MoviePlayAdmin(admin.ModelAdmin):
 
     search_fields = ["movie__item__title"]
     list_display = ["__str__", "end_date", "external_id"]
+
+
+@admin.register(MetadataSnapshot)
+class MetadataSnapshotAdmin(admin.ModelAdmin):
+    """Read-only operational view for durable metadata snapshots."""
+
+    list_display = [
+        "source",
+        "media_type",
+        "media_id",
+        "state",
+        "origin",
+        "fetched_at",
+        "last_attempted_at",
+        "consecutive_failures",
+        "payload_size",
+    ]
+    list_filter = ["source", "media_type", "state", "origin"]
+    search_fields = ["source", "media_type", "media_id", "cache_key"]
+    readonly_fields = [
+        "cache_key",
+        "source",
+        "media_type",
+        "media_id",
+        "language",
+        "season_numbers",
+        "episode_number",
+        "edition_id",
+        "payload_hash",
+        "payload_size",
+        "schema_version",
+        "state",
+        "origin",
+        "fetched_at",
+        "last_attempted_at",
+        "refresh_started_at",
+        "last_failure_at",
+        "failure_code",
+        "consecutive_failures",
+        "created_at",
+        "updated_at",
+    ]
+    exclude = ["payload"]
+    list_per_page = 100
+
+    def has_add_permission(self, request):
+        """Prevent operators from forging cache records through the admin UI."""
+        return False
 
 
 class MediaAdmin(admin.ModelAdmin):
@@ -110,6 +159,7 @@ SpecialModels = [
     "ItemPersonCredit",
     "ItemStudioCredit",
     "MetadataBackfillState",
+    "MetadataSnapshot",
     "BackfillReconcileState",
     "ItemProviderLink",
     "MetadataProviderPreference",
