@@ -23,6 +23,7 @@ from integrations.imports import (
     mdblist,
     plex,
     pocketcasts,
+    psn,
     radarr,
     simkl,
     sonarr,
@@ -281,6 +282,18 @@ def import_xbox(user_id, mode="new"):
 def import_xbox_recurring(user_id, mode="new"):
     """Recurring import task for Xbox."""
     return import_media(xbox.importer, None, user_id, mode)
+
+
+@shared_task(name="Import from PSN")
+def import_psn(user_id, mode="new"):
+    """Celery task for importing game data from a connected PSN account."""
+    return import_media(psn.importer, None, user_id, mode)
+
+
+@shared_task(name="Import from PSN (Recurring)")
+def import_psn_recurring(user_id, mode="new"):
+    """Recurring import task for PSN."""
+    return import_media(psn.importer, None, user_id, mode)
 
 
 @shared_task(name="Import from IMDB")

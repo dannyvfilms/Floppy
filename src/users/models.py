@@ -1698,6 +1698,7 @@ class User(AbstractUser):
             "grouvee": ["Import from Grouvee"],
             "steam": ["Import from Steam"],
             "xbox": ["Import from Xbox", "Import from Xbox (Recurring)"],
+            "psn": ["Import from PSN", "Import from PSN (Recurring)"],
             "imdb": ["Import from IMDB"],
             "goodreads": [
                 "Import from Goodreads",
@@ -1739,6 +1740,7 @@ class User(AbstractUser):
             "pocketcasts": ["Import from Pocket Casts (Recurring)"],
             "gpodder": ["Import from GPodder (Recurring)"],
             "xbox": ["Import from Xbox (Recurring)"],
+            "psn": ["Import from PSN (Recurring)"],
             "stremio": ["Import from Stremio (Recurring)"],
             "lastfm": ["Poll Last.fm for all users"],
             "koito": ["Poll Koito for user"],
