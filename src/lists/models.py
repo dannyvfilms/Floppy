@@ -397,7 +397,7 @@ class CustomList(models.Model):
             else:
                 url = f"{tmdb.base_url}/tv/{media_id}"
 
-            params = tmdb.base_params.copy()
+            params = dict(tmdb.base_params())
             response = services.api_request(
                 Sources.TMDB.value,
                 "GET",

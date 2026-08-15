@@ -2,7 +2,9 @@ import datetime
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
@@ -1111,3 +1113,35 @@ class CustomListItemDeleteRenumberTest(TestCase):
 
         with self.assertRaises(IntegrityError), transaction.atomic():
             duplicate.save(force_insert=True)
+
+
+class TmdbBackdropTest(TestCase):
+    """Backdrop lookups must actually reach TMDB."""
+
+    def setUp(self):
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+        super().tearDown()
+
+    @patch("app.providers.services.api_request")
+    def test_backdrop_url_is_built_from_the_response(self, mock_request):
+        """A successful lookup returns the full image URL."""
+        mock_request.return_value = {"backdrop_path": "/abc.jpg"}
+
+        backdrop = CustomList()._get_tmdb_backdrop(MediaTypes.MOVIE.value, "603")
+
+        self.assertEqual(backdrop, "https://image.tmdb.org/t/p/w1280/abc.jpg")
+        params = mock_request.call_args.kwargs["params"]
+        self.assertIn("api_key", params)
+        self.assertIn("language", params)
+
+    @patch("app.providers.services.api_request")
+    def test_missing_backdrop_falls_back_to_placeholder(self, mock_request):
+        """A title without a backdrop yields the placeholder."""
+        mock_request.return_value = {}
+
+        backdrop = CustomList()._get_tmdb_backdrop(MediaTypes.MOVIE.value, "603")
+
+        self.assertEqual(backdrop, settings.IMG_NONE)
