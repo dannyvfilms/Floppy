@@ -202,7 +202,7 @@
       {% for page_num in pages %}
         {% if page_num %}
           <a href="?{% if active_filters %}{% for key, value in active_filters.items %}{{ key }}={{ value }}{% if not forloop.last %}&{% endif %}{% endfor %}{% if active_filters %}&{% endif %}{% endif %}page={{ page_num }}"
-             class="w-10 h-10 rounded-md {% if current_page == page_num %}bg-indigo-600{% else %}bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)]{% endif %} text-white flex items-center justify-center cursor-pointer">
+             class="w-10 h-10 rounded-md {% if current_page == page_num %}bg-indigo-600 text-white{% else %}bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)] text-[var(--color-text)]{% endif %} flex items-center justify-center cursor-pointer">
             {{ page_num }}
           </a>
         {% else %}
@@ -354,7 +354,7 @@
         {% for page_num in pages %}
           {% if page_num %}
             <a href="?{% if active_filters %}{% for key, value in active_filters.items %}{{ key }}={{ value }}{% if not forloop.last %}&{% endif %}{% endfor %}{% if active_filters %}&{% endif %}{% endif %}page={{ page_num }}"
-               class="w-10 h-10 rounded-md {% if current_page == page_num %}bg-indigo-600{% else %}bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)]{% endif %} text-white flex items-center justify-center cursor-pointer">
+               class="w-10 h-10 rounded-md {% if current_page == page_num %}bg-indigo-600 text-white{% else %}bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)] text-[var(--color-text)]{% endif %} flex items-center justify-center cursor-pointer">
               {{ page_num }}
             </a>
           {% else %}

@@ -1079,7 +1079,7 @@
                 hx-include="#smart-filter-form"
                 hx-indicator="#loading-indicator"
                 class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                 @click="statuses = []; onRuleChange()"
                 type="button">All</button>
         {% for value, label in status_choices %}
@@ -1089,7 +1089,7 @@
                     hx-include="#smart-filter-form"
                     hx-indicator="#loading-indicator"
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                    :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                    :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                     @click="toggleStatus('{{ value }}'); onRuleChange()"
                     type="button">
               <span>{{ label }}</span>
@@ -1116,7 +1116,7 @@
            x-cloak
            x-show="!(sort === 'custom' && canEdit && isOrderEditing)">
         <button class="flex items-center gap-2 px-2 py-2 transition-colors cursor-pointer"
-                :class="sort === 'custom' && canEdit ? 'rounded-l-md bg-indigo-600 text-white hover:bg-indigo-700' : 'rounded-md text-gray-200 hover:text-white'"
+                :class="sort === 'custom' && canEdit ? 'rounded-l-md bg-indigo-600 text-white hover:bg-indigo-700' : 'rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'"
                 @click="sortOpen = !sortOpen; orderOpen = false"
                 type="button">
           <span class="text-sm" x-text="sortLabels[sort] || sort"></span>
@@ -1162,7 +1162,7 @@
                   hx-include="#smart-filter-form"
                   hx-indicator="#loading-indicator"
                   class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                  :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                  :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                   @click="setSort('{{ value }}'); sortOpen = false; orderOpen = false"
                   type="button">{{ label }}</button>
         {% endfor %}

@@ -302,7 +302,7 @@
                      x-transition:leave="transition ease-in duration-100"
                      x-transition:leave-start="opacity-100 translate-y-0"
                      x-transition:leave-end="opacity-0 -translate-y-1"
-                     class="absolute left-0 top-full z-20 mt-2 rounded-2xl border border-white/10 bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm"
+                     class="absolute left-0 top-full z-20 mt-2 rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm"
                      style="min-width: max-content;">
                   <div id="trakt-series-graph-{{ display_provider }}-{{ media.media_id }}"
                        hx-get="{% url 'trakt_series_graph_fragment' source=display_provider media_id=media.media_id %}"
@@ -451,7 +451,7 @@
                    @mouseleave="if (!linksPinned) linksOpen = false"
                    @keydown.escape.window="linksOpen = false; linksPinned = false"
                    @click.outside="linksOpen = false; linksPinned = false">
-                <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                         title="View source and external links"
                         aria-haspopup="true"
                         :aria-expanded="linksOpen.toString()"
@@ -465,9 +465,9 @@
                      x-transition:leave="transition ease-in duration-100"
                      x-transition:leave-start="opacity-100 translate-y-0"
                      x-transition:leave-end="opacity-0 -translate-y-1"
-                     class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
+                     class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
                   {% for detail_link_section in detail_link_sections %}
-                    <div class="{% if not forloop.first %}mt-3 border-t border-white/10 pt-3{% endif %}">
+                    <div class="{% if not forloop.first %}mt-3 border-t border-[var(--color-surface-border)] pt-3{% endif %}">
                       <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{{ detail_link_section.title }}</div>
                       <div class="flex flex-wrap gap-2">
                         {% for detail_link in detail_link_section.entries %}
@@ -511,7 +511,7 @@
                      type="hidden"
                      name="preview_implied_genres_json"
                      value="{{ detail_tag_preview_implied_genres_json|default:'[]'|escape }}">
-              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                       x-ref="manageTagsButton"
                       title="Manage tags"
                       hx-get="{% media_view_url 'tags_modal' media %}"
@@ -529,7 +529,7 @@
                    x-transition:leave="transition ease-in duration-100"
                    x-transition:leave-start="opacity-100 translate-y-0"
                    x-transition:leave-end="opacity-0 -translate-y-1"
-                   class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
+                   class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
                 <div x-ref="tagsPreviewHost">
                   {% include "app/components/detail_tag_preview.html" with preview_id=detail_tag_preview_id detail_tag_sections=detail_tag_sections only %}
                 </div>
@@ -546,7 +546,7 @@
             </div>
 
             <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
-              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                       title="Add to custom lists"
                       hx-get="{% media_view_url 'lists_modal' media %}"
                       hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
@@ -564,7 +564,7 @@
               </div>
             </div>
 
-            <a class="inline-flex h-11 w-full flex-1 items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11 sm:flex-none"
+            <a class="inline-flex h-11 w-full flex-1 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11 sm:flex-none"
                title="View your activity history"
                href="{% url 'history' %}?{% if media_type == MediaTypes.SEASON.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}&season_number={{ media.season_number }}{% elif media_type == MediaTypes.TV.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% elif media_type == MediaTypes.PODCAST.value and podcast_show %}media_type={{ MediaTypes.PODCAST.value }}&podcast_show={{ podcast_show.id }}{% else %}media_type={{ media_type }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% endif %}{% if media_type == MediaTypes.GAME.value or media_type == MediaTypes.BOARDGAME.value %}&logging_style=sessions{% endif %}">
               {% include "app/icons/history.svg" with classes="w-4 h-4" %}
@@ -580,7 +580,7 @@
               <input type="hidden" name="library_media_type" value="{% if media_type == MediaTypes.ANIME.value or parent_media_type == MediaTypes.ANIME.value %}anime{% endif %}">
               <button type="submit"
                       title="Sync metadata with provider"
-                      class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 sm:size-11 sm:w-11"
+                      class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 sm:size-11 sm:w-11"
                       :disabled="loading">
                 <div :class="{ 'animate-spin': loading }">
                   {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-4 h-4" %}

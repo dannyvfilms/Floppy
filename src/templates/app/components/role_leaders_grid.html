@@ -1,6 +1,6 @@
 {% load app_tags %}
 {% for column in role_leaders.columns %}
-  <div class="{% if not forloop.first %}lg:border-l lg:border-white/10 lg:pl-1.5{% endif %}">
+  <div class="{% if not forloop.first %}lg:border-l lg:border-[var(--color-surface-border)] lg:pl-1.5{% endif %}">
     <div class="flex items-center gap-2 mb-3">
       {% if column.bucket == 'actors' %}
         {% include "app/icons/person.svg" with classes="w-4 h-4 text-blue-400" %}

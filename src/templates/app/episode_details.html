@@ -161,7 +161,7 @@
             <div class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap">
               {% if episode.item or season_metadata %}
                 <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
-                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                           title="Add to custom lists"
                           hx-get="{% if episode.item %}{% media_view_url 'lists_modal' episode.item %}{% else %}{% media_view_url 'lists_modal' episode %}{% endif %}"
                           hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
@@ -183,7 +183,7 @@
 
               {% if episode.item %}
                 <div x-data="{ historyOpen: false }" class="flex-1 sm:flex-none">
-                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                           title="View your activity history"
                           hx-get="{% media_view_url 'history_modal' episode.item %}"
                           hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'

@@ -223,7 +223,7 @@
                                   <template x-for="choice in sortChoices(section, row)" :key="choice.value">
                                     <button type="button"
                                             class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                                            :class="row.sort_by === choice.value ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                                            :class="row.sort_by === choice.value ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                                             @click.stop="toggleRowSort(row, choice.value); openMenu = null"
                                             x-text="choice.label"></button>
                                   </template>

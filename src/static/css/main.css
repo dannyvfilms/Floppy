@@ -5260,12 +5260,9 @@
       border-left-width: 1px;
     }
   }
-  .lg\:border-white\/10 {
+  .lg\:border-\[var\(--color-surface-border\)\] {
     @media (width >= 64rem) {
-      border-color: color-mix(in srgb, #fff 10%, transparent);
-      @supports (color: color-mix(in lab, red, red)) {
-        border-color: color-mix(in oklab, var(--color-white) 10%, transparent);
-      }
+      border-color: var(--color-surface-border);
     }
   }
   .lg\:p-3 {

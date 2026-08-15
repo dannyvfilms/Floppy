@@ -369,7 +369,7 @@
           {% for page_num in pages %}
             {% if page_num %}
               <a href="?q={{ request.GET.q|urlencode }}&media_type={{ media_type }}{% if source %}&source={{ source }}{% endif %}&page={{ page_num }}&layout={{ layout }}"
-                 class="w-10 h-10 rounded-md {% if data.page == page_num %}bg-indigo-600{% else %}bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)]{% endif %} text-white flex items-center justify-center">
+                 class="w-10 h-10 rounded-md {% if data.page == page_num %}bg-indigo-600 text-white{% else %}bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)] text-[var(--color-text)]{% endif %} flex items-center justify-center">
                 {{ page_num }}
               </a>
             {% else %}

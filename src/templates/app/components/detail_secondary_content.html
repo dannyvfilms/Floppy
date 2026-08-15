@@ -18,7 +18,7 @@
         <div class="space-y-4 mb-6">
           <div x-data="{ showRepeats: false }">
             <button @click="showRepeats = !showRepeats"
-                    class="group flex items-center justify-center w-full px-3 py-2 text-sm text-[var(--color-text)] bg-gray-600 hover:bg-gray-700 transition-all duration-200 rounded-lg tracking-wide cursor-pointer">
+                    class="group flex items-center justify-center w-full px-3 py-2 text-sm text-[var(--color-text)] bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] transition-all duration-200 rounded-lg tracking-wide cursor-pointer">
               <div class="lucide lucide-chevron-down w-4 h-4 mr-2 transition-transform"
                    :class="{ 'rotate-180': showRepeats }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</div>
               {% if media_type == MediaTypes.GAME.value or media_type == MediaTypes.BOARDGAME.value %}Show Sessions{% else %}Show Repeats{% endif %} ({{ user_medias|length|add:"-1" }})
@@ -433,7 +433,7 @@
                          hx-select="#episodes-batch > *"
                          hx-target="closest [data-episode-load-more]"
                          hx-swap="outerHTML"
-                         class="inline-flex items-center rounded-xl border border-white/10 bg-[var(--color-surface)] px-4 py-3 text-sm font-medium text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)]">
+                         class="inline-flex items-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 py-3 text-sm font-medium text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)]">
                         Show {{ episode_load_more.label }}
                       </a>
                     </div>

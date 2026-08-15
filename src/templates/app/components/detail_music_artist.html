@@ -145,7 +145,7 @@
                @mouseleave="if (!linksPinned) linksOpen = false"
                @keydown.escape.window="linksOpen = false; linksPinned = false"
                @click.outside="linksOpen = false; linksPinned = false">
-            <button class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
+            <button class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
                     title="View source and external links"
                     aria-haspopup="true"
                     :aria-expanded="linksOpen.toString()"
@@ -159,9 +159,9 @@
                  x-transition:leave="transition ease-in duration-100"
                  x-transition:leave-start="opacity-100 translate-y-0"
                  x-transition:leave-end="opacity-0 -translate-y-1"
-                 class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
+                 class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
               {% for detail_link_section in detail_link_sections %}
-                <div class="{% if not forloop.first %}mt-3 border-t border-white/10 pt-3{% endif %}">
+                <div class="{% if not forloop.first %}mt-3 border-t border-[var(--color-surface-border)] pt-3{% endif %}">
                   <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{{ detail_link_section.title }}</div>
                   <div class="flex flex-wrap gap-2">
                     {% for detail_link in detail_link_section.entries %}
@@ -191,7 +191,7 @@
 
         {% for action in detail_secondary_actions %}
           {% if action.kind == "link" %}
-            <a class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
+            <a class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
                title="{{ action.title }}"
                href="{{ action.url }}">
               {% if action.icon == "history" %}
@@ -201,7 +201,7 @@
           {% else %}
             <button type="button"
                     title="{{ action.title }}"
-                    class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 {% if action.button_classes %}{{ action.button_classes }}{% endif %}"
+                    class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 {% if action.button_classes %}{{ action.button_classes }}{% endif %}"
                     hx-post="{{ action.hx_post }}"
                     hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                     hx-swap="none"
