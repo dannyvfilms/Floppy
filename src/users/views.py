@@ -1370,6 +1370,7 @@ def import_data(request):
     sonarr_account = getattr(user, "sonarr_account", None)
     stremio_account = getattr(user, "stremio_account", None)
     xbox_account = getattr(user, "xbox_account", None)
+    psn_account = getattr(user, "psn_account", None)
 
     audiobookshelf_poll_interval = getattr(
         settings, "AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES", 15
@@ -1439,6 +1440,7 @@ def import_data(request):
         "sonarr_account": sonarr_account,
         "stremio_account": stremio_account,
         "xbox_account": xbox_account,
+        "psn_account": psn_account,
         "lastfm_periodic_task": lastfm_periodic_task,
         "lastfm_poll_interval": lastfm_poll_interval,
         "lastfm_history_status_label": lastfm_history_status_label,
