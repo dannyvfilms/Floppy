@@ -20,7 +20,7 @@ from app.models import MediaTypes, Sources, Status
 from app.providers import services
 from app.providers.igdb import ExternalGameSource, external_game
 from integrations import import_progress, xbox_api
-from integrations.imports import helpers
+from integrations.imports import helpers, title_matching
 from integrations.imports.helpers import MediaImportError
 from integrations.models import XboxAccount
 
@@ -47,34 +47,14 @@ LEGACY_DEVICES = {"Xbox", "Xbox360"}
 
 # The Xbox store decorates titles in ways IGDB doesn't ("Isonzo (Windows)",
 # "Battlefield 2042 Xbox Series X|S"); stripping these recovers matches.
-_DASHES = "-" + chr(0x2013) + chr(0x2014)  # hyphen, en dash, em dash
 STORE_SUFFIX_RE = re.compile(
     r"\s*(?:"
     r"\([^)]*\)"
-    r"|(?:[" + _DASHES + r":]\s*|\bfor\s+)(?:xbox|windows|pc)\b.*"
+    r"|(?:[" + title_matching.DASHES + r":]\s*|\bfor\s+)(?:xbox|windows|pc)\b.*"
     r"|xbox\s+(?:series\s+[xs](?:\|[xs])?|one|360)\b.*"
     r")\s*$",
     re.IGNORECASE,
 )
-TRADEMARK_RE = re.compile(r"[®™©]")
-# Curly apostrophes and superscript digits never appear in IGDB names.
-CHAR_NORMALIZATIONS = str.maketrans(
-    {"\u2018": "'", "\u2019": "'", "\u00b2": " 2", "\u00b3": " 3"},
-)
-BRACKETED_TITLE_RE = re.compile(r"^\[(.+)\]$")
-
-# Edition suffixes and publisher brand prefixes rename the same game; IGDB
-# indexes the plain title.
-EDITION_SUFFIX_RE = re.compile(
-    r"\s*(?:[" + _DASHES + r":]\s*)?(?:"
-    r"(?:definitive|standard|ultimate|deluxe|complete|enhanced|gold|special|"
-    r"digital|campaign|game\s+of\s+the\s+year|goty)\s+edition"
-    r"|base\s+game"
-    r"|complete"
-    r")\s*$",
-    re.IGNORECASE,
-)
-BRAND_PREFIX_RE = re.compile(r"^(?:ea\s+sports|ea|disney)\s+", re.IGNORECASE)
 
 
 def _safe_message(message):
@@ -86,41 +66,18 @@ def _safe_message(message):
 
 
 def _search_names(name):
-    """Yield search candidates, most faithful first.
-
-    The title as Xbox reports it, then simplified, then with edition/brand
-    decorations stripped. Numeral variants ("Alan Wake 2" vs "Alan Wake II")
-    are covered by the IGDB search matching alternative names.
-    """
-    simplified = _simplify_title(name)
-    seen = []
-    for candidate in (name, simplified, _strip_decorations(simplified)):
-        cleaned = candidate.strip()
-        if cleaned and cleaned not in seen:
-            seen.append(cleaned)
-            yield cleaned
+    """Yield search candidates for an Xbox store title, most faithful first."""
+    return title_matching.search_names(name, STORE_SUFFIX_RE)
 
 
 def _simplify_title(name):
     """Strip trademark symbols and Xbox store decorations from a title."""
-    simplified = TRADEMARK_RE.sub("", name).translate(CHAR_NORMALIZATIONS)
-    # Applied repeatedly: "Ghost Recon Breakpoint - Xbox Series X|S (Windows)".
-    while True:
-        stripped = STORE_SUFFIX_RE.sub("", simplified).strip(" " + _DASHES + ":")
-        if stripped == simplified or not stripped:
-            break
-        simplified = stripped
-    bracketed = BRACKETED_TITLE_RE.match(simplified)
-    if bracketed:
-        simplified = bracketed.group(1)
-    return " ".join(simplified.split())
+    return title_matching.simplify_title(name, STORE_SUFFIX_RE)
 
 
 def _strip_decorations(name):
     """Strip edition suffixes and publisher brand prefixes from a title."""
-    stripped = EDITION_SUFFIX_RE.sub("", name).strip(" " + _DASHES + ":")
-    stripped = BRAND_PREFIX_RE.sub("", stripped).strip()
-    return stripped or name
+    return title_matching.strip_decorations(name)
 
 
 def _marketplace_guid(title_id):
