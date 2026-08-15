@@ -17,7 +17,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-APPS=(app users integrations lists events api)
+# "config" holds the settings, the startup integrity check and the recovery
+# page. Leaving it out let a helper that nothing called, and a report that
+# always raised, both ship under a green suite (PR #780).
+APPS=(app users integrations lists events api config)
 COMMON=(--parallel --buffer)
 
 case "${1:-}" in

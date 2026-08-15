@@ -425,6 +425,36 @@ def _check_disk_space(recovery_dir: Path, database_path: Path) -> None:
         raise OSError(message)
 
 
+def _report_corruption(db_path: str, reason: str) -> None:
+    """Publish the report that makes the recovery page show the damaged card.
+
+    A damaged file cannot be repaired by removing rows, so any choice left on
+    disk is stale. It is removed here; otherwise the entrypoint sees a choice
+    that no code path consumes and never parks.
+    """
+    with suppress(OSError):
+        _decision_path(db_path).unlink()
+    try:
+        _write_incident_report(
+            db_path,
+            {
+                # groups and samples are read without a default, so a report
+                # that omits them is never written and the page never appears.
+                "groups": [],
+                "samples": [],
+                "total_conflicts": 0,
+                "fingerprint": secrets.token_hex(32),
+                "can_quarantine": False,
+                "unsafe_reasons": [f"Physical corruption detected: {reason}"],
+            },
+            status="corrupt",
+        )
+    except (OSError, KeyError, TypeError, ValueError) as error:
+        # The page is a courtesy; the log is the record. Say why it is missing
+        # rather than hiding the reason behind a bare except.
+        _log(f"[entrypoint] Could not publish the damaged-file report: {error}")
+
+
 def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
     """Create a consistent SQLite backup while the caller holds the write lock."""
     database_path = Path(db_path).resolve()
@@ -515,6 +545,10 @@ def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
             os.unlink(staging_name, dir_fd=recovery_descriptor)
             os.fsync(recovery_descriptor)
             succeeded = True
+            # Prune after the new copy is in place, never before. Pruning first
+            # would leave max_keep copies and then add one more, so the folder
+            # would settle one above the bound it is meant to hold.
+            _prune_recovery_backups(recovery_dir)
             return recovery_dir / final_name
         finally:
             if destination is not None:
@@ -968,34 +1002,22 @@ def check_database_integrity(db_path: str) -> None:
                 f"quick_check returned {status!r}",
             )
             _log(_CORRUPTION_HINT)
-            with suppress(Exception):
-                _write_incident_report(
-                    db_path,
-                    {
-                        "total_conflicts": 0,
-                        "status": "corrupt",
-                        "quick_check": status,
-                        "fingerprint": secrets.token_hex(32),
-                        "actions": [],
-                        "can_quarantine": False,
-                        "unsafe_reasons": [
-                            f"Physical corruption detected: quick_check returned {status!r}",
-                        ],
-                    },
-                    status="corrupt",
-                )
+            _report_corruption(db_path, f"quick_check returned {status!r}")
             sys.exit(1)
 
         _check_foreign_keys(conn, db_path)
     except sqlite3.DatabaseError as e:
         _log(f"[entrypoint] Database integrity check failed: {e}")
-        hint = (
-            _BUSY_HINT
-            if getattr(e, "sqlite_errorcode", None)
-            in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
-            else _CORRUPTION_HINT
-        )
-        _log(hint)
+        busy = getattr(e, "sqlite_errorcode", None) in {
+            sqlite3.SQLITE_BUSY,
+            sqlite3.SQLITE_LOCKED,
+        }
+        _log(_BUSY_HINT if busy else _CORRUPTION_HINT)
+        if not busy:
+            # A damaged file usually raises here rather than returning a
+            # quick_check string, so the recovery page needs the same report
+            # it gets from the returned-status path.
+            _report_corruption(db_path, str(e))
         sys.exit(1)
     finally:
         if conn is not None:

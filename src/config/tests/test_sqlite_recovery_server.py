@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sqlite3
 import tempfile
 import threading
@@ -175,7 +176,10 @@ class RecoveryPageTests(SimpleTestCase):
             response = self.post(f"{base}/quarantine")
             self.assertEqual(response.status, 200)
             body = response.read().decode()
-            self.assertIn("Starting Floppy...", body)
+            self.assertIn("Floppy has your choice.", body)
+            # The app needs minutes to migrate and start. A timed reload would
+            # land on a connection error and read as a failed repair.
+            self.assertNotIn("http-equiv='refresh'", body)
 
             decision = json.loads(
                 Path(f"{db_path}.integrity.decision").read_text(),
@@ -331,10 +335,17 @@ class RecoveryPageTests(SimpleTestCase):
             report = self.block_startup(db_path)
             page = recovery.render_page(report, interactive=True)
             # The page also opens from disk, where a subresource request cannot
-            # resolve. Styles and scripts stay inline. A link is different: the
-            # person clicks it, so the page requests nothing.
-            for marker in ("src=", "<link ", "@import"):
-                self.assertNotIn(marker, page)
+            # resolve. Styles, scripts and images stay inline. A link is
+            # different: the person clicks it, so the page requests nothing.
+            self.assertNotIn("@import", page)
+            fetched = re.findall(r"src='([^']*)'", page)
+            fetched += re.findall(r"<link[^>]*href='([^']*)'", page)
+            self.assertTrue(fetched, "expected the page to carry its own icon")
+            for reference in fetched:
+                self.assertTrue(
+                    reference.startswith("data:"),
+                    f"{reference[:40]} is requested when the page opens",
+                )
 
     def test_the_page_never_shows_the_approval_code(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -442,6 +453,21 @@ class RecoveryPageTests(SimpleTestCase):
             self.assertEqual(ctx.exception.code, 403)
             self.assertFalse(Path(f"{db_path}.integrity.decision").exists())
 
+    def test_backup_download_is_closed_unless_the_operator_opens_it(self):
+        """The page has no sign-in, so the database must not be the default."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_incident(tmp_dir)
+            self.block_startup(db_path)
+            base = self.serve(db_path)
+
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                urllib.request.urlopen(f"{base}/backup")  # noqa: S310
+            self.assertEqual(ctx.exception.code, 404)
+            page = urllib.request.urlopen(f"{base}/").read().decode()  # noqa: S310
+            self.assertNotIn("href='/backup'", page)
+            self.assertIn("FLOPPY_SQLITE_ALLOW_BACKUP_DOWNLOAD", page)
+
+    @mock.patch.dict(os.environ, {"FLOPPY_SQLITE_ALLOW_BACKUP_DOWNLOAD": "true"})
     def test_backup_download_serves_sqlite_file(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_incident(tmp_dir)
@@ -469,8 +495,23 @@ class RecoveryPageTests(SimpleTestCase):
             "can_quarantine": False,
         }
         page = recovery.render_page(report, interactive=True)
-        self.assertIn("Database File Damaged", page)
+        self.assertIn("Floppy cannot read the database file.", page)
         self.assertIn("Physical corruption detected", page)
-        self.assertIn("Download Database Copy", page)
+        self.assertIn("sqlite-recovery", page)
         self.assertNotIn("<form", page)
+
+    def test_the_page_carries_the_floppy_mark_and_icon(self):
+        """No static file server runs here, so both must be inlined."""
+        page = recovery.render_page(None, interactive=False)
+        self.assertIn("rel='icon'", page)
+        self.assertIn("data:image/png;base64,", page)
+        self.assertIn("class='masthead'", page)
+        self.assertNotIn("{% static", page)
+
+    @mock.patch.dict(os.environ, {"FLOPPY_SQLITE_ALLOW_BACKUP_DOWNLOAD": "true"})
+    def test_no_control_nests_inside_a_link(self):
+        """A button inside a link is announced twice by a screen reader."""
+        report = {"total_conflicts": 2, "can_quarantine": True, "affected": []}
+        page = recovery.render_page(report, interactive=True)
+        self.assertIsNone(re.search(r"<a\b[^>]*>\s*<button", page))
 

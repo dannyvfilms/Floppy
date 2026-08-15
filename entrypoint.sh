@@ -75,6 +75,12 @@ if [ -z "$DB_HOST" ]; then
                     echo "[entrypoint] SQLite startup is paused because the integrity check failed; migrations and services were not started. The container will remain unhealthy and idle." >&2
                     ;;
             esac
+            decision_file="${DB_FILE}.integrity.decision"
+            # The check above consumes a choice it can act on. Anything left is
+            # stale, and a stale file would defeat the parking guard below and
+            # spin this loop without a bound. Clear it before serving the page,
+            # so only a choice made in this pass can resume startup.
+            rm -f "$decision_file"
             parking_pid=
             trap 'kill "$parking_pid" 2>/dev/null || :; wait "$parking_pid" 2>/dev/null || :; exit 0' TERM INT
             # Show the recovery page. It writes a copy beside the database, then
@@ -83,7 +89,6 @@ if [ -z "$DB_HOST" ]; then
             python -m config.sqlite_recovery_server "$DB_FILE" &
             parking_pid=$!
             wait "$parking_pid" || :
-            decision_file="${DB_FILE}.integrity.decision"
             if [ ! -f "$decision_file" ]; then
                 while :; do
                     sleep 86400 &

@@ -30,6 +30,17 @@ class SqliteIntegrityTests(SimpleTestCase):
         self.env_patcher.stop()
         super().tearDown()
 
+    def unused_path(self):
+        """Name a database the test never opens, outside the working tree.
+
+        The connection is mocked, so the file is never read. The path still
+        decides where a report is written, and a bare name writes it into
+        whichever directory the suite was started from.
+        """
+        tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp_dir.cleanup)
+        return str(Path(tmp_dir.name) / "unused.sqlite3")
+
     def create_orphan_database(
         self,
         tmp_dir,
@@ -1170,7 +1181,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertRaises(SystemExit) as ctx,
             mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
         ):
-            check_database_integrity("irrelevant.sqlite3")
+            check_database_integrity(self.unused_path())
 
         self.assertEqual(ctx.exception.code, 1)
         self.assertIn("Stop other Floppy processes", stderr.getvalue())
@@ -1197,7 +1208,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertRaises(SystemExit) as ctx,
             mock.patch("sys.stderr"),
         ):
-            check_database_integrity("irrelevant.sqlite3")
+            check_database_integrity(self.unused_path())
 
         self.assertEqual(ctx.exception.code, 1)
         fake_conn.close.assert_called_once()
@@ -1211,7 +1222,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertRaises(SystemExit) as ctx,
             mock.patch("sys.stderr"),
         ):
-            check_database_integrity("irrelevant.sqlite3")
+            check_database_integrity(self.unused_path())
 
         self.assertEqual(ctx.exception.code, 1)
         fake_conn.close.assert_called_once()
@@ -1222,7 +1233,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertRaises(SystemExit) as ctx,
             mock.patch("sys.stderr"),
         ):
-            check_database_integrity("irrelevant.sqlite3")
+            check_database_integrity(self.unused_path())
 
         self.assertEqual(ctx.exception.code, 1)
 
@@ -1231,7 +1242,7 @@ class SqliteIntegrityTests(SimpleTestCase):
         fake_conn.execute.return_value.fetchone.return_value = ("ok",)
 
         with mock.patch("sqlite3.connect", return_value=fake_conn):
-            check_database_integrity("irrelevant.sqlite3")
+            check_database_integrity(self.unused_path())
 
         fake_conn.close.assert_called_once()
 
@@ -1397,5 +1408,49 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertNotIn("db-backup-04.sqlite3", remaining)
             self.assertIn("db-backup-14.sqlite3", remaining)
             self.assertIn("db-backup-05.sqlite3", remaining)
+
+    def test_repeated_repairs_do_not_grow_the_recovery_folder(self):
+        """Retention must run during a repair, not only when called by hand."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            recovery_dir = Path(tmp_dir) / "sqlite-recovery"
+            for _ in range(13):
+                Path(tmp_dir, "db.sqlite3").unlink(missing_ok=True)
+                db_path = self.create_orphan_database(tmp_dir, rows=1)
+                with (
+                    mock.patch.dict(os.environ, {"FLOPPY_SQLITE_AUTO_REPAIR": "true"}),
+                    mock.patch("sys.stderr", new_callable=io.StringIO),
+                ):
+                    check_database_integrity(db_path)
+
+            self.assertLessEqual(len(list(recovery_dir.glob("*.sqlite3"))), 10)
+
+    def test_a_damaged_file_clears_a_choice_no_code_path_can_apply(self):
+        """A choice removes rows. A damaged file has no rows to remove.
+
+        The entrypoint parks only while no choice is on disk. A choice left by
+        a repair that cannot run would keep the boot loop turning forever.
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            conn = sqlite3.connect(db_path)
+            conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+            conn.commit()
+            conn.close()
+            raw = bytearray(Path(db_path).read_bytes())
+            raw[100:400] = b"\x00" * 300
+            Path(db_path).write_bytes(bytes(raw))
+
+            decision = Path(f"{db_path}.integrity.decision")
+            decision.write_text('{"action":"quarantine","fingerprint":"old"}')
+
+            with (
+                mock.patch("sys.stderr", new_callable=io.StringIO),
+                self.assertRaises(SystemExit) as ctx,
+            ):
+                check_database_integrity(db_path)
+
+            self.assertEqual(ctx.exception.code, 1)
+            self.assertFalse(decision.exists())
+            self.assertEqual(self.read_incident_report(db_path)["status"], "corrupt")
 
 

@@ -455,14 +455,19 @@ else:
     }
 
     def configure_sqlite_connection(sender, connection, **_kwargs):
-        """Ensure SQLite connections wait for locks, enforce foreign keys, and use WAL."""
+        """Ensure SQLite connections wait for locks and use WAL.
+
+        Foreign keys are not set here. Django's SQLite backend already runs
+        "PRAGMA foreign_keys = ON" as it opens each connection, and it turns
+        them off on purpose while a migration rewrites a table. A second copy
+        here would be dead on the first count and wrong on the second.
+        """
         if connection.vendor != "sqlite":
             return
 
         cursor = None
         try:
             cursor = connection.cursor()
-            cursor.execute("PRAGMA foreign_keys = ON")
             cursor.execute(f"PRAGMA journal_mode={SQLITE_JOURNAL_MODE}")
             actual_journal_mode = cursor.fetchone()[0]
             cursor.execute(f"PRAGMA synchronous={SQLITE_SYNCHRONOUS}")
