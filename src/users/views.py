@@ -59,6 +59,7 @@ from users.models import (
     GameLoggingStyleChoices,
     ImportFrequencyChoices,
     ImportModeChoices,
+    LogoStyleChoices,
     MediaCardSubtitleDisplayChoices,
     MetadataSourceDefaultChoices,
     MobileGridLayoutChoices,
@@ -890,6 +891,7 @@ def preferences(request):
         selected_media_types = request.POST.getlist("media_types_checkboxes")
         date_format = request.POST.get("date_format")
         theme = request.POST.get("theme")
+        logo_style = request.POST.get("logo_style")
         time_format = request.POST.get("time_format")
         activity_history_view = request.POST.get("activity_history_view")
         game_logging_style = request.POST.get("game_logging_style")
@@ -953,6 +955,14 @@ def preferences(request):
         ):
             request.user.theme = theme
             fields_to_update.append("theme")
+
+        if (
+            logo_style
+            and logo_style in LogoStyleChoices.values
+            and request.user.logo_style != logo_style
+        ):
+            request.user.logo_style = logo_style
+            fields_to_update.append("logo_style")
 
         if (
             time_format
@@ -1767,13 +1777,14 @@ def create_export_schedule(request):
     include_lists = request.POST.get("include_lists") == "on"
     include_collection = request.POST.get("include_collection") == "on"
 
-    if selected_media_types:
-        media_types = selected_media_types
-    elif include_lists or include_collection:
-        # no media types checked -> lists/collection-only export
-        media_types = []
-    else:
-        media_types = None  # nothing checked at all -> export everything
+    if not selected_media_types and not (include_lists or include_collection):
+        messages.error(
+            request,
+            "Select at least one media type, Custom Lists, or Collection to export.",
+        )
+        return redirect("export_data")
+
+    media_types = selected_media_types or []
 
     def build_export_response():
         now = timezone.localtime()
@@ -1830,11 +1841,10 @@ def create_export_schedule(request):
 
     task_kwargs = {
         "user_id": request.user.id,
+        "media_types": media_types,
         "include_lists": include_lists,
         "include_collection": include_collection,
     }
-    if selected_media_types:
-        task_kwargs["media_types"] = selected_media_types
 
     task_name = (
         f"Backup export for {request.user.username} at {parsed_time} {frequency}"

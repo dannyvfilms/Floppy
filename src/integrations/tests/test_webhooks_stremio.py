@@ -13,6 +13,8 @@ from app.models import (
     Season,
     Status,
 )
+from app.services.grouped_anime import GroupedAnimeMatch
+from integrations.webhooks.stremio import StremioWebhookProcessor
 
 
 class StremioAddonViewTests(TestCase):
@@ -55,8 +57,9 @@ class StremioAddonViewTests(TestCase):
 
         self.assertEqual(response.status_code, 401)
 
-    @patch("integrations.views.tasks.process_webhook.delay")
-    def test_subtitles_enqueues_scrobble(self, mock_delay):
+    @patch("integrations.views.stremio_queue.reserve_pending", return_value="accepted")
+    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    def test_subtitles_enqueues_scrobble(self, mock_delay, _mock_reserve):
         """A subtitles request records one scrobble per throttle window."""
         response = self.client.get(self._subtitles_url("movie", "tt0133093"))
 
@@ -64,9 +67,9 @@ class StremioAddonViewTests(TestCase):
         self.assertEqual(response["Access-Control-Allow-Origin"], "*")
         self.assertEqual(json.loads(response.content), {"subtitles": []})
         mock_delay.assert_called_once_with(
-            "stremio",
             {"id": "tt0133093", "type": "movie"},
             self.user.id,
+            "movie:tt0133093",
         )
 
         # Repeat requests (seeks, quality changes) are throttled.
@@ -77,8 +80,9 @@ class StremioAddonViewTests(TestCase):
         self.client.get(self._subtitles_url("series", "tt0108778:1:1"))
         self.assertEqual(mock_delay.call_count, 2)
 
-    @patch("integrations.views.tasks.process_webhook.delay")
-    def test_subtitles_with_extra_path(self, mock_delay):
+    @patch("integrations.views.stremio_queue.reserve_pending", return_value="accepted")
+    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    def test_subtitles_with_extra_path(self, mock_delay, _mock_reserve):
         """Stremio extra segments like videoHash are accepted and ignored."""
         response = self.client.get(
             "/stremio-addon/test-token/subtitles/series/"
@@ -87,10 +91,51 @@ class StremioAddonViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         mock_delay.assert_called_once_with(
-            "stremio",
             {"id": "tt0108778:1:1", "type": "series"},
             self.user.id,
+            "series:tt0108778:1:1",
         )
+
+    @patch("integrations.views.stremio_queue.reserve_pending", return_value="limited")
+    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    def test_subtitles_limit_returns_empty_response_without_dispatch(
+        self,
+        mock_delay,
+        _mock_reserve,
+    ):
+        """A full per-user queue remains a normal, fast subtitles response."""
+        response = self.client.get(self._subtitles_url("series", "tt0133093:1:1"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.content), {"subtitles": []})
+        mock_delay.assert_not_called()
+
+    @patch("integrations.views.stremio_queue.reserve_pending", return_value="unavailable")
+    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    def test_subtitles_redis_failure_fails_closed(
+        self,
+        mock_delay,
+        _mock_reserve,
+    ):
+        """Redis failure never falls back to unbounded direct task dispatch."""
+        response = self.client.get(self._subtitles_url("movie", "tt0133093"))
+
+        self.assertEqual(response.status_code, 200)
+        mock_delay.assert_not_called()
+
+    @patch("integrations.views.stremio_queue.reserve_pending")
+    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    def test_invalid_video_id_is_ignored(
+        self,
+        mock_delay,
+        mock_reserve,
+    ):
+        """Zero/negative-style episode coordinates cannot enter the queue."""
+        response = self.client.get(self._subtitles_url("series", "tt0133093:0:1"))
+
+        self.assertEqual(response.status_code, 200)
+        mock_reserve.assert_not_called()
+        mock_delay.assert_not_called()
 
 
 class StremioWebhookProcessorTests(TestCase):
@@ -106,6 +151,56 @@ class StremioWebhookProcessorTests(TestCase):
     def _get(self, media_type, media_id):
         return self.client.get(
             f"/stremio-addon/test-token/subtitles/{media_type}/{media_id}.json",
+        )
+
+    @patch.object(StremioWebhookProcessor, "_handle_tv_episode")
+    @patch("app.services.grouped_anime.classify_tv_metadata")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch.object(StremioWebhookProcessor, "_find_tv_media_id")
+    def test_exact_anime_match_routes_to_grouped_tv_episode(
+        self,
+        mock_find_tv,
+        mock_tv_with_seasons,
+        mock_classify,
+        mock_handle_episode,
+    ):
+        """A matched Stremio series is routed to the grouped TV structure."""
+        mock_find_tv.return_value = ("9001", None, None)
+        mock_tv_with_seasons.return_value = {
+            "title": "Anime Show",
+            "image": "https://example.com/show.jpg",
+            "tvdb_id": "7001",
+            "provider_external_ids": {"imdb_id": "tt9001001"},
+            "season/1": {
+                "image": "https://example.com/season.jpg",
+                "episodes": [{"episode_number": 1}],
+            },
+        }
+        mock_classify.return_value = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_and_animation_genre",
+            tmdb_id="9001",
+            tvdb_id="7001",
+            mal_ids=("12345",),
+        )
+
+        processor = StremioWebhookProcessor()
+        processor._process_tv(
+            {"id": "tt9001001:1:1", "type": "series"},
+            self.user,
+            {"tmdb_id": None, "tvdb_id": None, "imdb_id": "tt9001001"},
+            season_number=1,
+            episode_number=1,
+        )
+
+        mock_handle_episode.assert_called_once_with(
+            "9001",
+            1,
+            1,
+            {"id": "tt9001001:1:1", "type": "series"},
+            self.user,
+            library_media_type="anime",
+            grouped_anime_match=mock_classify.return_value,
         )
 
     @tag("network")

@@ -28,6 +28,8 @@ METADATA_BACKFILL_BASE_DELAY_SECONDS = 60 * 60  # 1 hour
 METADATA_BACKFILL_MAX_DELAY_SECONDS = 60 * 60 * 24  # 1 day
 METADATA_BACKFILL_MAX_ATTEMPTS = 6
 GENRE_BACKFILL_VERSION = 4
+# Bumped when empty TMDB payloads stopped counting as a completed backfill.
+WATCH_PROVIDERS_BACKFILL_VERSION = 2
 
 
 def _apply_backfill_state_filters(queryset, field: str, *, for_reconcile: bool = False):
@@ -114,6 +116,54 @@ def _record_backfill_failure(
             bool(error_message or state.last_error),
         )
     return state.give_up
+
+
+def _record_backfill_pending(
+    item: Item,
+    field: str,
+    reason: str | None = None,
+    *,
+    strategy_version: int | None = None,
+) -> None:
+    """Record a successful fetch that still needs another look later.
+
+    Unlike ``_record_backfill_failure``, this never gives up: an empty TMDB
+    watch-provider payload can become populated months later. ``fail_count``
+    still advances so the whole-library reconcile can exclude the item
+    (issue #521), while ``next_retry_at`` drives a bounded retry queue.
+    """
+    now = timezone.now()
+    state, _ = MetadataBackfillState.objects.get_or_create(item=item, field=field)
+    state.fail_count = min(state.fail_count + 1, 9999)
+    state.last_attempt_at = now
+    state.last_success_at = None
+    state.give_up = False
+    state.next_retry_at = now + timedelta(
+        seconds=_backfill_delay_seconds(state.fail_count)
+    )
+    if reason:
+        state.last_error = str(reason)[:500]
+    update_fields = [
+        "fail_count",
+        "last_attempt_at",
+        "next_retry_at",
+        "last_success_at",
+        "last_error",
+        "give_up",
+    ]
+    if strategy_version is not None:
+        state.strategy_version = int(strategy_version)
+        update_fields.append("strategy_version")
+    state.save(update_fields=update_fields)
+    logger.info(
+        "metadata_backfill_pending item_id=%s media_type=%s field=%s fail_count=%s next_retry_at=%s has_reason=%s",
+        item.id,
+        item.media_type,
+        field,
+        state.fail_count,
+        state.next_retry_at.isoformat() if state.next_retry_at else None,
+        bool(reason or state.last_error),
+    )
 
 
 def _record_backfill_success(

@@ -29,7 +29,10 @@ _BUSY_HINT = (
 _ALBUM_ARTIST_TABLE = "app_albumartist"
 _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
 _MAX_CONFLICT_SAMPLES = 20
+_MAX_AFFECTED_TITLES = 5
 _REPORT_SUFFIX = ".integrity.json"
+_DECISION_SUFFIX = ".integrity.decision"
+_RECOVERY_PAGE_NAME = "floppy-recovery.html"
 
 
 def _log(message: str) -> None:
@@ -186,7 +189,12 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def _publish_report(report_path: Path, contents: str) -> None:
+def _publish_report(report_path: Path, contents: str, *, mode: int = 0o600) -> None:
+    """Publish text atomically, so a reader never sees a half-written file.
+
+    The report holds an approval token and stays owner-only. The recovery page
+    holds nothing secret and must stay readable by the person who opens it.
+    """
     descriptor, temporary_name = tempfile.mkstemp(
         dir=report_path.parent,
         prefix=f".{report_path.name}.",
@@ -194,7 +202,7 @@ def _publish_report(report_path: Path, contents: str) -> None:
     )
     temporary_path = Path(temporary_name)
     try:
-        os.fchmod(descriptor, 0o600)
+        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "w") as report_file:
             descriptor = -1
             report_file.write(contents)
@@ -227,6 +235,10 @@ def _write_incident_report(
             actions["quarantine"] = f"quarantine:{incident_token}"
     payload = {
         "actions": actions,
+        "affected": incident.get("affected", []),
+        "affected_other_titles": incident.get("other_titles", 0),
+        "affected_other_titles_count": incident.get("other_titles_count", 0),
+        "affected_unidentified": incident.get("unidentified", 0),
         "backup_path": str(backup_path) if backup_path else None,
         "can_quarantine": incident["can_quarantine"],
         "database": str(Path(db_path).resolve()),
@@ -308,6 +320,53 @@ def _print_resolution_options(incident: dict, incident_token: str) -> None:
     else:
         for reason in incident.get("unsafe_reasons", []):
             _log(f"[entrypoint] - Manual repair required: {reason}")
+
+
+def _decision_path(db_path: str) -> Path:
+    database_path = Path(db_path).resolve()
+    return database_path.with_name(f"{database_path.name}{_DECISION_SUFFIX}")
+
+
+def _read_decision(db_path: str, incident: dict, incident_token: str) -> str | None:
+    """Read a choice made on the recovery page, then remove the file.
+
+    The choice carries the identity of the incident it was made for. A choice
+    made for an earlier incident must never apply to a later one, so the file
+    is held to the same test as the environment variable.
+    """
+    decision_path = _decision_path(db_path)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(decision_path, flags)
+    except OSError:
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
+        with os.fdopen(descriptor) as decision_file:
+            descriptor = -1
+            decision = json.load(decision_file)
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+        decision = None
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+    # Remove the file whether or not it was valid. A choice is used once.
+    with suppress(OSError):
+        decision_path.unlink()
+    if not isinstance(decision, dict):
+        return None
+    if decision.get("fingerprint") != incident["fingerprint"]:
+        _log(
+            "[entrypoint] The choice on file was made for a different problem; "
+            "using halt",
+        )
+        return None
+    if decision.get("token") != incident_token:
+        _log("[entrypoint] The choice on file has an old code; using halt")
+        return None
+    action = decision.get("action")
+    return action if action in {"accept", "quarantine"} else None
 
 
 def _selected_action(incident: dict, incident_token: str) -> str:
@@ -445,26 +504,128 @@ def _quote_identifier(identifier: str) -> str:
     return f'"{escaped}"'
 
 
-def _delete_orphaned_rows(conn: sqlite3.Connection) -> int:
-    """Delete every child row named by the stable foreign-key snapshot."""
+def _drop_conflict_snapshot(conn: sqlite3.Connection) -> None:
+    """Remove the snapshot. The table may not exist if the build failed."""
+    with suppress(sqlite3.DatabaseError):
+        conn.execute("DROP TABLE floppy_fk_conflicts")
+
+
+def _snapshot_conflicts(conn: sqlite3.Connection, *, require_row_ids: bool) -> int:
+    """Record every conflicting row id in a temporary table.
+
+    The delete path must refuse a row it cannot address, so it sets
+    ``require_row_ids``. The description path only reads, so it skips such rows.
+    """
     conn.execute(
         "CREATE TEMP TABLE floppy_fk_conflicts ("
         "table_name TEXT NOT NULL, row_id INTEGER NOT NULL, "
         "PRIMARY KEY (table_name, row_id))"
     )
+    skipped = 0
     cursor = conn.execute("PRAGMA foreign_key_check")
     while rows := cursor.fetchmany(500):
-        if any(row_id is None for _table, row_id, _parent, _key in rows):
+        if require_row_ids and any(
+            row_id is None for _table, row_id, _parent, _key in rows
+        ):
             message = (
                 "one or more conflicts cannot be quarantined automatically "
                 "because the child table has no rowid"
             )
             raise ValueError(message)
+        skipped += sum(1 for _t, row_id, _p, _k in rows if row_id is None)
         conn.executemany(
             "INSERT OR IGNORE INTO floppy_fk_conflicts VALUES (?, ?)",
-            ((table, row_id) for table, row_id, _parent, _key in rows),
+            (
+                (table, row_id)
+                for table, row_id, _parent, _key in rows
+                if row_id is not None
+            ),
         )
+    # A row we cannot address is still an affected row. Report it rather than
+    # let the breakdown quietly add up to less than the total.
+    return skipped
 
+
+def _describe_affected(conn: sqlite3.Connection) -> dict:
+    """Name the affected content, grouped and bounded.
+
+    The reference that broke is not the one that carries the title. An affected
+    row usually still points at a valid ``app_item``, so the title survives even
+    though the parent row is gone. This only reads columns that already exist.
+    """
+    described: Counter = Counter()
+    unidentified = 0
+    # The scan below reads every foreign key, so test the one thing that makes
+    # it worth doing before paying for it.
+    has_item_table = conn.execute(
+        "SELECT 1 FROM main.sqlite_schema "
+        "WHERE type = 'table' AND name = 'app_item' COLLATE NOCASE",
+    ).fetchone()
+    if not has_item_table:
+        return {}
+    try:
+        unidentified += _snapshot_conflicts(conn, require_row_ids=False)
+        tables = [
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT table_name FROM floppy_fk_conflicts "
+                "ORDER BY table_name",
+            )
+        ]
+        for table in tables:
+            total = conn.execute(
+                "SELECT COUNT(*) FROM floppy_fk_conflicts WHERE table_name = ?",
+                [table],
+            ).fetchone()[0]
+            columns = {
+                name.casefold()
+                for name, in conn.execute(
+                    "SELECT name FROM pragma_table_xinfo(?, 'main')",
+                    [table],
+                )
+            }
+            if "item_id" not in columns:
+                unidentified += total
+                continue
+            named = 0
+            for title, season, count in conn.execute(
+                f"SELECT i.title, i.season_number, COUNT(*) "  # noqa: S608
+                f"FROM main.{_quote_identifier(table)} AS child "
+                "JOIN main.app_item AS i ON i.id = child.item_id "
+                "WHERE child.rowid IN ("
+                "SELECT row_id FROM floppy_fk_conflicts WHERE table_name = ?) "
+                "GROUP BY i.title, i.season_number",
+                [table],
+            ):
+                described[(title, season)] += count
+                named += count
+            unidentified += total - named
+    finally:
+        _drop_conflict_snapshot(conn)
+
+    affected = [
+        {"count": count, "season": season, "title": title}
+        for (title, season), count in described.most_common(_MAX_AFFECTED_TITLES)
+    ]
+    remaining = sum(described.values()) - sum(item["count"] for item in affected)
+    return {
+        "affected": affected,
+        "other_titles": len(described) - len(affected),
+        "other_titles_count": remaining,
+        "unidentified": unidentified,
+    }
+
+
+def _delete_orphaned_rows(conn: sqlite3.Connection) -> int:
+    """Delete every child row named by the stable foreign-key snapshot."""
+    try:
+        return _delete_snapshotted_rows(conn)
+    finally:
+        _drop_conflict_snapshot(conn)
+
+
+def _delete_snapshotted_rows(conn: sqlite3.Connection) -> int:
+    _snapshot_conflicts(conn, require_row_ids=True)
     tables = [
         row[0]
         for row in conn.execute(
@@ -480,7 +641,6 @@ def _delete_orphaned_rows(conn: sqlite3.Connection) -> int:
             [table],
         )
         deleted += result.rowcount
-    conn.execute("DROP TABLE floppy_fk_conflicts")
     return deleted
 
 
@@ -572,6 +732,12 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
                 )
         return
 
+    # Naming the affected titles is a convenience. The report is the only way
+    # out of the incident, so a failure here must never stop it being written.
+    try:
+        incident.update(_describe_affected(conn))
+    except Exception as error:
+        _log(f"[entrypoint] Could not name the affected entries: {error}")
     _print_incident(db_path, incident)
     if (
         prior_report
@@ -588,7 +754,10 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
     incident_token = _valid_blocked_token(prior_report, incident)
     if incident_token is None:
         incident_token = secrets.token_hex(16)
-    action = _selected_action(incident, incident_token)
+    action = _read_decision(db_path, incident, incident_token) or _selected_action(
+        incident,
+        incident_token,
+    )
     try:
         report_path = _write_incident_report(
             db_path,

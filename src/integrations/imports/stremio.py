@@ -28,7 +28,7 @@ import app.providers.mal
 import app.providers.trakt
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
-from integrations import import_progress
+from integrations import anime_mapping, import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from integrations.models import StremioAccount
@@ -241,6 +241,23 @@ class StremioImporter:
             ],
         )
 
+        grouped_anime_snapshot = None
+        if self.user.anime_enabled and series:
+            try:
+                grouped_anime_snapshot = anime_mapping.load_mapping_snapshot()
+            except (OSError, TypeError, ValueError, services.ProviderAPIError) as error:
+                # A mapping outage must leave the item in its existing TV path;
+                # it must never make a normal Stremio import fail or guess from
+                # titles.  The next import retries the pinned snapshot.
+                self.warnings.append(
+                    "Anime mapping unavailable; series were kept in TV",
+                )
+                logger.warning(
+                    "stremio_anime_mapping_unavailable user_id=%s error=%s",
+                    self.user.id,
+                    error,
+                )
+
         total = len(movies) + len(series) + len(anime)
         current = 0
 
@@ -257,7 +274,11 @@ class StremioImporter:
             current += 1
             import_progress.report(current, total, "Stremio")
             try:
-                self._process_series(entry, cinemeta_videos.get(entry["_id"]))
+                self._process_series(
+                    entry,
+                    cinemeta_videos.get(entry["_id"]),
+                    grouped_anime_snapshot,
+                )
             except Exception as error:
                 msg = f"Error processing entry: {entry}"
                 raise MediaImportUnexpectedError(msg) from error
@@ -474,7 +495,7 @@ class StremioImporter:
         movie_instance._history_date = self._get_history_date(entry)
         self.bulk_media[MediaTypes.MOVIE.value].append(movie_instance)
 
-    def _process_series(self, entry, video_ids):
+    def _process_series(self, entry, video_ids, grouped_anime_snapshot=None):
         """Process a single Stremio series entry."""
         entry_id = entry["_id"]
         name = entry.get("name", entry_id)
@@ -543,16 +564,61 @@ class StremioImporter:
                 return
             raise
 
+        library_media_type = ""
+        grouped_anime_match = None
+        if self.user.anime_enabled:
+            from app.services import grouped_anime
+
+            if grouped_anime_snapshot is not None:
+                grouped_anime_match = grouped_anime.classify_tv_metadata(
+                    metadata,
+                    snapshot=grouped_anime_snapshot,
+                )
+            if (
+                grouped_anime_match is not None
+                and grouped_anime_match.is_grouped_anime
+            ):
+                library_media_type = MediaTypes.ANIME.value
+                if tv_instance is not None and not grouped_anime.promote_grouped_anime(
+                    tv_instance.item,
+                    grouped_anime_match,
+                ):
+                    self.warnings.append(
+                        f"{name}: exact anime match had a target-bucket collision; "
+                        "kept in TV",
+                    )
+                    library_media_type = ""
+
         if tv_instance is None:
-            tv_item, _ = app.models.Item.objects.get_or_create(
+            tv_item = helpers.find_item_across_buckets(
+                preferred_bucket=library_media_type or None,
                 media_id=tmdb_id,
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.TV.value,
-                defaults={
-                    **app.models.Item.title_fields_from_metadata(metadata),
-                    "image": metadata["image"],
-                },
             )
+            if tv_item is None:
+                tv_item = app.models.Item.objects.create(
+                    media_id=tmdb_id,
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.TV.value,
+                    library_media_type=library_media_type,
+                    **app.models.Item.title_fields_from_metadata(metadata),
+                    image=metadata["image"],
+                )
+
+            if (
+                library_media_type == MediaTypes.ANIME.value
+                and grouped_anime_match is not None
+                and not grouped_anime.promote_grouped_anime(
+                    tv_item,
+                    grouped_anime_match,
+                )
+            ):
+                self.warnings.append(
+                    f"{name}: exact anime match had a target-bucket collision; "
+                    "kept in TV",
+                )
+                library_media_type = ""
 
             tv_instance = app.models.TV(
                 item=tv_item,

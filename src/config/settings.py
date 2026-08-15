@@ -1383,6 +1383,10 @@ CELERY_TASK_ROUTES = {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },
+    "Process Stremio playback webhook": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
     # Fill-in artwork resolution for the home-page playback card; keeps the
     # HTTP request path free of provider calls.
     "Resolve live playback image": {

@@ -82,6 +82,7 @@ from integrations.tasks._plex_collection import (
 from integrations.tasks._webhook import (
     WEBHOOK_PROCESSORS,
     _webhook_history_user,
+    process_stremio_webhook,
     process_webhook,
 )
 
@@ -173,6 +174,7 @@ __all__ = [
     "poll_all_lastfm_scrobbles",
     "poll_koito_for_user",
     "poll_lastfm_for_user",
+    "process_stremio_webhook",
     "process_webhook",
     "push_jellyfin_watched",
     "sync_plex_watchlist",

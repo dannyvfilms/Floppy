@@ -400,6 +400,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `CELERY_RESULT_BACKEND` - Redis service for Celery results. The default is `REDIS_URL`
 - `REDIS_ADMIN_URL` - Redis service that Floppy can tune with `CONFIG`. The default is `REDIS_CACHE_URL`, then `REDIS_URL`
 - `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
+- Grouped anime and Stremio routing - see the [grouped anime/Stremio guide](docs/grouped_anime_stremio.md)
 - `REGISTRATION` - set to `True` to allow new signups (needed for your first account), then set to `False` afterward
 - `DEMO_ACCOUNT_ENABLED` - defaults to `True`, provisioning the built-in `demo` / `demodemo` account after migrations. The examples above set it to `False`; only turn it on if you want a shared demo login
 - `ALLOWED_HOSTS` / `PUID` / `PGID` - `ALLOWED_HOSTS` is a comma-separated list of hostnames/IPs Django will accept requests for; `PUID` / `PGID` set the file-ownership user/group inside the container (match your host user, e.g. Unraid's `99`/`100`, if you hit permission errors)
@@ -715,6 +716,16 @@ dependency.
 - Star the repository if you want to help more people find Floppy.
 - Open an [issue](https://github.com/dannyvfilms/Floppy/issues) for bugs, or for feature requests and ideas.
 - Open a pull request if you want to contribute code, docs, or polish.
+
+### Contributors
+
+A huge thank you to everyone who has contributed to Floppy and its foundations!
+
+<a href="https://github.com/dannyvfilms/Floppy/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=dannyvfilms/Floppy" alt="Contributors" />
+</a>
+
+We actively welcome contributions of all kinds — bug fixes, new features, UI polish, or documentation improvements. See our [Contributing Guide](CONTRIBUTING.md) to get started.
 
 ## License
 

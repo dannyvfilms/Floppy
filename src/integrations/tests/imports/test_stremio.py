@@ -18,6 +18,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.services.grouped_anime import GroupedAnimeMatch
 from integrations.imports import helpers, stremio
 from integrations.models import StremioAccount
 
@@ -372,6 +373,62 @@ class ImportStremioTests(TestCase):
             ),
         )
         self.assertEqual(episode_numbers, {1, 2})
+
+    def test_exact_anime_series_uses_grouped_buckets(self):
+        """An exact anime match imports Stremio history into grouped buckets."""
+        video_ids = ["tt0903747:1:1"]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Anime Show",
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, set(video_ids)),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                },
+            },
+        ]
+        match = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_and_animation_genre",
+            tmdb_id="1396",
+            tvdb_id="7001",
+            mal_ids=("12345",),
+        )
+
+        with patch(
+            "app.services.grouped_anime.classify_tv_metadata",
+            return_value=match,
+        ):
+            imported_counts, warnings = self._run_import(
+                library_items,
+                cinemeta_videos={"tt0903747": video_ids},
+            )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.TV.value], 1)
+        self.assertEqual(
+            Item.objects.get(media_id="1396", media_type=MediaTypes.TV.value)
+            .library_media_type,
+            MediaTypes.ANIME.value,
+        )
+        self.assertEqual(
+            Item.objects.get(
+                media_id="1396",
+                media_type=MediaTypes.SEASON.value,
+                season_number=1,
+            ).library_media_type,
+            MediaTypes.ANIME.value,
+        )
+        self.assertEqual(
+            Item.objects.get(
+                media_id="1396",
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=1,
+            ).library_media_type,
+            MediaTypes.ANIME.value,
+        )
 
     def test_recurring_sync_advances_series_without_duplicating_episodes(self):
         """A re-sync of an already-tracked show adds new episodes only once.

@@ -20,6 +20,8 @@ from .helpers import date_parser
 
 logger = logging.getLogger(__name__)
 
+TVMAZE_MAP_CACHE_VERSION = 2
+
 # Episode air dates before this year are treated as placeholder/unknown values
 # rather than real release dates.
 MIN_VALID_RELEASE_YEAR = 1900
@@ -516,7 +518,7 @@ def get_episode_datetime(episode, season_number, episode_number, tvmaze_map):
 
 def get_tvmaze_episode_map(tvdb_id):
     """Fetch and process episode data from TVMaze using TVDB ID with caching."""
-    cache_key = f"tvmaze_map_{tvdb_id}"
+    cache_key = f"tvmaze_map_v{TVMAZE_MAP_CACHE_VERSION}_{tvdb_id}"
     cached_map = cache.get(cache_key)
 
     if cached_map:
@@ -532,7 +534,12 @@ def get_tvmaze_episode_map(tvdb_id):
         for episode in episodes:
             season_num = episode.get("season")
             episode_num = episode.get("number")
-            if season_num is not None and episode_num is not None:
+            if (
+                season_num is not None
+                and episode_num is not None
+                and episode.get("airstamp")
+                and episode.get("airtime")
+            ):
                 key = f"{season_num}_{episode_num}"
                 tvmaze_map[key] = episode.get("airstamp")
 

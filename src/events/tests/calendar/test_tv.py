@@ -7,6 +7,7 @@ from django.core.cache import cache
 from django.test import TestCase
 
 from app.models import TV, Item, MediaTypes, Season, Sources, Status
+from app.templatetags.app_tags import user_event_time
 from events.calendar.helpers import date_parser
 from events.calendar.tv import (
     get_episode_datetime,
@@ -268,8 +269,14 @@ class CalendarTVTests(CalendarFixturesMixin, TestCase):
                         {
                             "season": 1,
                             "number": 2,
-                            "airstamp": "2008-01-27T22:00:00+00:00",
-                            "airtime": "22:00",
+                            "airstamp": "2008-01-27T12:00:00+00:00",
+                            "airtime": "",
+                        },
+                        {
+                            "season": 1,
+                            "number": 3,
+                            "airstamp": "2008-02-03T00:00:00+00:00",
+                            "airtime": "00:00",
                         },
                     ],
                 },
@@ -280,12 +287,38 @@ class CalendarTVTests(CalendarFixturesMixin, TestCase):
 
         self.assertEqual(len(result), 2)
         self.assertIn("1_1", result)
-        self.assertIn("1_2", result)
+        self.assertNotIn("1_2", result)
+        self.assertIn("1_3", result)
         self.assertEqual(result["1_1"], "2008-01-20T22:00:00+00:00")
-        self.assertEqual(result["1_2"], "2008-01-27T22:00:00+00:00")
+        self.assertEqual(result["1_3"], "2008-02-03T00:00:00+00:00")
 
-        cached_result = cache.get("tvmaze_map_81189")
+        cached_result = cache.get("tvmaze_map_v2_81189")
         self.assertEqual(cached_result, result)
+
+        date_only_datetime = get_episode_datetime(
+            {"air_date": "2008-01-27"},
+            season_number=1,
+            episode_number=2,
+            tvmaze_map=result,
+        )
+        self.assertEqual(date_only_datetime, date_parser("2008-01-27"))
+        self.assertEqual(
+            user_event_time(
+                Event(item=self.season_item, datetime=date_only_datetime),
+                self.user,
+            ),
+            "",
+        )
+
+        self.assertEqual(
+            get_episode_datetime(
+                {"air_date": "2008-02-03"},
+                season_number=1,
+                episode_number=3,
+                tvmaze_map=result,
+            ),
+            datetime.datetime.fromisoformat("2008-02-03T00:00:00+00:00"),
+        )
 
         mock_api_request.reset_mock()
         get_tvmaze_episode_map("81189")

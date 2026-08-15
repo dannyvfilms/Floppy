@@ -991,7 +991,8 @@ def item_matches_rules(
         return False
 
     today = timezone.localdate()
-    if not _matches_item_filters(item, normalized_rules, today):
+    region = getattr(owner, "watch_provider_region", None)
+    if not _matches_item_filters(item, normalized_rules, today, region):
         return False
 
     tag_values = normalized_rules.get("tag") or []

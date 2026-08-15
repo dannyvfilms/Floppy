@@ -53,6 +53,11 @@ if [ -z "$DB_HOST" ]; then
             esac
             parking_pid=
             trap 'kill "$parking_pid" 2>/dev/null || :; wait "$parking_pid" 2>/dev/null || :; exit 0' TERM INT
+            # Show the recovery page. It writes a copy beside the database, then
+            # serves it. If it stops, the container must stay alive and idle.
+            python -m config.sqlite_recovery_server "$DB_FILE" &
+            parking_pid=$!
+            wait "$parking_pid" || :
             while :; do
                 sleep 86400 &
                 parking_pid=$!

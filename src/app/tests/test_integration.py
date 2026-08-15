@@ -2,6 +2,7 @@ import copy
 import os
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
@@ -123,6 +124,134 @@ class IntegrationTest(StaticLiveServerTestCase):
             value,
         )
 
+    def test_home_row_load_more_guard_and_progress(self):
+        """Home rows append normally and stop after a zero-progress response."""
+        load_more_requests = []
+
+        def record_request(request):
+            query = parse_qs(urlparse(request.url).query)
+            if "load_row" in query:
+                load_more_requests.append(
+                    (query["load_row"][0], query.get("offset", ["0"])[0]),
+                )
+
+        def handle_route(route):
+            query = parse_qs(urlparse(route.request.url).query)
+            row_id = query.get("load_row", [None])[0]
+            offset = query.get("offset", ["0"])[0]
+            if offset != "14" or row_id not in {"624", "625"}:
+                route.continue_()
+                return
+
+            headers = {
+                "Content-Type": "text/html; charset=utf-8",
+                "X-Home-Row-Total": "15" if row_id == "624" else "37",
+                "X-Home-Row-Loaded": "15" if row_id == "624" else "14",
+            }
+            route.fulfill(
+                status=200,
+                body=(
+                    '<div class="home-row-card" data-test-card="new">new</div>'
+                    if row_id == "624"
+                    else ""
+                ),
+                headers=headers,
+            )
+
+        def install_row(row_id, loaded, total):
+            self.page.evaluate(
+                """
+                ({rowId, loaded, total}) => {
+                    const row = document.createElement('div');
+                    row.id = `test-home-row-${rowId}`;
+                    row.style.width = '1px';
+                    row.style.height = '20px';
+                    row.style.display = 'flex';
+                    row.style.flexWrap = 'nowrap';
+                    row.style.overflowX = 'auto';
+                    row.dataset.homeRow = 'true';
+                    row.dataset.loadedCount = String(loaded);
+                    row.dataset.loading = 'false';
+                    row.dataset.totalCount = String(total);
+                    row.dataset.rowId = rowId;
+                    row.dataset.stickToEnd = 'false';
+                    row.setAttribute('hx-get', `/?load_row=${rowId}`);
+                    row.setAttribute(
+                        'hx-vals',
+                        'js:{offset: Number(event.target.dataset.loadedCount || 0)}',
+                    );
+                    row.setAttribute('hx-trigger', 'home-row-load-more');
+                    row.setAttribute('hx-target', 'this');
+                    row.setAttribute('hx-swap', 'beforeend');
+
+                    for (let index = 0; index < loaded; index += 1) {
+                        const card = document.createElement('div');
+                        card.className = 'home-row-card';
+                        card.style.width = '100px';
+                        card.style.flex = '0 0 auto';
+                        card.textContent = `card-${index}`;
+                        row.appendChild(card);
+                    }
+
+                    const sentinel = document.createElement('div');
+                    sentinel.dataset.homeRowSentinel = 'true';
+                    row.appendChild(sentinel);
+                    document.body.appendChild(row);
+                    htmx.process(row);
+                    const realIntersectionObserver = window.IntersectionObserver;
+                    window.IntersectionObserver = class {
+                        observe() {}
+                        disconnect() {}
+                    };
+                    window.initHomeRowInfiniteScroll();
+                    window.IntersectionObserver = realIntersectionObserver;
+                    row.scrollLeft = row.scrollWidth;
+                }
+                """,
+                {"rowId": row_id, "loaded": loaded, "total": total},
+            )
+
+        self.page.on("request", record_request)
+        self.page.route("**/*", handle_route)
+
+        install_row("624", loaded=14, total=15)
+        success_row = self.page.locator("#test-home-row-624")
+        success_row.evaluate(
+            """
+            row => {
+                row.scrollLeft = row.scrollWidth;
+                row.dispatchEvent(new Event('scroll'));
+                row.dispatchEvent(new Event('scroll'));
+            }
+            """,
+        )
+        expect(success_row).to_have_attribute("data-loaded-count", "15")
+        self.assertEqual(
+            [request for request in load_more_requests if request[0] == "624"],
+            [("624", "14")],
+        )
+
+        success_row.evaluate(
+            "row => row.dispatchEvent(new Event('scroll'))",
+        )
+        self.page.wait_for_timeout(200)
+        self.assertEqual(
+            [request for request in load_more_requests if request[0] == "624"],
+            [("624", "14")],
+        )
+
+        install_row("625", loaded=14, total=37)
+        empty_row = self.page.locator("#test-home-row-625")
+        empty_row.evaluate(
+            "row => row.dispatchEvent(new Event('scroll'))",
+        )
+        expect(empty_row).to_have_attribute("data-home-row-exhausted", "true")
+        self.page.wait_for_timeout(4000)
+        self.assertEqual(
+            [request for request in load_more_requests if request[0] == "625"],
+            [("625", "14")],
+        )
+
     @classmethod
     def tearDownClass(cls):
         """Tear down the test class."""
@@ -237,7 +366,9 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
         self.page.locator('select[name="status"]').select_option("In progress")
         self.page.get_by_role("button", name="Create Entry").click()
-        expect(self.page.get_by_text("Friends added successfully.", exact=True)).to_be_visible()
+        expect(
+            self.page.get_by_text("Friends added successfully.", exact=True)
+        ).to_be_visible()
 
         # Create season
         self.page.get_by_role("button", name="Season").click()

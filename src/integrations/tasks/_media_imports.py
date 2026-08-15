@@ -54,6 +54,9 @@ from integrations.tasks._plex_collection import update_collection_metadata_from_
 
 logger = logging.getLogger(__name__)
 
+STREMIO_IMPORT_SOFT_TIME_LIMIT = 20 * 60
+STREMIO_IMPORT_TIME_LIMIT = 30 * 60
+
 
 def import_media(
     importer_func,
@@ -442,16 +445,50 @@ def import_storyteller_recurring(user_id):
     return import_media(storyteller.importer, None, user_id, "new")
 
 
-@shared_task(name="Import from Stremio")
+def _run_stremio_import(user_id, mode, *, on_cache_error):
+    """Serialize imports for one Stremio account."""
+    lock_key = f"stremio_import_lock_{user_id}"
+    task_id = current_task.request.id if current_task and current_task.request else "1"
+    if not cache_safety.acquire_lock(
+        lock_key,
+        timeout=STREMIO_IMPORT_TIME_LIMIT,
+        on_error=on_cache_error,
+        value=task_id,
+    ):
+        logger.info("stremio_import status=already_running user_id=%s", user_id)
+        return "Skipped: Stremio import already in progress"
+    try:
+        return import_media(stremio.importer, None, user_id, mode)
+    finally:
+        cache_safety.release_lock(lock_key)
+
+
+@shared_task(
+    name="Import from Stremio",
+    soft_time_limit=STREMIO_IMPORT_SOFT_TIME_LIMIT,
+    time_limit=STREMIO_IMPORT_TIME_LIMIT,
+)
 def import_stremio(user_id, mode="new"):
     """Celery task for importing library watch state from Stremio."""
-    return import_media(stremio.importer, None, user_id, mode)
+    return _run_stremio_import(
+        user_id,
+        mode,
+        on_cache_error=cache_safety.ON_ERROR_PROCEED,
+    )
 
 
-@shared_task(name="Import from Stremio (Recurring)")
+@shared_task(
+    name="Import from Stremio (Recurring)",
+    soft_time_limit=STREMIO_IMPORT_SOFT_TIME_LIMIT,
+    time_limit=STREMIO_IMPORT_TIME_LIMIT,
+)
 def import_stremio_recurring(user_id):
     """Recurring import task for Stremio."""
-    return import_media(stremio.importer, None, user_id, "new")
+    return _run_stremio_import(
+        user_id,
+        "new",
+        on_cache_error=cache_safety.ON_ERROR_SKIP,
+    )
 
 
 @shared_task(name="Import from Pocket Casts")

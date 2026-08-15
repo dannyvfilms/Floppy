@@ -203,3 +203,14 @@ class WebhookTaskRoutingTests(SimpleTestCase):
             route["priority"],
             settings.CELERY_TASK_PRIORITY_INTERACTIVE,
         )
+
+    def test_stremio_task_has_bounded_limits_and_interactive_route(self):
+        """Stremio playback cannot occupy the worker indefinitely."""
+        route = settings.CELERY_TASK_ROUTES[tasks.process_stremio_webhook.name]
+        self.assertEqual(route["queue"], "interactive")
+        self.assertEqual(
+            route["priority"],
+            settings.CELERY_TASK_PRIORITY_INTERACTIVE,
+        )
+        self.assertEqual(tasks.process_stremio_webhook.soft_time_limit, 90)
+        self.assertEqual(tasks.process_stremio_webhook.time_limit, 120)

@@ -324,6 +324,43 @@ def sync_smart_lists_on_item_tag_change(sender, instance, **kwargs):
     _sync_owner_smart_lists_for_items(owner, [item])
 
 
+@receiver(post_save, sender=Item)
+def sync_smart_lists_on_watch_providers_change(
+    sender, instance, update_fields=None, **kwargs
+):
+    """Re-evaluate smart lists after streaming providers are persisted on an item.
+
+    Provider data is often written after the tracking row exists (TMDB backfill
+    or detail-page refresh). Incremental sync on Movie/TV save then ran against
+    empty providers and skipped the item; a later full rebuild corrected it.
+    """
+    if kwargs.get("raw") or media_change_side_effects_suppressed():
+        return
+    if not update_fields or "watch_providers" not in update_fields:
+        return
+    if not getattr(instance, "id", None):
+        return
+
+    try:
+        model = apps.get_model("app", instance.media_type)
+    except LookupError:
+        return
+
+    owner_ids = list(
+        model.objects.filter(item_id=instance.id)
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    if not owner_ids:
+        return
+
+    from django.contrib.auth import get_user_model
+
+    user_model = get_user_model()
+    for owner in user_model.objects.filter(pk__in=owner_ids):
+        _sync_owner_smart_lists_for_items(owner, [instance])
+
+
 def _invalidate_history_for_media_change(
     user_id: int,
     *,

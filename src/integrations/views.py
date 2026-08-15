@@ -36,6 +36,7 @@ from integrations import (
     koito_api,
     lastfm_api,
     pocketcasts_api,
+    stremio_queue,
     tasks,
     xbox_api,
 )
@@ -116,6 +117,29 @@ def _integration_redirect(request, *, connected_slug=None, next_url=None):
             user.save(update_fields=["onboarding_connected_sources"])
     destination = next_url or request.POST.get("next") or request.GET.get("next")
     return redirect(destination or "import_data")
+
+
+def _consume_oauth_state(request, provider):
+    """Consume a provider OAuth state value and reject missing or replayed state."""
+    state_token = request.GET.get("state")
+    if not state_token:
+        logger.warning("%s OAuth callback missing state parameter", provider)
+        messages.error(
+            request,
+            f"Invalid or expired {provider} authorization request.",
+        )
+        return None
+
+    state_data = request.session.pop(state_token, None)
+    if not isinstance(state_data, dict):
+        logger.warning("%s OAuth callback state not found in session", provider)
+        messages.error(
+            request,
+            f"Invalid or expired {provider} authorization request.",
+        )
+        return None
+
+    return state_data
 
 
 def _save_plex_usernames(user, raw_usernames):
@@ -468,15 +492,18 @@ def trakt_oauth(request):
 @require_GET
 def import_trakt_private(request):
     """View for handling Trakt OAuth2 callback and scheduling private import."""
-    state_token = request.GET["state"]
-    redirect_uri = request.session[state_token].get("redirect_uri")
+    state_data = _consume_oauth_state(request, "Trakt")
+    if state_data is None:
+        return _integration_redirect(request)
+
+    redirect_uri = state_data.get("redirect_uri")
     oauth_callback = trakt.handle_oauth_callback(request, redirect_uri=redirect_uri)
     enc_token = helpers.encrypt(oauth_callback["refresh_token"])
 
-    frequency = request.session[state_token]["frequency"]
-    mode = request.session[state_token]["mode"]
-    import_time = request.session[state_token]["time"]
-    return_to = request.session[state_token].get("return_to")
+    frequency = state_data["frequency"]
+    mode = state_data["mode"]
+    import_time = state_data["time"]
+    return_to = state_data.get("return_to")
 
     if frequency == "once":
         tasks.import_trakt.delay(
@@ -817,16 +844,19 @@ def simkl_oauth(request):
 @require_GET
 def import_simkl_private(request):
     """View for getting the SIMKL OAuth2 token."""
-    state_token = request.GET["state"]
-    redirect_uri = request.session[state_token].get("redirect_uri")
+    state_data = _consume_oauth_state(request, "SIMKL")
+    if state_data is None:
+        return _integration_redirect(request)
+
+    redirect_uri = state_data.get("redirect_uri")
     oauth_callback = simkl.get_token(request, redirect_uri=redirect_uri)
     enc_token = helpers.encrypt(oauth_callback["access_token"])
 
-    frequency = request.session[state_token]["frequency"]
-    mode = request.session[state_token]["mode"]
-    import_time = request.session[state_token]["time"]
-    anime_destination = request.session[state_token].get("anime_destination", "anime")
-    return_to = request.session[state_token].get("return_to")
+    frequency = state_data["frequency"]
+    mode = state_data["mode"]
+    import_time = state_data["time"]
+    anime_destination = state_data.get("anime_destination", "anime")
+    return_to = state_data.get("return_to")
 
     if frequency == "once":
         tasks.import_simkl.delay(
@@ -908,20 +938,23 @@ def anilist_oauth(request):
 @require_GET
 def import_anilist_private(request):
     """View for getting the AniList OAuth2 token."""
-    state_token = request.GET["state"]
-    redirect_uri = request.session[state_token].get("redirect_uri")
+    state_data = _consume_oauth_state(request, "AniList")
+    if state_data is None:
+        return _integration_redirect(request)
+
+    redirect_uri = state_data.get("redirect_uri")
     oauth_callback = anilist.get_token(request, redirect_uri=redirect_uri)
     enc_token = helpers.encrypt(oauth_callback["access_token"])
     username = oauth_callback["username"]
-    return_to = request.session[state_token].get("return_to")
+    return_to = state_data.get("return_to")
 
     if not username:
         messages.error(request, "AniList username is required.")
         return _integration_redirect(request, next_url=return_to)
 
-    frequency = request.session[state_token]["frequency"]
-    mode = request.session[state_token]["mode"]
-    import_time = request.session[state_token]["time"]
+    frequency = state_data["frequency"]
+    mode = state_data["mode"]
+    import_time = state_data["time"]
 
     if frequency == "once":
         tasks.import_anilist.delay(
@@ -2978,6 +3011,10 @@ STREMIO_ADDON_MANIFEST = {
     "catalogs": [],
 }
 STREMIO_SCROBBLE_THROTTLE_SECONDS = 1800
+STREMIO_MAX_MEDIA_ID_LENGTH = 128
+STREMIO_MEDIA_ID_PATTERN = re.compile(
+    r"^tt[0-9]+(?::[1-9][0-9]*:[1-9][0-9]*)?$",
+)
 
 
 def _stremio_addon_response(payload, status=200):
@@ -3015,15 +3052,69 @@ def stremio_addon_subtitles(request, token, media_type, media_id):
         return _stremio_addon_response({"error": "Invalid token"}, status=401)
 
     media_id = unquote(media_id)
+    if (
+        media_type not in {"movie", "series"}
+        or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
+        or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
+        or (
+            media_type == "movie"
+            and ":" in media_id
+        )
+    ):
+        logger.info(
+            "stremio_queue status=limited reason=invalid_media_id user_id=%s "
+            "media_type=%s media_id=%s",
+            user.id,
+            media_type,
+            media_id[:STREMIO_MAX_MEDIA_ID_LENGTH],
+        )
+        return _stremio_addon_response({"subtitles": []})
 
     # Stremio re-requests subtitles on seeks and quality changes; only the
     # first request per item in the window records a scrobble.
-    throttle_key = f"stremio_scrobble_{user.id}_{media_id}"
-    if cache.add(throttle_key, "1", timeout=STREMIO_SCROBBLE_THROTTLE_SECONDS):
-        tasks.process_webhook.delay(
-            "stremio",
-            {"id": media_id, "type": media_type},
+    throttle_key = f"stremio_scrobble_{user.id}_{media_type}_{media_id}"
+    throttle_added = cache.add(
+        throttle_key,
+        "1",
+        timeout=STREMIO_SCROBBLE_THROTTLE_SECONDS,
+    )
+    if throttle_added is None:
+        logger.info(
+            "stremio_queue status=unavailable reason=throttle_cache user_id=%s",
             user.id,
         )
+    elif throttle_added:
+        queue_member = stremio_queue.member(media_type, media_id)
+        queue_status = stremio_queue.reserve_pending(user.id, queue_member)
+        if queue_status == "accepted":
+            try:
+                tasks.process_stremio_webhook.delay(
+                    {"id": media_id, "type": media_type},
+                    user.id,
+                    queue_member,
+                )
+                logger.info(
+                    "stremio_queue status=queued user_id=%s media_type=%s media_id=%s",
+                    user.id,
+                    media_type,
+                    media_id,
+                )
+            except Exception:
+                stremio_queue.release_pending(user.id, queue_member)
+                logger.exception(
+                    "stremio_queue status=dispatch_failed user_id=%s media_type=%s "
+                    "media_id=%s",
+                    user.id,
+                    media_type,
+                    media_id,
+                )
+        else:
+            logger.info(
+                "stremio_queue status=%s user_id=%s media_type=%s media_id=%s",
+                queue_status,
+                user.id,
+                media_type,
+                media_id,
+            )
 
     return _stremio_addon_response({"subtitles": []})

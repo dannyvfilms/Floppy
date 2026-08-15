@@ -1,0 +1,28 @@
+Package: @zxing/library
+Version: 0.21.3
+License: Apache-2.0
+Package file: umd/index.min.js
+Vendored file: src/static/js/libraries/zxing-library-0.21.3.min.js
+Vendored file size: 336097 bytes
+Vendored file Git blob: 7d0271d985f301e7d5e8ac3cc484721c3a627271
+License file: src/static/js/libraries/zxing-library-0.21.3.LICENSE.txt
+
+Upstream repository: https://github.com/zxing-js/library
+Upstream release: https://github.com/zxing-js/library/releases/tag/v0.21.3
+Upstream tag commit: 0e68da880f64974746083431f3442c29835eddda
+Versioned package URL: https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js
+
+Version decision:
+Issue #591 makes the browser dependency local and deterministic. It does not
+require a library upgrade. Version 0.21.3 is the bundle tested in PR #758.
+Review a later package version as a separate change so a scanner regression has
+one clear cause.
+
+Update procedure:
+1. Select an exact upstream release.
+2. Review its release notes, license, browser API, and supported formats.
+3. Replace the bundle, license, versioned file names, and this record together.
+4. Update the template reference and the static-library contract tests.
+5. Test barcode scanning with local network access disabled.
+6. Run the focused tests, the full application suite, lint, CodeQL, and the
+   built-image check before merge.

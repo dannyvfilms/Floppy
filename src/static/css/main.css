@@ -513,6 +513,9 @@
   .-m-1 {
     margin: calc(var(--spacing) * -1);
   }
+  .m-0 {
+    margin: calc(var(--spacing) * 0);
+  }
   .-mx-1 {
     margin-inline: calc(var(--spacing) * -1);
   }
@@ -991,6 +994,9 @@
   }
   .w-\[120px\] {
     width: 120px;
+  }
+  .w-\[158px\] {
+    width: 158px;
   }
   .w-\[168px\] {
     width: 168px;
@@ -2600,6 +2606,9 @@
   .object-cover {
     object-fit: cover;
   }
+  .object-center {
+    object-position: center;
+  }
   .p-0 {
     padding: calc(var(--spacing) * 0);
   }
@@ -3263,6 +3272,10 @@
   }
   .ring-indigo-700 {
     --tw-ring-color: var(--color-indigo-700);
+  }
+  .outline {
+    outline-style: var(--tw-outline-style);
+    outline-width: 1px;
   }
   .blur {
     --tw-blur: blur(8px);
@@ -4348,6 +4361,15 @@
       &:hover {
         @media (hover: hover) {
           background-color: var(--color-gray-700);
+        }
+      }
+    }
+  }
+  .disabled\:hover\:bg-indigo-600 {
+    &:disabled {
+      &:hover {
+        @media (hover: hover) {
+          background-color: var(--color-indigo-600);
         }
       }
     }
@@ -5657,24 +5679,27 @@ html.light .theme-toggle-icon-moon {
   grid-area: theme;
 }
 .preferences-display-grid > div:nth-child(2) {
-  grid-area: date;
+  grid-area: logo;
 }
 .preferences-display-grid > div:nth-child(3) {
-  grid-area: time;
+  grid-area: date;
 }
 .preferences-display-grid > div:nth-child(4) {
-  grid-area: mobile;
+  grid-area: time;
 }
 .preferences-display-grid > div:nth-child(5) {
-  grid-area: subtitle;
+  grid-area: mobile;
 }
 .preferences-display-grid > div:nth-child(6) {
-  grid-area: progress;
+  grid-area: subtitle;
 }
 .preferences-display-grid > div:nth-child(7) {
-  grid-area: title;
+  grid-area: progress;
 }
 .preferences-display-grid > div:nth-child(8) {
+  grid-area: title;
+}
+.preferences-display-grid > div:nth-child(9) {
   grid-area: talent;
 }
 .preferences-actions {
@@ -5711,7 +5736,7 @@ html.light .theme-toggle-icon-moon {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .preferences-display-grid {
-    grid-template-areas: "theme mobile" "date time" "title talent" "subtitle subtitle" "progress progress";
+    grid-template-areas: "theme logo" "date time" "title talent" "subtitle mobile" "progress progress";
   }
   .preferences-metadata-grid > div:nth-child(3) {
     grid-column: 1 / -1;
@@ -6814,6 +6839,11 @@ html.light .theme-toggle-icon-moon {
   inherits: false;
   initial-value: 0 0 #0000;
 }
+@property --tw-outline-style {
+  syntax: "*";
+  inherits: false;
+  initial-value: solid;
+}
 @property --tw-blur {
   syntax: "*";
   inherits: false;
@@ -6976,6 +7006,7 @@ html.light .theme-toggle-icon-moon {
       --tw-ring-offset-width: 0px;
       --tw-ring-offset-color: #fff;
       --tw-ring-offset-shadow: 0 0 #0000;
+      --tw-outline-style: solid;
       --tw-blur: initial;
       --tw-brightness: initial;
       --tw-contrast: initial;

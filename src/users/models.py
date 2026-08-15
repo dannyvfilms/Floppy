@@ -174,7 +174,7 @@ class ListDetailSortChoices(models.TextChoices):
 class DateFormatChoices(models.TextChoices):
     """Choices for date format preferences."""
 
-    SYSTEM_DEFAULT = "system_default", "System default (locale)"
+    SYSTEM_DEFAULT = "system_default", "System default"
     ISO_8601 = "iso_8601", "ISO 8601"
     MONTH_D_YYYY = "month_d_yyyy", "Month D, YYYY"
     D_MON_YYYY = "d_mon_yyyy", "D Mon YYYY"
@@ -193,10 +193,17 @@ class ThemeChoices(models.TextChoices):
     LIGHT = "light", "Light"
 
 
+class LogoStyleChoices(models.TextChoices):
+    """Choices for the Floppy logo style preference."""
+
+    COLORFUL = "colorful", "Colorful"
+    MONOCHROME = "monochrome", "Monochrome"
+
+
 class TimeFormatChoices(models.TextChoices):
     """Choices for time format preferences."""
 
-    SYSTEM_DEFAULT = "system_default", "System default (locale)"
+    SYSTEM_DEFAULT = "system_default", "System default"
     H_MM_AMPM = "h_mm_ampm", "12-hour (h:mm AM/PM)"
     HH_MM_AMPM = "hh_mm_ampm", "12-hour, leading zero (hh:mm AM/PM)"
     HH_MM = "hh_mm", "24-hour (HH:mm)"
@@ -494,6 +501,10 @@ class User(AbstractUser):
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
+    movie_show_each_play = models.BooleanField(
+        default=False,
+        help_text="Show each play/entry as its own row instead of aggregating duplicates",
+    )
 
     # Media type preferences: Anime
     anime_enabled = models.BooleanField(default=True)
@@ -516,6 +527,10 @@ class User(AbstractUser):
         max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
+    )
+    anime_show_each_play = models.BooleanField(
+    default=False,
+    help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Manga
@@ -540,6 +555,10 @@ class User(AbstractUser):
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
     )
+    manga_show_each_play = models.BooleanField(
+    default=False,
+    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+    )
 
     # Media type preferences: Games
     game_enabled = models.BooleanField(default=True)
@@ -562,6 +581,10 @@ class User(AbstractUser):
         max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
+    )
+    game_show_each_play = models.BooleanField(
+    default=False,
+    help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Board Games
@@ -608,6 +631,10 @@ class User(AbstractUser):
         max_length=128,
         default=MediaStatusChoices.ALL,
         choices=MediaStatusChoices,
+    )
+    book_show_each_play = models.BooleanField(
+    default=False,
+    help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Comics
@@ -952,6 +979,13 @@ class User(AbstractUser):
         max_length=10,
         default=ThemeChoices.SYSTEM,
         choices=ThemeChoices.choices,
+    )
+
+    logo_style = models.CharField(
+        max_length=12,
+        default=LogoStyleChoices.COLORFUL,
+        choices=LogoStyleChoices.choices,
+        help_text="Preferred Floppy logo style",
     )
 
     time_format = models.CharField(
@@ -1915,6 +1949,7 @@ class User(AbstractUser):
                         "schedule": schedule_info["frequency"],
                         "media_types": schedule_info["media_types"],
                         "include_lists": schedule_info["include_lists"],
+                        "include_collection": schedule_info["include_collection"],
                     },
                 )
 

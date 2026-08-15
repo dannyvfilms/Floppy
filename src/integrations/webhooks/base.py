@@ -295,6 +295,39 @@ class BaseWebhookProcessor:
 
         tvdb_id = tv_metadata.get("tvdb_id") if tv_metadata else None
 
+        grouped_anime_match = None
+        if user.anime_enabled:
+            from app.services import grouped_anime
+
+            classifier_kwargs = {}
+            if getattr(self, "_grouped_anime_mapping_loaded", False):
+                if self._grouped_anime_snapshot is not None:
+                    classifier_kwargs["snapshot"] = self._grouped_anime_snapshot
+                else:
+                    # Mapping load failures are fail-closed for grouping.  The
+                    # normal TV webhook path still records progress below.
+                    classifier_kwargs = None
+            if classifier_kwargs is not None:
+                grouped_anime_match = grouped_anime.classify_tv_metadata(
+                    tv_metadata,
+                    **classifier_kwargs,
+                )
+            if grouped_anime_match is not None and grouped_anime_match.is_grouped_anime:
+                logger.info(
+                    "Detected grouped anime via exact Anime-IDs match: TMDB %s",
+                    media_id,
+                )
+                self._handle_tv_episode(
+                    media_id,
+                    season_number,
+                    episode_number,
+                    payload,
+                    user,
+                    library_media_type=MediaTypes.ANIME.value,
+                    grouped_anime_match=grouped_anime_match,
+                )
+                return
+
         if user.anime_enabled:
             link_sources = [
                 (
@@ -1218,6 +1251,9 @@ class BaseWebhookProcessor:
         episode_number,
         payload,
         user,
+        *,
+        library_media_type=None,
+        grouped_anime_match=None,
     ):
         """Handle TV episode playback event."""
         from app.services import metadata_resolution
@@ -1373,8 +1409,26 @@ class BaseWebhookProcessor:
                 defaults={
                     "title": item_tv_metadata["title"],
                     "image": item_tv_metadata["image"],
+                    "library_media_type": library_media_type or "",
                 },
             )
+
+        if (
+            library_media_type == MediaTypes.ANIME.value
+            and grouped_anime_match is not None
+        ):
+            from app.services import grouped_anime
+
+            if not grouped_anime.promote_grouped_anime(
+                tv_item,
+                grouped_anime_match,
+            ):
+                logger.warning(
+                    "Keeping TV bucket for TMDB %s: grouped-anime target is "
+                    "occupied by another item",
+                    media_id,
+                )
+                library_media_type = None
         # `external_ids` describes the EPISODE that triggered this webhook
         # event, not the show. TVDB/IMDB assign distinct IDs per episode, so
         # episode-level values must never be written as the show's provider
