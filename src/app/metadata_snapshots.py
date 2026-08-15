@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import timedelta
@@ -51,6 +51,11 @@ FAILURE_CODE_PATTERN = re.compile(r"[^a-z0-9_-]+")
 MAX_METADATA_DEPTH = 24
 MAX_METADATA_NODES = 100_000
 MAX_SEASON_VARIANTS = 100
+MAX_MEDIA_TYPE_LENGTH = 32
+MAX_MEDIA_ID_LENGTH = 500
+MAX_SOURCE_LENGTH = 20
+MAX_LANGUAGE_LENGTH = 35
+MAX_EDITION_LENGTH = 128
 SNAPSHOT_SCHEMA_VERSION = 1
 
 _SUPPRESS_ITEM_SNAPSHOT_SYNC: ContextVar[bool] = ContextVar(
@@ -63,7 +68,6 @@ ITEM_METADATA_FIELDS = frozenset(
         "authors",
         "country",
         "creators",
-        "edition_id",
         "format",
         "genres",
         "igdb_user_rating",
@@ -121,18 +125,20 @@ class MetadataSnapshotError(Exception):
     """Base exception for snapshot policy and persistence failures."""
 
 
-class MetadataSnapshotRejected(MetadataSnapshotError):
+class MetadataSnapshotRejectedError(MetadataSnapshotError):
     """Report a payload that is unsafe or too large to persist."""
 
     def __init__(self, code):
+        """Store one safe rejection code."""
         self.code = str(code)
         super().__init__(self.code)
 
 
-class LocalMetadataUnavailable(services.ProviderAPIError):
+class LocalMetadataUnavailableError(services.ProviderAPIError):
     """Report that local-only mode has no durable data for the identity."""
 
     def __init__(self, provider):
+        """Build a safe error without storing request or response data."""
         provider_id = str(provider or "metadata").strip().casefold()
         self.provider = provider_id
         self.response = None
@@ -374,14 +380,18 @@ def get_metadata_policy():
     )
 
 
+def _raise_snapshot_rejection(code):
+    """Raise one snapshot rejection using a safe code."""
+    raise MetadataSnapshotRejectedError(code)
+
+
 def _normalize_season_numbers(value):
     """Return a bounded tuple for one season-specific metadata variant."""
     if value in (None, ""):
         return ()
     values = [value] if isinstance(value, (str, int)) else list(value)
     if len(values) > MAX_SEASON_VARIANTS:
-        msg = "A metadata request contains too many season variants."
-        raise MetadataSnapshotRejected("too_many_seasons") from ValueError(msg)
+        _raise_snapshot_rejection("too_many_seasons")
 
     normalized = []
     for season in values:
@@ -410,25 +420,26 @@ def build_metadata_identity(
     normalized_language = str(language or "").strip().replace("_", "-").casefold()
     normalized_edition = str(edition_id or "").strip()
 
-    if not normalized_media_type or len(normalized_media_type) > 32:
-        raise MetadataSnapshotRejected("invalid_media_type")
-    if not normalized_media_id or len(normalized_media_id) > 500:
-        raise MetadataSnapshotRejected("invalid_media_id")
-    if not normalized_source or len(normalized_source) > 20:
-        raise MetadataSnapshotRejected("invalid_source")
-    if len(normalized_language) > 35:
-        raise MetadataSnapshotRejected("invalid_language")
-    if len(normalized_edition) > 128:
-        raise MetadataSnapshotRejected("invalid_edition")
+    if not normalized_media_type or len(normalized_media_type) > MAX_MEDIA_TYPE_LENGTH:
+        _raise_snapshot_rejection("invalid_media_type")
+    if not normalized_media_id or len(normalized_media_id) > MAX_MEDIA_ID_LENGTH:
+        _raise_snapshot_rejection("invalid_media_id")
+    if not normalized_source or len(normalized_source) > MAX_SOURCE_LENGTH:
+        _raise_snapshot_rejection("invalid_source")
+    if len(normalized_language) > MAX_LANGUAGE_LENGTH:
+        _raise_snapshot_rejection("invalid_language")
+    if len(normalized_edition) > MAX_EDITION_LENGTH:
+        _raise_snapshot_rejection("invalid_edition")
 
     normalized_episode = None
     if episode_number not in (None, ""):
         try:
             normalized_episode = int(episode_number)
         except (TypeError, ValueError) as error:
-            raise MetadataSnapshotRejected("invalid_episode") from error
+            code = "invalid_episode"
+            raise MetadataSnapshotRejectedError(code) from error
         if normalized_episode < 0:
-            raise MetadataSnapshotRejected("invalid_episode")
+            _raise_snapshot_rejection("invalid_episode")
 
     return MetadataIdentity(
         media_type=normalized_media_type,
@@ -447,9 +458,9 @@ def _redact_sensitive_values(value, *, depth=0, node_count=None):
         node_count = [0]
     node_count[0] += 1
     if node_count[0] > MAX_METADATA_NODES:
-        raise MetadataSnapshotRejected("too_many_values")
+        _raise_snapshot_rejection("too_many_values")
     if depth > MAX_METADATA_DEPTH:
-        raise MetadataSnapshotRejected("too_deep")
+        _raise_snapshot_rejection("too_deep")
 
     if isinstance(value, dict):
         sanitized = {}
@@ -478,12 +489,13 @@ def _redact_sensitive_values(value, *, depth=0, node_count=None):
 def sanitize_metadata_payload(payload, *, max_payload_bytes):
     """Return safe JSON metadata, its hash, and byte size."""
     if not isinstance(payload, dict):
-        raise MetadataSnapshotRejected("not_a_mapping")
+        _raise_snapshot_rejection("not_a_mapping")
     try:
         encoded = json.dumps(payload, cls=DjangoJSONEncoder, ensure_ascii=False)
         json_payload = json.loads(encoded)
     except (TypeError, ValueError) as error:
-        raise MetadataSnapshotRejected("not_json_serializable") from error
+        code = "not_json_serializable"
+        raise MetadataSnapshotRejectedError(code) from error
 
     sanitized = _redact_sensitive_values(json_payload)
     canonical = json.dumps(
@@ -494,12 +506,14 @@ def sanitize_metadata_payload(payload, *, max_payload_bytes):
     ).encode("utf-8")
     payload_size = len(canonical)
     if payload_size > max_payload_bytes:
-        raise MetadataSnapshotRejected("payload_too_large")
+        _raise_snapshot_rejection("payload_too_large")
     return sanitized, hashlib.sha256(canonical).hexdigest(), payload_size
 
 
 def _is_empty_metadata_value(value):
-    return value is None or value == "" or value == [] or value == {}
+    if value is None:
+        return True
+    return isinstance(value, (str, list, dict)) and not value
 
 
 def merge_last_known_good(previous, incoming):
@@ -527,10 +541,11 @@ def _credit_payload(item):
     """Return locally stored people and studio data for one Item."""
     cast = []
     crew = []
+    authors_full = []
     studios = []
     try:
-        credits = item.person_credits.select_related("person").all()
-        for credit in credits:
+        person_credits = item.person_credits.select_related("person").all()
+        for credit in person_credits:
             person = credit.person
             row = {
                 "department": credit.department,
@@ -542,6 +557,8 @@ def _credit_payload(item):
             }
             if credit.role_type == "cast":
                 cast.append(row)
+            elif credit.role_type == "author":
+                authors_full.append(row)
             else:
                 crew.append(row)
 
@@ -556,8 +573,18 @@ def _credit_payload(item):
             for credit in studio_credits
         ]
     except DatabaseError:
-        return {"cast": [], "crew": [], "studios_full": []}
-    return {"cast": cast, "crew": crew, "studios_full": studios}
+        return {
+            "authors_full": [],
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+    return {
+        "authors_full": authors_full,
+        "cast": cast,
+        "crew": crew,
+        "studios_full": studios,
+    }
 
 
 def item_metadata_payload(item):
@@ -587,6 +614,7 @@ def item_metadata_payload(item):
         "igdb_user_rating_count": item.igdb_user_rating_count,
         "image": item.image,
         "library_media_type": item.library_media_type or item.media_type,
+        "localized_title": item.localized_title,
         "max_progress": (
             item.number_of_pages
             if item.media_type == MediaTypes.BOOK.value
@@ -614,7 +642,6 @@ def item_metadata_payload(item):
         "source": item.source,
         "synopsis": item.synopsis,
         "title": item.title,
-        "localized_title": item.localized_title,
         "watch_providers": item.watch_providers,
     }
     payload.update(_credit_payload(item))
@@ -717,23 +744,22 @@ def _payload_needs_completion(payload, identity):
     return False
 
 
-def _local_payload(snapshot, items, *, policy):
+def _local_payload(snapshot, items):
     payload = copy.deepcopy(snapshot.payload) if snapshot and snapshot.payload else {}
     if items:
-        item_payload = item_metadata_payload(items[0])
-        payload = (
-            merge_last_known_good(payload, item_payload)
-            if policy.merge_mode == "preserve"
-            else item_payload
-        )
+        payload = merge_last_known_good(payload, item_metadata_payload(items[0]))
     return payload or None
 
 
 def _failure_code(error):
-    status_code = getattr(error, "status_code", None)
-    raw_code = type(error).__name__.casefold()
-    if status_code:
-        raw_code = f"{raw_code}_{status_code}"
+    explicit_code = getattr(error, "code", "")
+    if explicit_code:
+        raw_code = str(explicit_code).casefold()
+    else:
+        raw_code = type(error).__name__.casefold()
+        status_code = getattr(error, "status_code", None)
+        if status_code:
+            raw_code = f"{raw_code}_{status_code}"
     return FAILURE_CODE_PATTERN.sub("_", raw_code).strip("_")[:80] or "refresh_failed"
 
 
@@ -745,16 +771,21 @@ def _network_allowed(identity):
     return network_policy.provider_access_allowed(identity.source)
 
 
+def _provider_blocked(error):
+    blocked_error = getattr(services, "ProviderNetworkUnavailable", None)
+    return blocked_error is not None and isinstance(error, blocked_error)
+
+
 def _should_persist(policy, items):
     return policy.persist_mode == "all" or (
         policy.persist_mode == "tracked" and bool(items)
     )
 
 
-def _prepare_persisted_payload(previous, incoming, *, policy):
+def _prepare_persisted_payload(previous, incoming, *, policy, preserve_values=False):
     payload = (
         merge_last_known_good(previous, incoming)
-        if policy.merge_mode == "preserve" and previous
+        if previous and (preserve_values or policy.merge_mode == "preserve")
         else copy.deepcopy(incoming)
     )
     return sanitize_metadata_payload(
@@ -772,6 +803,7 @@ def _save_snapshot(
     origin,
     fetched_at,
     preserve_status=False,
+    preserve_values=False,
 ):
     """Atomically store a safe payload without exposing transient partial writes."""
     with transaction.atomic():
@@ -785,6 +817,7 @@ def _save_snapshot(
             previous_payload,
             payload,
             policy=policy,
+            preserve_values=preserve_values,
         )
         effective_state = current.state if current and preserve_status else state
         effective_origin = current.origin if current and preserve_status else origin
@@ -1039,17 +1072,10 @@ def _annotate_payload(
     return result
 
 
-def _persist_local_item_snapshot(item, *, origin):
+def _persist_local_snapshot(identity, item, *, origin):
     policy = get_metadata_policy()
     if policy.persist_mode == "off":
         return None
-    identity = build_metadata_identity(
-        item.media_type,
-        item.media_id,
-        item.source,
-        [item.season_number] if item.season_number is not None else None,
-        item.episode_number,
-    )
     try:
         return _save_snapshot(
             identity,
@@ -1059,9 +1085,20 @@ def _persist_local_item_snapshot(item, *, origin):
             origin=origin,
             fetched_at=item.metadata_fetched_at,
             preserve_status=True,
+            preserve_values=True,
         )
-    except (DatabaseError, MetadataSnapshotRejected):
+    except (DatabaseError, MetadataSnapshotRejectedError):
         return None
+
+
+def _item_identity(item):
+    return build_metadata_identity(
+        item.media_type,
+        item.media_id,
+        item.source,
+        [item.season_number] if item.season_number is not None else None,
+        item.episode_number,
+    )
 
 
 def sync_item_metadata_snapshot(
@@ -1081,7 +1118,11 @@ def sync_item_metadata_snapshot(
     origin = (
         MetadataSnapshot.Origin.IMPORT if created else MetadataSnapshot.Origin.ITEM
     )
-    _persist_local_item_snapshot(instance, origin=origin)
+    try:
+        identity = _item_identity(instance)
+    except MetadataSnapshotRejectedError:
+        return
+    _persist_local_snapshot(identity, instance, origin=origin)
 
 
 def _provider_result(
@@ -1115,7 +1156,7 @@ def _provider_result(
     except ImproperlyConfigured:
         raise
     except Exception as error:
-        blocked = type(error).__name__ == "ProviderNetworkUnavailable"
+        blocked = _provider_blocked(error)
         snapshot = _record_failure(snapshot, error=error, blocked=blocked)
         if local_payload is None:
             raise
@@ -1160,7 +1201,7 @@ def _provider_result(
                 returned_payload,
                 fetched_at=attempted_at,
             )
-        except MetadataSnapshotRejected as error:
+        except MetadataSnapshotRejectedError as error:
             effective_snapshot = _record_failure(snapshot, error=error)
             logger.warning(
                 "Metadata payload was not persisted source=%s media_type=%s code=%s",
@@ -1217,7 +1258,7 @@ def _resolve_metadata_call(original, args, kwargs):
             argument("language", 5),
             argument("edition_id", 6),
         )
-    except MetadataSnapshotRejected:
+    except MetadataSnapshotRejectedError:
         return original(*args, **kwargs)
 
     policy = get_metadata_policy()
@@ -1227,14 +1268,15 @@ def _resolve_metadata_call(original, args, kwargs):
         policy=policy,
         has_items=bool(items),
     )
-    local_payload = _local_payload(snapshot, items, policy=policy)
+    local_payload = _local_payload(snapshot, items)
 
     if snapshot is None and items and policy.persist_mode != "off":
-        snapshot = _persist_local_item_snapshot(
+        snapshot = _persist_local_snapshot(
+            identity,
             items[0],
             origin=MetadataSnapshot.Origin.ITEM,
         )
-        local_payload = _local_payload(snapshot, items, policy=policy)
+        local_payload = _local_payload(snapshot, items)
 
     network_allowed = _network_allowed(identity)
     fresh = _snapshot_is_fresh(snapshot, policy=policy, identity=identity)
@@ -1253,19 +1295,24 @@ def _resolve_metadata_call(original, args, kwargs):
 
     if policy.read_mode == "local-only" or not network_allowed:
         if local_payload is None:
-            raise LocalMetadataUnavailable(identity.source)
+            raise LocalMetadataUnavailableError(identity.source)
         if snapshot is not None and not network_allowed:
             snapshot = _record_failure(
                 snapshot,
-                error=LocalMetadataUnavailable(identity.source),
+                error=LocalMetadataUnavailableError(identity.source),
                 blocked=True,
             )
+        state = (
+            "local-only"
+            if policy.read_mode == "local-only"
+            else "blocked-local-copy"
+        )
         return _annotate_payload(
             local_payload,
             identity=identity,
             policy=policy,
             snapshot=snapshot,
-            state="local-only" if policy.read_mode == "local-only" else "blocked-local-copy",
+            state=state,
             source="snapshot" if snapshot and snapshot.payload else "item",
             stale=not fresh or incomplete,
         )
@@ -1289,7 +1336,7 @@ def _resolve_metadata_call(original, args, kwargs):
         or policy.refresh_mode == "blocking"
         or incomplete
     )
-    if should_block and _retry_allowed(snapshot, policy=policy):
+    if should_block and (force_refresh or _retry_allowed(snapshot, policy=policy)):
         return _provider_result(
             original,
             args,
@@ -1353,8 +1400,6 @@ def install_metadata_snapshot_guard():
         weak=False,
     )
 
-    # Celery autodiscovery imports app.tasks only. Import this focused task
-    # module here as well so every web and worker process registers the task.
-    from app import tasks_metadata_snapshots  # noqa: F401, PLC0415
+    from app import tasks_metadata_snapshots  # noqa: F401
 
     return guarded_retriever
