@@ -123,10 +123,10 @@ if [ -e "$DATA_DIR" ] && ! timeout 600 chown abc:abc -- "$DATA_DIR"; then
     exit 1
 fi
 
-SECRET_FILE="${DATA_DIR}/secret_key"
-if { [ -e "$SECRET_FILE" ] || [ -L "$SECRET_FILE" ]; } && \
-   ! timeout 600 chown -h abc:abc -- "$SECRET_FILE"; then
-    echo "[entrypoint] Cannot set ownership for generated secret ${SECRET_FILE} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
+generated_secret_file="${DATA_DIR}/secret_key"
+if { [ -e "$generated_secret_file" ] || [ -L "$generated_secret_file" ]; } && \
+   ! timeout 600 chown -h abc:abc -- "$generated_secret_file"; then
+    echo "[entrypoint] Cannot set ownership for generated secret ${generated_secret_file} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
     exit 1
 fi
 
@@ -155,10 +155,10 @@ fi
 if [ -e "$LOG_DIR_PATH" ] && ! timeout 600 chown abc:abc -- "$LOG_DIR_PATH"; then
     echo "[entrypoint] WARNING: chown of ${LOG_DIR_PATH} failed or timed out (stalled mount?); continuing" >&2
 fi
-LOG_FILE="${LOG_DIR_PATH}/floppy.log"
-if { [ -e "$LOG_FILE" ] || [ -L "$LOG_FILE" ]; } && \
-   ! timeout 600 chown -h abc:abc -- "$LOG_FILE"; then
-    echo "[entrypoint] WARNING: chown of ${LOG_FILE} failed or timed out (stalled mount?); continuing" >&2
+log_file_path="${LOG_DIR_PATH}/floppy.log"
+if { [ -e "$log_file_path" ] || [ -L "$log_file_path" ]; } && \
+   ! timeout 600 chown -h abc:abc -- "$log_file_path"; then
+    echo "[entrypoint] WARNING: chown of ${log_file_path} failed or timed out (stalled mount?); continuing" >&2
 fi
 
 # Bound recursive ownership fixes for the image-managed service directories: a

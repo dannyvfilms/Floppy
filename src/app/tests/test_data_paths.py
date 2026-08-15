@@ -215,6 +215,38 @@ class DataPathSettingsTests(SimpleTestCase):
             )
             self.assertEqual(stat.S_IMODE(secret_path.stat().st_mode), 0o600)
 
+    def test_configured_secret_file_is_used_when_secret_is_empty(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            secret_file = root / "custom_secret"
+            secret_file.write_text("custom-secret-value\n", encoding="utf-8")
+            environment = {
+                "PATH": os.environ["PATH"],
+                "PYTHONPATH": str(SRC),
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "SECRET": "",
+                "SECRET_FILE": str(secret_file),
+                "FLOPPY_DATA_DIR": str(data_dir),
+                "LOG_DIR": str(root / "logs"),
+            }
+
+            result = subprocess.run(  # noqa: S603 - test-controlled executable
+                [sys.executable, "-c", DOCKER_SECRET_PROBE],
+                cwd=root,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                result.stdout.strip().splitlines()[-1],
+                "custom-secret-value",
+            )
+            self.assertFalse((data_dir / "secret_key").exists())
+
     def test_generated_secret_failure_names_the_path_and_next_action(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             blocked_parent = Path(temp_dir) / "not-a-directory"
@@ -345,13 +377,19 @@ if [ -n "$FAIL_CHOWN_PATH" ] && [ "$last" = "$FAIL_CHOWN_PATH" ]; then
 fi
 """,
         )
-        for command in ("groupmod", "usermod", "supervisord"):
+        for command in ("groupmod", "usermod"):
             self.write_command(
                 fake_bin / command,
                 f"""#!/bin/sh
 {{ printf '{command}'; printf ' <%s>' "$@"; printf '\n'; }} >> "$FAKE_LOG"
 """,
             )
+        self.write_command(
+            fake_bin / "supervisord",
+            """#!/bin/sh
+{ printf 'supervisord'; printf ' <%s>' "$@"; printf ' [SECRET_FILE=%s]' "$SECRET_FILE"; printf '\n'; } >> "$FAKE_LOG"
+""",
+        )
 
         environment = {
             "PATH": f"{fake_bin}:{os.environ['PATH']}",
@@ -514,3 +552,26 @@ fi
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertNotIn("FLOPPY_DB_PATH", result.stderr)
             self.assertNotIn("/db.sqlite3", commands)
+
+    def test_secret_file_environment_variable_is_preserved_for_supervisord(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            data_dir.mkdir()
+            custom_secret = root / "secrets" / "my_secret"
+            custom_secret.parent.mkdir()
+            custom_secret.write_text("custom-secret-key\n", encoding="utf-8")
+
+            result, commands = self.run_entrypoint(
+                root,
+                FLOPPY_DATA_DIR=str(data_dir),
+                SECRET="",
+                SECRET_FILE=str(custom_secret),
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                f"supervisord <-c> </etc/supervisord.conf> [SECRET_FILE={custom_secret}]",
+                commands,
+            )
+
