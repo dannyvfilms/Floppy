@@ -1002,6 +1002,54 @@ class UserGetImportTasksTests(TestCase):
         self.assertEqual(len(lastfm_results), 0)
 
 
+class UserGetExportTasksTests(TestCase):
+    """Tests for the User.get_export_tasks method."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="exporter",
+            password="12345",
+        )
+
+    @patch("users.helpers.process_task_result")
+    def test_get_export_tasks_only_includes_last_seven_days(
+        self,
+        mock_process_task_result,
+    ):
+        """Export history excludes completed tasks older than seven days."""
+        processed_task = MagicMock(summary="Exported data", errors=[])
+        mock_process_task_result.return_value = processed_task
+        task_kwargs = f"{{'user_id': {self.user.id}, 'media_types': []}}"
+
+        recent_task = TaskResult.objects.create(
+            task_id="recent-export",
+            task_name="Scheduled backup export",
+            task_kwargs=task_kwargs,
+            status="SUCCESS",
+            result="{}",
+        )
+        TaskResult.objects.filter(pk=recent_task.pk).update(
+            date_done=timezone.now() - timedelta(days=6),
+        )
+        recent_task.refresh_from_db()
+        old_task = TaskResult.objects.create(
+            task_id="old-export",
+            task_name="Scheduled backup export",
+            task_kwargs=task_kwargs,
+            status="SUCCESS",
+            result="{}",
+        )
+        TaskResult.objects.filter(pk=old_task.pk).update(
+            date_done=timezone.now() - timedelta(days=8),
+        )
+
+        export_tasks = self.user.get_export_tasks()
+
+        self.assertEqual(len(export_tasks["results"]), 1)
+        self.assertEqual(export_tasks["results"][0]["date"], recent_task.date_done)
+        mock_process_task_result.assert_called_once_with(recent_task)
+
+
 class UserResolveWatchDateTests(TestCase):
     """Tests for the User.resolve_watch_date method."""
 

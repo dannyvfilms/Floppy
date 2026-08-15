@@ -1933,9 +1933,11 @@ class User(AbstractUser):
 
         # Get task results for this user
         task_result_filter_text = f"'user_id': {self.id},"
+        seven_days_ago = timezone.now() - timedelta(days=7)
         task_results = TaskResult.objects.filter(
             task_kwargs__contains=task_result_filter_text,
             task_name=export_task_name,
+            date_done__gte=seven_days_ago,
         ).order_by("-date_done")
 
         results = []
