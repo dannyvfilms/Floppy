@@ -113,24 +113,27 @@ class ProviderNetworkUnavailable(services.ProviderAPIError):
 
 
 def install_provider_network_guard():
-    """Install one fail-closed guard around the shared provider request function."""
+    """Install provider egress and durable metadata guards."""
     current_request = services.api_request
-    if getattr(current_request, "_floppy_network_guard", False):
-        return current_request
+    if not getattr(current_request, "_floppy_network_guard", False):
 
-    @functools.wraps(current_request)
-    def guarded_request(*args, **kwargs):
-        provider = kwargs.get("provider")
-        if provider is None and args:
-            provider = args[0]
+        @functools.wraps(current_request)
+        def guarded_request(*args, **kwargs):
+            provider = kwargs.get("provider")
+            if provider is None and args:
+                provider = args[0]
 
-        mode = get_network_mode()
-        if not provider_access_allowed(provider, mode=mode):
-            raise ProviderNetworkUnavailable(provider, mode)
-        return current_request(*args, **kwargs)
+            mode = get_network_mode()
+            if not provider_access_allowed(provider, mode=mode):
+                raise ProviderNetworkUnavailable(provider, mode)
+            return current_request(*args, **kwargs)
 
-    guarded_request._floppy_network_guard = True
-    guarded_request._floppy_network_guard_original = current_request
-    services.ProviderNetworkUnavailable = ProviderNetworkUnavailable
-    services.api_request = guarded_request
-    return guarded_request
+        guarded_request._floppy_network_guard = True
+        guarded_request._floppy_network_guard_original = current_request
+        services.ProviderNetworkUnavailable = ProviderNetworkUnavailable
+        services.api_request = guarded_request
+
+    from app.metadata_snapshots import install_metadata_snapshot_guard
+
+    install_metadata_snapshot_guard()
+    return services.api_request
