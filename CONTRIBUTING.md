@@ -128,6 +128,8 @@ Review and commit generated artifact changes. If regeneration makes no change, r
 
 **UI consistency:** New UI must match existing patterns in the app — spacing, card styles, chip styles, color tokens, layout conventions. If your change introduces a visual pattern that doesn't appear anywhere else in the app, flag it explicitly in the PR description and justify it. Unexplained novel UI is a reason to close a PR.
 
+**Colour and theming:** Colour goes through the `--color-*` tokens, never a raw palette utility and never Tailwind's `dark:` variant, which reads the OS instead of the user's chosen theme. There are six theme states to hold, not two. See [docs/architecture/theming.md](docs/architecture/theming.md); `src/app/tests/test_theme_tokens.py` enforces the two rules that are easiest to break.
+
 **Lint cleanup:** If you spot pre-existing ruff/lint violations while working, do not fix them in the same PR. Either open a separate lint-only PR (welcome and easy to review) or leave a note. Fixing unrelated lint mid-feature PR inflates the diff and obscures the actual change.
 
 ---

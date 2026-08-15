@@ -2023,7 +2023,12 @@ paths:
           description: ''
     patch:
       operationId: api_v1_user_preferences_partial_update
-      description: Update the provided preference fields.
+      description: |-
+        Update only the preference fields present in the request body.
+
+        Omitted fields keep their stored value. Clients that change one
+        preference, such as the header theme toggle, therefore do not need to
+        echo the rest of the form back.
       tags:
       - api
       requestBody:

@@ -82,7 +82,12 @@ class UserPreferencesView(drf_views.APIView):
         )
 
     def patch(self, request):
-        """Update the provided preference fields."""
+        """Update only the preference fields present in the request body.
+
+        Omitted fields keep their stored value. Clients that change one
+        preference, such as the header theme toggle, therefore do not need to
+        echo the rest of the form back.
+        """
         user = request.user
         if user.is_demo:
             return Response(
