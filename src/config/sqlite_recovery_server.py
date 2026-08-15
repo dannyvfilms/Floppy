@@ -51,7 +51,7 @@ _SECRET_REPORT_KEYS = frozenset({"actions", "incident_token"})
 _HELP_LINKS = (
     ("Report a problem", "https://github.com/dannyvfilms/Floppy/issues"),
     ("Read the wiki", "https://github.com/dannyvfilms/Floppy/wiki"),
-    ("Ask on Discord", "https://discord.gg/QfNA6zJ5Ws"),
+    ("Ask on Discord", "https://discord.gg/uFgha7Kb6n"),
 )
 
 # navigator.clipboard exists only in a secure context. Floppy is usually opened

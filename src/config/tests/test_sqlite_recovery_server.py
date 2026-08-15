@@ -369,7 +369,7 @@ class RecoveryPageTests(SimpleTestCase):
                 page = recovery.render_page(candidate, interactive=True)
                 self.assertIn("github.com/dannyvfilms/Floppy/issues", page)
                 self.assertIn("github.com/dannyvfilms/Floppy/wiki", page)
-                self.assertIn("discord.gg/QfNA6zJ5Ws", page)
+                self.assertIn("discord.gg/uFgha7Kb6n", page)
 
     def test_a_cross_site_form_cannot_make_the_choice(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -11,8 +11,10 @@
 <p align="center">
   <a href="https://yamtrack.dannyvfilms.com">Demo</a> ·
   <a href="https://github.com/dannyvfilms/Floppy/pkgs/container/floppy">Docker Image</a> ·
+  <a href="https://discord.gg/uFgha7Kb6n">Discord</a> ·
   <a href="https://github.com/dannyvfilms/Floppy/wiki">Wiki</a> ·
-  <a href="https://github.com/dannyvfilms/Floppy/releases">Releases</a>
+  <a href="https://github.com/dannyvfilms/Floppy/releases">Releases</a> ·
+  <a href="https://github.com/dannyvfilms/Floppy/issues">Report a Bug</a>
 </p>
 
 Floppy is a self-hosted, all-in-one media tracker and personal media diary, a broader alternative to Trakt, Letterboxd, and TV Time for people who want one place for everything they watch, read, play, or listen to. It gives you a real progress view that tells you what to watch next, a unified history you can actually scan, recap-style statistics, shareable lists, owned-media collections, and integrations that sync instead of asking you to upload a file every few months.
@@ -721,6 +723,7 @@ dependency.
 ## Support the project
 
 - Star the repository if you want to help more people find Floppy.
+- Join the [Discord channel](https://discord.gg/uFgha7Kb6n) to ask questions, share feedback, and chat with the community.
 - Open an [issue](https://github.com/dannyvfilms/Floppy/issues) for bugs, or for feature requests and ideas.
 - Open a pull request if you want to contribute code, docs, or polish.
 
