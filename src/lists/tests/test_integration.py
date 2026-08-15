@@ -156,7 +156,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.search_and_submit("perfect blue")
         self.page.locator(".absolute > .relative > button:nth-child(2)").first.click()
         expect(self.page.locator("#lists-anime-437")).to_contain_text("Lists test Add")
-        self.page.get_by_role("button", name="Add", exact=True).click()
+        self.page.get_by_role("button", name="Add item to test", exact=True).click()
         expect(self.page.locator("#lists-anime-437")).to_contain_text("Remove")
         self.page.locator("#lists-anime-437").get_by_role("button").first.click()
 
@@ -164,7 +164,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.get_by_role("link", name="Lists").click()
         expect(self.page.locator("#lists-grid")).to_contain_text("test")
         expect(self.page.locator("#lists-grid")).to_contain_text("1 item")
-        self.page.get_by_role("button", name="Edit list").click()
+        self.page.get_by_role("button", name="Edit test", exact=True).click()
         expect(self.page.locator("#lists-grid")).to_contain_text("Edit List")
         self.page.locator("#id_1_name").click()
         self.page.locator("#id_1_name").fill("test rename")
