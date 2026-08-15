@@ -9,13 +9,13 @@ you should not need to reconstruct history.
 |---|---|
 | Main checkout | `/home/ryan/code/Floppy` (branch `feat/591-pin-zxing`, untouched) |
 | This work | `/home/ryan/code/floppy-jsonld` (branch `feat/jsonld-domain-context`) |
-| Base of this branch | `origin/codex/openapi-grounding-contracts` @ `6a667843` = PR #742 head |
-| Upstream target | `latest` |
+| Base | `latest` (PR #742 merged; its branch was deleted) |
+| PR | #769 (supersedes #763, auto-closed when its base branch went away) |
 
-`feat/jsonld-domain-context` is **stacked on PR #742**. It cannot target
-`latest` directly, because it imports `src/app/domain_vocabulary.py`, which
-#742 introduces. Review it as a stacked PR with base
-`codex/openapi-grounding-contracts`.
+This was originally stacked on PR #742. **#742 has since merged into `latest`**,
+so the branch now targets `latest` directly and `latest` is fully merged in.
+GitHub auto-closed the original PR #763 when `codex/openapi-grounding-contracts`
+was deleted; a closed PR's base cannot be retargeted, so the work moved to #769.
 
 Test env: run `uv sync` in the worktree first. Test command is
 `SECRET=test-only scripts/test.sh` (the `SECRET` prefix is mandatory; without
@@ -35,11 +35,9 @@ vocabulary, an offline API docs page, MCP hardening, and drift-gate tests.
   token costs, is at
   `~/.gstack/projects/dannyvfilms-Floppy/ryan-pr-742-conflicts-review-test-outcome-20260814-1500.md`.
   **Read that file before re-reviewing #742** so you do not repeat work.
-- Known non-issue: `app.tests.test_data_paths.DataPathSettingsTests.test_generated_secret_uses_the_configured_data_directory`
-  fails **locally only**. python-decouple walks up out of any worktree nested
-  under `/home/ryan/code/Floppy` and finds that repo's `.env`, which sets
-  `SECRET`, so the probe never generates `secret_key`. CI clones fresh and
-  passes. Not caused by either PR. Do not "fix" it as part of this work.
+- Former local-only failure in `test_data_paths` (python-decouple walking up to
+  `/home/ryan/code/Floppy/.env`) is **fixed upstream** by #766, "isolate secret
+  in data path test", now in `latest`.
 
 ### The governing design
 
@@ -136,7 +134,35 @@ fixed in `eca2292d`:
 It also named two gate gaps, both closed: property terms are now asserted to be
 `@id`-typed, and PyLD expansion covers the whole vocabulary.
 
-## What is NOT done — your work starts here
+## Browser QA — DONE
+
+Run against a live instance on 2026-08-15. All passed:
+
+- `/api/context.jsonld`: 200, `application/ld+json`, bytes identical to the
+  committed artifact, `Cache-Control: public, max-age=3600`, ETag match → 304,
+  stale ETag → 200, HEAD → 200.
+- All four contract routes return 200 anonymously.
+- `/api/docs/` issues **exactly one network request, the page itself** — zero
+  external refs, zero `<script>`, zero `<img>`, confirmed in the live network log.
+- New row renders and resolves to `/api/context.jsonld`.
+- 320px and 375px: no page horizontal overflow; code blocks scroll internally.
+- Dark mode correct; skip link first focusable with a 3px outline.
+- Settings → About: four links, correct hrefs, `aria-hidden="true"
+  focusable="false"` icons, AsyncAPI absent.
+- `/floppy` subpath renders `/floppy/api/context.jsonld`, no doubled prefix.
+
+One finding: `POST /api/context.jsonld` returns **302 to login** behind the real
+middleware stack, not the **405** the Django test client sees. `/api/openapi.yaml`
+and `/api/docs/` behave identically, so it is pre-existing routing behaviour, not
+a regression. The test now asserts the invariant true in both environments.
+
+## Package-size gate — DONE
+
+`uv export --no-default-groups` contains no `pyld`, `lxml` or `frozendict`; they
+appear only under `--only-group test`. CI's "Smoke built image" job passes.
+Artifact is 786 bytes.
+
+## What is NOT done
 
 ### 1. Browser QA of the new surfaces
 
