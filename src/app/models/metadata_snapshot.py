@@ -5,6 +5,8 @@ class MetadataSnapshot(models.Model):
     """Store one durable last-known-good metadata payload."""
 
     class State(models.TextChoices):
+        """Describe whether a snapshot is current, local, or degraded."""
+
         READY = "ready", "Ready"
         LOCAL = "local", "Local"
         REFRESHING = "refreshing", "Refreshing"
@@ -12,6 +14,8 @@ class MetadataSnapshot(models.Model):
         BLOCKED = "blocked", "Blocked"
 
     class Origin(models.TextChoices):
+        """Describe which application path last wrote the payload."""
+
         PROVIDER = "provider", "Provider"
         ITEM = "item", "Item"
         IMPORT = "import", "Import"
@@ -54,6 +58,8 @@ class MetadataSnapshot(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Configure lookup and refresh-state indexes."""
+
         indexes = [
             models.Index(
                 fields=["source", "media_type", "media_id"],
@@ -71,4 +77,5 @@ class MetadataSnapshot(models.Model):
         ordering = ["source", "media_type", "media_id", "cache_key"]
 
     def __str__(self):
+        """Return the provider identity represented by this snapshot."""
         return f"{self.source}:{self.media_type}:{self.media_id}"
