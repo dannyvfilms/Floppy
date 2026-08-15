@@ -75,7 +75,7 @@
          x-transition
          class="fixed top-24 right-0 left-0 {% block messages_sidebar_offset %}lg:left-64{% endblock messages_sidebar_offset %} z-50 flex justify-center pointer-events-none mb-4">
       <div class="w-full max-w-xl px-4 pointer-events-auto">
-        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-info"
+        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info"
              x-init="$watch('toastVisible', v => { if (v) { $el.classList.remove('opacity-100','transform-none'); $el.classList.add('opacity-0','translate-y-[-1rem]'); setTimeout(() => $el.classList.add('opacity-100','transform-none'), 10); } })"
              :class="{ 'transition-all duration-300 ease-out': true }">
           {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-indigo-300 shrink-0" %}

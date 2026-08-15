@@ -22,7 +22,7 @@
       <div class="media-card-title-row">
         {% if person.person_id and person.name %}
           <a href="{% url 'person_detail' source=media.source person_id=person.person_id name=person.name|slug %}"
-             class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 block min-w-0"
+             class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 block min-w-0"
              title="{{ person.name }}">{{ person.name }}</a>
         {% else %}
           <p class="media-card-title text-sm font-semibold text-[var(--color-text)] line-clamp-1 min-w-0" title="{{ person.name|default:'Unknown Person' }}">{{ person.name|default:"Unknown Person" }}</p>

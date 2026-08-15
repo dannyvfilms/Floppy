@@ -20,9 +20,14 @@
   --color-sidebar: #1a1d20;
   --color-text: #f3f4f6;
   --color-text-secondary: #d1d5db;
-  --color-text-muted: #9ca3af;
+  /* Lifted from #9ca3af: that value reached only 4.1:1 on --color-surface-strong,
+     the raised surface settings cards use, so muted copy missed WCAG AA there. */
+  --color-text-muted: #adb5bd;
   --color-warning-text: #fde68a;
   --color-info-text: #c7d2fe;
+  --color-error-text: #fca5a5;
+  --color-link: #a5b4fc;
+  --color-link-hover: #c7d2fe;
   color-scheme: dark;
 }
 
@@ -46,6 +51,9 @@
     --color-text-muted: #4b5563;
     --color-warning-text: #92400e;
     --color-info-text: #3730a3;
+    --color-error-text: #b91c1c;
+    --color-link: #4f46e5;
+    --color-link-hover: #4338ca;
     color-scheme: light;
   }
 }
@@ -69,12 +77,18 @@ html.light {
   --color-text-muted: #4b5563;
   --color-warning-text: #92400e;
   --color-info-text: #3730a3;
+  --color-error-text: #b91c1c;
+  --color-link: #4f46e5;
+  --color-link-hover: #4338ca;
   color-scheme: light;
 }
 
 html.dark {
   --color-warning-text: #fde68a;
   --color-info-text: #c7d2fe;
+  --color-error-text: #fca5a5;
+  --color-link: #a5b4fc;
+  --color-link-hover: #c7d2fe;
   color-scheme: dark;
 }
 
@@ -1333,7 +1347,7 @@ html.light .theme-toggle-icon-moon {
 }
 
 .select2-container--tailwindcss-4 .select2-selection--multiple .select2-search--inline .select2-search__field {
-  @apply w-auto min-w-[6ch] h-[1.5rem] p-0 m-0 text-sm/6 bg-transparent border-0 focus:outline-hidden focus:ring-0 placeholder:text-gray-500 placeholder:text-sm/6 placeholder:font-sans;
+  @apply w-auto min-w-[6ch] h-[1.5rem] p-0 m-0 text-sm/6 bg-transparent border-0 focus:outline-hidden focus:ring-0 placeholder:text-[var(--color-text-muted)] placeholder:text-sm/6 placeholder:font-sans;
 }
 
 /* Focus styles for keyboard navigation */

@@ -22,7 +22,7 @@
     <div class="py-3 flex-1 flex flex-col">
       <div class="flex-1">
         <div class="flex justify-between items-start mb-2 space-x-2 px-4">
-          {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block min-w-0 hover:text-indigo-400 transition-colors">{% endif %}
+          {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block min-w-0 hover:text-[var(--color-link)] transition-colors">{% endif %}
           <div>
             <h2 class="text-xl font-semibold mb-1 line-clamp-1">{{ episode.title|default:"Unknown" }}</h2>
             <p class="text-sm text-[var(--color-text-muted)]">
@@ -44,12 +44,12 @@
 <div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-border)] transition-colors"
      x-show="$store.epLayout === 'list'"
      style="display:none">
-  <span class="shrink-0 w-9 text-center text-[11px] font-mono text-gray-500 tabular-nums">
+  <span class="shrink-0 w-9 text-center text-[11px] font-mono text-[var(--color-text-muted)] tabular-nums">
     #{{ episode.issue_number }}
   </span>
   <div class="flex-1 min-w-0">
     {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="group/issue-row block">{% endif %}
-    <p class="text-sm font-medium truncate {% if ep_detail_url %}group-hover/issue-row:text-indigo-400 transition-colors{% endif %}">{{ episode.title|default:"Unknown" }}</p>
+    <p class="text-sm font-medium truncate {% if ep_detail_url %}group-hover/issue-row:text-[var(--color-link)] transition-colors{% endif %}">{{ episode.title|default:"Unknown" }}</p>
     <p class="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
       {% if episode.cover_date %}{{ episode.cover_date }}{% endif %}{% if episode.history %} · Read{% endif %}
     </p>

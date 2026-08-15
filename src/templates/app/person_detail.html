@@ -72,12 +72,12 @@
             <button
               x-show="isClamped"
               @click="isExpanded = !isExpanded"
-              class="text-indigo-400 hover:text-indigo-300 text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
+              class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
               <span x-text="isExpanded ? 'Show less' : 'Show more'"></span>
             </button>
           </div>
         {% else %}
-          <p class="text-gray-500">No biography available.</p>
+          <p class="text-[var(--color-text-muted)]">No biography available.</p>
         {% endif %}
       </div>
 

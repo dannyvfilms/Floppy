@@ -101,7 +101,7 @@ def _build_detail_tag_sections(
                 "entries": [
                     {
                         "label": genre,
-                        "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                        "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-[var(--color-text)]",
                         "url": (
                             f"{genre_list_url}?{urlencode({'genre': genre})}"
                             if genre_list_url
@@ -125,7 +125,7 @@ def _build_detail_tag_sections(
                 "entries": [
                     {
                         "label": genre,
-                        "chip_classes": "border-slate-400/18 bg-slate-500/[0.07] text-slate-100",
+                        "chip_classes": "border-slate-400/18 bg-slate-500/[0.07] text-[var(--color-text)]",
                     }
                     for genre in implied_genres
                 ],
@@ -147,7 +147,7 @@ def _build_detail_tag_sections(
                 "entries": [
                     {
                         "label": theme,
-                        "chip_classes": "border-sky-400/18 bg-sky-500/[0.07] text-sky-100",
+                        "chip_classes": "border-sky-400/18 bg-sky-500/[0.07] text-[var(--color-text)]",
                     }
                     for theme in themes
                 ],
@@ -170,7 +170,7 @@ def _build_detail_tag_sections(
             "entries": [
                 {
                     "label": tag_name,
-                    "chip_classes": "border-slate-400/18 bg-slate-500/[0.07] text-slate-100",
+                    "chip_classes": "border-slate-400/18 bg-slate-500/[0.07] text-[var(--color-text)]",
                 }
                 for tag_name in tag_names
             ],

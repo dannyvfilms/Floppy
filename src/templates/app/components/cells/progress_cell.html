@@ -4,7 +4,7 @@
   {% if media.max_progress %}/ {{ media.max_progress }}{% endif %}
   {% if media.repeats > 1 %}
     {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.BOARDGAME.value or user.game_logging_style != 'sessions' %}
-      <div class="text-xs text-indigo-400 mt-1">
+      <div class="text-xs text-[var(--color-link)] mt-1">
         <span>Total ({{ media.repeats }} repeats)</span>
       </div>
     {% endif %}
@@ -14,6 +14,6 @@
     {{ media.formatted_progress|default:media.progress }}
     {% if media.max_progress %}/ {{ media.max_progress }}{% endif %}
   {% else %}
-    <span class="text-gray-500">-</span>
+    <span class="text-[var(--color-text-muted)]">-</span>
   {% endif %}
 {% endif %}

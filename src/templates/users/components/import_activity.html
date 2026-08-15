@@ -4,7 +4,7 @@
 {# Active Periodic Imports #}
 <div class="bg-[var(--color-surface)] rounded-lg p-6">
   <div class="flex items-center mb-4">
-    {% include "app/icons/clock.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+    {% include "app/icons/clock.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
     <h2 class="text-xl font-semibold">Active Periodic Imports</h2>
   </div>
   <p class="text-[var(--color-text-muted)] mb-5 text-sm">
@@ -38,7 +38,7 @@
     {% empty %}
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-6 text-center">
         <p class="text-[var(--color-text-muted)] text-sm">No periodic imports configured</p>
-        <p class="text-gray-500 text-xs mt-1">Enable a recurring import or Plex watchlist sync to see it here</p>
+        <p class="text-[var(--color-text-muted)] text-xs mt-1">Enable a recurring import or Plex watchlist sync to see it here</p>
       </div>
     {% endfor %}
   </div>
@@ -47,7 +47,7 @@
 {# Import History #}
 <div class="bg-[var(--color-surface)] rounded-lg p-6">
   <div class="flex items-center mb-4">
-    {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+    {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
     <h2 class="text-xl font-semibold">Import History</h2>
   </div>
 
@@ -106,7 +106,7 @@
             {% if result.errors %}
               {% if result.status == "SUCCESS" %}
                 <button @click="showDetails = !showDetails"
-                        class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
+                        class="text-xs text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors cursor-pointer"
                         x-text="showDetails ? 'Hide failed items' : 'Show failed items'">Show failed items</button>
 
                 <div class="mt-2 space-y-1 text-sm bg-[var(--color-surface)] p-3 rounded overflow-x-auto break-words"
@@ -119,7 +119,7 @@
               {% elif result.status == "FAILURE" %}
                 <div class="flex items-center gap-3">
                   <button @click="showDetails = !showDetails"
-                          class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
+                          class="text-xs text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors cursor-pointer"
                           x-text="showDetails ? 'Hide traceback' : 'Show traceback'">Show traceback</button>
                   <button x-show="showDetails"
                           @click="navigator.clipboard.writeText($refs.traceback.textContent); copied = true; setTimeout(() => copied = false, 2000)"
@@ -141,7 +141,7 @@
     {% empty %}
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-6 text-center">
         <p class="text-[var(--color-text-muted)] text-sm">No imports in the last 7 days</p>
-        <p class="text-gray-500 text-xs mt-1">Import your media from any source to see the history here</p>
+        <p class="text-[var(--color-text-muted)] text-xs mt-1">Import your media from any source to see the history here</p>
       </div>
     {% endfor %}
   </div>
@@ -151,7 +151,7 @@
   {# Import Run Summary #}
   <div class="bg-[var(--color-surface)] rounded-lg p-6">
     <div class="flex items-center mb-4">
-      {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+      {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
       <h2 class="text-xl font-semibold">Recent Import Runs</h2>
     </div>
     <div class="space-y-3">
@@ -203,7 +203,7 @@
   {# Bulk Delete by Import Source #}
   <div class="bg-[var(--color-surface)] rounded-lg p-6">
     <div class="flex items-center mb-4">
-      {% include "app/icons/trashcan.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+      {% include "app/icons/trashcan.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
       <h2 class="text-xl font-semibold">Imported Media by Source</h2>
     </div>
     <p class="text-[var(--color-text-muted)] mb-5 text-sm">

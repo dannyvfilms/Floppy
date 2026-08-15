@@ -18,7 +18,7 @@ HTMX stops automatically — same pattern as prefetch_artist_covers.
   <div class="mb-2 flex items-center justify-between gap-3">
     <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Series Graph</div>
     {% if poll_for_graph %}
-      <div class="text-xs text-gray-500">Fetching remaining episodes…</div>
+      <div class="text-xs text-[var(--color-text-muted)]">Fetching remaining episodes…</div>
     {% endif %}
   </div>
 
@@ -33,7 +33,7 @@ HTMX stops automatically — same pattern as prefetch_artist_covers.
       {% endfor %}
 
       {% for ep_row in graph_data.episode_rows %}
-        <div class="flex items-center justify-end pr-1 text-[11px] text-gray-500 select-none">
+        <div class="flex items-center justify-end pr-1 text-[11px] text-[var(--color-text-muted)] select-none">
           {% if ep_row.ep %}{{ graph_data.row_label|default:"E" }}{{ ep_row.ep }}{% endif %}
         </div>
         {% for cell in ep_row.cells %}
@@ -54,7 +54,7 @@ HTMX stops automatically — same pattern as prefetch_artist_covers.
 
   {% else %}
 
-    <div class="flex items-center gap-2 py-5 px-1 text-xs text-gray-500">
+    <div class="flex items-center gap-2 py-5 px-1 text-xs text-[var(--color-text-muted)]">
       {% if poll_for_graph %}
         <span class="flex gap-1">
           <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-500" style="animation-delay:0ms"></span>

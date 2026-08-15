@@ -42,7 +42,7 @@
                    name="q"
                    value="{{ initial_query }}"
                    :placeholder="getPlaceholder()"
-                   class="w-full py-3 pl-10 pr-4 text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] rounded-l-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset placeholder-gray-500"
+                   class="w-full py-3 pl-10 pr-4 text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] rounded-l-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset placeholder-[var(--color-text-muted)]"
                    autocomplete="off"
                    @keydown.enter.prevent="$nextTick(() => htmx.trigger('#recommend-search-form', 'submit'))">
             {% include "app/icons/magnifying-glass.svg" with classes="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] w-5 h-5" %}
@@ -87,7 +87,7 @@
       <div id="search-results">
         <div class="text-center py-12 text-[var(--color-text-muted)]">
           <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-            {% include "app/icons/magnifying-glass.svg" with classes="w-8 h-8 text-gray-500" %}
+            {% include "app/icons/magnifying-glass.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
           </div>
           <p>Search for media above to get started</p>
         </div>

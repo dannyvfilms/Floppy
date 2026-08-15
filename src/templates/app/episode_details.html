@@ -31,7 +31,7 @@
         <div class="flex flex-col gap-y-4 md:flex-row md:gap-y-0 items-center justify-between mb-1">
           <div class="text-center md:text-start">
             <div class="hidden flex-wrap items-center justify-start gap-y-1 text-sm font-medium text-[var(--color-text-muted)] md:flex md:text-start">
-              <a href="{{ season_url }}" class="hover:text-indigo-400 transition-colors">{{ season_title }}</a>
+              <a href="{{ season_url }}" class="hover:text-[var(--color-link)] transition-colors">{{ season_title }}</a>
               <span class="mx-2 text-gray-600">•</span>
               <span>{{ episode_title }}</span>
               {% if episode %}
@@ -59,7 +59,7 @@
             </div>
             {# Mobile subtitle #}
             <div class="md:hidden text-sm font-medium text-[var(--color-text-muted)] text-center">
-              <a href="{{ season_url }}" class="hover:text-indigo-400 transition-colors">{{ season_title }}</a>
+              <a href="{{ season_url }}" class="hover:text-[var(--color-link)] transition-colors">{{ season_title }}</a>
               <span class="mx-1 text-gray-600">•</span>
               {{ episode_title }}
               {% if episode and episode.display_episode_number|default:episode.episode_number %}<span class="mx-1 text-gray-600">•</span>Ep {{ episode.display_episode_number|default:episode.episode_number }}{% endif %}
@@ -127,7 +127,7 @@
               {% else %}
                 <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
               {% endif %}
-              <span class="text-[12px] text-gray-500 sm:text-sm">|</span>
+              <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
               <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ episode_metadata.score_count|intcomma }} vote{{ episode_metadata.score_count|pluralize }}</span>
             </div>
           {% endif %}
@@ -234,7 +234,7 @@
             </p>
             <button x-show="isClamped"
                     @click="isExpanded = !isExpanded"
-                    class="text-indigo-400 hover:text-indigo-300 text-sm mt-2 focus:outline-none transition-colors cursor-pointer inline-flex">
+                    class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer inline-flex">
               <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
             </button>
           </div>
@@ -295,7 +295,7 @@
               <div class="media-card-title-row flex items-center gap-2 min-w-0">
                 {% if person.person_id and person.name %}
                   <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}"
-                     class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+                     class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0"
                      title="{{ person.name }}">
                     {{ person.name }}
                   </a>
@@ -314,7 +314,7 @@
       </div>
       <button x-show="castOpen && canToggleDetailGrid({{ episode_metadata.cast|length }})"
               @click="detailGridExpanded = !detailGridExpanded"
-              class="mt-4 inline-flex text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer md:hidden">
+              class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden">
         <span x-text="detailGridExpanded ? 'Show less' : 'Show more'"></span>
       </button>
     </section>
@@ -364,7 +364,7 @@
               <div class="media-card-title-row flex items-center gap-2 min-w-0">
                 {% if person.person_id and person.name %}
                   <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}"
-                     class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+                     class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0"
                      title="{{ person.name }}">
                     {{ person.name }}
                   </a>
@@ -383,7 +383,7 @@
       </div>
       <button x-show="crewOpen && canToggleDetailGrid({{ episode_metadata.crew|length }})"
               @click="detailGridExpanded = !detailGridExpanded"
-              class="mt-4 inline-flex text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer md:hidden">
+              class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden">
         <span x-text="detailGridExpanded ? 'Show less' : 'Show more'"></span>
       </button>
     </section>

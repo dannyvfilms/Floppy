@@ -12,7 +12,7 @@
         {% else %}
           <div class="rounded-full bg-[var(--color-surface-strong)] flex items-center justify-center shrink-0"
                style="width: 8rem; height: 8rem;">
-            {% include "app/icons/person.svg" with classes="w-12 h-12 text-gray-500" %}
+            {% include "app/icons/person.svg" with classes="w-12 h-12 text-[var(--color-text-muted)]" %}
           </div>
         {% endif %}
       </div>
@@ -21,24 +21,24 @@
         <h3 class="text-lg font-semibold leading-tight text-[var(--color-text)] truncate">{{ featured_person.name }}</h3>
 
         <div class="space-y-1.5">
-          <p class="text-4xl font-bold text-indigo-400 leading-none">{{ featured_person.unique_titles }}</p>
-          <p class="text-xs text-gray-500 uppercase tracking-wide leading-none">titles</p>
+          <p class="text-4xl font-bold text-[var(--color-link)] leading-none">{{ featured_person.unique_titles }}</p>
+          <p class="text-xs text-[var(--color-text-muted)] uppercase tracking-wide leading-none">titles</p>
         </div>
 
         <div class="grid {% if featured_person.unique_games %}grid-cols-3{% else %}grid-cols-2{% endif %} items-center justify-center lg:justify-start gap-x-4 gap-y-2">
           <div>
             <p class="text-2xl font-semibold text-blue-400 leading-none">{{ featured_person.unique_movies }}</p>
-            <p class="text-xs text-gray-500 leading-none mt-1">Movies</p>
+            <p class="text-xs text-[var(--color-text-muted)] leading-none mt-1">Movies</p>
           </div>
           {% if featured_person.unique_games %}
             <div>
               <p class="text-2xl font-semibold text-violet-400 leading-none">{{ featured_person.unique_games }}</p>
-              <p class="text-xs text-gray-500 leading-none mt-1">Games</p>
+              <p class="text-xs text-[var(--color-text-muted)] leading-none mt-1">Games</p>
             </div>
           {% endif %}
           <div>
             <p class="text-2xl font-semibold text-emerald-400 leading-none">{{ featured_person.unique_shows }}</p>
-            <p class="text-xs text-gray-500 leading-none mt-1">Shows</p>
+            <p class="text-xs text-[var(--color-text-muted)] leading-none mt-1">Shows</p>
           </div>
         </div>
       </div>

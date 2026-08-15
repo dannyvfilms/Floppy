@@ -42,7 +42,7 @@
       <div class="mt-3 flex items-center gap-2">
         <button x-show="isClamped"
                 @click="isExpanded = !isExpanded"
-                class="text-sm text-indigo-400 transition-colors hover:text-indigo-300 focus:outline-none cursor-pointer">
+                class="text-sm text-[var(--color-link)] transition-colors hover:text-[var(--color-link-hover)] focus:outline-none cursor-pointer">
           <span x-text="isExpanded ? 'Show less' : 'Show more'"></span>
         </button>
       </div>
@@ -90,7 +90,7 @@
       <div class="mt-3 flex items-center gap-2">
         <button x-show="isClamped"
                 @click="isExpanded = !isExpanded"
-                class="text-sm text-indigo-400 transition-colors hover:text-indigo-300 focus:outline-none cursor-pointer">
+                class="text-sm text-[var(--color-link)] transition-colors hover:text-[var(--color-link-hover)] focus:outline-none cursor-pointer">
           <span x-text="isExpanded ? 'Show less' : 'Show more'"></span>
         </button>
       </div>

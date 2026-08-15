@@ -32,7 +32,7 @@ Variables:
 
       {# One row per episode #}
       {% for ep_row in graph_data.episode_rows %}
-        <div class="flex items-center justify-end pr-1 text-[11px] text-gray-500 select-none">
+        <div class="flex items-center justify-end pr-1 text-[11px] text-[var(--color-text-muted)] select-none">
           {% if ep_row.ep %}{{ graph_data.row_label|default:"E" }}{{ ep_row.ep }}{% endif %}
         </div>
         {% for cell in ep_row.cells %}

@@ -269,7 +269,7 @@
                          id="trakt-redirect-uri-step-1"
                          value="{{ trakt_redirect_uri }}"
                          readonly
-                         class="flex-1 text-sm text-indigo-300 font-mono bg-[var(--color-surface-dim)] p-3 rounded border-0 focus:ring-0 focus:outline-none cursor-text">
+                         class="flex-1 text-sm text-[var(--color-link)] font-mono bg-[var(--color-surface-dim)] p-3 rounded border-0 focus:ring-0 focus:outline-none cursor-text">
                   <button type="button"
                           class="flex items-center justify-center w-10 h-10 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] bg-[var(--color-surface-hover)] hover:bg-[var(--color-surface-hover)] rounded transition-colors cursor-pointer"
                           data-copy-target="#trakt-redirect-uri-step-1"
@@ -320,7 +320,7 @@
                          id="trakt-redirect-uri-step-2"
                          value="{{ trakt_redirect_uri }}"
                          readonly
-                         class="flex-1 text-sm text-indigo-300 font-mono bg-[var(--color-surface-dim)] p-3 rounded border-0 focus:ring-0 focus:outline-none cursor-text">
+                         class="flex-1 text-sm text-[var(--color-link)] font-mono bg-[var(--color-surface-dim)] p-3 rounded border-0 focus:ring-0 focus:outline-none cursor-text">
                   <button type="button"
                           class="flex items-center justify-center w-10 h-10 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] bg-[var(--color-surface-hover)] hover:bg-[var(--color-surface-hover)] rounded transition-colors cursor-pointer"
                           data-copy-target="#trakt-redirect-uri-step-2"
@@ -478,7 +478,7 @@
               <a href="https://mdblist.com/preferences/"
                  target="_blank"
                  rel="noopener noreferrer"
-                 class="text-indigo-400 hover:text-indigo-300 underline">MDBList preferences</a>.
+                 class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">MDBList preferences</a>.
             </p>
 
             <form method="post" action="{% url 'mdblist_connect' %}" class="space-y-3">

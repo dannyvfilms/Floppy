@@ -39,7 +39,7 @@
                         @mouseleave="tooltipOpen = false"
                         @click="tooltipOpen = !tooltipOpen"
                         @click.outside="tooltipOpen = false"
-                        class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
+                        class="text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
                         type="button"
                         aria-label="Show alternative title">
                   {% include "app/icons/info.svg" with classes="w-4 h-4" %}
@@ -159,7 +159,7 @@
       {% else %}
         {# Music track navigation - show artist and album links #}
         {% if media_type == MediaTypes.MUSIC.value and music_artist %}
-          <h2 class="text-xl font-semibold cursor-pointer hover:text-indigo-400 transition-colors duration-200 mb-2 text-[var(--color-text-muted)] text-center md:text-start">
+          <h2 class="text-xl font-semibold cursor-pointer hover:text-[var(--color-link)] transition-colors duration-200 mb-2 text-[var(--color-text-muted)] text-center md:text-start">
             <a href="{{ music_artist|music_artist_url }}">{{ music_artist.name }}</a>
           </h2>
         {% endif %}
@@ -174,7 +174,7 @@
                           @mouseleave="tooltipOpen = false"
                           @click="tooltipOpen = !tooltipOpen"
                           @click.outside="tooltipOpen = false"
-                          class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
+                          class="text-[var(--color-text-muted)] hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
                           type="button"
                           aria-label="Show alternative title">
                     {% include "app/icons/info.svg" with classes="w-4 h-4" %}
@@ -197,7 +197,7 @@
         {% endwith %}
         {% include "app/components/detail_activity_subtitle_slot.html" with media=media media_type=media_type activity_subtitle=activity_subtitle user=user only %}
         {% if media.media_type == MediaTypes.BOOK.value and media.series_name %}
-          <p class="text-indigo-400 font-medium mb-4 text-center md:text-start">
+          <p class="text-[var(--color-link)] font-medium mb-4 text-center md:text-start">
             {{ media.series_name }}
             {% if media.series_position %}<span class="text-[var(--color-text-muted)] ml-1">#{{ media.series_position|floatformat:"-2" }}</span>{% endif %}
           </p>
@@ -205,7 +205,7 @@
 
         {% if media_type == MediaTypes.MUSIC.value and music_album %}
           <p class="text-[var(--color-text-muted)] mb-4 text-center md:text-start">
-            from <a href="{{ music_album|music_album_url }}" class="text-indigo-400 hover:text-indigo-300 transition-colors">{{ music_album.title }}</a>
+            from <a href="{{ music_album|music_album_url }}" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">{{ music_album.title }}</a>
           </p>
         {% endif %}
       {% endif %}
@@ -257,7 +257,7 @@
                 {% else %}
                   <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
                 {% endif %}
-                <span class="text-[12px] text-gray-500 sm:text-sm">|</span>
+                <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
                 <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ media.score_count|intcomma }} vote{{ media.score_count|pluralize }}</span>
               </button>
               {% if provider_series_graph_data %}
@@ -289,7 +289,7 @@
                 {% else %}
                   <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
                 {% endif %}
-                <span class="text-[12px] text-gray-500 sm:text-sm">|</span>
+                <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
                 <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ trakt_score.rating_count|intcomma }} rating{{ trakt_score.rating_count|pluralize }}</span>
               </button>
               {% if media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value or media_type == MediaTypes.ANIME.value %}
@@ -312,7 +312,7 @@
                     <div class="mb-2 flex items-center justify-between gap-3">
                       <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Series Graph</div>
                     </div>
-                    <div class="flex items-center gap-2 py-5 px-1 text-xs text-gray-500">
+                    <div class="flex items-center gap-2 py-5 px-1 text-xs text-[var(--color-text-muted)]">
                       <span class="flex gap-1">
                         <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-500" style="animation-delay:0ms"></span>
                         <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-500" style="animation-delay:150ms"></span>
@@ -674,7 +674,7 @@
              class="text-[var(--color-text-secondary)] text-pretty sm:hidden">
             <span x-text="mobilePreviewText"></span>
             <button @click="isExpanded = true"
-                    class="inline whitespace-nowrap align-baseline ml-1 text-[13px] font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer">
+                    class="inline whitespace-nowrap align-baseline ml-1 text-[13px] font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer">
               Read more
             </button>
           </p>
@@ -684,7 +684,7 @@
           </p>
           <button x-show="isClamped && isExpanded"
                   @click="isExpanded = false"
-                  class="mt-2 inline-flex text-[13px] font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer sm:hidden">
+                  class="mt-2 inline-flex text-[13px] font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer sm:hidden">
             Show less
           </button>
           <div class="hidden sm:block">
@@ -695,7 +695,7 @@
           </div>
           <button x-show="isClamped"
                   @click="isExpanded = !isExpanded"
-                  class="hidden text-indigo-400 hover:text-indigo-300 text-sm mt-2 focus:outline-none transition-colors cursor-pointer sm:inline-flex">
+                  class="hidden text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer sm:inline-flex">
             <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
           </button>
         </div>

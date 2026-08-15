@@ -81,7 +81,7 @@
                                  title="Rename this row"
                                  @click.stop
                                  @keydown.enter.prevent="$el.blur()"
-                                 class="w-full truncate whitespace-nowrap rounded border border-transparent bg-transparent px-1 -mx-1 text-sm font-medium text-[var(--color-text)] placeholder:text-[var(--color-text)] hover:border-[var(--color-surface-hover)] focus:border-indigo-500 focus:outline-none focus:placeholder:text-gray-500">
+                                 class="w-full truncate whitespace-nowrap rounded border border-transparent bg-transparent px-1 -mx-1 text-sm font-medium text-[var(--color-text)] placeholder:text-[var(--color-text)] hover:border-[var(--color-surface-hover)] focus:border-indigo-500 focus:outline-none focus:placeholder:text-[var(--color-text-muted)]">
                         </div>
 
                         <div x-show="!isDesktop || hovering || openMenu !== null || row.editorOpen"
@@ -114,7 +114,7 @@
                                             class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                                             @click.stop="clearLibraryFilters(section, row); openMenu = null; filterView = 'root'; filterSearch = ''">
                                       <span>All</span>
-                                      <span class="ml-auto text-xs text-gray-500" x-show="rowFilterLabel(section, row) === 'All'">Active</span>
+                                      <span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="rowFilterLabel(section, row) === 'All'">Active</span>
                                     </button>
 
                                     <div class="border-t border-gray-700 my-1"></div>
@@ -141,7 +141,7 @@
                                         <span x-text="field.label"></span>
                                         <button type="button"
                                                 x-show="field.key === 'tag'"
-                                                class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-indigo-300 hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
+                                                class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-[var(--color-link)] hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
                                                 @click.stop="cycleRowTagMode(row)"
                                                 x-text="row.filters?.tag_mode || 'or'"></button>
                                       </div>

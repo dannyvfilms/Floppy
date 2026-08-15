@@ -3,7 +3,7 @@
     <section>
       <div class="flex items-baseline justify-between mb-3">
         <h3 class="text-lg font-semibold text-[var(--color-text-secondary)]">{{ group.label }}</h3>
-        <span class="text-xs text-gray-500">{{ group.count }} release{{ group.count|pluralize }}</span>
+        <span class="text-xs text-[var(--color-text-muted)]">{{ group.count }} release{{ group.count|pluralize }}</span>
       </div>
       {% include "app/components/album_grid.html" with all_albums=group.albums show_release_type=False %}
     </section>

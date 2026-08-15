@@ -27,13 +27,13 @@
       <p class="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">First Play</p>
       {% if highlights.first_play %}
         <div class="media-card-title-row mt-1">
-          <p class="media-card-title text-sm font-semibold text-[var(--color-text)] group-hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0" title="{{ highlights.first_play.title }}">
+          <p class="media-card-title text-sm font-semibold text-[var(--color-text)] group-hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0" title="{{ highlights.first_play.title }}">
             {{ highlights.first_play.title }}
           </p>
         </div>
         <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">Played {{ highlights.first_play.played_at|user_date_format:user }}</p>
       {% else %}
-        <p class="text-sm font-semibold text-gray-500 mt-1">--</p>
+        <p class="text-sm font-semibold text-[var(--color-text-muted)] mt-1">--</p>
       {% endif %}
     </div>
   {% if highlights.first_play %}
@@ -66,13 +66,13 @@
       <p class="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Last Play</p>
       {% if highlights.last_play %}
         <div class="media-card-title-row mt-1">
-          <p class="media-card-title text-sm font-semibold text-[var(--color-text)] group-hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0" title="{{ highlights.last_play.title }}">
+          <p class="media-card-title text-sm font-semibold text-[var(--color-text)] group-hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0" title="{{ highlights.last_play.title }}">
             {{ highlights.last_play.title }}
           </p>
         </div>
         <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">Played {{ highlights.last_play.played_at|user_date_format:user }}</p>
       {% else %}
-        <p class="text-sm font-semibold text-gray-500 mt-1">--</p>
+        <p class="text-sm font-semibold text-[var(--color-text-muted)] mt-1">--</p>
       {% endif %}
     </div>
   {% if highlights.last_play %}
@@ -106,13 +106,13 @@
       <p class="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">{{ tc.label }}</p>
       {% if tc.entry %}
         <div class="media-card-title-row mt-1">
-          <p class="media-card-title text-sm font-semibold text-[var(--color-text)] group-hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0" title="{{ tc.entry.title }}">
+          <p class="media-card-title text-sm font-semibold text-[var(--color-text)] group-hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0" title="{{ tc.entry.title }}">
             {{ tc.entry.title }}
           </p>
         </div>
         <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">{{ tc.date_prefix }} {{ tc.year }}</p>
       {% else %}
-        <p class="text-sm font-semibold text-gray-500 mt-1">--</p>
+        <p class="text-sm font-semibold text-[var(--color-text-muted)] mt-1">--</p>
       {% endif %}
     </div>
   {% if tc.entry %}

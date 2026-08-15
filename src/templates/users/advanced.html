@@ -12,7 +12,7 @@
   <div class="space-y-6">
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-5">
-        {% include "app/icons/vertical-sliders.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+        {% include "app/icons/vertical-sliders.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">Advanced</h2>
       </div>
 
@@ -24,7 +24,7 @@
              closeConfirm() { this.confirmOpen = false; this.pending = null; },
            }">
         <div class="flex items-center mb-3">
-          {% include "app/icons/trashcan.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+          {% include "app/icons/trashcan.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
           <h3 class="text-base font-medium">Cache Management</h3>
         </div>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
@@ -79,7 +79,7 @@
         <div class="mt-4 pt-4 border-t border-gray-700">
           <button type="button"
                   @click="openConfirm('all')"
-                  class="flex items-center px-4 py-2 bg-red-600/10 border border-red-600/40 text-red-300 rounded-md hover:bg-red-600/20 transition-colors text-sm cursor-pointer">
+                  class="flex items-center px-4 py-2 bg-red-600/10 border border-red-600/40 text-[var(--color-error-text)] rounded-md hover:bg-red-600/20 transition-colors text-sm cursor-pointer">
             {% include "app/icons/warning.svg" with classes="w-4 h-4 mr-2" %}
             Clear All Caches
           </button>
@@ -200,8 +200,8 @@
               <template x-if="pending === 'all'">
                 <div class="p-6">
                   <div class="flex items-center gap-2 mb-3">
-                    {% include "app/icons/warning.svg" with classes="w-6 h-6 text-red-400 shrink-0" %}
-                    <h3 class="text-lg font-semibold text-red-300">Clear All Caches?</h3>
+                    {% include "app/icons/warning.svg" with classes="w-6 h-6 text-[var(--color-error-text)] shrink-0" %}
+                    <h3 class="text-lg font-semibold text-[var(--color-error-text)]">Clear All Caches?</h3>
                   </div>
                   <p class="text-sm text-[var(--color-text-secondary)] mb-3 font-medium">
                     This runs all four clears above at once: Search (instance-wide) plus your
@@ -233,7 +233,7 @@
       <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center">
-            {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+            {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
             <h3 class="text-base font-medium">TMDB Proxy</h3>
           </div>
           {% if tmdb_proxy_configured %}
@@ -262,7 +262,7 @@
 
       <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mt-6">
         <div class="flex items-center mb-3">
-          {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+          {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
           <h3 class="text-base font-medium">Logs &amp; Bug Reports</h3>
         </div>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">

@@ -1,6 +1,6 @@
 {% load app_tags %}
 {% if media.is_untracked %}
-  <span class="text-gray-500">-</span>
+  <span class="text-[var(--color-text-muted)]">-</span>
 {% elif media.aggregated_score is not None %}
   <div class="flex items-center justify-center">
     <svg xmlns="http://www.w3.org/2000/svg"
@@ -20,7 +20,7 @@
   {% if media.repeats > 1 %}
     {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.BOARDGAME.value or user.game_logging_style != 'sessions' %}
       <div class="text-xs text-[var(--color-text-muted)] mt-1">
-        <span class="text-indigo-400">Latest</span>
+        <span class="text-[var(--color-link)]">Latest</span>
       </div>
     {% endif %}
   {% endif %}

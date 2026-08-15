@@ -11,7 +11,7 @@
            src="{{ artist.image }}">
     {% else %}
       <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
-        {% icon 'music' is_active=False extra_classes="w-24 h-24 text-gray-500" %}
+        {% icon 'music' is_active=False extra_classes="w-24 h-24 text-[var(--color-text-muted)]" %}
       </div>
     {% endif %}
   </div>
@@ -56,7 +56,7 @@
               <span class="text-[9px] font-black tracking-[0.12em] text-rose-100">MB</span>
             </span>
             <span class="text-sm font-semibold text-[var(--color-text)]">{{ music_artist_rating.rating|floatformat:1 }}</span>
-            <span class="text-sm text-gray-500">|</span>
+            <span class="text-sm text-[var(--color-text-muted)]">|</span>
             <span class="text-sm text-[var(--color-text-secondary)]">{{ music_artist_rating.rating_count|intcomma }} vote{{ music_artist_rating.rating_count|pluralize }}</span>
           </div>
         {% endif %}
@@ -75,7 +75,7 @@
                 <span class="text-sm font-semibold text-[var(--color-text)] {% if artist_tracker.score is None %}hidden{% endif %}"
                       :class="rating ? '' : 'hidden'"
                       x-text="formatRating(rating)">{% if artist_tracker.score is not None %}{% if user|rating_scale_max == 5 %}{{ artist_tracker.score|score_display:user }}/5{% else %}{{ artist_tracker.score|score_display:user }}{% endif %}{% endif %}</span>
-                <span class="text-sm text-gray-500 {% if artist_tracker.score is None %}hidden{% endif %}"
+                <span class="text-sm text-[var(--color-text-muted)] {% if artist_tracker.score is None %}hidden{% endif %}"
                       :class="rating ? '' : 'hidden'">|</span>
                 <span class="text-sm font-medium text-[var(--color-text-secondary)]"
                       x-text="rating ? 'Edit rating' : 'Add rating'">{% if artist_tracker.score is not None %}Edit rating{% else %}Add rating{% endif %}</span>
@@ -231,7 +231,7 @@
              class="text-[var(--color-text-secondary)] text-pretty">{{ media.synopsis|linebreaksbr|safe }}</p>
           <button x-show="isClamped"
                   @click="isExpanded = !isExpanded"
-                  class="text-indigo-400 hover:text-indigo-300 text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
+                  class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
             <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
           </button>
         </div>

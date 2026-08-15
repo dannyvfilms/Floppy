@@ -103,7 +103,7 @@
                                  class="text-xs text-[var(--color-text-secondary)] rounded-md border border-gray-700 bg-[var(--color-surface)] p-2"></div>
                             <button x-show="isClamped"
                                     @click="isExpanded = !isExpanded"
-                                    class="text-indigo-400 hover:text-indigo-300 text-xs mt-1 focus:outline-none transition-colors cursor-pointer">
+                                    class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-xs mt-1 focus:outline-none transition-colors cursor-pointer">
                               <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
                             </button>
                           </div>
@@ -165,7 +165,7 @@
                   {% elif key == "total_runtime" %}
                     <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">RUNTIME{% if media.details.seasons %} ({{ media.details.seasons }} SEASON{{ media.details.seasons|pluralize }}){% endif %}</h3>
                     <p class="text-sm text-[var(--color-text-secondary)]">
-                      {{ value|default_if_none:"Unknown" }}{% if media.details.episodes %}<span class="text-gray-500 mx-1">·</span>{{ media.details.episodes }} episode{{ media.details.episodes|pluralize }}{% endif %}
+                      {{ value|default_if_none:"Unknown" }}{% if media.details.episodes %}<span class="text-[var(--color-text-muted)] mx-1">·</span>{{ media.details.episodes }} episode{{ media.details.episodes|pluralize }}{% endif %}
                     </p>
                   {% else %}
                     <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{{ key|no_underscore|upper }}</h3>
@@ -184,7 +184,7 @@
                 <div class="mb-4">
                   <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">RUNTIME</h3>
                   <p class="text-sm text-[var(--color-text-secondary)]">
-                    {{ value|default_if_none:"Unknown" }}{% if media.details.episodes %}<span class="text-gray-500 mx-1">·</span>{{ media.details.episodes }} episode{{ media.details.episodes|pluralize }}{% endif %}
+                    {{ value|default_if_none:"Unknown" }}{% if media.details.episodes %}<span class="text-[var(--color-text-muted)] mx-1">·</span>{{ media.details.episodes }} episode{{ media.details.episodes|pluralize }}{% endif %}
                   </p>
                 </div>
                 {% endif %}
@@ -349,7 +349,7 @@
                 </div>
                 <button x-show="canToggleDetailGrid({{ related_items|length }})"
                         @click="detailGridExpanded = !detailGridExpanded"
-                        class="mt-4 inline-flex text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer">
+                        class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer">
                   <span x-text="detailGridExpanded ? 'Show less' : 'Show more'"></span>
                 </button>
               </section>
@@ -392,7 +392,7 @@
                   </button>
                 {% endif %}
                 <button type="button"
-                        class="flex items-center justify-center p-1 rounded text-gray-500 hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer ml-1"
+                        class="flex items-center justify-center p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer ml-1"
                         @click="open = !open"
                         :aria-expanded="open.toString()"
                         aria-label="Toggle section">
@@ -448,7 +448,7 @@
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-xl font-bold">Episodes</h2>
               <button type="button"
-                      class="flex items-center justify-center p-1 rounded text-gray-500 hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer"
+                      class="flex items-center justify-center p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer"
                       @click="open = !open"
                       :aria-expanded="open.toString()"
                       aria-label="Toggle section">

@@ -143,7 +143,7 @@
                       @click="notesOpen = !notesOpen"
                       class="sm:hidden w-full flex items-center gap-3 p-3 bg-[var(--color-surface-strong)] rounded-md border border-gray-600 hover:bg-[var(--color-surface-hover)] transition-colors text-left cursor-pointer">
                 <div class="flex-shrink-0 w-9 h-9 bg-indigo-700/30 rounded-md flex items-center justify-center">
-                  {% include "app/icons/page.svg" with classes="w-5 h-5 text-indigo-400" %}
+                  {% include "app/icons/page.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="text-sm font-medium text-[var(--color-text)]">Notes</div>
@@ -184,7 +184,7 @@
                       hx-get="{{ episode_create_url }}"
                       hx-target="closest [data-track-modal-root]"
                       hx-swap="outerHTML"
-                      class="text-sm text-[var(--color-info-text)] hover:text-[var(--color-text)] underline rounded-md transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+                      class="text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline rounded-md transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
                 Add new entry
               </button>
             {% endif %}

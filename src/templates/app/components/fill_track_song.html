@@ -237,7 +237,7 @@
                 {% if track.published %}
                   <button type="button"
                           @click="inputDateTime = inputType === 'datetime-local' ? '{{ track.published|date:'Y-m-d' }}T{% now "H:i:s" %}' : '{{ track.published|date:'Y-m-d' }}'"
-                          class="flex items-center text-sm text-indigo-400 hover:text-indigo-300 hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
+                          class="flex items-center text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
                     {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-1" %}
                     Published date
                   </button>
@@ -246,7 +246,7 @@
                 {% if album.release_date %}
                   <button type="button"
                           @click="inputDateTime = inputType === 'datetime-local' ? '{{ album.release_date|date:'Y-m-d' }}T{% now "H:i:s" %}' : '{{ album.release_date|date:'Y-m-d' }}'"
-                          class="flex items-center text-sm text-indigo-400 hover:text-indigo-300 hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
+                          class="flex items-center text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
                     {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-1" %}
                     Release date
                   </button>

@@ -50,7 +50,7 @@
           {% if is_public_view %}
             <span class="mx-2 text-gray-600">•</span>
             <a href="{% url 'user_profile' custom_list.owner.username %}"
-               class="inline-flex items-center text-[var(--color-text-muted)] transition-colors hover:text-indigo-300">
+               class="inline-flex items-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-link-hover)]">
               {{ custom_list.owner.username }}
             </a>
           {% endif %}

@@ -339,7 +339,7 @@ def _build_hours_per_media_type_comparison(
                 "badge_short": "",
                 "badge_classes": "",
                 "details": "No comparison selected",
-                "details_classes": "text-gray-500",
+                "details_classes": "text-[var(--color-text-muted)]",
                 "tooltip": None,
             }
             for media_type in current_minutes_by_type

@@ -181,7 +181,7 @@
       {# Guided setup banner: shown when the user arrived here from the setup wizard #}
       <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">
         <div class="flex items-center gap-3">
-          {% include "app/icons/checkmark.svg" with classes="w-5 h-5 text-indigo-300 shrink-0" %}
+          {% include "app/icons/checkmark.svg" with classes="w-5 h-5 text-[var(--color-link)] shrink-0" %}
           <p class="text-sm text-[var(--color-text-secondary)]">
             You're connecting this service as part of guided setup. Finish here, then continue the wizard.
           </p>
@@ -200,7 +200,7 @@
       {% csrf_token %}
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-4">
-        {% include "app/icons/horizontal-sliders.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+        {% include "app/icons/horizontal-sliders.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">Import Settings</h2>
       </div>
       <p class="text-[var(--color-text-muted)] mb-5 text-sm">Configure your import preferences.</p>
@@ -249,11 +249,11 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div class="flex items-center">
-          {% include "app/icons/database.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+          {% include "app/icons/database.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
           <h2 class="text-xl font-semibold">Import Sources</h2>
         </div>
         <a href="{% url 'onboarding_restart' %}"
-           class="text-xs text-indigo-400 hover:text-indigo-300 underline">
+           class="text-xs text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">
           Run guided setup
         </a>
       </div>
@@ -261,7 +261,7 @@
         Some of these require additional configuration, check the
         <a href="https://github.com/dannyvfilms/Floppy/wiki/4.-Integrations#import-overview"
            target="_blank"
-           class="text-indigo-400 hover:text-indigo-300 underline">import configuration guide</a>.
+           class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">import configuration guide</a>.
       </p>
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 mb-5">
         <p class="text-sm text-[var(--color-text-secondary)] mb-3">Browse by media type:</p>
@@ -304,8 +304,8 @@
           <button type="button"
                   @click="activeMediaTag = 'podcasts'"
                   :aria-pressed="activeMediaTag === 'podcasts'"
-                  :class="activeMediaTag === 'podcasts' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'"
-                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer">
+                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
+                  :class="activeMediaTag === 'podcasts' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
             Podcasts
           </button>
           <button type="button"
@@ -530,7 +530,7 @@
            x-transition.opacity.duration.150ms
            class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left flex flex-col gap-2">
           <div class="flex items-center">
-            {% include "app/icons/download.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+            {% include "app/icons/download.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
             <span class="font-medium text-[var(--color-text-secondary)]">Import Template</span>
           </div>
           <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Download a starter template, then re-upload it to your library.</p>
@@ -1013,7 +1013,7 @@
                          placeholder="Stremio auth key"
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                          type="password">
-                  <p class="text-xs text-gray-500">
+                  <p class="text-xs text-[var(--color-text-muted)]">
                     Find it in Stremio Web local storage. Required for accounts created with Facebook login.
                   </p>
                 </div>
@@ -1023,7 +1023,7 @@
                 </button>
               </form>
               <button type="button"
-                      class="text-xs text-indigo-300 hover:text-indigo-200 cursor-pointer"
+                      class="text-xs text-[var(--color-link)] hover:text-indigo-200 cursor-pointer"
                       x-text="useAuthKey ? 'Use email and password instead' : 'Use an auth key instead'"
                       @click="useAuthKey = !useAuthKey"></button>
             </div>
@@ -1337,7 +1337,7 @@
               </button>
             </form>
             
-            <div class="text-xs text-gray-500 mt-3 space-y-2">
+            <div class="text-xs text-[var(--color-text-muted)] mt-3 space-y-2">
               <p>
                 For Apple or Google sign-ins, set a password via Forgot Password first, then enter your credentials here.
               </p>
@@ -1520,7 +1520,7 @@
                   {% elif lastfm_account.history_import_status == "running" %}
                     <span class="text-blue-300">{{ lastfm_history_status_label }}</span>
                   {% elif lastfm_account.history_import_status == "queued" %}
-                    <span class="text-indigo-300">{{ lastfm_history_status_label }}</span>
+                    <span class="text-[var(--color-link)]">{{ lastfm_history_status_label }}</span>
                   {% else %}
                     <span class="text-[var(--color-text-secondary)]">{{ lastfm_history_status_label }}</span>
                   {% endif %}
@@ -1651,7 +1651,7 @@
                 {% elif koito_account.history_import_status == "running" %}
                   <span class="text-blue-300">{{ koito_history_status_label }}</span>
                 {% elif koito_account.history_import_status == "queued" %}
-                  <span class="text-indigo-300">{{ koito_history_status_label }}</span>
+                  <span class="text-[var(--color-link)]">{{ koito_history_status_label }}</span>
                 {% else %}
                   <span class="text-[var(--color-text-secondary)]">{{ koito_history_status_label }}</span>
                 {% endif %}
@@ -1785,7 +1785,7 @@
                   Create a Trakt application at
                   <a href="https://trakt.tv/oauth/applications"
                      target="_blank"
-                     class="text-indigo-300 underline hover:text-indigo-200">Trakt API Apps</a>.
+                     class="text-[var(--color-link)] underline hover:text-indigo-200">Trakt API Apps</a>.
                 </li>
                 <li>Set the Redirect URI to <code class="text-indigo-200 break-all">{{ request.scheme }}://{{ request.get_host }}{% url 'import_trakt_private' %}</code>.</li>
                 <li>Set <code class="text-indigo-200">TRAKT_API</code> and <code class="text-indigo-200">TRAKT_API_SECRET</code> in your environment.</li>
@@ -1920,7 +1920,7 @@
                 Get your API key from
                 <a href="https://mdblist.com/preferences/"
                    target="_blank"
-                   class="text-indigo-300 underline hover:text-indigo-200">MDBList Preferences</a>.
+                   class="text-[var(--color-link)] underline hover:text-indigo-200">MDBList Preferences</a>.
                 Connecting also enables list sync from the Lists page.
               </p>
             {% endif %}
@@ -2179,7 +2179,7 @@
                 <div class="absolute bottom-full mb-2 w-60 p-2 bg-[var(--color-surface)] rounded-md text-xs text-[var(--color-text-secondary)] shadow-lg border border-gray-600  invisible group-hover:visible">
                   Find it on your Kitsu profile URL:
                   <br>
-                  kitsu.app/users/<span class="text-indigo-400">1234567</span>
+                  kitsu.app/users/<span class="text-[var(--color-link)]">1234567</span>
                 </div>
               </div>
             </div>
@@ -2213,7 +2213,7 @@
             <div class="flex items-center">{% source_display "yamtrack" %}</div>
             <a href="https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
                target="_blank"
-               class="text-[var(--color-text-muted)] hover:text-indigo-400 transition-colors p-1 rounded-md hover:bg-gray-600/50"
+               class="text-[var(--color-text-muted)] hover:text-[var(--color-link)] transition-colors p-1 rounded-md hover:bg-gray-600/50"
                title="View CSV format documentation">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
           </div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
@@ -2261,7 +2261,7 @@
             <div class="flex items-center">{% source_display "yamtrack_native" %}</div>
             <a href="https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
                target="_blank"
-               class="text-[var(--color-text-muted)] hover:text-indigo-400 transition-colors p-1 rounded-md hover:bg-gray-600/50"
+               class="text-[var(--color-text-muted)] hover:text-[var(--color-link)] transition-colors p-1 rounded-md hover:bg-gray-600/50"
                title="View CSV format documentation">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
           </div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
@@ -2494,7 +2494,7 @@
               <a href="https://xbl.io"
                  target="_blank"
                  rel="noopener"
-                 class="text-indigo-300 hover:text-indigo-200">xbl.io</a>
+                 class="text-[var(--color-link)] hover:text-indigo-200">xbl.io</a>
               with your Microsoft account and paste the API key it gives you.
             </p>
             <form method="post" action="{% url 'xbox_connect' %}" class="space-y-3">
@@ -2511,7 +2511,7 @@
                 Connect Xbox
               </button>
             </form>
-            <p class="text-xs text-gray-500">
+            <p class="text-xs text-[var(--color-text-muted)]">
               Xbox only reports games you have played, not everything you own, and not every
               title reports hours played.
             </p>
@@ -2700,14 +2700,14 @@
          hx-swap="innerHTML">
       <div class="bg-[var(--color-surface)] rounded-lg p-6">
         <div class="flex items-center mb-4">
-          {% include "app/icons/clock.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+          {% include "app/icons/clock.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
           <h2 class="text-xl font-semibold">Active Periodic Imports</h2>
         </div>
         <p class="text-[var(--color-text-muted)] text-sm">Loading scheduled import activity...</p>
       </div>
       <div class="bg-[var(--color-surface)] rounded-lg p-6">
         <div class="flex items-center mb-4">
-          {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+          {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
           <h2 class="text-xl font-semibold">Import History</h2>
         </div>
         <p class="text-[var(--color-text-muted)] text-sm">Loading recent import history...</p>

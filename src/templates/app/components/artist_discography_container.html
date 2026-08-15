@@ -7,7 +7,7 @@
      {% endif %}>
   {% include "app/components/artist_discography_groups.html" with discography_groups=discography_groups %}
   {% if poll_for_covers %}
-    <div class="mt-4 text-xs text-gray-500">
+    <div class="mt-4 text-xs text-[var(--color-text-muted)]">
       Refreshing cover art{% if missing_cover_count %} ({{ missing_cover_count }} remaining){% endif %}...
     </div>
   {% endif %}

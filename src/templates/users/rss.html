@@ -11,7 +11,7 @@
   <div class="bg-[var(--color-surface)] rounded-lg p-6"
        x-data="rssSettings('{{ feed_url_template|escapejs }}')">
     <div class="flex items-center mb-4">
-      {% include "app/icons/rss.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+      {% include "app/icons/rss.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
       <h2 class="text-xl font-semibold">RSS</h2>
     </div>
     <p class="text-[var(--color-text-muted)] mb-5 text-sm">
@@ -84,16 +84,16 @@
           <span class="flex items-center cursor-pointer group pr-3"
                 title="Copy"
                 data-copy-target="#rss-feed-url">
-            {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+            {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
           </span>
         </div>
       </div>
-      <p class="text-gray-500 text-xs mt-3">
+      <p class="text-[var(--color-text-muted)] text-xs mt-3">
         Compatible with Radarr's and Sonarr's <span class="text-[var(--color-text-muted)]">RSS List</span> import (movies use the
         <span class="text-[var(--color-text-muted)]">Trending Right Now</span>, <span class="text-[var(--color-text-muted)]">All-Time Greats</span> and
         <span class="text-[var(--color-text-muted)]">Coming Soon</span> rows for the Movie/TV/Anime media types). This feed uses your
         account's API token &mdash; regenerating it from
-        <a href="{% url 'integrations' %}" class="text-indigo-400 hover:underline">Integrations</a> invalidates old feed links.
+        <a href="{% url 'integrations' %}" class="text-[var(--color-link)] hover:underline">Integrations</a> invalidates old feed links.
       </p>
     </div>
   </div>

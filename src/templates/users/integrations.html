@@ -15,7 +15,7 @@
       {# Guided setup banner: shown when the user arrived here from the setup wizard #}
       <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">
         <div class="flex items-center gap-3">
-          {% include "app/icons/checkmark.svg" with classes="w-5 h-5 text-indigo-300 shrink-0" %}
+          {% include "app/icons/checkmark.svg" with classes="w-5 h-5 text-[var(--color-link)] shrink-0" %}
           <p class="text-sm text-[var(--color-text-secondary)]">
             You're setting this up as part of guided setup. Finish here, then continue the wizard.
           </p>
@@ -28,7 +28,7 @@
     {% endif %}
   <div class="bg-[var(--color-surface)] rounded-lg p-6">
     <div class="flex items-center mb-4">
-      {% include "app/icons/database.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+      {% include "app/icons/database.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
       <h2 class="text-xl font-semibold">Integrations</h2>
     </div>
     <p class="text-[var(--color-text-muted)] mb-5 text-sm">Connect your media servers and services via webhooks to automatically track your watching progress.</p>
@@ -36,7 +36,7 @@
     {# API Token #}
     <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
       <div class="flex items-center mb-3">
-        {% include "app/icons/padlock.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+        {% include "app/icons/padlock.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
         <h3 class="text-base font-medium">API Token</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">This token is used to authenticate webhook requests from your media servers.</p>
@@ -50,7 +50,7 @@
           <span class="flex items-center cursor-pointer group pr-3"
                 title="Copy"
                 data-copy-target="#token">
-            {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+            {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
           </span>
         </div>
       </div>
@@ -133,7 +133,7 @@
          x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
-        {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
         <h3 class="text-base font-medium">Jellyfin Integration (Official Repo)</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Jellyfin to automatically track your watching progress. Use this method if your server has access to the official Jellyfin plugin repository.</p>
@@ -161,7 +161,7 @@
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly id="jellyfin-webhook-url-official" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ jellyfin_webhook_url }}">
               <span class="flex items-center cursor-pointer group" title="Copy" data-copy-target="#jellyfin-webhook-url-official">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -193,7 +193,7 @@
               <span class="absolute top-3 right-3 flex items-center cursor-pointer group"
                 title="Copy"
                 data-copy-target="#jellyfin-json-template">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
           </li>
@@ -206,7 +206,7 @@
          x-show="activeIntegration === 'all' || activeIntegration === 'jellyfin'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
-        {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
         <h3 class="text-base font-medium">Jellyfin Integration (Unofficial Repo)</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">An alternative setup using an unofficial webhook plugin from a community repository. Use this method if the official Jellyfin plugin repository is not accessible from your server.</p>
@@ -220,7 +220,7 @@
               <a href="https://raw.githubusercontent.com/shemanaev/jellyfin-plugin-repo/master/manifest.json"
                  target="_blank"
                  rel="noopener noreferrer"
-                 class="text-indigo-400 hover:underline text-sm break-all">https://raw.githubusercontent.com/shemanaev/jellyfin-plugin-repo/master/manifest.json</a>
+                 class="text-[var(--color-link)] hover:underline text-sm break-all">https://raw.githubusercontent.com/shemanaev/jellyfin-plugin-repo/master/manifest.json</a>
             </div>
           </li>
           <li>
@@ -228,7 +228,7 @@
             <a href="https://github.com/shemanaev/jellyfin-plugin-webhooks"
                target="_blank"
                rel="noopener noreferrer"
-               class="text-indigo-400 hover:underline">Unofficial Webhooks plugin</a>.
+               class="text-[var(--color-link)] hover:underline">Unofficial Webhooks plugin</a>.
           </li>
           <li>
             Restart your server, then open the Unofficial Webhooks plugin and configure it:
@@ -244,7 +244,7 @@
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly id="jellyfin-webhook-url-unofficial" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ jellyfin_webhook_url }}">
               <span class="flex items-center cursor-pointer group" title="Copy" data-copy-target="#jellyfin-webhook-url-unofficial">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -313,7 +313,7 @@
          x-transition.opacity.duration.150ms>
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center">
-          {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+          {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
           <h3 class="text-base font-medium">Floppy &rarr; Jellyfin</h3>
         </div>
         {% if jellyfin_account and jellyfin_account.is_connected %}
@@ -412,7 +412,7 @@
          x-show="activeIntegration === 'all' || activeIntegration === 'plex'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
-        {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
         <h3 class="text-base font-medium">Plex Integration</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Plex to automatically track your watching progress.</p>
@@ -606,7 +606,7 @@
             Go to <a href="https://app.plex.tv/desktop/#!/settings/webhooks"
                      target="_blank"
                      rel="noopener noreferrer"
-                     class="text-indigo-400 hover:underline">Settings > Webhooks</a> and click <strong>Add Webhook</strong>, then enter the following URL:
+                     class="text-[var(--color-link)] hover:underline">Settings > Webhooks</a> and click <strong>Add Webhook</strong>, then enter the following URL:
             {# djlint:off #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly
@@ -617,7 +617,7 @@
               <span class="flex items-center cursor-pointer group"
                     title="Copy"
                     data-copy-target="#plex-webhook-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -631,7 +631,7 @@
          x-show="activeIntegration === 'all' || activeIntegration === 'emby'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
-        {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
         <h3 class="text-base font-medium">Emby Integration</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Emby to automatically track your watching progress.</p>
@@ -661,7 +661,7 @@
               <span class="flex items-center cursor-pointer group"
                     title="Copy"
                     data-copy-target="#emby-webhook-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -675,7 +675,7 @@
          x-show="activeIntegration === 'all' || activeIntegration === 'kodi'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
-        {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
         <h3 class="text-base font-medium">Kodi Integration</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Kodi to automatically track your watching progress.</p>
@@ -683,7 +683,7 @@
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
         <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
           <li>You will need TMDB and/or TVDB metadata sources enabled in Kodi so that external IDs are included in webhook payloads.</li>
-          <li>Download and install the <a href="https://github.com/sboddy/KodiAddon-HttpScrobbler" class="text-indigo-400 hover:underline" target="_blank" rel="noopener">HTTP Scrobbler add-on</a>.</li>
+          <li>Download and install the <a href="https://github.com/sboddy/KodiAddon-HttpScrobbler" class="text-[var(--color-link)] hover:underline" target="_blank" rel="noopener">HTTP Scrobbler add-on</a>.</li>
           <li>In Kodi, go to <strong>Settings > Services > Control</strong> and enable <strong>Allow remote control via HTTP</strong>.</li>
           <li>
             In the HTTP Scrobbler add-on settings, set the webhook URL to:
@@ -698,7 +698,7 @@
               <span class="flex items-center cursor-pointer group"
                     title="Copy"
                     data-copy-target="#kodi-webhook-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -715,12 +715,12 @@
          x-show="activeIntegration === 'all' || activeIntegration === 'stremio'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
-        {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
         <h3 class="text-base font-medium">Stremio Integration</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">
         Install the Floppy Scrobbler addon in Stremio to mark movies and episodes as in progress the moment playback starts.
-        Pair it with the Stremio import on the <a href="{% url 'import_data' %}" class="text-indigo-400 hover:underline">Import page</a>, which syncs watched state from your Stremio library every 2 hours.
+        Pair it with the Stremio import on the <a href="{% url 'import_data' %}" class="text-[var(--color-link)] hover:underline">Import page</a>, which syncs watched state from your Stremio library every 2 hours.
       </p>
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
         <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
@@ -733,7 +733,7 @@
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly id="stremio-addon-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ stremio_addon_url }}">
               <span class="flex items-center cursor-pointer group" title="Copy" data-copy-target="#stremio-addon-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -750,7 +750,7 @@
          x-show="activeIntegration === 'all' || activeIntegration === 'seerr'"
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
-        {% include "app/icons/server.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
         <h3 class="text-base font-medium">Seerr Integration</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">Use a Seerr webhook to automatically add requested/approved media into Floppy.</p>
@@ -929,7 +929,7 @@
               <span class="flex items-center cursor-pointer group"
                     title="Copy"
                     data-copy-target="#seerr-webhook-url">
-                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
@@ -943,7 +943,7 @@
                       role="button"
                       aria-label="Copy JSON template"
                       data-copy-target="#seerr-json-template">
-                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
                 </span>
               </div>
               <textarea readonly
@@ -959,7 +959,7 @@
 {% endverbatim %}</textarea>
               <p class="text-[var(--color-text-muted)] text-sm mt-3">
                 Important: Seerr's default payload will not work with Floppy. You must use the template above.
-                If you see logs like <code class="px-1 rounded bg-black/30">unsupported media_type='{media_type}'</code>,
+                If you see logs like <code class="px-1 rounded bg-[var(--color-surface-muted)]">unsupported media_type='{media_type}'</code>,
                 Seerr is sending the literal template (it was pasted/escaped incorrectly).
               </p>
             </div>
@@ -993,15 +993,15 @@
                 <span class="flex items-center cursor-pointer group"
                       title="Copy"
                       data-copy-target="#seerr-global-webhook-url">
-                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                  {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
                 </span>
               </div>
               {# djlint:on #}
             </li>
             <li>
               Paste this <strong>JSON Payload</strong> template into Seerr, replacing
-              <code class="px-1 rounded bg-black/30">REPLACE_WITH_SHARED_SECRET</code> with the value your
-              administrator configured in <code class="px-1 rounded bg-black/30">SEERR_GLOBAL_WEBHOOK_SECRET</code>:
+              <code class="px-1 rounded bg-[var(--color-surface-muted)]">REPLACE_WITH_SHARED_SECRET</code> with the value your
+              administrator configured in <code class="px-1 rounded bg-[var(--color-surface-muted)]">SEERR_GLOBAL_WEBHOOK_SECRET</code>:
               <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg mt-2">
                 <div class="flex items-center justify-end mb-2">
                   <span class="flex items-center cursor-pointer group"
@@ -1009,7 +1009,7 @@
                         role="button"
                         aria-label="Copy JSON template"
                         data-copy-target="#seerr-global-json-template">
-                    {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+                    {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
                   </span>
                 </div>
                 <textarea readonly
