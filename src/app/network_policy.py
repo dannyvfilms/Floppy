@@ -106,6 +106,10 @@ class ProviderNetworkUnavailable(services.ProviderAPIError):
         )
         Exception.__init__(self, message)
 
+    def __reduce__(self):
+        """Reconstruct the exception without serializing request data."""
+        return type(self), (self.provider, self.mode)
+
 
 def install_provider_network_guard():
     """Install one fail-closed guard around the shared provider request function."""
