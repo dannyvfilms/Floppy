@@ -25,7 +25,7 @@ uv run --project .. --no-sync bash ../.claude/skills/run-floppy/scripts/serve.sh
 `serve.sh` and `smoke.py` encode everything below. Read on when you need to
 deviate — a different tier, real background tasks, a specific page.
 
-## The three things that go wrong
+## The four things that go wrong
 
 ### 1. Login returns 403, and it is not CSRF
 
@@ -109,6 +109,27 @@ looking in the wrong place.
 `/health/` to confirm the port really is quiet — reporting failure if it isn't
 rather than assuming.
 
+### 4. The repo `.env` silently wins over the secret env vars you set
+
+There is an untracked `.env` at the repo root, and it sets `SECRET`.
+`settings.py` reads `SECRET_KEY = config("SECRET", ...)` first and only falls
+back to `SECRET_FILE` when that is empty. python-decouple checks the real
+environment before `.env`, so `SECRET_FILE=... python ...` looks like it works
+and quietly loads the `.env` value instead — nothing errors, the key is just not
+the one you meant.
+
+`env -u SECRET` does **not** help: unsetting the variable makes decouple fall
+through to `.env`. Set it to empty instead, which is falsy and wins:
+
+```bash
+SECRET= SECRET_FILE=/path/to/secret uv run --project .. --no-sync python -c "
+import django; django.setup()
+from django.conf import settings; print(repr(settings.SECRET_KEY))"
+```
+
+Same trap for any other `.env` key when you are checking config precedence:
+assert the value you expect, don't assume the env var won.
+
 ## Choosing a resource tier
 
 `config/runtime_profile.py` detects the host's memory, swap and CPU and picks a
@@ -144,10 +165,14 @@ FLOPPY_PROCESS_ROLE=background uv run --project .. --no-sync celery --app config
 
 ## Driving the browser
 
-There is no `chromium-cli` here. Playwright's Python bindings and a pinned
-Chromium are preinstalled under `/opt/pw-browsers/chromium-*/chrome-linux/chrome`
-— glob it rather than hardcoding, the version directory changes. Never run
-`playwright install`.
+There is no `chromium-cli` here. Playwright's Python bindings are installed, and
+a Chromium already exists — on some machines pinned under
+`/opt/pw-browsers/chromium-*/chrome-linux*/chrome` (glob it, the version dir
+changes), otherwise in Playwright's own cache at `~/.cache/ms-playwright`.
+`smoke.py` prefers the `/opt` one and falls back to letting Playwright resolve
+the cached one, so normally you need no flags. Never run `playwright install` —
+if no browser is found, point `PLAYWRIGHT_BROWSERS_PATH` at a cache that has one
+or pass `--chromium /path/to/chrome`.
 
 `scripts/smoke.py` logs in and sweeps the pages that exercise the cache-heavy
 views, reporting HTTP status, whether a server-error page rendered, and console
