@@ -46,6 +46,7 @@ FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.12.3 /uv /uvx /bin/
 ENV UV_LINK_MODE=copy
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 
 WORKDIR /floppy
 
@@ -62,7 +63,8 @@ FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION}
 
 # https://stackoverflow.com/questions/58701233/docker-logs-erroneously-appears-empty-until-container-stops
 ENV PYTHONUNBUFFERED=1
-ENV PATH="/floppy/.venv/bin:$PATH"
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Define build argument with default value
 ARG VERSION=dev
@@ -105,7 +107,8 @@ RUN apk add --no-cache nginx shadow \
     && mkdir -p /var/lib/nginx/body
 
 COPY --from=repo_meta /repo_owner /etc/floppy/fork_owner
-COPY --from=builder /floppy/.venv /floppy/.venv
+COPY --from=builder /opt/venv /opt/venv
+RUN ln -s /opt/venv /floppy/.venv
 
 # Django app
 COPY src ./
