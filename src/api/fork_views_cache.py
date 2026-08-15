@@ -109,7 +109,8 @@ def _error_response(error):
 def _build_request_context(request, media_type, source, media_id):
     """Validate the route and return identity, ownership, policy, and snapshot."""
     if not check_valid_type(media_type):
-        raise MetadataCacheRequestError("Unsupported media type.")
+        msg = "Unsupported media type."
+        raise MetadataCacheRequestError(msg)
     identity = _request_identity(request, media_type, source, media_id)
     items = _owned_items(request.user, identity)
     if not items:
