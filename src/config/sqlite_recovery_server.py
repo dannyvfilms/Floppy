@@ -146,6 +146,28 @@ def render_page(report: dict | None, *, interactive: bool) -> str:
         )
         return _document(body)
 
+    if report.get("status") == "corrupt":
+        corruption_reasons = "".join(
+            f"<li><span>{html.escape(r)}</span></li>"
+            for r in report.get("unsafe_reasons", [])
+        )
+        parts = [
+            "<h1>Database File Damaged</h1>",
+            "<p>Floppy found physical corruption in the database file (quick_check failed). "
+            "Floppy will not modify the file to prevent further damage.</p>",
+            "<div class='card'><h2>What happened</h2>"
+            f"<ul>{corruption_reasons}</ul></div>",
+            "<div class='card'><h2>Download current copy</h2>"
+            "<p>Download a copy of the current file before restoring your backup.</p>"
+            "<p><a href='/backup'><button>Download Database Copy</button></a></p></div>",
+            "<div class='card'><h2>How to restore</h2>"
+            "<p>1. Stop the Floppy container.</p>"
+            "<p>2. Replace <code>db.sqlite3</code> with your known-good backup.</p>"
+            "<p>3. Start the Floppy container again.</p></div>",
+            _help_card(),
+        ]
+        return _document("".join(parts))
+
     total = _count(report.get("total_conflicts"))
     can_quarantine = bool(report.get("can_quarantine"))
     parts = [
@@ -166,15 +188,11 @@ def render_page(report: dict | None, *, interactive: bool) -> str:
         )
         if can_quarantine:
             parts.append(
-                "<div class='card'><h2>Remove the affected entries</h2>"
-                "<p>Floppy saves a full backup first. Then it removes the "
-                f"{total} entries above and starts.</p>"
-                "<p class='note'>To confirm, copy the code from "
-                "<code>db.sqlite3.integrity.json</code> in the same folder as "
-                "your database.</p>"
+                "<div class='card'><h2>Remove the affected entries &amp; Start</h2>"
+                "<p>Floppy saves a verified backup first. Then it removes the "
+                f"{total} entries above and starts automatically.</p>"
                 "<form method='POST' action='/quarantine'>"
-                "<input name='token' placeholder='Paste the code' size='34'>"
-                "<button>Remove entries</button></form></div>",
+                "<button>Repair &amp; Start Floppy</button></form></div>",
             )
         else:
             parts.append(
@@ -191,8 +209,10 @@ def render_page(report: dict | None, *, interactive: bool) -> str:
 
     parts.append(
         "<div class='card'><h2>Use a backup instead</h2>"
-        "<p>Stop Floppy. Replace <code>db.sqlite3</code> with your backup. "
-        "Start Floppy again.</p></div>",
+        "<p>Download a copy of your database, stop Floppy, replace "
+        "<code>db.sqlite3</code> with your backup, and start Floppy again.</p>"
+        "<p><a href='/backup'><button style='background:transparent;border:1px solid var(--border);color:var(--text);'>Download Database Copy</button></a></p>"
+        "</div>",
     )
     parts.append(_help_card())
     public = {
@@ -269,14 +289,50 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         self.wfile.write(payload)
 
     def do_GET(self) -> None:
         # Floppy is not able to serve requests, so the health check must fail.
         # A success here would report the container as healthy while it is not.
-        if self.path.split("?")[0] in _HEALTH_PATHS:
+        path = self.path.split("?")[0]
+        if path in _HEALTH_PATHS:
             self._send(503, "paused", "text/plain; charset=utf-8")
+            return
+        if path == "/backup":
+            if not self._is_same_origin():
+                self._send(403, "cross-site request", "text/plain; charset=utf-8")
+                return
+            db_file = Path(self.db_path).resolve()
+            if not db_file.is_file():
+                self._send(404, "database file not found", "text/plain; charset=utf-8")
+                return
+            try:
+                with db_file.open("rb") as f:
+                    content = f.read()
+            except OSError as error:
+                self._send(
+                    500,
+                    f"could not read database: {error}",
+                    "text/plain; charset=utf-8",
+                )
+                return
+            filename = f"floppy-backup-{db_file.name}"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-sqlite3")
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header(
+                "Content-Disposition",
+                f'attachment; filename="{filename}"',
+            )
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            self.end_headers()
+            self.wfile.write(content)
             return
         report = _read_incident_report(self.db_path)
         self._send(
@@ -328,10 +384,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             supplied = (fields.get("token") or [""])[0].strip()
             expected = report.get("incident_token") or ""
-            if not report.get("can_quarantine") or not secrets.compare_digest(
-                supplied,
-                expected,
-            ):
+            if supplied and expected and not secrets.compare_digest(supplied, expected):
                 self._send(
                     403,
                     _document(
@@ -342,15 +395,39 @@ class _Handler(BaseHTTPRequestHandler):
                     "text/html; charset=utf-8",
                 )
                 return
+            if not report.get("can_quarantine"):
+                self._send(
+                    403,
+                    _document(
+                        "<h1>Cannot automatically repair</h1><p>These entries "
+                        "cannot be removed automatically.</p>",
+                    ),
+                    "text/html; charset=utf-8",
+                )
+                return
         _write_decision(self.db_path, report, action)
-        self._send(
-            200,
-            _document(
-                "<h1>Thank you. Restart Floppy now.</h1>"
-                "<p>Floppy applies your choice when it starts again.</p>",
-            ),
-            "text/html; charset=utf-8",
+        redirect_page = (
+            "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            "<meta http-equiv='refresh' content='3;url=/'>"
+            "<title>Starting Floppy...</title>"
+            f"<style>{_STYLE}"
+            ".spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);"
+            "border-radius:50%;animation:spin 1s linear infinite;margin:1.5rem auto}"
+            "@keyframes spin{to{transform:rotate(360deg)}}"
+            "</style></head><body><main>"
+            "<div class='card' style='text-align:center;padding:2.5rem 1.5rem;'>"
+            "<div class='spinner'></div>"
+            "<h1 style='font-size:1.4rem;margin:0 0 0.5rem;'>Starting Floppy...</h1>"
+            "<p style='margin:0 0 1rem;'>Your choice is being applied now. The app will be ready in a few seconds.</p>"
+            "<p style='font-size:0.9rem;color:var(--muted);'>This page will refresh automatically, or "
+            "<a href='/'>click here to continue</a>.</p>"
+            "</div>"
+            "</main></body></html>"
         )
+        self._send(200, redirect_page, "text/html; charset=utf-8")
+        import threading
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
 
 
 def serve(db_path: str) -> None:

@@ -21,6 +21,15 @@ _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
 
 
 class SqliteIntegrityTests(SimpleTestCase):
+    def setUp(self):
+        super().setUp()
+        self.env_patcher = mock.patch.dict(os.environ, {"FLOPPY_SQLITE_AUTO_REPAIR": "false"})
+        self.env_patcher.start()
+
+    def tearDown(self):
+        self.env_patcher.stop()
+        super().tearDown()
+
     def create_orphan_database(
         self,
         tmp_dir,
@@ -119,7 +128,7 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             self.assertEqual(ctx.exception.code, 1)
             output = stderr.getvalue()
-            self.assertEqual(output.count("foreign key check failed"), 20)
+            self.assertEqual(output.count("foreign key check failed"), 5)
             self.assertIn("1000 foreign key conflict(s)", output)
             self.assertIn("FLOPPY_SQLITE_CONFLICT_ACTION=accept:", output)
             self.assertIn("FLOPPY_SQLITE_CONFLICT_ACTION=quarantine:", output)
@@ -138,7 +147,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                     }
                 ],
             )
-            self.assertEqual(len(report["samples"]), 20)
+            self.assertEqual(len(report["samples"]), 5)
             self.assertEqual(len(report["fingerprint"]), 64)
             self.assertEqual(len(report["incident_token"]), 32)
 
@@ -1297,4 +1306,96 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(report["status"], "blocked")
             self.assertIn(f"accept:{report['incident_token']}", output)
             self.assertEqual(report["affected"], [])
+
+    def test_default_auto_repair_removes_orphans_and_boots(self):
+        """When auto-repair is enabled (default), startup cleans safe orphans and continues."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_orphan_database(tmp_dir, rows=5)
+
+            with (
+                mock.patch.dict(os.environ, {"FLOPPY_SQLITE_AUTO_REPAIR": "true"}),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            output = stderr.getvalue()
+            self.assertIn("Auto-repaired 5 orphaned child row(s)", output)
+
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+            conn.close()
+
+            report = self.read_incident_report(db_path)
+            self.assertEqual(report["status"], "resolved")
+            self.assertEqual(report["resolution"], "auto-repair")
+            self.assertEqual(report["deleted_rows"], 5)
+
+            backup_path = Path(report["backup_path"])
+            self.assertTrue(backup_path.is_file())
+            backup = sqlite3.connect(backup_path)
+            self.assertEqual(backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 5)
+            backup.close()
+
+    def test_auto_repair_handles_multiple_arbitrary_tables(self):
+        """Auto-repair cleans multiple damaged child tables atomically."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            conn = sqlite3.connect(db_path)
+            conn.executescript(
+                """
+                PRAGMA foreign_keys=ON;
+                CREATE TABLE p1 (id INTEGER PRIMARY KEY);
+                CREATE TABLE p2 (id INTEGER PRIMARY KEY);
+                CREATE TABLE c1 (id INTEGER PRIMARY KEY, p1_id INTEGER REFERENCES p1(id));
+                CREATE TABLE c2 (id INTEGER PRIMARY KEY, p2_id INTEGER REFERENCES p2(id));
+                INSERT INTO p1 VALUES (10);
+                INSERT INTO p2 VALUES (20);
+                INSERT INTO c1 VALUES (1, 10);
+                INSERT INTO c2 VALUES (2, 20);
+                """
+            )
+            conn.commit()
+            conn.execute("PRAGMA foreign_keys=OFF")
+            conn.execute("DELETE FROM p1 WHERE id = 10")
+            conn.execute("DELETE FROM p2 WHERE id = 20")
+            conn.commit()
+            conn.close()
+
+            with (
+                mock.patch.dict(os.environ, {"FLOPPY_SQLITE_AUTO_REPAIR": "true"}),
+                mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                check_database_integrity(db_path)
+
+            output = stderr.getvalue()
+            self.assertIn("Auto-repaired 2 orphaned child row(s)", output)
+
+            conn = sqlite3.connect(db_path)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM c1").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM c2").fetchone()[0], 0)
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
+            conn.close()
+
+    def test_prune_recovery_backups_bounds_retention(self):
+        """_prune_recovery_backups keeps only max_keep newest files."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            recovery_dir = Path(tmp_dir) / "sqlite-recovery"
+            recovery_dir.mkdir()
+            for i in range(15):
+                file_path = recovery_dir / f"db-backup-{i:02d}.sqlite3"
+                file_path.write_text("backup")
+                # Set distinct mtimes
+                os.utime(file_path, (1000 + i * 10, 1000 + i * 10))
+
+            sqlite_integrity._prune_recovery_backups(recovery_dir, max_keep=10)
+
+            remaining = sorted(p.name for p in recovery_dir.glob("*.sqlite3"))
+            self.assertEqual(len(remaining), 10)
+            # The 5 oldest (00 to 04) must have been pruned
+            self.assertNotIn("db-backup-00.sqlite3", remaining)
+            self.assertNotIn("db-backup-04.sqlite3", remaining)
+            self.assertIn("db-backup-14.sqlite3", remaining)
+            self.assertIn("db-backup-05.sqlite3", remaining)
+
 

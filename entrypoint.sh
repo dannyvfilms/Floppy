@@ -52,18 +52,21 @@ if [ -z "$DB_HOST" ]; then
     # Check storage before migrations. Known disposable album credits are
     # repaired; other conflicts require an incident-scoped operator choice.
     if [ -f "$DB_FILE" ]; then
-        echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
-        integrity_status=0
-        integrity_pid=
-        # One bound, used by the command and its operator message, so the two
-        # can never drift apart.
-        integrity_timeout=600
-        trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
-        timeout "$integrity_timeout" python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
-        integrity_pid=$!
-        wait "$integrity_pid" || integrity_status=$?
-        trap - TERM INT
-        if [ "$integrity_status" -ne 0 ]; then
+        while :; do
+            echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
+            integrity_status=0
+            integrity_pid=
+            # One bound, used by the command and its operator message, so the two
+            # can never drift apart.
+            integrity_timeout=600
+            trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
+            timeout "$integrity_timeout" python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
+            integrity_pid=$!
+            wait "$integrity_pid" || integrity_status=$?
+            trap - TERM INT
+            if [ "$integrity_status" -eq 0 ]; then
+                break
+            fi
             case "$integrity_status" in
                 124|143)
                     echo "[entrypoint] SQLite integrity check exceeded its ${integrity_timeout}s timeout; startup is paused before migrations and services. The container will remain unhealthy and idle." >&2
@@ -75,16 +78,21 @@ if [ -z "$DB_HOST" ]; then
             parking_pid=
             trap 'kill "$parking_pid" 2>/dev/null || :; wait "$parking_pid" 2>/dev/null || :; exit 0' TERM INT
             # Show the recovery page. It writes a copy beside the database, then
-            # serves it. If it stops, the container must stay alive and idle.
+            # serves it. If a choice is submitted, the server exits cleanly so
+            # the loop can apply the decision and continue to migrations.
             python -m config.sqlite_recovery_server "$DB_FILE" &
             parking_pid=$!
             wait "$parking_pid" || :
-            while :; do
-                sleep 86400 &
-                parking_pid=$!
-                wait "$parking_pid" || :
-            done
-        fi
+            decision_file="${DB_FILE}.integrity.decision"
+            if [ ! -f "$decision_file" ]; then
+                while :; do
+                    sleep 86400 &
+                    parking_pid=$!
+                    wait "$parking_pid" || :
+                done
+            fi
+            trap - TERM INT
+        done
     fi
 fi
 
