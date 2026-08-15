@@ -916,16 +916,23 @@ def preferences(request):
         )
         hide_zero_rating_raw = request.POST.get("hide_zero_rating")
         progress_bar_raw = request.POST.get("progress_bar")
-        _qsu_raw = request.POST.get("quick_season_update_mobile", "none")
+        # Read these as None-when-absent. The header theme toggle posts only
+        # `theme` to this endpoint, so defaulting an absent field to its
+        # "off" value silently reset preferences the user never touched.
+        _qsu_raw = request.POST.get("quick_season_update_mobile")
         from users.models import QuickSeasonUpdateChoices
 
         quick_season_update_mobile = (
-            _qsu_raw
-            if _qsu_raw in QuickSeasonUpdateChoices.values
-            else QuickSeasonUpdateChoices.NONE
+            None
+            if _qsu_raw is None
+            else (
+                _qsu_raw
+                if _qsu_raw in QuickSeasonUpdateChoices.values
+                else QuickSeasonUpdateChoices.NONE
+            )
         )
-        book_comic_manga_progress_percentage = (
-            request.POST.get("book_comic_manga_progress_percentage") == "1"
+        book_comic_manga_progress_percentage_raw = request.POST.get(
+            "book_comic_manga_progress_percentage"
         )
 
         duration_format = request.POST.get("duration_format")
@@ -1084,7 +1091,10 @@ def preferences(request):
                 request.user.progress_bar = progress_bar
                 fields_to_update.append("progress_bar")
 
-        if request.user.quick_season_update_mobile != quick_season_update_mobile:
+        if (
+            quick_season_update_mobile is not None
+            and request.user.quick_season_update_mobile != quick_season_update_mobile
+        ):
             request.user.quick_season_update_mobile = quick_season_update_mobile
             fields_to_update.append("quick_season_update_mobile")
 
@@ -1110,14 +1120,18 @@ def preferences(request):
             request.user.auto_pause_rules = normalized_rules
             fields_to_update.append("auto_pause_rules")
 
-        if (
-            request.user.book_comic_manga_progress_percentage
-            != book_comic_manga_progress_percentage
-        ):
-            request.user.book_comic_manga_progress_percentage = (
-                book_comic_manga_progress_percentage
+        if book_comic_manga_progress_percentage_raw is not None:
+            book_comic_manga_progress_percentage = (
+                book_comic_manga_progress_percentage_raw == "1"
             )
-            fields_to_update.append("book_comic_manga_progress_percentage")
+            if (
+                request.user.book_comic_manga_progress_percentage
+                != book_comic_manga_progress_percentage
+            ):
+                request.user.book_comic_manga_progress_percentage = (
+                    book_comic_manga_progress_percentage
+                )
+                fields_to_update.append("book_comic_manga_progress_percentage")
 
         provider_region = request.POST.get("watch_provider_region", "")
         if provider_region in [region[0] for region in watch_provider_regions]:
