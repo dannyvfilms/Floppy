@@ -119,7 +119,9 @@
       <h1 id="offline-title">Floppy is offline</h1>
       <p role="status">The Floppy server cannot be reached.</p>
       <p class="detail">Check this device's connection or the Floppy server, then try again.</p>
-      <button type="button" onclick="window.location.reload()">Try again</button>
+      <form method="get">
+        <button type="submit">Try again</button>
+      </form>
       <p class="privacy">
         This status page does not contain private account data. Floppy does not store authenticated pages in the shared browser cache.
       </p>
