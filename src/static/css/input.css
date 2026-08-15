@@ -42,7 +42,10 @@
     --color-surface-muted: #e9ecef;
     --color-surface-dim: #dee2e6;
     --color-border: #dee2e6;
-    --color-hover-dim: #f1f3f5;
+    /* Must differ from --color-sidebar (#f1f3f5): the sidebar and header
+       hover targets paint this over that surface, so an equal value gave
+       them no background feedback at all in the light theme. */
+    --color-hover-dim: #e9ecef;
     --color-page-bg: #f8f9fa;
     --color-surface-border: #ced4da;
     --color-sidebar: #f1f3f5;
@@ -68,7 +71,7 @@ html.light {
   --color-surface-muted: #e9ecef;
   --color-surface-dim: #dee2e6;
   --color-border: #dee2e6;
-  --color-hover-dim: #f1f3f5;
+  --color-hover-dim: #e9ecef;
   --color-page-bg: #f8f9fa;
   --color-surface-border: #ced4da;
   --color-sidebar: #f1f3f5;

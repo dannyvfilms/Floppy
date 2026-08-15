@@ -82,7 +82,6 @@
     --color-rose-500: oklch(64.5% 0.246 16.439);
     --color-rose-600: oklch(58.6% 0.253 17.585);
     --color-rose-700: oklch(51.4% 0.222 16.935);
-    --color-slate-100: oklch(96.8% 0.007 247.896);
     --color-slate-200: oklch(92.9% 0.013 255.508);
     --color-slate-300: oklch(86.9% 0.022 252.894);
     --color-slate-400: oklch(70.4% 0.04 256.788);
@@ -5376,7 +5375,7 @@
     --color-surface-muted: #e9ecef;
     --color-surface-dim: #dee2e6;
     --color-border: #dee2e6;
-    --color-hover-dim: #f1f3f5;
+    --color-hover-dim: #e9ecef;
     --color-page-bg: #f8f9fa;
     --color-surface-border: #ced4da;
     --color-sidebar: #f1f3f5;
@@ -5401,7 +5400,7 @@ html.light {
   --color-surface-muted: #e9ecef;
   --color-surface-dim: #dee2e6;
   --color-border: #dee2e6;
-  --color-hover-dim: #f1f3f5;
+  --color-hover-dim: #e9ecef;
   --color-page-bg: #f8f9fa;
   --color-surface-border: #ced4da;
   --color-sidebar: #f1f3f5;
