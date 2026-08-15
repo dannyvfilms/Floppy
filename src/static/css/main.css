@@ -1297,6 +1297,9 @@
   .gap-2 {
     gap: calc(var(--spacing) * 2);
   }
+  .gap-2\.5 {
+    gap: calc(var(--spacing) * 2.5);
+  }
   .gap-3 {
     gap: calc(var(--spacing) * 3);
   }
@@ -5346,6 +5349,8 @@
   --color-error-text: #fca5a5;
   --color-link: #a5b4fc;
   --color-link-hover: #c7d2fe;
+  --color-status-clean: #10b981;
+  --color-status-dirty: #f59e0b;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: light) {
@@ -5371,6 +5376,8 @@
     --color-error-text: #b91c1c;
     --color-link: #4f46e5;
     --color-link-hover: #4338ca;
+    --color-status-clean: #047857;
+    --color-status-dirty: #b45309;
     color-scheme: light;
   }
 }
@@ -5396,6 +5403,8 @@ html.light {
   --color-error-text: #b91c1c;
   --color-link: #4f46e5;
   --color-link-hover: #4338ca;
+  --color-status-clean: #047857;
+  --color-status-dirty: #b45309;
   color-scheme: light;
 }
 html.dark {
@@ -5420,6 +5429,8 @@ html.dark {
   --color-error-text: #fca5a5;
   --color-link: #a5b4fc;
   --color-link-hover: #c7d2fe;
+  --color-status-clean: #10b981;
+  --color-status-dirty: #f59e0b;
   color-scheme: dark;
 }
 .theme-toggle-icon-sun {
@@ -5621,6 +5632,26 @@ html.light .theme-toggle-icon-moon {
   border-radius: 0.5rem;
   box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(0.75rem);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.preferences-actions.is-dirty {
+  border-color: var(--color-accent);
+  @supports (color: color-mix(in lab, red, red)) {
+    border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-surface-border));
+  }
+}
+.preferences-actions-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  transition: background-color 0.2s ease;
+}
+.preferences-actions-status-dot.is-clean {
+  background-color: var(--color-status-clean, #10b981);
+}
+.preferences-actions-status-dot.is-dirty {
+  background-color: var(--color-status-dirty, #f59e0b);
 }
 .preferences-actions-title {
   color: var(--color-text);
@@ -5631,6 +5662,11 @@ html.light .theme-toggle-icon-moon {
   margin-top: 0.15rem;
   color: var(--color-text-muted);
   font-size: 0.7rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .preferences-actions, .preferences-actions-status-dot {
+    transition: none !important;
+  }
 }
 @media (min-width: 48rem) {
   .preferences-grid {
