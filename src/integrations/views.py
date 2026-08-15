@@ -97,6 +97,7 @@ SONARR_RECURRING_TASK_NAME = "Import from Sonarr (Recurring)"
 GPODDER_RECURRING_TASK_NAME = "Import from GPodder (Recurring)"
 # The upload rides in the Celery message, so bound what a single import can send.
 TRAKT_EXPORT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+YAMTRACK_IMPORT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 def _read_uploaded_file(file):
@@ -1045,6 +1046,14 @@ def import_yamtrack(request):
 
     if not file:
         messages.error(request, "A CSV file is required.")
+        return _integration_redirect(request)
+
+    if file.size > YAMTRACK_IMPORT_MAX_UPLOAD_BYTES:
+        messages.error(
+            request,
+            "That backup file is too large to import "
+            f"(limit {YAMTRACK_IMPORT_MAX_UPLOAD_BYTES // (1024 * 1024)} MB).",
+        )
         return _integration_redirect(request)
 
     mode = request.POST["mode"]

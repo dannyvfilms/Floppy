@@ -342,6 +342,7 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         # Track existing media to handle "new" mode correctly
         self.existing_media = helpers.get_existing_media(user)
+        self.existing_children = helpers.get_existing_children(user)
 
         # Track media the user explicitly deleted, so it isn't recreated
         self.deleted_media = helpers.get_deleted_media(user)
@@ -1232,7 +1233,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         parent_type = (
             MediaTypes.TV.value if media_type == MediaTypes.SEASON.value else media_type
         )
-        if not helpers.should_process_media(
+        should_process = helpers.should_process_media(
             self.existing_media,
             self.to_delete,
             parent_type,
@@ -1240,7 +1241,22 @@ class TraktImporter(TraktMetadataResolverMixin):
             tmdb_id,
             self.mode,
             deleted_media=self.deleted_media,
+        )
+        if (
+            not should_process
+            and self.mode == "new"
+            and media_type == MediaTypes.SEASON.value
         ):
+            # The show already existing shouldn't block a season it doesn't
+            # have yet - check this row's own granularity instead.
+            child_key = (tmdb_id, season_number)
+            should_process = (
+                child_key
+                not in self.existing_children[MediaTypes.SEASON.value][
+                    Sources.TMDB.value
+                ]
+            )
+        if not should_process:
             return
 
         metadata = self._get_metadata(

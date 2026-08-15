@@ -232,10 +232,10 @@
               <select x-model="importMode"
                       name="import_mode"
                       class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
-                <option value="new">Only Sync New Items</option>
-                <option value="overwrite">Sync New Items and Overwrite Existing</option>
-                <option value="watchlist">Import Watchlist Data Only</option>
-                <option value="update_collection">Update Collection Metadata Only</option>
+                <option value="new" title="Only adds items you don't have yet. Never changes or deletes anything already in your library, even if it looks incomplete.">Only Sync New Items</option>
+                <option value="overwrite" title="Replaces matching items with the imported version. Items not in this file are left alone.">Sync New Items and Overwrite Existing</option>
+                <option value="watchlist" title="Only imports your watchlist. Doesn't touch watch history, ratings, or anything else.">Import Watchlist Data Only</option>
+                <option value="update_collection" title="Only updates collection metadata (e.g. physical/digital copies you own). Doesn't touch watch history or ratings.">Update Collection Metadata Only</option>
               </select>
               {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
             </div>

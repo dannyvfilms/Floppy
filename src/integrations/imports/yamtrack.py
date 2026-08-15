@@ -149,6 +149,7 @@ class YamtrackImporter:
 
         # Track existing media for "new" mode
         self.existing_media = helpers.get_existing_media(user)
+        self.existing_children = helpers.get_existing_children(user)
 
         # Track media IDs to delete in overwrite mode
         self.to_delete = defaultdict(lambda: defaultdict(set))
@@ -298,14 +299,29 @@ class YamtrackImporter:
         )
 
         # Check if we should process this movie based on mode
-        if not helpers.should_process_media(
+        should_process = helpers.should_process_media(
             self.existing_media,
             self.to_delete,
             parent_type,
             row["source"],
             row["media_id"],
             self.mode,
+        )
+        if not should_process and self.mode == "new" and media_type in (
+            MediaTypes.SEASON.value,
+            MediaTypes.EPISODE.value,
         ):
+            # The parent show already existing shouldn't block a season/episode
+            # it doesn't have yet - check this row's own granularity instead.
+            child_key = (
+                (row["media_id"], season_number)
+                if media_type == MediaTypes.SEASON.value
+                else (row["media_id"], season_number, episode_number)
+            )
+            should_process = (
+                child_key not in self.existing_children[media_type][row["source"]]
+            )
+        if not should_process:
             return
 
         if row["title"] == "" or row["image"] == "":

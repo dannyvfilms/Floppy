@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import re
+import uuid
 from io import BytesIO
 
 import apprise
@@ -1856,19 +1857,6 @@ def create_export_schedule(request):
         messages.error(request, "Invalid export time.")
         return redirect("export_data")
 
-    # Check for existing schedule
-    existing = PeriodicTask.objects.filter(
-        task="Scheduled backup export",
-        kwargs__contains=f'"user_id": {request.user.id}',
-        enabled=True,
-    ).first()
-    if existing:
-        messages.error(
-            request,
-            "A backup schedule already exists. Delete it first to create a new one.",
-        )
-        return redirect("export_data")
-
     if frequency == "daily":
         day_of_week = "*"
     elif frequency == "2days":
@@ -1893,8 +1881,31 @@ def create_export_schedule(request):
         "include_collection": include_collection,
     }
 
+    # A user can have several schedules at once (e.g. daily watch history,
+    # weekly lists, monthly collection); only reject an exact duplicate -
+    # same content and same cadence - rather than any second schedule.
+    existing_schedules = PeriodicTask.objects.filter(
+        task="Scheduled backup export",
+        kwargs__contains=f'"user_id": {request.user.id}',
+        enabled=True,
+        crontab=crontab,
+    )
+    for schedule in existing_schedules:
+        existing_kwargs = json.loads(schedule.kwargs)
+        if (
+            sorted(existing_kwargs.get("media_types") or []) == sorted(media_types)
+            and existing_kwargs.get("include_lists") == include_lists
+            and existing_kwargs.get("include_collection") == include_collection
+        ):
+            messages.error(
+                request,
+                "An identical backup schedule already exists.",
+            )
+            return redirect("export_data")
+
     task_name = (
-        f"Backup export for {request.user.username} at {parsed_time} {frequency}"
+        f"Backup export for {request.user.username} at {parsed_time} {frequency} "
+        f"({uuid.uuid4().hex[:8]})"
     )
     PeriodicTask.objects.create(
         name=task_name,
