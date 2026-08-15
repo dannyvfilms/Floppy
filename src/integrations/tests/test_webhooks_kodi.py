@@ -318,6 +318,10 @@ class KodiProcessorUnitTests(TestCase):
         payload = {"event": "stop", "progress": {"percent": 85.0}}
         self.assertTrue(self.processor._is_played(payload))
 
+    def test_is_played_stop_at_threshold(self):
+        payload = {"event": "stop", "progress": {"percent": 80.0}}
+        self.assertTrue(self.processor._is_played(payload))
+
     def test_is_played_stop_below_threshold(self):
         payload = {"event": "stop", "progress": {"percent": 50.0}}
         self.assertFalse(self.processor._is_played(payload))
