@@ -36,6 +36,7 @@ from integrations import (
     koito_api,
     lastfm_api,
     pocketcasts_api,
+    psn_api,
     stremio_queue,
     tasks,
     xbox_api,
@@ -77,6 +78,7 @@ from integrations.models import (
     PlexAccount,
     PlexWebhookShare,
     PocketCastsAccount,
+    PSNAccount,
     RadarrAccount,
     SonarrAccount,
     StorytellerAccount,
@@ -1827,6 +1829,7 @@ def import_stremio(request):
 
 
 XBOX_RECURRING_TASK_NAME = "Import from Xbox (Recurring)"
+PSN_RECURRING_TASK_NAME = "Import from PSN (Recurring)"
 CONSOLE_RECURRING_FREQUENCIES = {"daily": "*", "2days": "*/2"}
 CONSOLE_DEFAULT_IMPORT_TIME = "04:00"
 
@@ -2054,6 +2057,75 @@ def import_xbox(request):
         return redirect("import_data")
 
     _start_console_import(request, "Xbox", tasks.import_xbox, XBOX_RECURRING_TASK_NAME)
+    return redirect("import_data")
+
+
+@require_POST
+def psn_connect(request):
+    """Connect a PlayStation Network account using an NPSSO token."""
+    npsso = request.POST.get("npsso", "").strip()
+    if not npsso:
+        messages.error(request, "A PSN NPSSO token is required.")
+        return redirect("import_data")
+
+    try:
+        account_id, online_id = psn_api.get_account(npsso)
+    except helpers.MediaImportError as error:
+        messages.error(
+            request,
+            f"Could not connect to PlayStation Network: {error}",
+        )
+        return redirect("import_data")
+    except Exception as error:
+        logger.exception("Failed to connect to PlayStation Network")
+        messages.error(
+            request,
+            "Failed to connect to PlayStation Network "
+            f"({exception_summary(error)}). Check the logs for details.",
+        )
+        return redirect("import_data")
+
+    PSNAccount.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "npsso": helpers.encrypt(npsso),
+            "account_id": account_id,
+            "online_id": online_id,
+            "connection_broken": False,
+            "last_error_message": "",
+        },
+    )
+    messages.success(
+        request,
+        f"Connected to PlayStation Network as {online_id or account_id}.",
+    )
+    _start_console_import(request, "PSN", tasks.import_psn, PSN_RECURRING_TASK_NAME)
+    return redirect("import_data")
+
+
+@require_POST
+def psn_disconnect(request):
+    """Disconnect the PlayStation Network integration."""
+    from django_celery_beat.models import PeriodicTask
+
+    PeriodicTask.objects.filter(
+        _periodic_task_filter_for_user(request.user.id),
+        task=PSN_RECURRING_TASK_NAME,
+    ).delete()
+    PSNAccount.objects.filter(user=request.user).delete()
+    messages.info(request, "Disconnected PlayStation Network.")
+    return redirect("import_data")
+
+
+@require_POST
+def import_psn(request):
+    """Queue a one-off PSN import or schedule a recurring one."""
+    account = getattr(request.user, "psn_account", None)
+    if not account:
+        messages.error(request, "Connect PlayStation Network before importing.")
+        return redirect("import_data")
+
+    _start_console_import(request, "PSN", tasks.import_psn, PSN_RECURRING_TASK_NAME)
     return redirect("import_data")
 
 
