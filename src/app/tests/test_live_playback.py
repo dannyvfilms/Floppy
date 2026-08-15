@@ -11,6 +11,82 @@ from app import live_playback
 from app.models import MediaTypes, Sources
 
 
+class ScrobbleProgressFloorTests(TestCase):
+    """A scrobbled title is treated as being near its end."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="scrobblefloor",
+            password="pw",
+        )
+
+    def tearDown(self):
+        live_playback.clear_user_playback_state(self.user.id)
+        cache.clear()
+        super().tearDown()
+
+    @patch("app.live_playback._attach_resolved_image")
+    def _scrobble(self, _mock_image, *, offset, duration=5340):
+        live_playback.apply_playback_event(
+            user_id=self.user.id,
+            event_type="media.scrobble",
+            playback_media_type=MediaTypes.MOVIE.value,
+            media_id="701",
+            source=Sources.TMDB.value,
+            rating_key="rk-1",
+            title="A Movie",
+            view_offset_seconds=offset,
+            duration_seconds=duration,
+        )
+        return live_playback.get_user_playback_state(self.user.id)
+
+    def test_stale_offset_is_raised_to_the_watched_threshold(self):
+        """After a seek the last reported offset can be far behind."""
+        state = self._scrobble(offset=1871)
+
+        self.assertEqual(state["view_offset_seconds"], 4806)
+
+    def test_offset_past_the_threshold_is_kept(self):
+        """A genuine late position must not be dragged backwards."""
+        state = self._scrobble(offset=5300)
+
+        self.assertEqual(state["view_offset_seconds"], 5300)
+
+    def test_card_expires_shortly_after_a_scrobble(self):
+        """The card must not linger for the rest of the runtime."""
+        state = self._scrobble(offset=1871)
+
+        remaining = state["scrobble_expires_at_ts"] - state["updated_at_ts"]
+        self.assertLessEqual(remaining, 5340 * 0.1 + 30)
+
+    def test_missing_duration_keeps_the_fallback_expiry(self):
+        """Without a duration there is nothing to take a share of."""
+        state = self._scrobble(offset=1871, duration=None)
+
+        remaining = state["scrobble_expires_at_ts"] - state["updated_at_ts"]
+        self.assertEqual(remaining, live_playback.PLAYBACK_SCROBBLE_FALLBACK_SECONDS)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_seeking_back_after_a_scrobble_is_not_floored(self, _mock_image):
+        """Skipping back into the credits must not jump the card forward."""
+        self._scrobble(offset=5300)
+
+        live_playback.apply_playback_event(
+            user_id=self.user.id,
+            event_type="media.resume",
+            playback_media_type=MediaTypes.MOVIE.value,
+            media_id="701",
+            source=Sources.TMDB.value,
+            rating_key="rk-1",
+            title="A Movie",
+            view_offset_seconds=600,
+            duration_seconds=5340,
+        )
+
+        state = live_playback.get_user_playback_state(self.user.id)
+        self.assertEqual(state["view_offset_seconds"], 600)
+
+
 class ApplyPlaybackEventImageTests(TestCase):
     """Image resolution happens when webhook events are applied."""
 
