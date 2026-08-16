@@ -261,13 +261,14 @@ def apply_playback_event(
         dur = dur_seconds or 0
         off = offset_seconds or 0
         if dur > 0:
-            # A scrobble is the server saying the title counts as watched, so
-            # the viewer is at least that far in.  Plex sends the event with no
-            # view offset, and the last one it did report can be far behind
-            # after a seek — trusting it would keep the card up for most of the
-            # remaining runtime.
-            off = max(off, int(dur * PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO))
-            state["view_offset_seconds"] = off
+            if view_offset_seconds is None:
+                # Plex sends the scrobble itself without a view offset, and the
+                # last one it did report can be far behind after a seek. The
+                # event does say the server considers the title watched, so
+                # take its threshold as the floor rather than trusting a stale
+                # position. An offset the event actually carries is kept.
+                off = max(off, int(dur * PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO))
+                state["view_offset_seconds"] = off
             remaining = max(0, dur - off)
             state["scrobble_expires_at_ts"] = (
                 now_ts + remaining + PLAYBACK_SCROBBLE_BUFFER_SECONDS

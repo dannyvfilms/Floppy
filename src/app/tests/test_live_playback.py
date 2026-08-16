@@ -40,21 +40,25 @@ class ScrobbleProgressFloorTests(TestCase):
         )
         return live_playback.get_user_playback_state(self.user.id)
 
-    def test_stale_offset_is_raised_to_the_watched_threshold(self):
-        """After a seek the last reported offset can be far behind."""
-        state = self._scrobble(offset=1871)
+    @patch("app.live_playback._attach_resolved_image")
+    def test_offsetless_scrobble_falls_back_to_the_threshold(self, _mock_image):
+        """Plex sends the scrobble without one; the cached one can be stale."""
+        self._scrobble(offset=1871)  # last position before a seek to the end
+        state = self._scrobble(offset=None)
 
         self.assertEqual(state["view_offset_seconds"], 4806)
 
-    def test_offset_past_the_threshold_is_kept(self):
-        """A genuine late position must not be dragged backwards."""
-        state = self._scrobble(offset=5300)
-
-        self.assertEqual(state["view_offset_seconds"], 5300)
-
-    def test_card_expires_shortly_after_a_scrobble(self):
-        """The card must not linger for the rest of the runtime."""
+    def test_reported_offset_is_always_kept(self):
+        """A server scrobbling below the threshold still knows best."""
         state = self._scrobble(offset=1871)
+
+        self.assertEqual(state["view_offset_seconds"], 1871)
+
+    @patch("app.live_playback._attach_resolved_image")
+    def test_card_expires_shortly_after_an_offsetless_scrobble(self, _mock_image):
+        """The card must not linger for the rest of the runtime."""
+        self._scrobble(offset=1871)
+        state = self._scrobble(offset=None)
 
         remaining = state["scrobble_expires_at_ts"] - state["updated_at_ts"]
         self.assertLessEqual(remaining, 5340 * 0.1 + 30)
