@@ -215,6 +215,45 @@ class ImportMDBList(TestCase):
         season = Season.objects.get(item__media_id="12345", user=self.user)
         self.assertEqual(season.status, Status.COMPLETED.value)
 
+    def test_explicit_episode_prevents_season_fanout(self):
+        """Episode rows take precedence over a matching season summary."""
+        responses = {
+            "/sync/watched": {
+                "seasons": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "season": {
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+
+        self.assertEqual(Episode.objects.filter(item__media_id="12345").count(), 1)
+        season = Season.objects.get(item__media_id="12345", user=self.user)
+        tv = TV.objects.get(item__media_id="12345", user=self.user)
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+
     def test_season_rating_backfills_episodes(self):
         """Rating a season with no watch history still creates its episodes.
 

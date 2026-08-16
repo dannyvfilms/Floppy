@@ -120,6 +120,21 @@ def _parse_entry_datetime(entry, *keys):
     return None
 
 
+def _show_season_keys(show_data, season_number):
+    """Return provider identifiers that can match one show's season rows."""
+    if not isinstance(show_data, dict) or season_number is None:
+        return set()
+
+    ids = show_data.get("ids")
+    if not isinstance(ids, dict):
+        ids = {}
+    return {
+        (source, str(value), str(season_number))
+        for source in ("tmdb", "tvdb", "imdb", "mdblist")
+        if (value := ids.get(source) or show_data.get(f"{source}_id"))
+    }
+
+
 class MDBListImporter(TraktMetadataResolverMixin):
     """Import watched/watchlist/ratings/dropped/collection data from MDBList."""
 
@@ -289,10 +304,23 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         MDBList stores watched state at whatever level the user marked it:
         movie, whole show, whole season, or individual episode. Season entries
-        are expanded into their episodes via TMDB metadata; show entries are
-        recorded as a COMPLETED show without per-episode fan-out.
+        are expanded into their episodes via TMDB metadata unless explicit
+        episode rows exist for that season; show entries are recorded as a
+        COMPLETED show without per-episode fan-out.
         """
         data = self._get_grouped_sync_data("/sync/watched", "watched entries")
+        explicit_episode_seasons = set()
+        for entry in data.get("episodes", []):
+            if not isinstance(entry, dict):
+                continue
+            episode_data = entry.get("episode") or {}
+            if not isinstance(episode_data, dict):
+                continue
+            show_data = episode_data.get("show") or entry.get("show") or {}
+            explicit_episode_seasons.update(
+                _show_season_keys(show_data, episode_data.get("season")),
+            )
+
         total = sum(
             len(data.get(group, []))
             for group in ("movies", "shows", "seasons", "episodes")
@@ -323,6 +351,16 @@ class MDBListImporter(TraktMetadataResolverMixin):
             current += 1
             import_progress.report(current, total, "MDBList: watched history")
             try:
+                season_data = entry.get("season") or {}
+                show_data = season_data.get("show") or entry.get("show") or {}
+                if (
+                    _show_season_keys(
+                        show_data,
+                        season_data.get("number"),
+                    )
+                    & explicit_episode_seasons
+                ):
+                    continue
                 self.process_watched_season(entry)
             except MediaImportError:
                 raise
