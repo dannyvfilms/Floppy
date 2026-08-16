@@ -52,7 +52,7 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
 
         # Update live playback state (before media tracking)
         playback_media_type = self._get_live_playback_media_type(payload)
-        self._update_live_playback_state(
+        playback_context = self._update_live_playback_state(
             payload,
             user,
             ids,
@@ -69,7 +69,13 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             )
             return
 
-        self._process_media(payload, user, ids)
+        processed_item = self._process_media(payload, user, ids)
+        if event_type == "Stop" and processed_item and playback_context:
+            live_playback.store_playback_progress(
+                user.id,
+                item=processed_item,
+                **playback_context,
+            )
 
     def _is_supported_event(self, event_type, user=None):
         if event_type in ("Play", "Pause", "Stop"):
@@ -193,13 +199,13 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         """Update cache-backed live playback state for home-page UI."""
         event_type = JELLYFIN_EVENT_MAP.get(payload.get("Event"))
         if not event_type:
-            return
+            return None
 
         if playback_media_type not in (
             MediaTypes.MOVIE.value,
             MediaTypes.EPISODE.value,
         ):
-            return
+            return None
 
         item = payload.get("Item", {})
         media_id = None
@@ -240,6 +246,11 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         offset_seconds = _ticks_to_seconds(
             payload.get("PlaybackPositionTicks") or item.get("PlaybackPositionTicks"),
         )
+        provider_completed = None
+        if payload.get("Event") == "Stop":
+            played = (item.get("UserData") or {}).get("Played")
+            if isinstance(played, bool):
+                provider_completed = played
 
         live_playback.apply_playback_event(
             user_id=user.id,
@@ -259,5 +270,13 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
             episode_number=episode_number,
             view_offset_seconds=offset_seconds,
             duration_seconds=duration_seconds,
-            store_progress=True,
+            store_progress=event_type != "media.stop",
+            provider_completed=provider_completed,
         )
+        return {
+            "event_type": event_type,
+            "playback_media_type": playback_media_type,
+            "view_offset_seconds": offset_seconds,
+            "duration_seconds": duration_seconds,
+            "provider_completed": provider_completed,
+        }

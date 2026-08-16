@@ -170,7 +170,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         )
 
         playback_media_type = self._get_live_playback_media_type(payload)
-        self._update_live_playback_state(
+        playback_context = self._update_live_playback_state(
             payload,
             user,
             ids,
@@ -194,7 +194,17 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             logger.warning("Ignoring Plex webhook call because no ID was found.")
             return None
 
-        self._process_media(payload, user, ids)
+        processed_item = self._process_media(payload, user, ids)
+        if (
+            event_type in ("media.stop", "media.scrobble")
+            and processed_item
+            and playback_context
+        ):
+            live_playback.store_playback_progress(
+                user.id,
+                item=processed_item,
+                **playback_context,
+            )
         return None
 
     def _get_live_playback_media_type(self, payload):
@@ -220,7 +230,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             MediaTypes.MOVIE.value,
             MediaTypes.EPISODE.value,
         ):
-            return
+            return None
 
         event_type = payload.get("event")
         media_id = None
@@ -283,7 +293,15 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             source=Sources.TMDB.value,
             season_number=season_number,
             episode_number=episode_number,
+            store_progress=event_type not in ("media.stop", "media.scrobble"),
         )
+        return {
+            "event_type": event_type,
+            "playback_media_type": playback_media_type,
+            "view_offset_seconds": live_playback._extract_offset_seconds(payload),
+            "duration_seconds": live_playback._extract_duration_seconds(payload),
+            "provider_completed": None,
+        }
 
     def resolve_external_ids(self, payload, allow_title_search=True):
         """Extract external IDs, optionally allowing title search fallback."""
@@ -394,6 +412,60 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
         return ids
 
+    def _resolve_tv_rating_ids(self, payload, ids):
+        """Resolve Plex TV rating IDs to a show-level TMDB identity."""
+        raw_tmdb_id = ids.get("tmdb_id")
+        lookup_ids = dict(ids)
+        lookup_ids["tmdb_id"] = None
+
+        # TVDB and IMDb IDs may identify the episode in a rating payload. Resolve
+        # those first so an episode-level TMDB ID cannot short-circuit the lookup.
+        resolved_id, _, _ = self._find_tv_media_id(lookup_ids)
+        if resolved_id:
+            ids["tmdb_id"] = str(resolved_id)
+            logger.info(
+                "Resolved Plex TV rating to show-level TMDB ID: %s",
+                ids["tmdb_id"],
+            )
+            return ids
+
+        # A raw TMDB ID is usable only if it is actually a TV show. Episode IDs
+        # return a provider error here and must fall through to title resolution.
+        if raw_tmdb_id:
+            try:
+                app.providers.tmdb.tv(raw_tmdb_id)
+            except Exception as exc:
+                logger.info(
+                    "Plex TMDB rating ID %s is not a TV show; trying title "
+                    "resolution: %s",
+                    raw_tmdb_id,
+                    exception_summary(exc),
+                )
+                ids["tmdb_id"] = None
+            else:
+                ids["tmdb_id"] = str(raw_tmdb_id)
+                logger.info(
+                    "Validated Plex TV rating TMDB show ID: %s",
+                    ids["tmdb_id"],
+                )
+                return ids
+
+        # Last resort for payloads that contain only a Plex GUID or an
+        # episode-level TMDB ID with unusable external IDs.
+        resolved_id, _, _ = self._find_tv_media_id(
+            lookup_ids,
+            series_title=self._extract_series_title(payload),
+            allow_title_fallback=True,
+            year=(payload.get("Metadata") or {}).get("year"),
+        )
+        if resolved_id:
+            ids["tmdb_id"] = str(resolved_id)
+            logger.info(
+                "Resolved Plex TV rating via title to show-level TMDB ID: %s",
+                ids["tmdb_id"],
+            )
+        return ids
+
     def _process_rating(self, payload, user):
         """Process media.rate webhook events to update user ratings.
 
@@ -477,7 +549,16 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 )
                 # Resolve external IDs for removal
                 ids = self.resolve_external_ids(payload)
-                if not any(ids.get(key) for key in ("tmdb_id", "imdb_id", "tvdb_id")):
+                if media_type == MediaTypes.TV.value:
+                    ids = self._resolve_tv_rating_ids(payload, ids)
+                has_rating_id = (
+                    bool(ids.get("tmdb_id"))
+                    if media_type == MediaTypes.TV.value
+                    else any(
+                        ids.get(key) for key in ("tmdb_id", "imdb_id", "tvdb_id")
+                    )
+                )
+                if not has_rating_id:
                     logger.warning(
                         "Ignoring Plex rating removal webhook because no ID was found"
                     )
@@ -503,7 +584,14 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
         # Resolve external IDs
         ids = self.resolve_external_ids(payload)
-        if not any(ids.get(key) for key in ("tmdb_id", "imdb_id", "tvdb_id")):
+        if media_type == MediaTypes.TV.value:
+            ids = self._resolve_tv_rating_ids(payload, ids)
+        has_rating_id = (
+            bool(ids.get("tmdb_id"))
+            if media_type == MediaTypes.TV.value
+            else any(ids.get(key) for key in ("tmdb_id", "imdb_id", "tvdb_id"))
+        )
+        if not has_rating_id:
             logger.warning("Ignoring Plex rating webhook because no ID was found")
             return None
 
@@ -585,14 +673,27 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             )
             return
 
-        tv_item, _ = app.models.Item.objects.get_or_create(
-            media_id=tmdb_id,
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            defaults={
-                "title": tv_metadata["title"],
-                "image": tv_metadata["image"],
-            },
+        tv_item = self._find_existing_tracked_tv_item(user, ids, tmdb_id)
+        if tv_item is None:
+            tv_item = find_item_across_buckets(
+                media_id=tmdb_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+            )
+        if tv_item is None:
+            tv_item, _ = app.models.Item.objects.get_or_create(
+                media_id=tmdb_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                defaults={
+                    "title": tv_metadata["title"],
+                    "image": tv_metadata["image"],
+                },
+            )
+        logger.info(
+            "Using TV rating tracking item: %s (library bucket=%s)",
+            tv_item.title,
+            tv_item.library_media_type or "default",
         )
 
         # Get or create TV instance
@@ -669,11 +770,13 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 )
                 return
 
-            tv_item = find_item_across_buckets(
-                media_id=tmdb_id,
-                source=Sources.TMDB.value,
-                media_type=MediaTypes.TV.value,
-            )
+            tv_item = self._find_existing_tracked_tv_item(user, ids, tmdb_id)
+            if tv_item is None:
+                tv_item = find_item_across_buckets(
+                    media_id=tmdb_id,
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.TV.value,
+                )
             if tv_item is None:
                 tv_item, _ = app.models.Item.objects.get_or_create(
                     media_id=tmdb_id,
@@ -684,6 +787,11 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                         "image": tv_metadata["image"],
                     },
                 )
+            logger.info(
+                "Using TV rating removal item: %s (library bucket=%s)",
+                tv_item.title,
+                tv_item.library_media_type or "default",
+            )
 
             # Only remove rating from existing instances
             tv_instance = app.models.TV.objects.filter(
@@ -705,7 +813,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         media_type = self._get_media_type(payload)
         if not media_type:
             logger.debug("Ignoring unsupported media type")
-            return
+            return None
 
         logger.info("Received Plex webhook for media_type=%s", media_type)
 
@@ -714,9 +822,16 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             season_number, episode_number = self._extract_season_episode_from_payload(
                 payload,
             )
-            self._process_tv(payload, user, ids, season_number, episode_number)
-        elif media_type == MediaTypes.MOVIE.value:
-            self._process_movie(payload, user, ids)
+            return self._process_tv(
+                payload,
+                user,
+                ids,
+                season_number,
+                episode_number,
+            )
+        if media_type == MediaTypes.MOVIE.value:
+            return self._process_movie(payload, user, ids)
+        return None
 
     def _is_supported_event(self, event_type):
         return event_type in (
@@ -1019,7 +1134,10 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             series_name = payload["Metadata"].get("grandparentTitle")
             season_number = payload["Metadata"].get("parentIndex")
             episode_number = payload["Metadata"].get("index")
-            title = f"{series_name} S{season_number:02d}E{episode_number:02d}"
+            if season_number is not None and episode_number is not None:
+                title = f"{series_name} S{season_number:02d}E{episode_number:02d}"
+            else:
+                title = series_name or payload["Metadata"].get("title")
 
         elif media_type == MediaTypes.MOVIE.value:
             title = payload["Metadata"].get("title")

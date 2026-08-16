@@ -9,6 +9,7 @@ import logging
 from datetime import UTC, datetime
 from http import HTTPStatus as HTTP  # noqa: N814
 
+from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
@@ -165,17 +166,50 @@ def upsert_playback_progress(
     duration_seconds=None,
     *,
     completed=False,
+    preserve_position=False,
+    preserve_duration=False,
+    fill_missing_duration=False,
+    preserve_completed=False,
 ):
-    """Store an absolute resume position for a movie/episode Item."""
-    progress, _ = PlaybackProgress.objects.update_or_create(
-        user=user,
-        item=item,
-        defaults={
-            "position_seconds": position_seconds,
-            "duration_seconds": duration_seconds,
-            "completed": completed,
-        },
-    )
+    """Store playback progress while serializing updates for one item.
+
+    The optional preservation flags are used by webhook events whose payload
+    intentionally omits one field.  The row lock keeps those field-specific
+    updates from becoming a stale read-modify-write race.
+    """
+    position = 0 if position_seconds is None else position_seconds
+    with transaction.atomic():
+        progress, created = PlaybackProgress.objects.select_for_update().get_or_create(
+            user=user,
+            item=item,
+            defaults={
+                "position_seconds": position,
+                "duration_seconds": duration_seconds,
+                "completed": completed,
+            },
+        )
+        if created:
+            return progress
+
+        update_fields = []
+        if not preserve_position:
+            progress.position_seconds = position
+            update_fields.append("position_seconds")
+
+        if fill_missing_duration:
+            if progress.duration_seconds is None and duration_seconds is not None:
+                progress.duration_seconds = duration_seconds
+                update_fields.append("duration_seconds")
+        elif not preserve_duration:
+            progress.duration_seconds = duration_seconds
+            update_fields.append("duration_seconds")
+
+        if not preserve_completed:
+            progress.completed = completed
+            update_fields.append("completed")
+
+        if update_fields:
+            progress.save(update_fields=[*update_fields, "updated_at"])
     return progress
 
 

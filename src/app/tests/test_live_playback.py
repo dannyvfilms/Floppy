@@ -1,14 +1,18 @@
 """Tests for cache-backed live playback state and request-path purity."""
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase
+from django.db import close_old_connections, connection
+from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 
 from app import live_playback
-from app.models import MediaTypes, Sources
+from app.models import Item, MediaTypes, PlaybackProgress, Sources
 
 
 class ApplyPlaybackEventImageTests(TestCase):
@@ -255,3 +259,155 @@ class ResolveStateImageTaskTests(TestCase):
         live_playback.resolve_state_image(self.user.id)
 
         mock_resolve.assert_not_called()
+
+
+class PlaybackProgressAtomicTests(TestCase):
+    """Webhook progress writes preserve fields that an event omits."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="progress-atomic")
+        self.item = Item.objects.create(
+            media_id="701",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+            image="https://example.com/matrix.jpg",
+        )
+
+    def test_completion_only_preserves_position_and_known_duration(self):
+        PlaybackProgress.objects.create(
+            user=self.user,
+            item=self.item,
+            position_seconds=1200,
+            duration_seconds=3600,
+        )
+
+        live_playback.store_playback_progress(
+            self.user.id,
+            item=self.item,
+            event_type="media.scrobble",
+            playback_media_type=MediaTypes.MOVIE.value,
+            view_offset_seconds=None,
+            duration_seconds=8160,
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user, item=self.item)
+        self.assertEqual(progress.position_seconds, 1200)
+        self.assertEqual(progress.duration_seconds, 3600)
+        self.assertTrue(progress.completed)
+
+    def test_completion_only_fills_missing_duration(self):
+        PlaybackProgress.objects.create(
+            user=self.user,
+            item=self.item,
+            position_seconds=1200,
+        )
+
+        live_playback.store_playback_progress(
+            self.user.id,
+            item=self.item,
+            event_type="media.scrobble",
+            playback_media_type=MediaTypes.MOVIE.value,
+            view_offset_seconds=None,
+            duration_seconds=8160,
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user, item=self.item)
+        self.assertEqual(progress.position_seconds, 1200)
+        self.assertEqual(progress.duration_seconds, 8160)
+        self.assertTrue(progress.completed)
+
+    def test_provider_incomplete_stop_overrides_completion_tail(self):
+        PlaybackProgress.objects.create(
+            user=self.user,
+            item=self.item,
+            position_seconds=8000,
+            duration_seconds=8160,
+            completed=True,
+        )
+
+        live_playback.store_playback_progress(
+            self.user.id,
+            item=self.item,
+            event_type="media.stop",
+            playback_media_type=MediaTypes.MOVIE.value,
+            view_offset_seconds=8160,
+            duration_seconds=8160,
+            provider_completed=False,
+        )
+
+        self.assertFalse(
+            PlaybackProgress.objects.get(user=self.user, item=self.item).completed,
+        )
+
+
+@skipUnless(connection.vendor == "postgresql", "requires PostgreSQL row-lock semantics")
+class PlaybackProgressConcurrencyTests(TransactionTestCase):
+    """Concurrent webhook writes resolve to a serialized final state."""
+
+    reset_sequences = True
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="progress-race")
+        self.item = Item.objects.create(
+            media_id="701",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+            image="https://example.com/matrix.jpg",
+        )
+
+    def _run_concurrently(self, *events):
+        barrier = Barrier(len(events))
+
+        def run(event):
+            close_old_connections()
+            try:
+                barrier.wait(timeout=5)
+                live_playback.store_playback_progress(
+                    self.user.id,
+                    item=self.item,
+                    event_type=event[0],
+                    playback_media_type=MediaTypes.MOVIE.value,
+                    view_offset_seconds=event[1],
+                    duration_seconds=8160,
+                    provider_completed=event[2],
+                )
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=len(events)) as executor:
+            return list(executor.map(run, events))
+
+    def test_scrobble_and_pause_do_not_restore_a_stale_position(self):
+        PlaybackProgress.objects.create(
+            user=self.user,
+            item=self.item,
+            position_seconds=6000,
+            duration_seconds=8160,
+        )
+
+        self._run_concurrently(
+            ("media.scrobble", None, None),
+            ("media.pause", 120, None),
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user, item=self.item)
+        self.assertEqual(progress.position_seconds, 120)
+
+    def test_scrobble_and_trailing_stop_keep_completion(self):
+        PlaybackProgress.objects.create(
+            user=self.user,
+            item=self.item,
+            position_seconds=6000,
+            duration_seconds=8160,
+        )
+
+        self._run_concurrently(
+            ("media.scrobble", None, None),
+            ("media.stop", 8160, None),
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user, item=self.item)
+        self.assertEqual(progress.position_seconds, 8160)
+        self.assertTrue(progress.completed)

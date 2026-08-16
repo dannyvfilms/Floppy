@@ -87,14 +87,15 @@ class BaseWebhookProcessor:
         media_type = self._get_media_type(payload)
         if not media_type:
             logger.debug("Ignoring unsupported media type")
-            return
+            return None
 
         logger.info("Received webhook for media_type=%s", media_type)
 
         if media_type == MediaTypes.TV.value:
-            self._process_tv(payload, user, ids)
-        elif media_type == MediaTypes.MOVIE.value:
-            self._process_movie(payload, user, ids)
+            return self._process_tv(payload, user, ids)
+        if media_type == MediaTypes.MOVIE.value:
+            return self._process_movie(payload, user, ids)
+        return None
 
     def _process_tv(self, payload, user, ids, season_number=None, episode_number=None):
         """Process TV episode webhook.
@@ -138,7 +139,7 @@ class BaseWebhookProcessor:
                     mal_episode_number,
                 )
                 if self._handle_anime(mal_id, mal_episode_number, payload, user):
-                    return
+                    return None
 
         series_title = self._extract_series_title(payload)
         media_id, found_season, found_episode = self._find_tv_media_id(
@@ -148,7 +149,7 @@ class BaseWebhookProcessor:
         )
         if not media_id:
             logger.warning("No matching TMDB ID found for TV show")
-            return
+            return None
 
         # Use season/episode from parameters if provided, otherwise from lookup
         season_number = season_number or found_season
@@ -164,7 +165,7 @@ class BaseWebhookProcessor:
             logger.warning(
                 "Could not determine season/episode numbers for webhook payload",
             )
-            return
+            return None
 
         # Pull TMDB metadata; if the TMDB ID is actually episode-level, fall back to
         # TVDB/IMDB to resolve the show ID instead of erroring and losing the scrobble.
@@ -235,7 +236,7 @@ class BaseWebhookProcessor:
 
         if not tv_metadata:
             logger.warning("All TMDB lookup attempts failed for webhook show payload")
-            return
+            return None
 
         if self._should_recover_tv_show_from_external_ids(
             payload,
@@ -270,7 +271,7 @@ class BaseWebhookProcessor:
                         media_id,
                         exc,
                     )
-                    return
+                    return None
         elif (
             ids.get("tvdb_id")
             and not self._extract_payload_tmdb_id(payload)
@@ -317,7 +318,7 @@ class BaseWebhookProcessor:
                     "Detected grouped anime via exact Anime-IDs match: TMDB %s",
                     media_id,
                 )
-                self._handle_tv_episode(
+                return self._handle_tv_episode(
                     media_id,
                     season_number,
                     episode_number,
@@ -326,9 +327,29 @@ class BaseWebhookProcessor:
                     library_media_type=MediaTypes.ANIME.value,
                     grouped_anime_match=grouped_anime_match,
                 )
-                return
 
         if user.anime_enabled:
+            existing_tv_item = self._find_existing_tracked_tv_item(
+                user,
+                ids,
+                media_id,
+                preferred_library_media_type=MediaTypes.ANIME.value,
+            )
+            if existing_tv_item:
+                logger.info(
+                    "Routing episode to existing TV tracking item instead of flat "
+                    "anime mapping: %s (library bucket=%s)",
+                    existing_tv_item.title,
+                    existing_tv_item.library_media_type or "default",
+                )
+                return self._handle_tv_episode(
+                    media_id,
+                    season_number,
+                    episode_number,
+                    payload,
+                    user,
+                )
+
             link_sources = [
                 (
                     "stored TMDB",
@@ -359,7 +380,7 @@ class BaseWebhookProcessor:
                     mapped_episode,
                 )
                 if self._handle_anime(mal_id, mapped_episode, payload, user):
-                    return
+                    return None
 
             mapping_data = anime_mappings.fetch_mapping_data()
             mapping_sources = [
@@ -383,7 +404,7 @@ class BaseWebhookProcessor:
                     mapped_episode,
                 )
                 if self._handle_anime(mal_id, mapped_episode, payload, user):
-                    return
+                    return None
 
             if self._try_route_tvdb_anime(
                 payload,
@@ -393,7 +414,7 @@ class BaseWebhookProcessor:
                 tv_metadata,
                 tvdb_id,
             ):
-                return
+                return None
 
         logger.info(
             "Detected TV episode via TMDB ID: %s, Season: %d, Episode: %d",
@@ -401,7 +422,13 @@ class BaseWebhookProcessor:
             season_number,
             episode_number,
         )
-        self._handle_tv_episode(media_id, season_number, episode_number, payload, user)
+        return self._handle_tv_episode(
+            media_id,
+            season_number,
+            episode_number,
+            payload,
+            user,
+        )
 
     def _has_existing_tv_tracking(self, media_id, tvdb_id=None):
         """Return whether the TMDB/TVDB show is already tracked locally."""
@@ -430,7 +457,13 @@ class BaseWebhookProcessor:
             ).exists()
         )
 
-    def _find_existing_tracked_tv_item(self, user, ids, tmdb_media_id):
+    def _find_existing_tracked_tv_item(
+        self,
+        user,
+        ids,
+        tmdb_media_id,
+        preferred_library_media_type=None,
+    ):
         """Return a TV Item this user already tracks matching an incoming external ID.
 
         Returns None when nothing matches.
@@ -455,27 +488,55 @@ class BaseWebhookProcessor:
             )
 
         if filters:
-            link = (
-                app.models.ItemProviderLink.objects.filter(
-                    filters,
-                    provider_media_type=MediaTypes.TV.value,
-                    item__media_type=MediaTypes.TV.value,
-                    item__tv__user=user,
+            links = app.models.ItemProviderLink.objects.filter(
+                filters,
+                provider_media_type=MediaTypes.TV.value,
+                item__media_type=MediaTypes.TV.value,
+                item__tv__user=user,
+            ).select_related("item")
+            link = None
+            if preferred_library_media_type:
+                link = (
+                    links.filter(
+                        item__library_media_type=preferred_library_media_type,
+                    )
+                    .order_by("item_id")
+                    .first()
                 )
-                .select_related("item")
-                .first()
-            )
+            if link is None:
+                link = links.order_by("item_id").first()
             if link:
                 return link.item
 
-        # Direct match for manually-added TVDB items without a cross-provider link
+        # Direct match for manually-added TMDB/TVDB items without a cross-provider link
+        direct_filters = Q()
+        if tmdb_media_id:
+            direct_filters |= Q(
+                source=Sources.TMDB.value,
+                media_id=str(tmdb_media_id),
+            )
         if tvdb_id:
-            direct = app.models.Item.objects.filter(
+            direct_filters |= Q(
                 source=Sources.TVDB.value,
                 media_id=str(tvdb_id),
+            )
+        if direct_filters:
+            direct_items = app.models.Item.objects.filter(
+                direct_filters,
                 media_type=MediaTypes.TV.value,
                 tv__user=user,
-            ).first()
+            )
+            if preferred_library_media_type:
+                direct = (
+                    direct_items.filter(
+                        library_media_type=preferred_library_media_type,
+                    )
+                    .order_by("id")
+                    .first()
+                )
+                if direct:
+                    return direct
+            direct = direct_items.order_by("id").first()
             if direct:
                 return direct
 
@@ -681,13 +742,13 @@ class BaseWebhookProcessor:
                     source,
                 )
                 if self._handle_anime(mal_id, 1, payload, user):
-                    return
+                    return None
 
         # Handle as regular movie
         if tmdb_id:
             logger.info("Detected movie via TMDB ID: %s", tmdb_id)
-            self._handle_movie(tmdb_id, payload, user)
-        elif imdb_id:
+            return self._handle_movie(tmdb_id, payload, user)
+        if imdb_id:
             logger.debug("No TMDB ID found, looking up via IMDB ID: %s", imdb_id)
             try:
                 response = find_response or app.providers.tmdb.find(imdb_id, "imdb_id")
@@ -697,19 +758,20 @@ class BaseWebhookProcessor:
                     imdb_id,
                     exception_summary(exc),
                 )
-                return
+                return None
 
             if response.get("movie_results"):
                 media_id = response["movie_results"][0]["id"]
                 logger.info("Found matching TMDB ID: %s", media_id)
-                self._handle_movie(media_id, payload, user)
-            else:
-                logger.warning(
-                    "No matching TMDB ID found for IMDB ID: %s",
-                    imdb_id,
-                )
-        else:
-            logger.warning("No TMDB or IMDB ID found for movie, skipping processing")
+                return self._handle_movie(media_id, payload, user)
+            logger.warning(
+                "No matching TMDB ID found for IMDB ID: %s",
+                imdb_id,
+            )
+            return None
+
+        logger.warning("No TMDB or IMDB ID found for movie, skipping processing")
+        return None
 
     def _find_tv_media_id(
         self,
@@ -903,7 +965,7 @@ class BaseWebhookProcessor:
                     "Movie marked as unplayed but no instance exists: %s",
                     media_id,
                 )
-            return
+            return None
 
         movie_metadata = app.providers.tmdb.movie(media_id)
         movie_item, _ = app.models.Item.objects.get_or_create(
@@ -981,6 +1043,7 @@ class BaseWebhookProcessor:
 
         # Queue collection metadata update if supported
         self._queue_collection_metadata_update(payload, user, movie_item)
+        return movie_item
 
     def _queue_collection_metadata_update_for_tv(self, payload, user, tv_item):
         """Queue collection metadata update for TV show (not episode-specific)."""
@@ -1280,7 +1343,7 @@ class BaseWebhookProcessor:
                     season_number,
                     episode_number,
                 )
-            return
+            return None
 
         tv_metadata = app.providers.tmdb.tv_with_seasons(media_id, [season_number])
         external_ids = self._extract_external_ids(payload)
@@ -1368,7 +1431,7 @@ class BaseWebhookProcessor:
                 media_id,
                 season_number,
             )
-            return
+            return None
 
         existing_tv_item = self._find_existing_tracked_tv_item(
             user,
@@ -1638,6 +1701,7 @@ class BaseWebhookProcessor:
 
         # Queue collection metadata update for TV show (not episode-specific)
         self._queue_collection_metadata_update_for_tv(payload, user, tv_item)
+        return episode_item
 
     def _handle_anime(self, media_id, episode_number, payload, user):
         """Handle anime playback event."""

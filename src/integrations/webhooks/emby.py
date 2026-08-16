@@ -43,13 +43,24 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
         logger.info("Extracted IDs from payload: %s", ids)
 
         playback_media_type = self._get_live_playback_media_type(payload)
-        self._update_live_playback_state(payload, user, ids, playback_media_type)
+        playback_context = self._update_live_playback_state(
+            payload,
+            user,
+            ids,
+            playback_media_type,
+        )
 
         if not any(ids.values()):
             logger.warning("Ignoring Emby webhook call because no ID was found.")
             return
 
-        self._process_media(payload, user, ids)
+        processed_item = self._process_media(payload, user, ids)
+        if event_type == "playback.stop" and processed_item and playback_context:
+            live_playback.store_playback_progress(
+                user.id,
+                item=processed_item,
+                **playback_context,
+            )
 
     def _is_supported_event(self, event_type):
         return event_type in ("playback.start", "playback.stop")
@@ -128,13 +139,13 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
         """Update cache-backed live playback state for home-page UI."""
         event_type = EMBY_EVENT_MAP.get(payload.get("Event"))
         if not event_type:
-            return
+            return None
 
         if playback_media_type not in (
             MediaTypes.MOVIE.value,
             MediaTypes.EPISODE.value,
         ):
-            return
+            return None
 
         item = payload.get("Item", {})
         media_id = None
@@ -175,6 +186,11 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
         offset_seconds = _ticks_to_seconds(
             payload.get("PlaybackPositionTicks") or item.get("PlaybackPositionTicks"),
         )
+        provider_completed = None
+        if payload.get("Event") == "playback.stop":
+            played = (payload.get("PlaybackInfo") or {}).get("PlayedToCompletion")
+            if isinstance(played, bool):
+                provider_completed = played
 
         live_playback.apply_playback_event(
             user_id=user.id,
@@ -194,5 +210,13 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
             episode_number=episode_number,
             view_offset_seconds=offset_seconds,
             duration_seconds=duration_seconds,
-            store_progress=True,
+            store_progress=event_type != "media.stop",
+            provider_completed=provider_completed,
         )
+        return {
+            "event_type": event_type,
+            "playback_media_type": playback_media_type,
+            "view_offset_seconds": offset_seconds,
+            "duration_seconds": duration_seconds,
+            "provider_completed": provider_completed,
+        }
