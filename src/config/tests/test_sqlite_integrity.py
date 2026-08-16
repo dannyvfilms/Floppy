@@ -932,14 +932,18 @@ class SqliteIntegrityTests(SimpleTestCase):
             wrappers = {
                 "python": (
                     "#!/bin/sh\n"
-                    'case "$2" in\n'
+                    'case "$*" in\n'
                     "  *check_database_integrity*)\n"
                     '    echo "[entrypoint] bounded integrity failure" >&2\n'
                     "    exit 1\n"
                     "    ;;\n"
+                    "  *config.sqlite_recovery_server*)\n"
+                    "    exit 0\n"
+                    "    ;;\n"
                     "esac\n"
                     f'exec "{sys.executable}" "$@"\n'
                 ),
+                "timeout": '#!/bin/sh\nshift\nexec "$@"\n',
                 "sleep": (
                     "#!/bin/sh\n"
                     'echo "$$" > "$PARKING_PID_FILE"\n'
@@ -959,6 +963,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 "FLOPPY_DB_PATH": db_path,
                 "PATH": f"{bin_path}:{os.environ['PATH']}",
                 "PYTHONPATH": str(ENTRYPOINT.parent / "src"),
+                "VIRTUAL_ENV": "",
             }
             output_path = tmp_path / "entrypoint.log"
             with output_path.open("w") as output:
