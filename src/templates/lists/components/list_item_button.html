@@ -1,17 +1,23 @@
 {% if has_item %}
-  <button hx-post="{% url 'list_item_toggle' %}"
+  <button type="button"
+          hx-post="{% url 'list_item_toggle' %}"
           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
           hx-vals='{"custom_list_id": "{{ custom_list.id }}", "item_id": "{{ item.id }}"}'
           hx-swap="outerHTML"
-          class="px-3 py-1 rounded transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-opacity-50 bg-emerald-600 hover:bg-emerald-700">
+          class="inline-flex h-8 items-center justify-center rounded-md px-3 border border-emerald-500/30 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] bg-emerald-500/10 hover:bg-emerald-500/20 text-[var(--color-text)] text-sm font-medium"
+          title="Remove from {{ custom_list.name }}"
+          aria-label="Remove item from {{ custom_list.name }}">
     Remove
   </button>
 {% else %}
-  <button hx-post="{% url 'list_item_toggle' %}"
+  <button type="button"
+          hx-post="{% url 'list_item_toggle' %}"
           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
           hx-vals='{"custom_list_id": "{{ custom_list.id }}", "item_id": "{{ item.id }}"}'
           hx-swap="outerHTML"
-          class="px-3 py-1 rounded transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-opacity-50 bg-gray-500 hover:bg-gray-600">
+          class="inline-flex h-8 items-center justify-center rounded-md px-3 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] text-sm font-medium"
+          title="Add to {{ custom_list.name }}"
+          aria-label="Add item to {{ custom_list.name }}">
     Add
   </button>
 {% endif %}

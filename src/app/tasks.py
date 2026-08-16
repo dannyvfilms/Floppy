@@ -3,11 +3,12 @@
 import logging
 from datetime import timedelta
 
-from celery import shared_task
+from celery import shared_task, states
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
 from django.utils import timezone
+from django_celery_results.models import TaskResult
 
 from app import cache_safety, history_cache, metadata_utils
 from app.interactive_requests import interactive_request_active
@@ -24,6 +25,35 @@ from app.services import game_lengths as game_length_services
 from app.services import trakt_popularity as trakt_popularity_service
 
 logger = logging.getLogger(__name__)
+
+
+@shared_task(name="Cleanup task results", ignore_result=True)
+def cleanup_task_results(batch_size=5000):
+    """Remove expired and abandoned durable task-status rows in small batches."""
+    batch_size = max(int(batch_size), 0)
+    if not batch_size:
+        return 0
+
+    now = timezone.now()
+    terminal_cutoff = now - timedelta(seconds=settings.CELERY_RESULT_EXPIRES)
+    pending_cutoff = now - timedelta(minutes=30)
+    eligible = (
+        Q(status__in=states.READY_STATES, date_done__lt=terminal_cutoff)
+        | Q(status=states.PENDING, date_created__lt=pending_cutoff)
+        | Q(status=states.STARTED, date_created__lt=terminal_cutoff)
+    )
+    candidate_ids = list(
+        TaskResult.objects.filter(eligible)
+        .order_by("pk")
+        .values_list("pk", flat=True)[:batch_size],
+    )
+    if not candidate_ids:
+        return 0
+
+    # Reapply the age/state filter after selecting IDs so a task that completed
+    # between the two queries is not deleted as an abandoned result.
+    deleted, _ = TaskResult.objects.filter(pk__in=candidate_ids).filter(eligible).delete()
+    return deleted
 
 # ---------------------------------------------------------------------------
 # Modular task re-exports

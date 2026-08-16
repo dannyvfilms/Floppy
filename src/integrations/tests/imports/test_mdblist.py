@@ -171,7 +171,7 @@ class ImportMDBList(TestCase):
         self.assertIsNotNone(collected.collected_at)
 
     def test_season_completion_rollup(self):
-        """Watching the last episode completes the season and show."""
+        """A complete episode set completes the season, but not the show."""
         responses = {
             "/sync/watched": {
                 "episodes": [
@@ -192,7 +192,35 @@ class ImportMDBList(TestCase):
         season = Season.objects.get(item__media_id="12345", user=self.user)
         tv = TV.objects.get(item__media_id="12345", user=self.user)
         self.assertEqual(season.status, Status.COMPLETED.value)
-        self.assertEqual(tv.status, Status.COMPLETED.value)
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+
+    def test_final_episode_only_does_not_complete_season_or_show(self):
+        """The highest episode number is not proof of complete history."""
+        responses = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 2,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+
+        episode = Episode.objects.get(item__media_id="12345")
+        season = Season.objects.get(item__media_id="12345", user=self.user)
+        tv = TV.objects.get(item__media_id="12345", user=self.user)
+        self.assertEqual(episode.item.episode_number, 2)
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
 
     def test_watched_season_expands_to_episodes(self):
         """A season marked watched creates all of its episodes."""
@@ -214,6 +242,221 @@ class ImportMDBList(TestCase):
         self.assertEqual(Episode.objects.filter(item__media_id="12345").count(), 2)
         season = Season.objects.get(item__media_id="12345", user=self.user)
         self.assertEqual(season.status, Status.COMPLETED.value)
+
+    def test_explicit_episode_prevents_season_fanout(self):
+        """Episode rows take precedence over a matching season summary."""
+        responses = {
+            "/sync/watched": {
+                "seasons": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "season": {
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+
+        self.assertEqual(Episode.objects.filter(item__media_id="12345").count(), 1)
+        season = Season.objects.get(item__media_id="12345", user=self.user)
+        tv = TV.objects.get(item__media_id="12345", user=self.user)
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+
+    def test_episode_precedence_does_not_suppress_same_season_on_other_show(self):
+        """A matching episode does not suppress another show's season."""
+        responses = {
+            "/sync/watched": {
+                "seasons": [
+                    {
+                        "season": {
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                    {
+                        "season": {
+                            "number": 1,
+                            "show": {
+                                "title": "Other Show",
+                                "ids": {"tmdb": 54321},
+                            },
+                        },
+                    },
+                ],
+                "episodes": [
+                    {
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+
+        self.assertEqual(
+            Episode.objects.filter(
+                item__media_id="12345",
+                item__season_number=1,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            Episode.objects.filter(
+                item__media_id="54321",
+                item__season_number=1,
+            ).count(),
+            2,
+        )
+
+    def test_episode_precedence_does_not_suppress_other_season_on_same_show(self):
+        """A matching episode does not suppress another season of its show."""
+        responses = {
+            "/sync/watched": {
+                "seasons": [
+                    {
+                        "season": {
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                    {
+                        "season": {
+                            "number": 2,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+                "episodes": [
+                    {
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+
+        self.assertEqual(
+            Episode.objects.filter(
+                item__media_id="12345",
+                item__season_number=1,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            Episode.objects.filter(
+                item__media_id="12345",
+                item__season_number=2,
+            ).count(),
+            2,
+        )
+
+    def test_top_level_show_ids_match_nested_season_show_ids(self):
+        """Top-level and nested show identifier shapes share precedence."""
+        responses = {
+            "/sync/watched": {
+                "seasons": [
+                    {
+                        "season": {
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+                "episodes": [
+                    {
+                        "show": {
+                            "title": "Test Show",
+                            "tmdb_id": 12345,
+                        },
+                        "episode": {"season": 1, "number": 1},
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+
+        self.assertEqual(Episode.objects.filter(item__media_id="12345").count(), 1)
+        season = Season.objects.get(item__media_id="12345", user=self.user)
+        tv = TV.objects.get(item__media_id="12345", user=self.user)
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+
+    def test_show_summary_does_not_override_episode_evidence(self):
+        """Detailed episode evidence takes priority over a broad show row."""
+        responses = {
+            "/sync/watched": {
+                "shows": [
+                    {
+                        "show": {
+                            "title": "Test Show",
+                            "ids": {"tmdb": 12345},
+                        },
+                    },
+                ],
+                "episodes": [
+                    {
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+
+        tv = TV.objects.get(item__media_id="12345", user=self.user)
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+        self.assertEqual(Episode.objects.filter(item__media_id="12345").count(), 1)
 
     def test_season_rating_backfills_episodes(self):
         """Rating a season with no watch history still creates its episodes.
@@ -319,6 +562,97 @@ class ImportMDBList(TestCase):
             1,
         )
 
+    def test_new_mode_completion_uses_existing_episode_rows(self):
+        """Existing completed episodes contribute to the watched set."""
+        first_episode = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+        final_episode = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-02T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 2,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+
+        self._run_import(first_episode)
+        self._run_import(final_episode)
+
+        season = Season.objects.get(item__media_id="12345", user=self.user)
+        tv = TV.objects.get(item__media_id="12345", user=self.user)
+        self.assertEqual(season.status, Status.COMPLETED.value)
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+        self.assertEqual(Episode.objects.filter(item__media_id="12345").count(), 2)
+
+    def test_completion_rollup_preserves_dropped_status(self):
+        """Completing an episode set does not replace dropped state."""
+        first_episode = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+        final_episode = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "episode": {
+                            "season": 1,
+                            "number": 2,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+
+        self._run_import(first_episode)
+        Season.objects.filter(user=self.user).update(status=Status.DROPPED.value)
+        TV.objects.filter(user=self.user).update(status=Status.DROPPED.value)
+        self._run_import(final_episode)
+
+        season = Season.objects.get(item__media_id="12345", user=self.user)
+        tv = TV.objects.get(item__media_id="12345", user=self.user)
+        self.assertEqual(season.status, Status.DROPPED.value)
+        self.assertEqual(tv.status, Status.DROPPED.value)
+
     def test_overwrite_mode_replaces_existing(self):
         """Overwrite mode deletes preexisting media before importing."""
         item = Item.objects.get_or_create(
@@ -347,6 +681,56 @@ class ImportMDBList(TestCase):
 
         movie = Movie.objects.get(item__media_id="67890", user=self.user)
         self.assertEqual(movie.status, Status.COMPLETED.value)
+
+    def test_overwrite_mode_replaces_episode_history_safely(self):
+        """Overwrite rebuilds TV parents before replacing episode history."""
+        first_episode = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+        replacement_episode = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-02T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 2,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+            },
+        }
+
+        self._run_import(first_episode)
+        original_tv_id = TV.objects.get(user=self.user).pk
+        original_season_id = Season.objects.get(user=self.user).pk
+        self._run_import(replacement_episode, mode="overwrite")
+
+        tv = TV.objects.get(item__media_id="12345", user=self.user)
+        season = Season.objects.get(item__media_id="12345", user=self.user)
+        episode = Episode.objects.get(item__media_id="12345")
+        self.assertNotEqual(tv.pk, original_tv_id)
+        self.assertNotEqual(season.pk, original_season_id)
+        self.assertEqual(episode.item.episode_number, 2)
+        self.assertEqual(episode.related_season, season)
 
     def test_cursor_pagination(self):
         """Sync pagination follows next_cursor until exhausted."""
@@ -392,7 +776,146 @@ class ImportMDBList(TestCase):
 
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[1].get("cursor"), "abc")
+        self.assertEqual(calls[1].get("limit"), calls[0].get("limit"))
         self.assertEqual(Movie.objects.filter(user=self.user).count(), 2)
+
+    def test_offset_pagination_collects_episode_before_season_precedence(self):
+        """A later offset page can prevent an earlier season fan-out."""
+        pages = {
+            0: {
+                "seasons": [
+                    {
+                        "season": {
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+                "pagination": {"offset": 0, "has_more": True},
+            },
+            1: {
+                "episodes": [
+                    {
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {
+                                "title": "Test Show",
+                                "ids": {"tmdb": 12345},
+                            },
+                        },
+                    },
+                ],
+                "pagination": {"offset": 1, "has_more": False},
+            },
+        }
+        calls = []
+
+        def request_side_effect(_api_key, path, params=None):
+            if path == "/sync/watched":
+                calls.append(dict(params or {}))
+                return pages[params.get("offset", 0)]
+            return _empty_sync_response()
+
+        with (
+            patch(
+                "integrations.imports.mdblist.request",
+                side_effect=request_side_effect,
+            ),
+            patch(
+                "integrations.imports.mdblist.MDBListImporter._get_metadata",
+                side_effect=_metadata_side_effect,
+            ),
+        ):
+            importer("key", self.user, "new")
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]["offset"], 1)
+        self.assertEqual(calls[1]["limit"], calls[0]["limit"])
+        self.assertEqual(Episode.objects.filter(item__media_id="12345").count(), 1)
+        season = Season.objects.get(item__media_id="12345", user=self.user)
+        tv = TV.objects.get(item__media_id="12345", user=self.user)
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+
+    def test_watchlist_uses_offset_pagination(self):
+        """Watchlist retrieval follows the same offset contract as sync."""
+        pages = {
+            0: {
+                "movies": [
+                    {"title": "Movie 1", "ids": {"tmdb": 1001}},
+                ],
+                "pagination": {"offset": 0, "has_more": True},
+            },
+            1: {
+                "movies": [
+                    {"title": "Movie 2", "ids": {"tmdb": 1002}},
+                ],
+                "pagination": {"offset": 1, "has_more": False},
+            },
+        }
+        calls = []
+
+        def request_side_effect(_api_key, path, params=None):
+            if path == "/watchlist/items":
+                calls.append(dict(params or {}))
+                return pages[params.get("offset", 0)]
+            return _empty_sync_response()
+
+        with (
+            patch(
+                "integrations.imports.mdblist.request",
+                side_effect=request_side_effect,
+            ),
+            patch(
+                "integrations.imports.mdblist.MDBListImporter._get_metadata",
+                side_effect=_metadata_side_effect,
+            ),
+        ):
+            importer("key", self.user, "new")
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]["offset"], 1)
+        self.assertEqual(calls[1]["limit"], calls[0]["limit"])
+        self.assertEqual(Movie.objects.filter(user=self.user).count(), 2)
+
+    def test_repeated_cursor_stops_pagination(self):
+        """A non-advancing cursor cannot loop forever."""
+        calls = []
+
+        def request_side_effect(_api_key, path, params=None):
+            if path == "/sync/watched":
+                calls.append(dict(params or {}))
+                return {
+                    "movies": [
+                        {
+                            "movie": {
+                                "title": "Movie 1",
+                                "ids": {"tmdb": 1001},
+                            },
+                        },
+                    ],
+                    "pagination": {"next_cursor": "same"},
+                }
+            return _empty_sync_response()
+
+        with (
+            patch(
+                "integrations.imports.mdblist.request",
+                side_effect=request_side_effect,
+            ),
+            patch(
+                "integrations.imports.mdblist.MDBListImporter._get_metadata",
+                side_effect=_metadata_side_effect,
+            ),
+        ):
+            importer("key", self.user, "new")
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]["cursor"], "same")
 
     def test_tmdb_fallback_via_imdb_id(self):
         """Entries without a TMDB id resolve through tmdb.find."""

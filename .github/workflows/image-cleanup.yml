@@ -15,3 +15,14 @@ jobs:
           delete-ghost-images: true
           delete-orphaned-images: true
           validate: true
+
+      # PR builds no longer publish, but pr-N tags pushed before that fix are
+      # still sitting in both packages: keep-n-untagged only prunes untagged
+      # manifests, so nothing ever collected them. Scoped to the pr-* glob, so
+      # latest/release/vX.Y.Z are untouched. Runs on the legacy package too,
+      # which the untagged rules above deliberately still skip.
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          packages: floppy,yamtrack
+          delete-tags: pr-*
+          validate: true

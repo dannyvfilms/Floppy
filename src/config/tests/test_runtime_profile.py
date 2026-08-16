@@ -1,5 +1,7 @@
 """Tests for host resource detection and tier derivation (issue #521)."""
 
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from unittest import mock
 
 from django.test import SimpleTestCase
@@ -398,3 +400,17 @@ class SizingTests(SimpleTestCase):
                 if plan["start_discover"] == "true":
                     served.add("discover")
                 self.assertEqual(served, {"celery", "interactive", "discover"})
+
+    def test_emit_env_logs_the_full_worker_topology(self):
+        """Startup output must expose the isolated interactive worker."""
+        profile = self._profile(TIER_STANDARD)
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            runtime_profile.emit_env(profile)
+
+        self.assertIn("background=on(celery,discover)", stderr.getvalue())
+        self.assertIn("interactive=on(interactive)", stderr.getvalue())
+        self.assertIn("discover=off(merged)", stderr.getvalue())
+        self.assertIn("export FLOPPY_START_INTERACTIVE_WORKER='true'", stdout.getvalue())

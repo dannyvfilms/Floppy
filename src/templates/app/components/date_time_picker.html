@@ -30,7 +30,7 @@
             aria-haspopup="dialog"
             :aria-expanded="open"
             aria-label="{{ field_label|default:'Date' }} picker"
-            class="date-picker-trigger flex-1 flex items-center gap-2 p-2 bg-transparent border-0 outline-none text-white text-sm min-w-0 text-left cursor-pointer">
+            class="date-picker-trigger flex-1 flex items-center gap-2 p-2 bg-transparent border-0 outline-none text-[var(--color-text)] text-sm min-w-0 text-left cursor-pointer">
       {% include "app/icons/calendar.svg" with classes="w-4 h-4 shrink-0 text-[var(--color-text-muted)]" %}
       <span class="truncate" x-text="hasValue ? displayText : 'Select date'" :class="hasValue ? '' : 'text-[var(--color-text-muted)]'"></span>
     </button>

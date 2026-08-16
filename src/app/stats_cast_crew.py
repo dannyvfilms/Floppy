@@ -47,11 +47,23 @@ GENRE_PALETTE = [
 # classification already used across top talent (actor/actress/director/
 # writer) plus a voice-actor variant derived from ItemPersonCredit.role text.
 KNOWN_FOR_PILL_STYLES = {
-    "actor": {"label": "Actor", "classes": "bg-indigo-500/20 text-indigo-300"},
-    "actress": {"label": "Actress", "classes": "bg-pink-500/20 text-pink-300"},
-    "director": {"label": "Director", "classes": "bg-amber-500/20 text-amber-300"},
-    "writer": {"label": "Writer", "classes": "bg-emerald-500/20 text-emerald-300"},
-    "voice_actor": {"label": "Voice Actor", "classes": "bg-cyan-500/20 text-cyan-300"},
+    "actor": {"label": "Actor", "classes": "bg-indigo-500/20 text-[var(--color-text)]"},
+    "actress": {
+        "label": "Actress",
+        "classes": "bg-pink-500/20 text-[var(--color-text)]",
+    },
+    "director": {
+        "label": "Director",
+        "classes": "bg-amber-500/20 text-[var(--color-text)]",
+    },
+    "writer": {
+        "label": "Writer",
+        "classes": "bg-emerald-500/20 text-[var(--color-text)]",
+    },
+    "voice_actor": {
+        "label": "Voice Actor",
+        "classes": "bg-cyan-500/20 text-[var(--color-text)]",
+    },
 }
 
 ROLE_LEADER_COLUMNS = (

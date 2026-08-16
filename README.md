@@ -11,8 +11,10 @@
 <p align="center">
   <a href="https://yamtrack.dannyvfilms.com">Demo</a> ·
   <a href="https://github.com/dannyvfilms/Floppy/pkgs/container/floppy">Docker Image</a> ·
+  <a href="https://discord.gg/uFgha7Kb6n">Discord</a> ·
   <a href="https://github.com/dannyvfilms/Floppy/wiki">Wiki</a> ·
-  <a href="https://github.com/dannyvfilms/Floppy/releases">Releases</a>
+  <a href="https://github.com/dannyvfilms/Floppy/releases">Releases</a> ·
+  <a href="https://github.com/dannyvfilms/Floppy/issues">Report a Bug</a>
 </p>
 
 Floppy is a self-hosted, all-in-one media tracker and personal media diary, a broader alternative to Trakt, Letterboxd, and TV Time for people who want one place for everything they watch, read, play, or listen to. It gives you a real progress view that tells you what to watch next, a unified history you can actually scan, recap-style statistics, shareable lists, owned-media collections, and integrations that sync instead of asking you to upload a file every few months.
@@ -389,6 +391,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `HARDCOVER_API` - Hardcover book metadata/imports
 - `COMICVINE_API` - comic metadata
 - `LASTFM_API_KEY` - Last.fm integration and scrobble polling
+- `MUSICBRAINZ_URL` - custom MusicBrainz-compatible API root, including `/ws/2` (defaults to `https://musicbrainz.org/ws/2`)
 - `TRAKT_API` / `TRAKT_API_SECRET` - Trakt private-profile OAuth imports
 - `URLS` - your public URL if using a reverse proxy, for example `https://floppy.mydomain.com`
 - `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#admin-guide))
@@ -471,11 +474,11 @@ Plan a service change before you select new URLs:
 
 Floppy sizes itself to the machine it finds. On startup it reads the container's cgroup
 memory and CPU limits plus `/proc/meminfo`, picks a resource tier, and scales its process
-count, batch sizes, and background task cadence accordingly. The chosen tier is logged on
-the first line of the container's output:
+count, batch sizes, and background task cadence accordingly. The chosen tier and effective
+Celery worker topology are logged on the first line of the container's output:
 
 ```
-[entrypoint] resources tier=minimal mem=1.9GiB swap=0 cpus=2 -> gunicorn 1x2, celery queues "celery,interactive,discover"
+[entrypoint] resources tier=minimal mem=1.9GiB swap=0 cpus=2 -> gunicorn 1x2, celery workers background=on(celery,interactive,discover) interactive=off(combined) discover=off(merged)
 ```
 
 - **standard** (3 GB+): one threaded gunicorn worker and two Celery workers. Discover and
@@ -504,6 +507,13 @@ Two things worth knowing:
 
 Override any of it with `FLOPPY_RESOURCE_TIER`, `WEB_CONCURRENCY`, `GUNICORN_THREADS`, or
 `FLOPPY_REDIS_MAXMEMORY`.
+
+To verify the standard-tier worker split in a disposable Compose project after building an
+image, run:
+
+```bash
+scripts/smoke_worker_topology.sh --image floppy:worker-topology
+```
 
 ### Measuring container memory
 
@@ -714,6 +724,7 @@ dependency.
 ## Support the project
 
 - Star the repository if you want to help more people find Floppy.
+- Join the [Discord channel](https://discord.gg/uFgha7Kb6n) to ask questions, share feedback, and chat with the community.
 - Open an [issue](https://github.com/dannyvfilms/Floppy/issues) for bugs, or for feature requests and ideas.
 - Open a pull request if you want to contribute code, docs, or polish.
 

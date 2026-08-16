@@ -103,18 +103,60 @@ class DomainVocabularyTests(SimpleTestCase):
         with TemporaryDirectory() as directory:
             guide_path = Path(directory) / "domain_model.md"
             guide_path.write_bytes(crlf_bytes)
-            with patch.object(domain_vocabulary, "GUIDE_PATH", guide_path):
+            context_path = Path(directory) / "context.jsonld"
+            context_path.write_bytes(
+                domain_vocabulary.render_jsonld_context().encode("utf-8")
+            )
+            with (
+                patch.object(domain_vocabulary, "GUIDE_PATH", guide_path),
+                patch.object(domain_vocabulary, "CONTEXT_PATH", context_path),
+            ):
                 self.assertEqual(domain_vocabulary.main(["--check"]), 1)
 
-    def test_module_entry_point_writes_and_checks_the_guide(self):
+    def test_module_entry_point_writes_and_checks_both_artifacts(self):
+        """Patch both paths so the run cannot touch the committed artifacts."""
         with TemporaryDirectory() as directory:
             guide_path = Path(directory) / "domain_model.md"
-            with patch.object(domain_vocabulary, "GUIDE_PATH", guide_path):
+            context_path = Path(directory) / "context.jsonld"
+            with (
+                patch.object(domain_vocabulary, "GUIDE_PATH", guide_path),
+                patch.object(domain_vocabulary, "CONTEXT_PATH", context_path),
+            ):
                 self.assertEqual(domain_vocabulary.main(["--check"]), 1)
                 self.assertEqual(domain_vocabulary.main([]), 0)
                 self.assertEqual(
                     guide_path.read_bytes(),
                     domain_vocabulary.render_agent_guide().encode("utf-8"),
                 )
+                self.assertEqual(
+                    context_path.read_bytes(),
+                    domain_vocabulary.render_jsonld_context().encode("utf-8"),
+                )
+                self.assertEqual(domain_vocabulary.main(["--check"]), 0)
+
                 guide_path.write_bytes(b"drift\n")
+                self.assertEqual(domain_vocabulary.main(["--check"]), 1)
+
+    def test_check_detects_context_drift_on_its_own(self):
+        """Guide in sync, context drifted: --check must still fail."""
+        with TemporaryDirectory() as directory:
+            guide_path = Path(directory) / "domain_model.md"
+            context_path = Path(directory) / "context.jsonld"
+            guide_path.write_bytes(
+                domain_vocabulary.render_agent_guide().encode("utf-8")
+            )
+            with (
+                patch.object(domain_vocabulary, "GUIDE_PATH", guide_path),
+                patch.object(domain_vocabulary, "CONTEXT_PATH", context_path),
+            ):
+                # Missing context file.
+                self.assertEqual(domain_vocabulary.main(["--check"]), 1)
+
+                context_path.write_bytes(
+                    domain_vocabulary.render_jsonld_context().encode("utf-8")
+                )
+                self.assertEqual(domain_vocabulary.main(["--check"]), 0)
+
+                # Drifted context file.
+                context_path.write_bytes(b'{"@context": {}}\n')
                 self.assertEqual(domain_vocabulary.main(["--check"]), 1)

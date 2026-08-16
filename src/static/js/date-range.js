@@ -164,7 +164,7 @@ function dateRangePicker(options = {}) {
         key: b.key,
         icon: primary.icon,
         bg: "bg-indigo-600/20",
-        color: "text-indigo-400",
+        color: "text-[var(--color-link)]",
         label: b.label,
         value: this.fmt(primary[b.field], 1) + " " + this.consumptionUnitAbbr(primary.unit),
         caption: secondary ? this.fmt(secondary[b.field], 1) + " " + secondary.unit : "",

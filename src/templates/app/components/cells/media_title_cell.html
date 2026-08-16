@@ -2,7 +2,7 @@
 <div class="flex justify-between items-center">
   <a href="{{ media.item|media_url }}"
      hx-boost="true"
-     class="hover:text-indigo-400 transition-colors line-clamp-1">{{ media.item }}</a>
+     class="hover:text-[var(--color-link)] transition-colors line-clamp-1">{{ media.item }}</a>
 
   {% if media.repeats > 1 %}
     {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.BOARDGAME.value or user.game_logging_style != 'sessions' %}

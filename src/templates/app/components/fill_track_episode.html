@@ -126,7 +126,7 @@
               {% if episode.air_date %}
                 <button type="button"
                         @click="inputDateTime = inputType === 'datetime-local' ? '{{ episode.air_date|date:'Y-m-d' }}T{% now "H:i:s" %}' : '{{ episode.air_date|date:'Y-m-d' }}'"
-                        class="flex items-center text-sm text-indigo-400 hover:text-indigo-300 hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
+                        class="flex items-center text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
                   {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-1" %}
                   Air date
                 </button>
@@ -161,7 +161,7 @@
         <div class="flex justify-end-safe gap-3 mt-6">
           <button type="submit"
                   form="episode-drop-{{ media.season_number }}-{{ episode.episode_number }}"
-                  class="px-4 py-2 bg-gray-600 text-[var(--color-text)] rounded-md hover:bg-gray-500 transition-colors cursor-pointer">
+                  class="px-4 py-2 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
             Drop
           </button>
           <button type="submit"

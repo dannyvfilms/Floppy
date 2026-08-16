@@ -4,7 +4,7 @@
   <div class="flex flex-col space-y-1">
     <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{{ media_name }}</span>
     <h2 class="text-2xl font-semibold text-[var(--color-text)]">Activity Overview</h2>
-    <span class="text-sm text-gray-500" x-text="selectedRange"></span>
+    <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
   </div>
 
   <div class="space-y-4 sm:space-y-6">
@@ -50,7 +50,7 @@
                  x-transition:leave="transition ease-in duration-150"
                  x-transition:leave-start="opacity-100 scale-100"
                  x-transition:leave-end="opacity-0 scale-95"
-                 class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10"
+                 class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10"
                  style="display: none; background: rgba(0, 0, 0, 0.85); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);">
               <p>Completed {{ consumption.unit_name|lower }}s grouped by length for this range.</p>
               <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent" style="border-top-color: rgba(0, 0, 0, 0.85);"></div>
@@ -76,7 +76,7 @@
           <div class="overflow-y-auto pr-1 statistics-card-scroll">
             {% for item in consumption.top_items %}
             <a href="{{ item.media.item|media_url }}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
-              <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
+              <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
               {% if item.media.item.image and item.media.item.image != IMG_NONE %}
               <img src="{{ IMG_NONE }}"
                    data-src="{{ item.media.item.image }}"
@@ -87,7 +87,7 @@
               {% endif %}
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ item.media.item.title }}</p>
-                <p class="text-xs text-gray-500">{{ item.formatted_units }}</p>
+                <p class="text-xs text-[var(--color-text-muted)]">{{ item.formatted_units }}</p>
               </div>
             </a>
             {% endfor %}
@@ -110,7 +110,7 @@
               {% else %}
               <div class="flex items-center space-x-3 rounded-md p-1 -m-1">
               {% endif %}
-                <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
+                <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                 {% if author.image %}
                 <img src="{{ IMG_NONE }}"
                      data-src="{{ author.image }}"
@@ -118,14 +118,14 @@
                      class="lazyload w-10 h-10 rounded-full object-cover bg-[var(--color-surface)]">
                 {% else %}
                 <div class="w-10 h-10 rounded-full bg-[var(--color-surface)] flex items-center justify-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
                 {% endif %}
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ author.name }}</p>
-                  <p class="text-xs text-gray-500">{{ author.formatted_units }} · {{ author.titles }} book{{ author.titles|pluralize }}</p>
+                  <p class="text-xs text-[var(--color-text-muted)]">{{ author.formatted_units }} · {{ author.titles }} book{{ author.titles|pluralize }}</p>
                 </div>
               {% if author.source and author.person_id %}
               </a>
@@ -148,13 +148,13 @@
           <div class="overflow-y-auto pr-1 statistics-card-scroll">
             {% for genre in consumption.top_genres %}
             <a href="{% url 'history' %}?genre={{ genre.name|urlencode }}&media_type={{ media_type_slug }}{% if start_date_str and start_date_str != 'all' %}&start-date={{ start_date_str }}{% endif %}{% if end_date_str and end_date_str != 'all' %}&end-date={{ end_date_str }}{% endif %}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
-              <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
+              <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
               <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center text-[var(--color-text-secondary)] text-sm font-semibold uppercase">
                 {{ genre.name|slice:":2" }}
               </div>
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ genre.name }}</p>
-                <p class="text-xs text-gray-500 truncate">
+                <p class="text-xs text-[var(--color-text-muted)] truncate">
                   {{ genre.formatted_units }}
                   {% if media_type_slug == 'book' %}
                     · {{ genre.titles }} book{{ genre.titles|pluralize }}
@@ -181,7 +181,7 @@
           <div class="overflow-y-auto pr-1 statistics-card-scroll">
             {% for media in top_rated_list %}
             <a href="{{ media.item|media_url }}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
-              <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
+              <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
               {% if media.item.image and media.item.image != IMG_NONE %}
               <img src="{{ IMG_NONE }}"
                    data-src="{{ media.item.image }}"
@@ -192,7 +192,7 @@
               {% endif %}
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ media.item.title }}</p>
-                <p class="text-xs text-gray-500">
+                <p class="text-xs text-[var(--color-text-muted)]">
                   {% if media.aggregated_score is not None %}
                     {{ media.aggregated_score|score_display:user }}
                   {% else %}

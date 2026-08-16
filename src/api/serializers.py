@@ -387,6 +387,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
                 "end_date": instance.end_date,
                 "notes": instance.notes,
                 "lists": lists_by_item_id.get(item.id, []),
+                "next_episode": None,
             }
 
         media_id = instance.get("show_id")
@@ -450,6 +451,7 @@ class EpisodeSerializer(serializers.ModelSerializer):
             "end_date": episode.end_date if hasattr(episode, "end_date") else None,
             "notes": None,
             "lists": lists,
+            "next_episode": None,
         }
 
 
@@ -663,6 +665,18 @@ class MediaSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         """Serialize media."""
         item = getattr(instance, "item", None)
+        next_episode_by_item_id = (self.context or {}).get(
+            "next_episode_by_item_id",
+            {},
+        )
+        if item is not None and item.id in next_episode_by_item_id:
+            next_episode = next_episode_by_item_id[item.id]
+        elif item is not None:
+            from app.media_list_filters import next_episode_for_media
+
+            next_episode = next_episode_for_media(instance)
+        else:
+            next_episode = None
 
         if hasattr(instance, "lists"):
             lists = instance.lists
@@ -712,6 +726,7 @@ class MediaSerializer(serializers.ModelSerializer):
             "end_date": instance.end_date if hasattr(instance, "end_date") else None,
             "notes": instance.notes if hasattr(instance, "notes") else None,
             "lists": lists,
+            "next_episode": next_episode,
         }
 
 
@@ -767,6 +782,7 @@ class UntrackedMediaSerializer(serializers.Serializer):
             "end_date": None,
             "notes": None,
             "lists": lists,
+            "next_episode": None,
         }
 
 

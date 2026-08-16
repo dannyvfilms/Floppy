@@ -11,7 +11,7 @@ Our bar is practical: **make changes clean, minimal, safe, and well-understood.*
 | Area | Requirement | Command / Reference |
 |---|---|---|
 | **Branch Target** | Always target `latest` (never `upstream` or `release`) | `git checkout -b feat/my-feature latest` |
-| **PR Template** | Mandatory; do not delete or strip sections | [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) |
+| **PR Template** | Use every section; write in plain language first | [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) |
 | **Python Tooling** | Python 3.12 + `uv` | `uv sync --locked` |
 | **Tailwind CSS** | Pinned repo CLI output to `src/static/css/main.css` | `npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css` |
 | **Fast Tests** | Targeted test runner | `SECRET=test-only scripts/test.sh <dotted.path>` |
@@ -113,18 +113,18 @@ Floppy maintains an OpenAPI schema contract verified by automated test suites.
 ## 4. Pull Request Requirements & AI Assistance
 
 ### Mandatory PR Template
-Every pull request **must use [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)**. Do not delete, bypass, or strip template sections.
+Every pull request **must use [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)**. Keep its sections so reviewers can quickly find the summary, explanation, checks, and follow-ups.
 
 The template requires:
-1. **Summary & Linked Issues**: Describe what changed and why. Always link related issues in relationship fields (`Fixes #123`, `Refs #456`).
-2. **Post-Mortem / Root Cause**: For bug fixes, provide a concise post-mortem explaining what caused the defect and how the fix prevents recurrence.
+1. **Summary & Linked Issues**: Start with a plain-language explanation of what changed and why. Put technical details after that when useful. Always link related issues in relationship fields (`Fixes #123`, `Refs #456`).
+2. **Bug Fix Explanation** *(post-mortem / root cause analysis)*: For bug fixes, explain what went wrong and how the fix prevents it from happening again.
 3. **AI Assistance & Workflows**: If an AI coding agent or tool generated or shaped the code:
    - **Disclose the specific model**: Name the exact underlying model identifier (e.g., `claude-3-7-sonnet`, `gemini-2.5-pro`, `gpt-5.1-codex`).
    - **Disclose workflows used**: State tools and review workflows utilized (e.g., gstack QA, Ponytail review, OpenSpec, manual testing).
    > Note: A generic tool wrapper name alone ("Cursor", "Claude Code", "Copilot") is **insufficient**. You must state the underlying model.
-4. **Validation**: List exact commands executed and resulting outcomes.
+4. **Checks Run**: List the exact commands, tests, screenshots, or manual checks completed and their outcomes.
 5. **Screenshots**: Required for all UI, CSS, template, and visual layout changes (before/after for bug fixes, after for new UI).
-6. **Engineering & Security Checklist**: Confirm adherence to single-source-of-truth, domain boundaries, security rules, and living documentation updates.
+6. **Engineering, Security, and UX Checklist**: Confirm the plain-language checklist items in the template. The technical terms in parentheses provide context; reviewers should not need to know them in advance.
 
 ---
 
@@ -154,11 +154,21 @@ Match validation depth to risk. Always run targeted tests before opening a PR:
 - All tests, lint checks, and contract tests passing.
 - Living documentation and OpenAPI spec updated to match code changes.
 
-### What Gets Closed Without Review
-- PRs targeting `upstream` or `release`.
-- PRs that delete or ignore the PR template.
-- PRs with blank, vague, or generic descriptions ("fixes stuff", "update").
-- UI modifications without screenshots.
-- Undisclosed or ambiguously disclosed AI PRs (stating only "Copilot" or "Claude" without the model).
-- PRs bundling massive unrelated formatting or lint cleanup with feature changes.
-- PRs introducing unpatterned UI paradigms without justification.
+**UI consistency:** New UI must match existing patterns in the app — spacing, card styles, chip styles, color tokens, layout conventions. If your change introduces a visual pattern that doesn't appear anywhere else in the app, flag it explicitly in the PR description and justify it. Unexplained novel UI is a reason to close a PR.
+
+**Colour and theming:** Colour goes through the `--color-*` tokens, never a raw palette utility and never Tailwind's `dark:` variant, which reads the OS instead of the user's chosen theme. There are six theme states to hold, not two. See [docs/architecture/theming.md](docs/architecture/theming.md); `src/app/tests/test_theme_tokens.py` enforces the two rules that are easiest to break.
+
+**Lint cleanup:** If you spot pre-existing ruff/lint violations while working, do not fix them in the same PR. Either open a separate lint-only PR (welcome and easy to review) or leave a note. Fixing unrelated lint mid-feature PR inflates the diff and obscures the actual change.
+
+---
+
+## What Gets Closed Without Review
+
+- PRs targeting `upstream` or `release`
+- PRs with no description
+- PRs with no problem/solution statement
+- UI changes with no screenshots
+- PRs that introduce UI patterns with no precedent elsewhere in the app and no explanation
+- PRs where lint/style cleanup is bundled with behavior changes
+- AI-assisted PRs that disclose only a tool/subscription name ("Claude Code", "Copilot") without naming the specific model
+- PRs where commit count suggests the history was never organized (17 commits for a single UI feature is a signal)

@@ -60,6 +60,61 @@ class PlexAccount(models.Model):
         return bool(self.plex_token)
 
 
+class PlexWebhookShare(models.Model):
+    """Share one user's Plex webhook with another Floppy user."""
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="plex_webhook_shares",
+    )
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="received_plex_webhook_shares",
+    )
+    plex_username = models.CharField(max_length=255)
+    allowed_libraries = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Plex library keys accepted for this share; null means all libraries.",
+    )
+    recipient_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether the recipient has opted into this shared webhook.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Plex webhook share"
+        verbose_name_plural = "Plex webhook shares"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "recipient"],
+                name="integrations_plexwebhookshare_unique_owner_recipient",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["owner", "recipient_enabled"],
+                name="plexshare_owner_enabled_idx",
+            ),
+        ]
+
+    def __str__(self):
+        """Return a readable representation."""
+        return f"PlexWebhookShare({self.owner.username} -> {self.recipient.username})"
+
+    @property
+    def all_libraries(self):
+        """Return whether this share accepts every Plex library."""
+        return self.allowed_libraries is None
+
+
 class PlexWatchlistSyncItem(models.Model):
     """Persist the last-known Plex watchlist state for a user/item pair."""
 

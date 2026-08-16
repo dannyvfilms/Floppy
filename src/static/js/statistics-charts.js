@@ -756,7 +756,7 @@ function initStatisticsCharts() {
       const matrix = rhythmData[key] || (key !== "all" ? rhythmData["all"] : null);
       if (!matrix) {
         rhythmContainer.innerHTML =
-          '<p class="text-sm text-gray-500 text-center py-6">No activity data for this range.</p>';
+          '<p class="text-sm text-[var(--color-text-muted)] text-center py-6">No activity data for this range.</p>';
         return;
       }
 
@@ -970,7 +970,7 @@ function initStatisticsCharts() {
         }
         if (container) {
           container.innerHTML =
-            '<p class="text-sm text-gray-500 text-center py-8 w-full">No data for this filter.</p>';
+            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No data for this filter.</p>';
         }
         return;
       }
@@ -1271,7 +1271,7 @@ function initStatisticsCharts() {
         if (donutChartInstance) { donutChartInstance.destroy(); donutChartInstance = null; }
         if (container) {
           container.innerHTML =
-            '<p class="text-sm text-gray-500 text-center py-8 w-full">No time data available for this filter.</p>';
+            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No time data available for this filter.</p>';
         }
         return;
       }
@@ -1298,7 +1298,7 @@ function initStatisticsCharts() {
       const container = document.getElementById("timeWorldsContainer");
       if (container) {
         container.innerHTML =
-          '<p class="text-sm text-gray-500 text-center py-8 w-full">No time data available for this range.</p>';
+          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No time data available for this range.</p>';
       }
     }
   }
@@ -1464,7 +1464,7 @@ function initStatisticsCharts() {
         if (statusCompositionChartInstance) { statusCompositionChartInstance.destroy(); statusCompositionChartInstance = null; }
         if (container) {
           container.innerHTML =
-            '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this filter.</p>';
+            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No status data available for this filter.</p>';
         }
         return;
       }
@@ -1496,7 +1496,7 @@ function initStatisticsCharts() {
       const container = document.getElementById("statusCompositionContainer");
       if (container) {
         container.innerHTML =
-          '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this range.</p>';
+          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No status data available for this range.</p>';
       }
     }
   }
@@ -1549,7 +1549,7 @@ function initStatisticsCharts() {
         if (ratingDistributionChartInstance) { ratingDistributionChartInstance.destroy(); ratingDistributionChartInstance = null; }
         if (container) {
           container.innerHTML =
-            '<p class="text-sm text-gray-500 text-center py-8 w-full">No ratings yet for this filter.</p>';
+            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No ratings yet for this filter.</p>';
         }
         return;
       }
@@ -1659,7 +1659,7 @@ function initStatisticsCharts() {
       const container = document.getElementById("ratingDistributionContainer");
       if (container) {
         container.innerHTML =
-          '<p class="text-sm text-gray-500 text-center py-8 w-full">No ratings yet.</p>';
+          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No ratings yet.</p>';
       }
     }
   }
@@ -1706,7 +1706,7 @@ function initStatisticsCharts() {
         if (container) {
           container.innerHTML =
             '<p class="text-xs text-gray-400 mb-3">' + escapeHtml(subtitleText) + "</p>" +
-            '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this filter.</p>';
+            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No status data available for this filter.</p>';
         }
         return;
       }
@@ -1788,7 +1788,7 @@ function initStatisticsCharts() {
       const container = document.getElementById("statusBreakdownContainer");
       if (container) {
         container.innerHTML =
-          '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this range.</p>';
+          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No status data available for this range.</p>';
       }
     }
   }

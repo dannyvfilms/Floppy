@@ -42,7 +42,7 @@
                             {# Activity content #}
                             <div class="flex-1 min-w-0">
                                 <p class="text-[var(--color-text)]">{{ activity.description }}</p>
-                                <p class="text-sm text-gray-500 mt-1">
+                                <p class="text-sm text-[var(--color-text-muted)] mt-1">
                                     {{ activity.timestamp|user_datetime_format:user }}
                                     <span class="text-gray-600 mx-1">•</span>
                                     {{ activity.timestamp|timesince }} ago

@@ -431,6 +431,8 @@ def emit_env(profile: ResourceProfile | None = None) -> None:
     summary = (
         f"[entrypoint] resources {resolved.describe()}"
         f" -> gunicorn {exports['WEB_CONCURRENCY']}x{exports['GUNICORN_THREADS']},"
-        f' celery queues "{plan["queues"]}"'
+        f' celery workers background=on({plan["queues"]})'
+        f' interactive={"on(interactive)" if plan["start_interactive"] == "true" else "off(combined)"}'
+        f' discover={"on(discover)" if plan["start_discover"] == "true" else "off(merged)"}'
     )
     print(summary, file=sys.stderr)  # noqa: T201  # surfaced in container logs

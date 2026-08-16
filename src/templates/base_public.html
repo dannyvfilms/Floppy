@@ -99,7 +99,7 @@
             <p class="text-sm text-[var(--color-text-muted)]">
               This fork is maintained by
               {% if FORK_OWNER_URL %}
-                <a class="text-indigo-400 hover:text-indigo-300 underline" href="{{ FORK_OWNER_URL }}" rel="noopener" target="_blank">
+                <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline" href="{{ FORK_OWNER_URL }}" rel="noopener" target="_blank">
                   {{ FORK_OWNER_NAME|default:"the fork owner" }}
                 </a>
               {% else %}
@@ -115,7 +115,7 @@
       <div class="fixed top-24 right-0 left-0 z-50 flex justify-center pointer-events-none">
         <div class="w-full max-w-xl px-4 space-y-2 pointer-events-auto">
           {% for message in messages %}
-            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-{{ message.tags }} opacity-0"
+            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-{{ message.tags }} opacity-0"
               x-data="{
                   init() {
                     // Start entrance animation after a tiny delay

@@ -81,7 +81,7 @@
                                  title="Rename this row"
                                  @click.stop
                                  @keydown.enter.prevent="$el.blur()"
-                                 class="w-full truncate whitespace-nowrap rounded border border-transparent bg-transparent px-1 -mx-1 text-sm font-medium text-[var(--color-text)] placeholder:text-[var(--color-text)] hover:border-[var(--color-surface-hover)] focus:border-indigo-500 focus:outline-none focus:placeholder:text-gray-500">
+                                 class="w-full truncate whitespace-nowrap rounded border border-transparent bg-transparent px-1 -mx-1 text-sm font-medium text-[var(--color-text)] placeholder:text-[var(--color-text)] hover:border-[var(--color-surface-hover)] focus:border-indigo-500 focus:outline-none focus:placeholder:text-[var(--color-text-muted)]">
                         </div>
 
                         <div x-show="!isDesktop || hovering || openMenu !== null || row.editorOpen"
@@ -114,7 +114,7 @@
                                             class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                                             @click.stop="clearLibraryFilters(section, row); openMenu = null; filterView = 'root'; filterSearch = ''">
                                       <span>All</span>
-                                      <span class="ml-auto text-xs text-gray-500" x-show="rowFilterLabel(section, row) === 'All'">Active</span>
+                                      <span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="rowFilterLabel(section, row) === 'All'">Active</span>
                                     </button>
 
                                     <div class="border-t border-gray-700 my-1"></div>
@@ -141,16 +141,16 @@
                                         <span x-text="field.label"></span>
                                         <button type="button"
                                                 x-show="field.key === 'tag'"
-                                                class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-indigo-300 hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
+                                                class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-[var(--color-link)] hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
                                                 @click.stop="cycleRowTagMode(row)"
                                                 x-text="row.filters?.tag_mode || 'or'"></button>
                                       </div>
 
                                       <div x-show="shouldShowFieldSearch(field)"
-                                           class="p-2 border-b border-gray-700">
+                                           class="p-2 border-b border-[var(--color-surface-border)]">
                                         <input type="text"
                                                x-model="filterSearch"
-                                               class="w-full rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
+                                               class="w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-panel)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:border-indigo-500 focus:outline-none"
                                                :placeholder="`Search ${field.label.toLowerCase()}...`">
                                       </div>
 
@@ -158,7 +158,7 @@
                                         <template x-for="option in filteredMenuOptions(field, filterSearch)" :key="`${field.key}-${option.value}`">
                                           <button type="button"
                                                   class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                                                  :class="isRowFilterOptionSelected(row, field.key, option.value) ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                                                  :class="isRowFilterOptionSelected(row, field.key, option.value) ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                                                   @click.stop="selectRowFilter(row, field.key, option.value)"
                                                   x-text="option.label"></button>
                                         </template>
@@ -184,11 +184,11 @@
                                 </svg>
                               </button>
                               <template x-if="openMenu === 'status'">
-                                <div class="absolute z-40 mt-2 py-1 w-48 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700">
+                                <div class="absolute z-40 mt-2 py-1 w-48 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-[var(--color-surface-border)]">
                                   <template x-for="option in statusFilterOptions(section)" :key="option.value">
                                     <button type="button"
                                             class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                                            :class="isRowStatusSelected(row, option.value) ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                                            :class="isRowStatusSelected(row, option.value) ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                                             @click.stop="toggleRowStatus(row, option.value)"
                                             x-text="option.label"></button>
                                   </template>
@@ -223,7 +223,7 @@
                                   <template x-for="choice in sortChoices(section, row)" :key="choice.value">
                                     <button type="button"
                                             class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                                            :class="row.sort_by === choice.value ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                                            :class="row.sort_by === choice.value ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                                             @click.stop="toggleRowSort(row, choice.value); openMenu = null"
                                             x-text="choice.label"></button>
                                   </template>
@@ -271,23 +271,23 @@
                           <input type="text"
                                  x-model="row.listQuery"
                                  @input.debounce.250ms="searchLists(section, row)"
-                                 class="w-full rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-panel)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
+                                 class="w-full rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-panel)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:border-indigo-500 focus:outline-none"
                                  placeholder="Search lists and smart lists">
                           <div x-show="row.listResults.length"
                                class="absolute z-20 mt-2 w-full overflow-hidden rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-panel)] shadow-lg">
                             <template x-for="result in row.listResults" :key="result.id">
                               <button type="button"
-                                      class="block w-full border-b border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer last:border-b-0"
+                                      class="block w-full border-b border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer last:border-b-0"
                                       @click="applyListResult(row, result)">
                                 <div class="font-medium" x-text="result.name"></div>
-                                <div class="text-xs text-slate-400" x-text="result.is_smart ? 'Smart list' : 'Manual list'"></div>
+                                <div class="text-xs text-[var(--color-text-muted)]" x-text="result.is_smart ? 'Smart list' : 'Manual list'"></div>
                               </button>
                             </template>
                           </div>
                         </div>
 
-                        <div class="mt-3 rounded-md border border-[var(--color-surface-alt)] bg-[var(--color-panel)] px-3 py-2 text-sm text-slate-200">
-                          <span class="text-slate-400">Selected:</span>
+                        <div class="mt-3 rounded-md border border-[var(--color-surface-alt)] bg-[var(--color-panel)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
+                          <span class="text-[var(--color-text-muted)]">Selected:</span>
                           <span x-text="row.custom_list_name || 'No list selected yet'"></span>
                         </div>
                       </div>
@@ -299,7 +299,7 @@
               <div class="mt-4 flex flex-wrap items-center gap-2">
                 <div class="relative" @click.outside="section.addRowMenuOpen = false">
                   <button type="button"
-                          class="inline-flex items-center rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer"
+                          class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-panel)] px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer"
                           @click="section.addRowMenuOpen = !section.addRowMenuOpen">
                     {% include "app/icons/plus.svg" with classes="mr-2 h-4 w-4" %}
                     Add Row
@@ -308,13 +308,13 @@
                        x-cloak
                        class="absolute left-0 z-20 mt-2 w-52 overflow-hidden rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-panel)] shadow-lg">
                     <button type="button"
-                            class="flex w-full items-center px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer"
+                            class="flex w-full items-center px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] cursor-pointer"
                             @click="addRow(section, 'library_query'); section.addRowMenuOpen = false">
                       {% include "app/icons/plus.svg" with classes="mr-2 h-4 w-4" %}
                       Library Row
                     </button>
                     <button type="button"
-                            class="flex w-full items-center border-t border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer"
+                            class="flex w-full items-center border-t border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] cursor-pointer"
                             @click="addRow(section, 'recently_unrated'); section.addRowMenuOpen = false"
                             :disabled="section.rows.some(row => row.row_type === 'recently_unrated')"
                             :class="{ 'opacity-50 cursor-not-allowed': section.rows.some(row => row.row_type === 'recently_unrated') }">

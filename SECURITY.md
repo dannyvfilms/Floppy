@@ -9,7 +9,7 @@ We take the security of this project seriously.
 
 ## Urgent Inquiries
 
-For urgent but non-sensitive matters, general questions, and immediate assistance requests, please reach out to our community Discord Channel: [https://discord.gg/sqyZUU37ZY](https://discord.gg/sqyZUU37ZY).
+For urgent but non-sensitive matters, general questions, and immediate assistance requests, please reach out to our community Discord Channel: [https://discord.gg/uFgha7Kb6n](https://discord.gg/uFgha7Kb6n).
 
 ## Contributing Security Fixes
 

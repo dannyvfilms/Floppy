@@ -6,7 +6,7 @@
         <div class="flex flex-col space-y-1">
           <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">Music</span>
           <h2 class="text-2xl font-semibold text-[var(--color-text)]">Activity Overview</h2>
-          <span class="text-sm text-gray-500" x-text="selectedRange"></span>
+          <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
         </div>
 
         <div class="space-y-4 sm:space-y-6">
@@ -34,19 +34,19 @@
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for artist in music_consumption.top_artists %}
                   <a href="{{ artist|music_artist_url }}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
-                    <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
+                    <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                     {% if artist.image and artist.image != IMG_NONE %}
                     <img src="{{ IMG_NONE }}" data-src="{{ artist.image }}" alt="{{ artist.name }}" class="lazyload w-10 h-10 rounded-full object-cover bg-[var(--color-surface)]">
                     {% else %}
                     <div class="w-10 h-10 rounded-full bg-[var(--color-surface)] flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
                     </div>
                     {% endif %}
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ artist.name }}</p>
-                      <p class="text-xs text-gray-500">{{ artist.formatted_duration }} · {{ artist.plays }} play{{ artist.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)]">{{ artist.formatted_duration }} · {{ artist.plays }} play{{ artist.plays|pluralize }}</p>
                     </div>
                   </a>
                   {% endfor %}
@@ -65,19 +65,19 @@
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for album in music_consumption.top_albums %}
                   <a href="{{ album|music_album_url }}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
-                    <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
+                    <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                     {% if album.image and album.image != IMG_NONE %}
                     <img src="{{ IMG_NONE }}" data-src="{{ album.image }}" alt="{{ album.title }}" class="lazyload w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
                     {% else %}
                     <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                       </svg>
                     </div>
                     {% endif %}
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ album.title }}</p>
-                      <p class="text-xs text-gray-500">{{ album.formatted_duration }} · {{ album.plays }} play{{ album.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)]">{{ album.formatted_duration }} · {{ album.plays }} play{{ album.plays|pluralize }}</p>
                     </div>
                   </a>
                   {% endfor %}
@@ -100,19 +100,19 @@
                   {% else %}
                   <div class="flex items-center space-x-3">
                   {% endif %}
-                    <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
+                    <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                     {% if track.album_image and track.album_image != IMG_NONE %}
                     <img src="{{ IMG_NONE }}" data-src="{{ track.album_image }}" alt="{{ track.album }}" class="lazyload w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
                     {% else %}
                     <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                       </svg>
                     </div>
                     {% endif %}
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ track.title }}</p>
-                      <p class="text-xs text-gray-500">{{ track.formatted_duration }} · {{ track.plays }} play{{ track.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)]">{{ track.formatted_duration }} · {{ track.plays }} play{{ track.plays|pluralize }}</p>
                     </div>
                   {% if track.album_id %}
                   </a>
@@ -138,13 +138,13 @@
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for decade in music_consumption.top_decades %}
                   <div class="flex items-center space-x-3">
-                    <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
-                    <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center text-indigo-300 text-sm font-semibold">
+                    <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
+                    <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center text-[var(--color-link)] text-sm font-semibold">
                       {{ decade.label|default:""|slice:":-1" }}
                     </div>
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ decade.label|default:"Unknown" }}</p>
-                      <p class="text-xs text-gray-500 truncate">{{ decade.formatted_duration }} · {{ decade.plays }} play{{ decade.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)] truncate">{{ decade.formatted_duration }} · {{ decade.plays }} play{{ decade.plays|pluralize }}</p>
                     </div>
                   </div>
                   {% endfor %}
@@ -163,7 +163,7 @@
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for country in music_consumption.top_countries %}
                   <div class="flex items-center space-x-3">
-                    <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
+                    <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                     <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center text-emerald-300 text-sm font-semibold">
                       {{ country.code|upper }}
                     </div>
@@ -171,7 +171,7 @@
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">
                         {% if country.name %}{{ country.name }}{% else %}{{ country.code|upper }}{% endif %}
                       </p>
-                      <p class="text-xs text-gray-500 truncate">{{ country.formatted_duration }} · {{ country.plays }} play{{ country.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)] truncate">{{ country.formatted_duration }} · {{ country.plays }} play{{ country.plays|pluralize }}</p>
                     </div>
                   </div>
                   {% endfor %}

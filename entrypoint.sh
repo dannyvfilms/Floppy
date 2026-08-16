@@ -52,18 +52,21 @@ if [ -z "$DB_HOST" ]; then
     # Check storage before migrations. Known disposable album credits are
     # repaired; other conflicts require an incident-scoped operator choice.
     if [ -f "$DB_FILE" ]; then
-        echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
-        integrity_status=0
-        integrity_pid=
-        # One bound, used by the command and its operator message, so the two
-        # can never drift apart.
-        integrity_timeout=600
-        trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
-        timeout "$integrity_timeout" python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
-        integrity_pid=$!
-        wait "$integrity_pid" || integrity_status=$?
-        trap - TERM INT
-        if [ "$integrity_status" -ne 0 ]; then
+        while :; do
+            echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
+            integrity_status=0
+            integrity_pid=
+            # One bound, used by the command and its operator message, so the two
+            # can never drift apart.
+            integrity_timeout=600
+            trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
+            timeout "$integrity_timeout" python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
+            integrity_pid=$!
+            wait "$integrity_pid" || integrity_status=$?
+            trap - TERM INT
+            if [ "$integrity_status" -eq 0 ]; then
+                break
+            fi
             case "$integrity_status" in
                 124|143)
                     echo "[entrypoint] SQLite integrity check exceeded its ${integrity_timeout}s timeout; startup is paused before migrations and services. The container will remain unhealthy and idle." >&2
@@ -72,19 +75,29 @@ if [ -z "$DB_HOST" ]; then
                     echo "[entrypoint] SQLite startup is paused because the integrity check failed; migrations and services were not started. The container will remain unhealthy and idle." >&2
                     ;;
             esac
+            decision_file="${DB_FILE}.integrity.decision"
+            # The check above consumes a choice it can act on. Anything left is
+            # stale, and a stale file would defeat the parking guard below and
+            # spin this loop without a bound. Clear it before serving the page,
+            # so only a choice made in this pass can resume startup.
+            rm -f "$decision_file"
             parking_pid=
             trap 'kill "$parking_pid" 2>/dev/null || :; wait "$parking_pid" 2>/dev/null || :; exit 0' TERM INT
             # Show the recovery page. It writes a copy beside the database, then
-            # serves it. If it stops, the container must stay alive and idle.
+            # serves it. If a choice is submitted, the server exits cleanly so
+            # the loop can apply the decision and continue to migrations.
             python -m config.sqlite_recovery_server "$DB_FILE" &
             parking_pid=$!
             wait "$parking_pid" || :
-            while :; do
-                sleep 86400 &
-                parking_pid=$!
-                wait "$parking_pid" || :
-            done
-        fi
+            if [ ! -f "$decision_file" ]; then
+                while :; do
+                    sleep 86400 &
+                    parking_pid=$!
+                    wait "$parking_pid" || :
+                done
+            fi
+            trap - TERM INT
+        done
     fi
 fi
 
@@ -123,10 +136,10 @@ if [ -e "$DATA_DIR" ] && ! timeout 600 chown abc:abc -- "$DATA_DIR"; then
     exit 1
 fi
 
-SECRET_FILE="${DATA_DIR}/secret_key"
-if { [ -e "$SECRET_FILE" ] || [ -L "$SECRET_FILE" ]; } && \
-   ! timeout 600 chown -h abc:abc -- "$SECRET_FILE"; then
-    echo "[entrypoint] Cannot set ownership for generated secret ${SECRET_FILE} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
+generated_secret_file="${DATA_DIR}/secret_key"
+if { [ -e "$generated_secret_file" ] || [ -L "$generated_secret_file" ]; } && \
+   ! timeout 600 chown -h abc:abc -- "$generated_secret_file"; then
+    echo "[entrypoint] Cannot set ownership for generated secret ${generated_secret_file} with PUID=${PUID} and PGID=${PGID}. Fix the mount permissions or the IDs." >&2
     exit 1
 fi
 
@@ -155,10 +168,10 @@ fi
 if [ -e "$LOG_DIR_PATH" ] && ! timeout 600 chown abc:abc -- "$LOG_DIR_PATH"; then
     echo "[entrypoint] WARNING: chown of ${LOG_DIR_PATH} failed or timed out (stalled mount?); continuing" >&2
 fi
-LOG_FILE="${LOG_DIR_PATH}/floppy.log"
-if { [ -e "$LOG_FILE" ] || [ -L "$LOG_FILE" ]; } && \
-   ! timeout 600 chown -h abc:abc -- "$LOG_FILE"; then
-    echo "[entrypoint] WARNING: chown of ${LOG_FILE} failed or timed out (stalled mount?); continuing" >&2
+log_file_path="${LOG_DIR_PATH}/floppy.log"
+if { [ -e "$log_file_path" ] || [ -L "$log_file_path" ]; } && \
+   ! timeout 600 chown -h abc:abc -- "$log_file_path"; then
+    echo "[entrypoint] WARNING: chown of ${log_file_path} failed or timed out (stalled mount?); continuing" >&2
 fi
 
 # Bound recursive ownership fixes for the image-managed service directories: a
@@ -184,6 +197,18 @@ export FLOPPY_CELERY_QUEUES="${FLOPPY_CELERY_QUEUES:-celery}"
 export FLOPPY_CELERY_ROLE="${FLOPPY_CELERY_ROLE:-background}"
 export FLOPPY_START_INTERACTIVE_WORKER="${FLOPPY_START_INTERACTIVE_WORKER:-true}"
 export FLOPPY_START_DISCOVER_WORKER="${FLOPPY_START_DISCOVER_WORKER:-true}"
+
+if [ "$FLOPPY_START_INTERACTIVE_WORKER" = "true" ]; then
+    interactive_topology="on(interactive)"
+else
+    interactive_topology="off(combined)"
+fi
+if [ "$FLOPPY_START_DISCOVER_WORKER" = "true" ]; then
+    discover_topology="on(discover)"
+else
+    discover_topology="off(merged)"
+fi
+echo "[entrypoint] celery workers background=on(${FLOPPY_CELERY_QUEUES}) interactive=${interactive_topology} discover=${discover_topology}" >&2
 
 echo "[entrypoint] Starting services" >&2
 exec supervisord -c /etc/supervisord.conf

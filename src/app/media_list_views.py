@@ -25,6 +25,12 @@ from app.columns import (
     resolve_default_column_config,
     sanitize_column_prefs,
 )
+from app.media_list_filters import (
+    apply_media_list_collection_filter,
+    apply_media_list_progress_filter,
+    apply_media_list_rating_filter,
+    apply_media_list_status_filter,
+)
 from app.models import (
     TV,
     BasicMedia,
@@ -735,43 +741,12 @@ def media_list(request, media_type):
     except (ValueError, TypeError):
         page = 1
 
-    def is_rated(media):
-        aggregated_score = getattr(media, "aggregated_score", None)
-        if aggregated_score is not None:
-            return True
-        return media.score is not None
-
     def apply_rating_filter(media_items, filter_value):
-        if filter_value == "all":
-            return media_items
-        should_be_rated = filter_value == "rated"
-        return [media for media in media_items if is_rated(media) == should_be_rated]
+        return apply_media_list_rating_filter(media_items, filter_value)
 
     def apply_latest_status_filter(media_items, filter_values):
         """Filter against each item's latest aggregated status."""
-        if not filter_values:
-            return media_items
-
-        real_statuses = {
-            value for value in filter_values if value != MEDIA_LIST_NO_STATUS
-        }
-        include_no_status = MEDIA_LIST_NO_STATUS in filter_values
-
-        filtered_items = []
-        for media in media_items:
-            if include_no_status and (
-                getattr(getattr(media, "media", media), "status", None) is None
-            ):
-                filtered_items.append(media)
-                continue
-            if not real_statuses:
-                continue
-            latest_status = getattr(media, "aggregated_status", None) or getattr(
-                media, "status", None
-            )
-            if latest_status in real_statuses:
-                filtered_items.append(media)
-        return filtered_items
+        return apply_media_list_status_filter(media_items, filter_values)
 
     def apply_collection_filter(media_items, filter_value, user, media_type):
         """Filter media items based on collection status.
@@ -779,85 +754,10 @@ def media_list(request, media_type):
         For TV shows, checks both show-level and episode-level collection entries.
         Uses one CollectionEntry query and bulk episode lookup instead of per-item queries.
         """
-        if filter_value == "all":
-            return media_items
-
-        from app.models import CollectionEntry, Item, MediaTypes
-
-        collected_item_ids = frozenset(
-            CollectionEntry.objects.filter(user=user).values_list("item_id", flat=True),
-        )
-
-        tv_anime_types = (MediaTypes.TV.value, MediaTypes.ANIME.value)
-        episode_ids_by_show = {}
-        if media_type in tv_anime_types and media_items:
-            show_keys = {
-                (m.item.media_id, m.item.source)
-                for m in media_items
-                if getattr(m, "item", None)
-            }
-            if show_keys:
-                media_ids = {k[0] for k in show_keys}
-                sources = {k[1] for k in show_keys}
-                episode_rows = Item.objects.filter(
-                    media_type=MediaTypes.EPISODE.value,
-                    media_id__in=media_ids,
-                    source__in=sources,
-                ).values_list("id", "media_id", "source")
-                for eid, mid, src in episode_rows:
-                    key = (mid, src)
-                    if key in show_keys:
-                        episode_ids_by_show.setdefault(key, []).append(eid)
-
-        def show_has_episode_collection(media):
-            key = (media.item.media_id, media.item.source)
-            return any(
-                eid in collected_item_ids for eid in episode_ids_by_show.get(key, ())
-            )
-
-        filtered_items = []
-        for media in media_items:
-            has_collection = media.item_id in collected_item_ids
-            if not has_collection and media_type in tv_anime_types:
-                has_collection = show_has_episode_collection(media)
-
-            if (filter_value == "collected" and has_collection) or (
-                filter_value == "not_collected" and not has_collection
-            ):
-                filtered_items.append(media)
-
-        return filtered_items
-
-    def _is_caught_up_media(media):
-        """Return True when the item's watched progress has reached released progress."""
-        return helpers.is_caught_up_media(media)
+        return apply_media_list_collection_filter(user, media_items, filter_value)
 
     def apply_progress_filter(media_items, filter_value, media_type):
-        if filter_value == "all" or media_type not in progress_media_types:
-            return media_items
-
-        tracked_media_items = _tracked_media_entries(media_items)
-        if tracked_media_items and any(
-            getattr(media, "max_progress", None) is None
-            for media in tracked_media_items
-        ):
-            BasicMedia.objects.annotate_max_progress(tracked_media_items, media_type)
-
-        if filter_value == "caught_up":
-            return [
-                media
-                for media in media_items
-                if getattr(media, "media", media) is not None
-                and _is_caught_up_media(media)
-            ]
-        if filter_value == "not_caught_up":
-            return [
-                media
-                for media in media_items
-                if getattr(media, "media", media) is not None
-                and not _is_caught_up_media(media)
-            ]
-        return media_items
+        return apply_media_list_progress_filter(media_items, filter_value, media_type)
 
     def _release_date_from_value(value):
         if value is None:

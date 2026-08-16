@@ -10,7 +10,7 @@
   <div class="space-y-3">
     {% for studio in studio_footprint.studios %}
       <div class="flex items-center gap-3">
-        <span class="text-gray-500 text-sm w-4 shrink-0">{{ forloop.counter }}</span>
+        <span class="text-[var(--color-text-muted)] text-sm w-4 shrink-0">{{ forloop.counter }}</span>
         <span class="text-sm font-medium text-[var(--color-text)] w-40 truncate shrink-0">{{ studio.name }}</span>
         <div class="flex-1 h-2.5 rounded-full bg-white/[0.07] overflow-hidden">
           <div class="h-full rounded-full bg-indigo-500" style="width: {{ studio.pct }}%"></div>
@@ -20,10 +20,10 @@
         {% else %}
           <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{{ studio.plays }} play{{ studio.plays|pluralize }}</span>
         {% endif %}
-        <span class="text-xs text-gray-500 w-12 text-right shrink-0 tabular-nums">{{ studio.pct }}%</span>
+        <span class="text-xs text-[var(--color-text-muted)] w-12 text-right shrink-0 tabular-nums">{{ studio.pct }}%</span>
       </div>
     {% endfor %}
   </div>
 {% else %}
-  <p class="text-sm text-gray-500 text-center py-8">No studio data available for this range.</p>
+  <p class="text-sm text-[var(--color-text-muted)] text-center py-8">No studio data available for this range.</p>
 {% endif %}

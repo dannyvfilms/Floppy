@@ -31,7 +31,7 @@
         <div class="flex flex-col gap-y-4 md:flex-row md:gap-y-0 items-center justify-between mb-1">
           <div class="text-center md:text-start">
             <div class="hidden flex-wrap items-center justify-start gap-y-1 text-sm font-medium text-[var(--color-text-muted)] md:flex md:text-start">
-              <a href="{{ season_url }}" class="hover:text-indigo-400 transition-colors">{{ season_title }}</a>
+              <a href="{{ season_url }}" class="hover:text-[var(--color-link)] transition-colors">{{ season_title }}</a>
               <span class="mx-2 text-gray-600">•</span>
               <span>{{ episode_title }}</span>
               {% if episode %}
@@ -59,7 +59,7 @@
             </div>
             {# Mobile subtitle #}
             <div class="md:hidden text-sm font-medium text-[var(--color-text-muted)] text-center">
-              <a href="{{ season_url }}" class="hover:text-indigo-400 transition-colors">{{ season_title }}</a>
+              <a href="{{ season_url }}" class="hover:text-[var(--color-link)] transition-colors">{{ season_title }}</a>
               <span class="mx-1 text-gray-600">•</span>
               {{ episode_title }}
               {% if episode and episode.display_episode_number|default:episode.episode_number %}<span class="mx-1 text-gray-600">•</span>Ep {{ episode.display_episode_number|default:episode.episode_number }}{% endif %}
@@ -75,7 +75,7 @@
                  @click.away="open = false"
                  @keydown.escape.window="open = false">
               <button @click="open = !open"
-                      class="flex w-full items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
+                      class="flex w-full items-center justify-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-100 rounded-md transition-colors duration-200 cursor-pointer md:w-auto md:justify-start">
                 <span class="text-sm font-medium">{{ episode.display_episode_number|default:episode_number }}. {{ episode_title }}</span>
                 <div class="w-4 h-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</div>
               </button>
@@ -91,7 +91,7 @@
                   {% for ep in episodes %}
                     <a href="{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=ep.episode_number %}{% else %}{% url 'episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=ep.episode_number %}{% endif %}"
                        hx-boost="true"
-                       class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-gray-700 transition-colors duration-200 cursor-pointer {% if ep.episode_number == episode_number %}bg-[var(--color-surface-muted)]{% endif %}">
+                       class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors duration-200 cursor-pointer {% if ep.episode_number == episode_number %}bg-[var(--color-surface-muted)]{% endif %}">
                       <div class="w-8 h-8 rounded-full flex items-center justify-center bg-indigo-600 text-white shrink-0">
                         {{ ep.display_episode_number|default:ep.episode_number }}
                       </div>
@@ -127,7 +127,7 @@
               {% else %}
                 <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
               {% endif %}
-              <span class="text-[12px] text-gray-500 sm:text-sm">|</span>
+              <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
               <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ episode_metadata.score_count|intcomma }} vote{{ episode_metadata.score_count|pluralize }}</span>
             </div>
           {% endif %}
@@ -161,7 +161,7 @@
             <div class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap">
               {% if episode.item or season_metadata %}
                 <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
-                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                           title="Add to custom lists"
                           hx-get="{% if episode.item %}{% media_view_url 'lists_modal' episode.item %}{% else %}{% media_view_url 'lists_modal' episode %}{% endif %}"
                           hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
@@ -183,7 +183,7 @@
 
               {% if episode.item %}
                 <div x-data="{ historyOpen: false }" class="flex-1 sm:flex-none">
-                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                  <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                           title="View your activity history"
                           hx-get="{% media_view_url 'history_modal' episode.item %}"
                           hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
@@ -234,7 +234,7 @@
             </p>
             <button x-show="isClamped"
                     @click="isExpanded = !isExpanded"
-                    class="text-indigo-400 hover:text-indigo-300 text-sm mt-2 focus:outline-none transition-colors cursor-pointer inline-flex">
+                    class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer inline-flex">
               <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
             </button>
           </div>
@@ -259,7 +259,7 @@
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold">Cast</h2>
         <button type="button"
-                class="flex items-center justify-center p-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-gray-700 transition-colors duration-200 cursor-pointer"
+                class="flex items-center justify-center p-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors duration-200 cursor-pointer"
                 @click="castOpen = !castOpen"
                 :aria-expanded="castOpen.toString()"
                 aria-label="Toggle cast section">
@@ -295,7 +295,7 @@
               <div class="media-card-title-row flex items-center gap-2 min-w-0">
                 {% if person.person_id and person.name %}
                   <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}"
-                     class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+                     class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0"
                      title="{{ person.name }}">
                     {{ person.name }}
                   </a>
@@ -314,7 +314,7 @@
       </div>
       <button x-show="castOpen && canToggleDetailGrid({{ episode_metadata.cast|length }})"
               @click="detailGridExpanded = !detailGridExpanded"
-              class="mt-4 inline-flex text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer md:hidden">
+              class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden">
         <span x-text="detailGridExpanded ? 'Show less' : 'Show more'"></span>
       </button>
     </section>
@@ -328,7 +328,7 @@
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-xl font-bold">Crew</h2>
         <button type="button"
-                class="flex items-center justify-center p-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-gray-700 transition-colors duration-200 cursor-pointer"
+                class="flex items-center justify-center p-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors duration-200 cursor-pointer"
                 @click="crewOpen = !crewOpen"
                 :aria-expanded="crewOpen.toString()"
                 aria-label="Toggle crew section">
@@ -364,7 +364,7 @@
               <div class="media-card-title-row flex items-center gap-2 min-w-0">
                 {% if person.person_id and person.name %}
                   <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}"
-                     class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+                     class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0"
                      title="{{ person.name }}">
                     {{ person.name }}
                   </a>
@@ -383,7 +383,7 @@
       </div>
       <button x-show="crewOpen && canToggleDetailGrid({{ episode_metadata.crew|length }})"
               @click="detailGridExpanded = !detailGridExpanded"
-              class="mt-4 inline-flex text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer md:hidden">
+              class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden">
         <span x-text="detailGridExpanded ? 'Show less' : 'Show more'"></span>
       </button>
     </section>

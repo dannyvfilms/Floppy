@@ -142,7 +142,7 @@ class GrouveeImporter:
         for shelf_name, status in SHELF_STATUS_PRIORITY:
             if shelf_name in shelves:
                 return status
-        return Status.COMPLETED.value
+        return Status.PLANNING.value
 
     def _parse_date(self, date_str):
         """Parse a Grouvee date string, treating the literal "None" as missing."""

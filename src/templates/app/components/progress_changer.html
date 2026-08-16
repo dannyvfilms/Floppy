@@ -2,7 +2,10 @@
 {% watch_operation_id as progress_watch_operation_id %}
 
 <div class="progress-changer flex items-center justify-center space-x-4">
-  <button class="progress-adjust-btn p-1 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:hover:bg-gray-700 disabled:cursor-not-allowed"
+  <button type="button"
+          class="progress-adjust-btn inline-flex w-6 h-6 items-center justify-center bg-[var(--color-surface-dim)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] rounded-md transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] disabled:opacity-50 disabled:hover:bg-[var(--color-surface-dim)] disabled:cursor-not-allowed"
+          aria-label="Decrease progress"
+          title="Decrease progress"
           {% if media.progress == 0 %}disabled{% endif %}
           hx-post="{% url 'progress_edit' media.item.media_type media.id %}"
           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
@@ -17,7 +20,9 @@
     </span>
   </button>
 
-  <div class="text-xs text-indigo-400 font-medium min-w-[4ch] text-center">
+  <div class="text-xs text-[var(--color-info-text)] font-medium min-w-[4ch] text-center"
+       aria-live="polite"
+       aria-atomic="true">
     <span class="progress-value">{{ media.formatted_progress }}</span>
     {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.MOVIE.value and not media.progress_is_percentage %}
       {% if media.max_progress %}
@@ -42,7 +47,10 @@
     {% endif %}
   </div>
 
-  <button class="progress-adjust-btn p-1 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:hover:bg-gray-700 disabled:cursor-not-allowed"
+  <button type="button"
+          class="progress-adjust-btn inline-flex w-6 h-6 items-center justify-center bg-[var(--color-surface-dim)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] rounded-md transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] disabled:opacity-50 disabled:hover:bg-[var(--color-surface-dim)] disabled:cursor-not-allowed"
+          aria-label="Increase progress"
+          title="Increase progress"
           {% if media.progress == media.max_progress %}disabled{% endif %}
           hx-post="{% url 'progress_edit' media.item.media_type media.id %}"
           hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'

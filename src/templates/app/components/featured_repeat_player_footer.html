@@ -1,5 +1,5 @@
 {% load app_tags %}
-<div class="mt-4 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+<div class="mt-4 flex flex-col gap-3 border-t border-[var(--color-surface-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
   <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-1 sm:min-w-0">
     <span class="text-sm text-[var(--color-text-muted)] shrink-0">Known For:</span>
     {% if featured_person and featured_person.known_for_pills %}
@@ -9,13 +9,13 @@
         {% endfor %}
       </div>
     {% else %}
-      <span class="text-sm text-gray-500">No primary roles available.</span>
+      <span class="text-sm text-[var(--color-text-muted)]">No primary roles available.</span>
     {% endif %}
   </div>
 
   {% if featured_person %}
     <a href="{% url 'person_detail' source=featured_person.source person_id=featured_person.person_id name=featured_person.name|slug %}"
-       class="inline-flex items-center gap-1 text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors shrink-0">
+       class="inline-flex items-center gap-1 text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors shrink-0">
       View Profile
       <svg xmlns="http://www.w3.org/2000/svg"
            viewBox="0 0 20 20"

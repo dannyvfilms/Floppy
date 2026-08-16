@@ -473,7 +473,7 @@ class MediaDetailsViewTests(TestCase):
             'class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap"', content
         )
         self.assertIn(
-            'class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"',
+            'class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"',
             content,
         )
         self.assertIn("Add to tracker", content)
@@ -498,15 +498,15 @@ class MediaDetailsViewTests(TestCase):
         self.assertIn("mobilePreviewText", content)
         self.assertIn("fullSynopsisText:", content)
         self.assertIn(
-            'class="inline whitespace-nowrap align-baseline ml-1 text-[13px] font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer"',
+            'class="inline whitespace-nowrap align-baseline ml-1 text-[13px] font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer"',
             content,
         )
         self.assertIn(
-            'class="mt-2 inline-flex text-[13px] font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer sm:hidden"',
+            'class="mt-2 inline-flex text-[13px] font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer sm:hidden"',
             content,
         )
         self.assertIn(
-            'class="hidden text-indigo-400 hover:text-indigo-300 text-sm mt-2 focus:outline-none transition-colors cursor-pointer sm:inline-flex"',
+            'class="hidden text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer sm:inline-flex"',
             content,
         )
         self.assertLess(content.index("tmdb-logo.png"), content.index("Add to tracker"))
@@ -797,7 +797,7 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertIn('class="w-full md:w-3/4"', content)
         self.assertIn(
-            'class="mt-4 inline-flex text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer md:hidden"',
+            'class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden"',
             content,
         )
 
@@ -1535,7 +1535,7 @@ class MediaDetailsViewTests(TestCase):
                             "url": "https://www.themoviedb.org/movie/238",
                             "chip_classes": "border-cyan-400/18 bg-cyan-500/[0.07]",
                             "badge_classes": "border-cyan-400/28 bg-cyan-500/14",
-                            "accent_classes": "text-cyan-100",
+                            "accent_classes": "text-[var(--color-text)]",
                             "logo_src": "/static/img/tmdb-logo.png",
                             "fallback_text": "TMDB",
                         }
@@ -1549,7 +1549,7 @@ class MediaDetailsViewTests(TestCase):
                             "url": "https://letterboxd.com/tmdb/238",
                             "chip_classes": "border-emerald-400/18 bg-emerald-500/[0.07]",
                             "badge_classes": "border-emerald-400/28 bg-emerald-500/14",
-                            "accent_classes": "text-emerald-100",
+                            "accent_classes": "text-[var(--color-text)]",
                             "logo_src": None,
                             "fallback_text": "LB",
                         },
@@ -1558,7 +1558,7 @@ class MediaDetailsViewTests(TestCase):
                             "url": "https://www.imdb.com/title/tt0111161/",
                             "chip_classes": "border-amber-400/18 bg-amber-500/[0.07]",
                             "badge_classes": "border-amber-400/28 bg-amber-500/14",
-                            "accent_classes": "text-amber-100",
+                            "accent_classes": "text-[var(--color-text)]",
                             "logo_src": "/static/img/imdb-logo.png",
                             "fallback_text": "IMDb",
                         },
@@ -1775,12 +1775,12 @@ class MediaDetailsViewTests(TestCase):
                     "entries": [
                         {
                             "label": "Drama",
-                            "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-[var(--color-text)]",
                             "url": "/medialist/movie?genre=Drama",
                         },
                         {
                             "label": "Mystery",
-                            "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-[var(--color-text)]",
                             "url": "/medialist/movie?genre=Mystery",
                         },
                     ],
@@ -1790,7 +1790,7 @@ class MediaDetailsViewTests(TestCase):
                     "entries": [
                         {
                             "label": "Prestige TV",
-                            "chip_classes": "border-slate-400/18 bg-slate-500/[0.07] text-slate-100",
+                            "chip_classes": "border-slate-400/18 bg-slate-500/[0.07] text-[var(--color-text)]",
                         }
                     ],
                 },
@@ -1850,12 +1850,12 @@ class MediaDetailsViewTests(TestCase):
                     "entries": [
                         {
                             "label": "Drama",
-                            "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-[var(--color-text)]",
                             "url": "/medialist/movie?genre=Drama",
                         },
                         {
                             "label": "Mystery",
-                            "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                            "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-[var(--color-text)]",
                             "url": "/medialist/movie?genre=Mystery",
                         },
                     ],

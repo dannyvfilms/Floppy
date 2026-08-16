@@ -39,7 +39,7 @@
                         @mouseleave="tooltipOpen = false"
                         @click="tooltipOpen = !tooltipOpen"
                         @click.outside="tooltipOpen = false"
-                        class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
+                        class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                         type="button"
                         aria-label="Show alternative title">
                   {% include "app/icons/info.svg" with classes="w-4 h-4" %}
@@ -137,7 +137,7 @@
                     {% for tv_season in tv.related.seasons %}
                       <a href="{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_season_details' source=media.source media_id=media.media_id title=media.title|slug season_number=tv_season.season_number %}{% else %}{% url 'season_details' source=media.source media_id=media.media_id title=media.title|slug season_number=tv_season.season_number %}{% endif %}"
                          hx-boost="true"
-                         class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-gray-700 hover:text-gray-100 transition-colors duration-200 cursor-pointer {% if tv_season.season_number == media.season_number %}bg-[var(--color-surface-muted)]{% endif %}">
+                         class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors duration-200 cursor-pointer {% if tv_season.season_number == media.season_number %}bg-[var(--color-surface-muted)]{% endif %}">
                         <div class="w-8 h-8 rounded-full flex items-center justify-center bg-indigo-600 text-white">
                           {{ tv_season.season_number }}
                         </div>
@@ -159,7 +159,7 @@
       {% else %}
         {# Music track navigation - show artist and album links #}
         {% if media_type == MediaTypes.MUSIC.value and music_artist %}
-          <h2 class="text-xl font-semibold cursor-pointer hover:text-indigo-400 transition-colors duration-200 mb-2 text-[var(--color-text-muted)] text-center md:text-start">
+          <h2 class="text-xl font-semibold cursor-pointer hover:text-[var(--color-link)] transition-colors duration-200 mb-2 text-[var(--color-text-muted)] text-center md:text-start">
             <a href="{{ music_artist|music_artist_url }}">{{ music_artist.name }}</a>
           </h2>
         {% endif %}
@@ -174,7 +174,7 @@
                           @mouseleave="tooltipOpen = false"
                           @click="tooltipOpen = !tooltipOpen"
                           @click.outside="tooltipOpen = false"
-                          class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
+                          class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                           type="button"
                           aria-label="Show alternative title">
                     {% include "app/icons/info.svg" with classes="w-4 h-4" %}
@@ -197,7 +197,7 @@
         {% endwith %}
         {% include "app/components/detail_activity_subtitle_slot.html" with media=media media_type=media_type activity_subtitle=activity_subtitle user=user only %}
         {% if media.media_type == MediaTypes.BOOK.value and media.series_name %}
-          <p class="text-indigo-400 font-medium mb-4 text-center md:text-start">
+          <p class="text-[var(--color-link)] font-medium mb-4 text-center md:text-start">
             {{ media.series_name }}
             {% if media.series_position %}<span class="text-[var(--color-text-muted)] ml-1">#{{ media.series_position|floatformat:"-2" }}</span>{% endif %}
           </p>
@@ -205,7 +205,7 @@
 
         {% if media_type == MediaTypes.MUSIC.value and music_album %}
           <p class="text-[var(--color-text-muted)] mb-4 text-center md:text-start">
-            from <a href="{{ music_album|music_album_url }}" class="text-indigo-400 hover:text-indigo-300 transition-colors">{{ music_album.title }}</a>
+            from <a href="{{ music_album|music_album_url }}" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">{{ music_album.title }}</a>
           </p>
         {% endif %}
       {% endif %}
@@ -257,7 +257,7 @@
                 {% else %}
                   <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
                 {% endif %}
-                <span class="text-[12px] text-gray-500 sm:text-sm">|</span>
+                <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
                 <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ media.score_count|intcomma }} vote{{ media.score_count|pluralize }}</span>
               </button>
               {% if provider_series_graph_data %}
@@ -289,7 +289,7 @@
                 {% else %}
                   <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
                 {% endif %}
-                <span class="text-[12px] text-gray-500 sm:text-sm">|</span>
+                <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
                 <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ trakt_score.rating_count|intcomma }} rating{{ trakt_score.rating_count|pluralize }}</span>
               </button>
               {% if media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value or media_type == MediaTypes.ANIME.value %}
@@ -302,7 +302,7 @@
                      x-transition:leave="transition ease-in duration-100"
                      x-transition:leave-start="opacity-100 translate-y-0"
                      x-transition:leave-end="opacity-0 -translate-y-1"
-                     class="absolute left-0 top-full z-20 mt-2 rounded-2xl border border-white/10 bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm"
+                     class="absolute left-0 top-full z-20 mt-2 rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm"
                      style="min-width: max-content;">
                   <div id="trakt-series-graph-{{ display_provider }}-{{ media.media_id }}"
                        hx-get="{% url 'trakt_series_graph_fragment' source=display_provider media_id=media.media_id %}"
@@ -312,7 +312,7 @@
                     <div class="mb-2 flex items-center justify-between gap-3">
                       <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Series Graph</div>
                     </div>
-                    <div class="flex items-center gap-2 py-5 px-1 text-xs text-gray-500">
+                    <div class="flex items-center gap-2 py-5 px-1 text-xs text-[var(--color-text-muted)]">
                       <span class="flex gap-1">
                         <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-500" style="animation-delay:0ms"></span>
                         <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-500" style="animation-delay:150ms"></span>
@@ -395,7 +395,7 @@
                       {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
                     </button>
                   </div>
-                  <div class="absolute left-0 top-full mt-2 w-52 rounded-md border border-gray-700 bg-[var(--color-surface-strong)] py-1 shadow-lg overflow-hidden z-50"
+                  <div class="absolute left-0 top-full mt-2 w-52 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] py-1 shadow-lg overflow-hidden z-50"
                        x-cloak
                        x-show="trackMenuOpen"
                        x-transition:enter="transition ease-out duration-100"
@@ -451,7 +451,7 @@
                    @mouseleave="if (!linksPinned) linksOpen = false"
                    @keydown.escape.window="linksOpen = false; linksPinned = false"
                    @click.outside="linksOpen = false; linksPinned = false">
-                <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                         title="View source and external links"
                         aria-haspopup="true"
                         :aria-expanded="linksOpen.toString()"
@@ -465,9 +465,9 @@
                      x-transition:leave="transition ease-in duration-100"
                      x-transition:leave-start="opacity-100 translate-y-0"
                      x-transition:leave-end="opacity-0 -translate-y-1"
-                     class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
+                     class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
                   {% for detail_link_section in detail_link_sections %}
-                    <div class="{% if not forloop.first %}mt-3 border-t border-white/10 pt-3{% endif %}">
+                    <div class="{% if not forloop.first %}mt-3 border-t border-[var(--color-surface-border)] pt-3{% endif %}">
                       <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{{ detail_link_section.title }}</div>
                       <div class="flex flex-wrap gap-2">
                         {% for detail_link in detail_link_section.entries %}
@@ -511,7 +511,7 @@
                      type="hidden"
                      name="preview_implied_genres_json"
                      value="{{ detail_tag_preview_implied_genres_json|default:'[]'|escape }}">
-              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                       x-ref="manageTagsButton"
                       title="Manage tags"
                       hx-get="{% media_view_url 'tags_modal' media %}"
@@ -529,7 +529,7 @@
                    x-transition:leave="transition ease-in duration-100"
                    x-transition:leave-start="opacity-100 translate-y-0"
                    x-transition:leave-end="opacity-0 -translate-y-1"
-                   class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
+                   class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
                 <div x-ref="tagsPreviewHost">
                   {% include "app/components/detail_tag_preview.html" with preview_id=detail_tag_preview_id detail_tag_sections=detail_tag_sections only %}
                 </div>
@@ -546,7 +546,7 @@
             </div>
 
             <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
-              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+              <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
                       title="Add to custom lists"
                       hx-get="{% media_view_url 'lists_modal' media %}"
                       hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
@@ -564,7 +564,7 @@
               </div>
             </div>
 
-            <a class="inline-flex h-11 w-full flex-1 items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11 sm:flex-none"
+            <a class="inline-flex h-11 w-full flex-1 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11 sm:flex-none"
                title="View your activity history"
                href="{% url 'history' %}?{% if media_type == MediaTypes.SEASON.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}&season_number={{ media.season_number }}{% elif media_type == MediaTypes.TV.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% elif media_type == MediaTypes.PODCAST.value and podcast_show %}media_type={{ MediaTypes.PODCAST.value }}&podcast_show={{ podcast_show.id }}{% else %}media_type={{ media_type }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% endif %}{% if media_type == MediaTypes.GAME.value or media_type == MediaTypes.BOARDGAME.value %}&logging_style=sessions{% endif %}">
               {% include "app/icons/history.svg" with classes="w-4 h-4" %}
@@ -580,7 +580,7 @@
               <input type="hidden" name="library_media_type" value="{% if media_type == MediaTypes.ANIME.value or parent_media_type == MediaTypes.ANIME.value %}anime{% endif %}">
               <button type="submit"
                       title="Sync metadata with provider"
-                      class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 sm:size-11 sm:w-11"
+                      class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 sm:size-11 sm:w-11"
                       :disabled="loading">
                 <div :class="{ 'animate-spin': loading }">
                   {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-4 h-4" %}
@@ -674,7 +674,7 @@
              class="text-[var(--color-text-secondary)] text-pretty sm:hidden">
             <span x-text="mobilePreviewText"></span>
             <button @click="isExpanded = true"
-                    class="inline whitespace-nowrap align-baseline ml-1 text-[13px] font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer">
+                    class="inline whitespace-nowrap align-baseline ml-1 text-[13px] font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer">
               Read more
             </button>
           </p>
@@ -684,7 +684,7 @@
           </p>
           <button x-show="isClamped && isExpanded"
                   @click="isExpanded = false"
-                  class="mt-2 inline-flex text-[13px] font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer sm:hidden">
+                  class="mt-2 inline-flex text-[13px] font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer sm:hidden">
             Show less
           </button>
           <div class="hidden sm:block">
@@ -695,7 +695,7 @@
           </div>
           <button x-show="isClamped"
                   @click="isExpanded = !isExpanded"
-                  class="hidden text-indigo-400 hover:text-indigo-300 text-sm mt-2 focus:outline-none transition-colors cursor-pointer sm:inline-flex">
+                  class="hidden text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer sm:inline-flex">
             <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
           </button>
         </div>

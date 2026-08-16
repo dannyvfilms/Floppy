@@ -1,0 +1,87 @@
+{% comment %}
+Reusable form save bar component.
+Supports clean and dirty states driven by Alpine formDirtyTracker.
+{% endcomment %}
+<div class="preferences-actions" :class="{ 'is-dirty': isDirty }">
+  <div class="flex items-center gap-2.5 min-w-0">
+    <span class="preferences-actions-status-dot"
+          :class="isDirty ? 'is-dirty' : 'is-clean'"
+          aria-hidden="true"></span>
+    <div aria-live="polite" aria-atomic="true" class="min-w-0">
+      <p class="preferences-actions-title" x-text="isDirty ? 'Unsaved changes' : 'All changes saved'">
+        All changes saved
+      </p>
+      <p class="preferences-actions-copy truncate" x-text="isDirty ? 'Save your preferences to keep your changes.' : 'Your preferences are up to date.'">
+        Your preferences are up to date.
+      </p>
+    </div>
+  </div>
+  <div class="flex items-center gap-3 shrink-0">
+    <button type="submit"
+            class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-[var(--color-surface)] transition-colors text-sm cursor-pointer">
+      {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
+      <span>{{ button_label|default:"Save Preferences" }}</span>
+    </button>
+  </div>
+</div>
+
+<script>
+  if (typeof window.formDirtyTracker !== 'function') {
+    window.formDirtyTracker = function formDirtyTracker() {
+      return {
+        isDirty: false,
+        initialState: '',
+        userInteracted: false,
+
+        init() {
+          this.$nextTick(() => {
+            this.initialState = this.serializeForm();
+            this.isDirty = false;
+          });
+          setTimeout(() => {
+            if (!this.userInteracted) {
+              this.initialState = this.serializeForm();
+              this.isDirty = false;
+            }
+          }, 60);
+        },
+
+        serializeForm() {
+          const form = this.$el;
+          if (!form || !(form instanceof HTMLFormElement)) {
+            return '';
+          }
+          const formData = new FormData(form);
+          const entries = [];
+          for (const [key, value] of formData.entries()) {
+            if (key === 'csrfmiddlewaretoken') continue;
+            entries.push([key, typeof value === 'string' ? value : (value.name || '')]);
+          }
+          entries.sort((a, b) => {
+            if (a[0] < b[0]) return -1;
+            if (a[0] > b[0]) return 1;
+            if (a[1] < b[1]) return -1;
+            if (a[1] > b[1]) return 1;
+            return 0;
+          });
+          return JSON.stringify(entries);
+        },
+
+        onFormChange() {
+          this.userInteracted = true;
+          this.$nextTick(() => {
+            this.checkDirty();
+          });
+        },
+
+        checkDirty() {
+          if (!this.initialState) {
+            return;
+          }
+          const current = this.serializeForm();
+          this.isDirty = (current !== this.initialState);
+        }
+      };
+    };
+  }
+</script>

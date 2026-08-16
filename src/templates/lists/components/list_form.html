@@ -122,7 +122,7 @@
                 <div class="flex flex-col sm:flex-row rounded-md overflow-hidden border border-gray-600 bg-[var(--color-panel)]">
                   <span class="px-3 py-2 text-xs sm:text-sm text-[var(--color-text-muted)] border-b sm:border-b-0 sm:border-r border-gray-600 break-all"
                         x-text="listUrlPrefix()"></span>
-                  {{ field|attr:"x-model:slugValue"|attr:"autocapitalize:none"|attr:"spellcheck:false"|attr:"aria-label:Custom URL"|add_class:"flex-1 min-w-0 px-3 py-2 bg-[var(--color-panel)] text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset" }}
+                  {{ field|attr:"x-model:slugValue"|attr:"autocapitalize:none"|attr:"spellcheck:false"|attr:"aria-label:Custom URL"|add_class:"flex-1 min-w-0 px-3 py-2 bg-[var(--color-panel)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset" }}
                 </div>
                 <p class="text-xs text-[var(--color-text-muted)]">{{ field.help_text }} Leave blank to keep the numeric URL.</p>
                 {% if field.errors %}
@@ -140,7 +140,7 @@
           {% elif field.name|slice:':6' == 'smart_' %}
           {% else %}
             <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ field.label }}</label>
-            {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
+            {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
           {% endif %}
         </div>
       {% endfor %}
@@ -161,7 +161,7 @@
                 class="px-4 py-2 rounded-md transition duration-300 bg-red-700 text-white hover:bg-red-800 cursor-pointer">Delete</button>
             {% else %}
               <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
-                class="px-4 py-2 rounded-md transition duration-300 bg-gray-600 text-[var(--color-text-secondary)] cursor-not-allowed" disabled>Delete</button>
+                class="px-4 py-2 rounded-md transition duration-300 bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)] cursor-not-allowed" disabled>Delete</button>
             {% endif %}
           </div>
         </div>

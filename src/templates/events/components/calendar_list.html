@@ -24,7 +24,7 @@
                 <div class="flex items-center">
                   <span class="text-xs text-[var(--color-text-muted)] me-2">{{ release.item.media_type|media_type_readable }}</span>
                   {% if release.readable_content_number %}
-                    <span class="text-xs text-indigo-400">{{ release.readable_content_number }} {{ release|user_event_time:user }}</span>
+                    <span class="text-xs text-[var(--color-link)]">{{ release.readable_content_number }} {{ release|user_event_time:user }}</span>
                   {% endif %}
                 </div>
               </div>

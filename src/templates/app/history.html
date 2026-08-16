@@ -70,7 +70,7 @@
        x-transition
        class="fixed top-24 right-0 left-0 {% block messages_sidebar_offset %}lg:left-64{% endblock messages_sidebar_offset %} z-50 flex justify-center pointer-events-none mb-4">
     <div class="w-full max-w-xl px-4 pointer-events-auto">
-      <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info opacity-0"
+      <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info opacity-0"
            x-init="setTimeout(() => $el.classList.add('opacity-100', 'transform-none'), 10); $el.classList.add('transition-all', 'duration-300', 'ease-out', 'transform', 'translate-y-[-1rem]')">
         {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 animate-pulse" %}
         <p class="text-sm font-medium flex-1">Refreshing history in background...</p>
@@ -102,7 +102,7 @@
             <span>{{ current_year }}</span>
           </a>
         {% else %}
-          <span class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-gray-700 text-gray-500 cursor-not-allowed text-sm">
+          <span class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed text-sm">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
               <path d="m11 17-5-5 5-5"></path>
               <path d="m18 17-5-5 5-5"></path>
@@ -122,7 +122,7 @@
             <span>{{ next_month_name }}</span>
           </a>
         {% else %}
-          <span class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-gray-700 text-gray-500 cursor-not-allowed text-sm">
+          <span class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed text-sm">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
               <path d="m15 18-6-6 6-6"></path>
             </svg>
@@ -182,7 +182,7 @@
           </svg>
         </a>
       {% else %}
-        <span class="p-2 rounded-md bg-gray-700 text-gray-500 cursor-not-allowed">
+        <span class="p-2 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed">
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
                height="24"
@@ -202,7 +202,7 @@
       {% for page_num in pages %}
         {% if page_num %}
           <a href="?{% if active_filters %}{% for key, value in active_filters.items %}{{ key }}={{ value }}{% if not forloop.last %}&{% endif %}{% endfor %}{% if active_filters %}&{% endif %}{% endif %}page={{ page_num }}"
-             class="w-10 h-10 rounded-md {% if current_page == page_num %}bg-indigo-600{% else %}bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)]{% endif %} text-white flex items-center justify-center cursor-pointer">
+             class="w-10 h-10 rounded-md {% if current_page == page_num %}bg-indigo-600 text-white{% else %}bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)] text-[var(--color-text)]{% endif %} flex items-center justify-center cursor-pointer">
             {{ page_num }}
           </a>
         {% else %}
@@ -243,7 +243,7 @@
           </svg>
         </a>
       {% else %}
-        <span class="p-2 rounded-md bg-gray-700 text-gray-500 cursor-not-allowed">
+        <span class="p-2 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed">
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
                height="24"
@@ -334,7 +334,7 @@
             </svg>
           </a>
         {% else %}
-          <span class="p-2 rounded-md bg-gray-700 text-gray-500 cursor-not-allowed">
+          <span class="p-2 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
                  height="24"
@@ -354,7 +354,7 @@
         {% for page_num in pages %}
           {% if page_num %}
             <a href="?{% if active_filters %}{% for key, value in active_filters.items %}{{ key }}={{ value }}{% if not forloop.last %}&{% endif %}{% endfor %}{% if active_filters %}&{% endif %}{% endif %}page={{ page_num }}"
-               class="w-10 h-10 rounded-md {% if current_page == page_num %}bg-indigo-600{% else %}bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)]{% endif %} text-white flex items-center justify-center cursor-pointer">
+               class="w-10 h-10 rounded-md {% if current_page == page_num %}bg-indigo-600 text-white{% else %}bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)] text-[var(--color-text)]{% endif %} flex items-center justify-center cursor-pointer">
               {{ page_num }}
             </a>
           {% else %}
@@ -395,7 +395,7 @@
             </svg>
           </a>
         {% else %}
-          <span class="p-2 rounded-md bg-gray-700 text-gray-500 cursor-not-allowed">
+          <span class="p-2 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
                  height="24"
@@ -675,7 +675,7 @@
                       x-ref="mediaTypeTrigger"
                       @click="openMediaTypeDropdown()"
                       class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer text-left"
-                      :class="selectedMediaTypes.length ? 'text-[var(--color-text-secondary)]' : 'text-gray-500'">
+                      :class="selectedMediaTypes.length ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-muted)]'">
                 <span class="truncate" x-text="selectedMediaTypes.length ? mediaTypeOptions.filter(o => selectedMediaTypes.includes(o.value)).map(o => o.label).join(', ') : 'All types'"></span>
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 text-[var(--color-text-muted)] shrink-0 ml-2"><path d="m6 9 6 6 6-6"></path></svg>
               </button>
@@ -750,7 +750,7 @@
                     @click="openGenreDropdown()"
                     @keydown.escape.window="genreOpen = false"
                     class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer text-left"
-                    :class="selectedGenres.length ? 'text-[var(--color-text-secondary)]' : 'text-gray-500'">
+                    :class="selectedGenres.length ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-muted)]'">
               <span class="truncate" x-text="selectedGenres.length ? selectedGenres.join(', ') : 'All genres'"></span>
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 text-[var(--color-text-muted)] shrink-0 ml-2"><path d="m6 9 6 6 6-6"></path></svg>
             </button>
@@ -770,7 +770,7 @@
                 <input type="text"
                        x-model="genreSearch"
                        placeholder="Filter genres…"
-                       class="w-full px-3 py-1.5 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                       class="w-full px-3 py-1.5 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               </div>
               <div class="overflow-y-auto flex-1 py-1">
                 <template x-if="genresLoading">
@@ -800,7 +800,7 @@
                     @click="openImpliedGenreDropdown()"
                     @keydown.escape.window="impliedGenreOpen = false"
                     class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer text-left"
-                    :class="selectedImpliedGenres.length ? 'text-[var(--color-text-secondary)]' : 'text-gray-500'">
+                    :class="selectedImpliedGenres.length ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-muted)]'">
               <span class="truncate" x-text="selectedImpliedGenres.length ? selectedImpliedGenres.join(', ') : 'All implied genres'"></span>
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 text-[var(--color-text-muted)] shrink-0 ml-2"><path d="m6 9 6 6 6-6"></path></svg>
             </button>
@@ -820,7 +820,7 @@
                 <input type="text"
                        x-model="impliedGenreSearch"
                        placeholder="Filter implied genres…"
-                       class="w-full px-3 py-1.5 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                       class="w-full px-3 py-1.5 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               </div>
               <div class="overflow-y-auto flex-1 py-1">
                 <template x-if="genresLoading">

@@ -44,20 +44,20 @@
         {% if REGISTRATION %}
           {% if IS_FIRST_RUN %}
             No account exists yet.
-            <a class="text-indigo-400 hover:text-indigo-300"
+            <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
                href="{% url 'account_signup' %}">Create your account</a>
           {% else %}
             Need an account?
-            <a class="text-indigo-400 hover:text-indigo-300"
+            <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
                href="{% url 'account_signup' %}">Register now</a>
             <span class="mx-2 text-gray-600">|</span>
-            <a class="text-indigo-400 hover:text-indigo-300"
+            <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
                href="{% url 'password_recover' %}">Forgot Password</a>
           {% endif %}
         {% else %}
           Sign-ups are disabled.
           {% if FORK_OWNER_URL %}
-            <a class="text-indigo-400 hover:text-indigo-300"
+            <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
                href="{{ FORK_OWNER_URL }}"
                rel="noopener"
                target="_blank">Host your own</a>
@@ -65,7 +65,7 @@
             Host your own.
           {% endif %}
           <span class="mx-2 text-gray-600">|</span>
-          <a class="text-indigo-400 hover:text-indigo-300"
+          <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
              href="{% url 'password_recover' %}">Forgot Password</a>
         {% endif %}
       </p>

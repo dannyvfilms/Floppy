@@ -12,7 +12,7 @@
           class="bg-[var(--color-surface-strong)] p-4 pt-3 rounded-lg group relative space-y-1">
         <div class="flex justify-between items-center mb-2">
           {% if total_medias > 1 %}
-            <span class="text-xs px-2 py-1 rounded bg-gray-600 text-[var(--color-text-secondary)]">Instance #{{ entry.media_entry_number }}</span>
+            <span class="text-xs px-2 py-1 rounded bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)]">Instance #{{ entry.media_entry_number }}</span>
           {% endif %}
           <span class="text-sm text-[var(--color-text-muted)]">{{ entry.date|user_datetime_format:user }}</span>
 

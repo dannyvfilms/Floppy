@@ -50,7 +50,7 @@
           {% if is_public_view %}
             <span class="mx-2 text-gray-600">•</span>
             <a href="{% url 'user_profile' custom_list.owner.username %}"
-               class="inline-flex items-center text-[var(--color-text-muted)] transition-colors hover:text-indigo-300">
+               class="inline-flex items-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-link-hover)]">
               {{ custom_list.owner.username }}
             </a>
           {% endif %}
@@ -536,7 +536,7 @@
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
                       class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                      :class="type === 'all' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                      :class="type === 'all' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                       @click="type = 'all'; open = false"
                       type="button">All</button>
               {% for media_type in media_types %}
@@ -545,7 +545,7 @@
                         hx-include="#filter-form"
                         hx-indicator="#loading-indicator"
                         class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                        :class="type === '{{ media_type }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                        :class="type === '{{ media_type }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                         @click="type = '{{ media_type }}'; open = false"
                         type="button">{{ media_type|media_type_readable_plural }}</button>
               {% endfor %}
@@ -582,7 +582,7 @@
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
                       class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                      :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                      :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                       @click="statuses = []"
                       type="button">All</button>
               {% for value, label in status_choices %}
@@ -592,7 +592,7 @@
                           hx-include="#filter-form"
                           hx-indicator="#loading-indicator"
                           class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                          :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                          :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                           @click="toggleStatus('{{ value }}')"
                           type="button">
                     <span>{{ label }}</span>
@@ -622,7 +622,7 @@
                  x-cloak
                  x-show="!(sort === 'custom' && canEdit && isOrderEditing)">
               <button class="flex items-center gap-2 px-2 py-2 transition-colors cursor-pointer"
-                      :class="sort === 'custom' && canEdit ? 'rounded-l-md bg-indigo-600 text-white hover:bg-indigo-700' : 'rounded-md text-gray-200 hover:text-white'"
+                      :class="sort === 'custom' && canEdit ? 'rounded-l-md bg-indigo-600 text-white hover:bg-indigo-700' : 'rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'"
                       @click="sortOpen = !sortOpen; orderOpen = false"
                       type="button">
                 <span class="text-sm" x-text="sortLabels[sort] || sort"></span>
@@ -668,7 +668,7 @@
                         hx-include="#filter-form"
                         hx-indicator="#loading-indicator"
                         class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                        :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                        :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                         @click="setSort('{{ value }}'); sortOpen = false; orderOpen = false"
                         type="button">{{ label }}</button>
               {% endfor %}

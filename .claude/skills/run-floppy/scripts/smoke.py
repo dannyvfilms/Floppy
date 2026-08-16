@@ -51,15 +51,17 @@ DEFAULT_PAGES = [
 ERROR_MARKERS = ("Server Error", "Internal Server Error", "Traceback")
 
 
-def find_chromium() -> str:
-    """Return the preinstalled Chromium path (the version dir is not stable)."""
-    matches = sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome"))
-    if not matches:
-        sys.exit(
-            "No Chromium under /opt/pw-browsers. Do not run `playwright install`; "
-            "set PLAYWRIGHT_BROWSERS_PATH or pass --chromium."
-        )
-    return matches[-1]
+def find_chromium() -> str | None:
+    """Return the preinstalled Chromium path, or None to let Playwright resolve it.
+
+    Some machines ship Chromium under /opt/pw-browsers (version dir and
+    chrome-linux/chrome-linux64 both vary, so glob). Elsewhere Playwright finds
+    its own download in ~/.cache/ms-playwright - passing None uses that. Never
+    run `playwright install`; if neither exists, Playwright's launch error says
+    so and the fix is to point PLAYWRIGHT_BROWSERS_PATH at an existing cache.
+    """
+    matches = sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome"))
+    return matches[-1] if matches else None
 
 
 def parse_args() -> argparse.Namespace:

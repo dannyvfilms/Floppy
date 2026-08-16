@@ -28,14 +28,14 @@
       {% if entry.tracked_item %}
         <a
           href="{{ entry.tracked_item|media_url }}"
-          class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0 block"
+          class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0 block"
           title="{{ entry.title }}">
           {{ entry.title }}
         </a>
       {% else %}
         <a
           href="{% url 'media_details' source=entry.source|default:source media_type=entry.media_type media_id=entry.media_id title=entry.title|slug %}"
-          class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0 block"
+          class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0 block"
           title="{{ entry.title }}">
           {{ entry.title }}
         </a>
@@ -45,7 +45,7 @@
       {% if entry.year %}{{ entry.year }}{% else %}Unknown Year{% endif %}
       {% if entry.media_type %} • {{ entry.media_type|media_type_readable }}{% endif %}
     </p>
-    <p class="media-card-year text-xs text-indigo-400 mt-0.5 line-clamp-2">
+    <p class="media-card-year text-xs text-[var(--color-link)] mt-0.5 line-clamp-2">
       {{ entry.role|default:entry.department|default:entry.credit_type|default:"Credit"|title }}
     </p>
   </div>

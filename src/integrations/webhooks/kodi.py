@@ -50,7 +50,7 @@ class KodiWebhookProcessor(BaseWebhookProcessor):
             return True
         if payload.get("event") == KodiEvent.PLAYBACK_STOP:
             percent = payload.get("progress", {}).get("percent", 0)
-            if percent and percent > PERCENT_COMPLETE_THRESHOLD:
+            if percent and percent >= PERCENT_COMPLETE_THRESHOLD:
                 return True
         return False
 

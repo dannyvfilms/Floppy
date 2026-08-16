@@ -12,7 +12,7 @@
   </div>
   <button x-show="canToggleDetailGrid({{ media.related.seasons|length }})"
           @click="detailGridExpanded = !detailGridExpanded"
-          class="mt-4 inline-flex text-sm font-medium text-indigo-400 hover:text-indigo-300 focus:outline-none transition-colors cursor-pointer md:hidden">
+          class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden">
     <span x-text="detailGridExpanded ? 'Show less' : 'Show more'"></span>
   </button>
 </section>

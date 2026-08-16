@@ -99,7 +99,7 @@
     <div class="media-card-title-row flex items-center gap-2 min-w-0">
       <a href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
          hx-boost="true"
-         class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+         class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0"
          title="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}">
         {{ preferred_entry_title|default:entry.display_title|default:entry.title }}
       </a>
@@ -155,7 +155,7 @@
                   @focus="openTooltip()"
                   @blur="closeTooltip()"
                   @click.prevent.stop="toggleTooltip()"
-                  class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
+                  class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                   type="button"
                   aria-label="Show alternative title">
             {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
@@ -191,26 +191,26 @@
     <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
       {# History-specific info: episode label, play count, or timestamp #}
       {% if history_mode == "release" %}
-        <span class="text-indigo-400 font-medium">Released</span>
+        <span class="text-[var(--color-link)] font-medium">Released</span>
         <span class="ml-1">{{ entry.played_at_local|user_date_format:user }}</span>
       {% else %}
         {% if entry.progress_display and entry.media_type == MediaTypes.GAME.value or entry.progress_display and entry.media_type == MediaTypes.BOARDGAME.value %}
-          <span class="text-indigo-400 font-medium">{{ entry.progress_display }}</span>
+          <span class="text-[var(--color-link)] font-medium">{{ entry.progress_display }}</span>
           <span class="ml-1">{{ entry.date_range_display }}</span>
         {% elif entry.media_type == MediaTypes.MOVIE.value %}
-          <span class="text-indigo-400 font-medium">{{ entry.play_count|default:1 }} play{{ entry.play_count|default:1|pluralize }}</span>
+          <span class="text-[var(--color-link)] font-medium">{{ entry.play_count|default:1 }} play{{ entry.play_count|default:1|pluralize }}</span>
           <span class="ml-1">{{ entry.played_at_local|user_datetime_format:user }}</span>
         {% elif entry.media_type == MediaTypes.MUSIC.value %}
-          <span class="text-indigo-400 font-medium">{{ entry.play_count|default:1 }} play{{ entry.play_count|default:1|pluralize }}</span>
+          <span class="text-[var(--color-link)] font-medium">{{ entry.play_count|default:1 }} play{{ entry.play_count|default:1|pluralize }}</span>
           <span class="ml-1">{{ entry.time_range_display }}</span>
         {% elif entry.media_type == MediaTypes.PODCAST.value %}
-          <span class="text-indigo-400 font-medium">{{ entry.play_count|default:1 }} play{{ entry.play_count|default:1|pluralize }}</span>
+          <span class="text-[var(--color-link)] font-medium">{{ entry.play_count|default:1 }} play{{ entry.play_count|default:1|pluralize }}</span>
           <span class="ml-1">{{ entry.played_at_local|user_datetime_format:user }}</span>
         {% elif entry.episode_label %}
-          <span class="text-indigo-400 font-medium">{{ entry.episode_label }}</span>
+          <span class="text-[var(--color-link)] font-medium">{{ entry.episode_label }}</span>
           <span class="ml-1">{{ entry.played_at_local|user_datetime_format:user }}</span>
         {% elif entry.episode_code %}
-          <span class="text-indigo-400 font-medium">{{ entry.episode_code }}</span>
+          <span class="text-[var(--color-link)] font-medium">{{ entry.episode_code }}</span>
           <span class="ml-1">{{ entry.played_at_local|user_datetime_format:user }}</span>
         {% else %}
           {{ entry.played_at_local|user_datetime_format:user }}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -76,6 +77,17 @@ DOMAIN_TERMS: tuple[DomainTerm, ...] = (
 )
 
 
+def class_name(key: str) -> str:
+    """Return the PascalCase JSON-LD class term for a vocabulary key."""
+    return "".join(part.capitalize() for part in key.split("_"))
+
+
+def property_name(relationship: str) -> str:
+    """Return the camelCase JSON-LD property term for a relationship label."""
+    head, *tail = relationship.split()
+    return head.lower() + "".join(part.capitalize() for part in tail)
+
+
 def validate_terms(terms: tuple[DomainTerm, ...]) -> None:
     """Reject ambiguous terms and unresolved relationships."""
     keys = [term.key.casefold() for term in terms]
@@ -102,6 +114,19 @@ def validate_terms(terms: tuple[DomainTerm, ...]) -> None:
                 msg = f"Relationship target {target!r} does not resolve from {term.key!r}."
                 raise ValueError(msg)
 
+    # The JSON-LD context maps every relationship label to one property IRI, so
+    # a collision across terms would silently collapse two relationships into
+    # one. Check the *projected* property name, not the raw label: "has user"
+    # and "Has  user" are different labels that both render as `hasUser`.
+    properties = [
+        property_name(relationship)
+        for term in terms
+        for relationship, _ in term.relationships
+    ]
+    if len(properties) != len(set(properties)):
+        msg = "Domain relationship labels must render unique property names."
+        raise ValueError(msg)
+
 
 validate_terms(DOMAIN_TERMS)
 
@@ -110,6 +135,10 @@ GENERATED_WARNING = (
     "<!-- GENERATED FILE. DO NOT EDIT. Run "
     "`PYTHONPATH=src uv run --no-sync python -m app.domain_vocabulary` to regenerate. -->"
 )
+
+CONTEXT_PATH = Path(__file__).resolve().parents[1] / "api" / "contracts" / "context.jsonld"
+FLOPPY_NAMESPACE = "https://github.com/dannyvfilms/Floppy/ns#"
+SCHEMA_ORG_NAMESPACE = "https://schema.org/"
 
 
 def render_glossary_rows() -> tuple[dict[str, str], ...]:
@@ -156,19 +185,54 @@ def render_agent_guide() -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_jsonld_context() -> str:
+    """Render the JSON-LD 1.1 context from linked-data fields only.
+
+    Reads ``key``, ``relationships``, and ``schema_org``. Definitions, aliases,
+    and bounded contexts are prose and stay out of the linked-data artifact.
+    """
+    context: dict[str, object] = {
+        "@version": 1.1,
+        "@protected": True,
+        "floppy": FLOPPY_NAMESPACE,
+        "schema": SCHEMA_ORG_NAMESPACE,
+    }
+    for term in DOMAIN_TERMS:
+        # A schema.org mapping makes the class term expand to the interoperable
+        # IRI; otherwise it stays in Floppy's own namespace.
+        context[class_name(term.key)] = (
+            term.schema_org.replace(SCHEMA_ORG_NAMESPACE, "schema:")
+            if term.schema_org
+            else f"floppy:{term.key}"
+        )
+    for term in DOMAIN_TERMS:
+        for relationship, _ in term.relationships:
+            name = property_name(relationship)
+            context[name] = {"@id": f"floppy:{name}", "@type": "@id"}
+
+    return json.dumps({"@context": context}, indent=2, sort_keys=False) + "\n"
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Write the generated guide or check it for drift."""
+    """Write the generated artifacts or check them for drift."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
-    rendered = render_agent_guide().encode("utf-8")
+    artifacts = (
+        (GUIDE_PATH, render_agent_guide().encode("utf-8")),
+        (CONTEXT_PATH, render_jsonld_context().encode("utf-8")),
+    )
 
     if args.check:
-        if not GUIDE_PATH.exists():
-            return 1
-        return int(GUIDE_PATH.read_bytes() != rendered)
+        return int(
+            any(
+                not path.exists() or path.read_bytes() != rendered
+                for path, rendered in artifacts
+            )
+        )
 
-    GUIDE_PATH.write_bytes(rendered)
+    for path, rendered in artifacts:
+        path.write_bytes(rendered)
     return 0
 
 

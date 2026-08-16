@@ -1304,7 +1304,7 @@ def icon(name, is_active, extra_classes="w-5 h-5"):
         content = config.get_svg_icon(name)
     else:
         content = other_icons[name]
-    active_class = "text-indigo-400 " if is_active else ""
+    active_class = "text-[var(--color-link)] " if is_active else ""
 
     svg = base_svg.format(
         content=content,

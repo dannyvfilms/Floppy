@@ -20,7 +20,7 @@
           <h3 class="text-lg font-semibold text-[var(--color-text)] mb-2 line-clamp-2">
             <a href="{{ item|media_url }}"
                hx-boost="true"
-               class="hover:text-indigo-400 transition-colors">{{ resolved_item_title|default:title }}</a>
+               class="hover:text-[var(--color-link)] transition-colors">{{ resolved_item_title|default:title }}</a>
             {% if resolved_alt_title %}
               <span class="inline-flex items-center ml-1 align-middle relative"
                     x-data="{
@@ -73,7 +73,7 @@
                         @focus="openTooltip()"
                         @blur="closeTooltip()"
                         @click.prevent.stop="toggleTooltip()"
-                        class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
+                        class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                         type="button"
                         aria-label="Show alternative title">
                   {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}

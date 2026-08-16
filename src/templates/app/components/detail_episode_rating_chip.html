@@ -28,7 +28,7 @@
                 x-cloak
                 x-show="rating"
                 x-text="formatRating(rating)">{% if ep_score is not None %}{{ ep_score|score_display:user }}{% endif %}</span>
-          <span class="text-[12px] text-gray-500 sm:text-sm"
+          <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm"
                 x-cloak
                 x-show="rating">|</span>
           <span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm"

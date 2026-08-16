@@ -11,7 +11,7 @@
 
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-4">
-        {% include "app/icons/bell.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+        {% include "app/icons/bell.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">Notifications</h2>
       </div>
 
@@ -35,11 +35,11 @@
               <a href="https://github.com/caronc/apprise"
                  target="_blank"
                  rel="noopener noreferrer"
-                 class="text-indigo-400 hover:underline">Apprise</a> is a notification service that supports
+                 class="text-[var(--color-link)] hover:underline">Apprise</a> is a notification service that supports
               <a href="https://github.com/caronc/apprise/wiki"
                  target="_blank"
                  rel="noopener noreferrer"
-                 class="text-indigo-400 hover:underline">many platforms</a> including:
+                 class="text-[var(--color-link)] hover:underline">many platforms</a> including:
             </p>
             <ul class="list-disc pl-5 space-y-1 text-[var(--color-text-muted)]">
               <li>Discord</li>
@@ -72,7 +72,7 @@
               <div>
                 <label for="id_daily_digest_enabled"
                        class="text-sm font-medium text-[var(--color-text-secondary)] flex items-center">
-                  {% include "app/icons/alarm-clock.svg" with classes="w-4 h-4 mr-2 text-indigo-400" %}
+                  {% include "app/icons/alarm-clock.svg" with classes="w-4 h-4 mr-2 text-[var(--color-link)]" %}
                   Enable Daily Digest
                 </label>
                 <p class="text-xs text-[var(--color-text-muted)] mt-1 ml-6">
@@ -94,7 +94,7 @@
               <div>
                 <label for="id_release_notifications_enabled"
                        class="text-sm font-medium text-[var(--color-text-secondary)] flex items-center">
-                  {% include "app/icons/bell-ringing.svg" with classes="w-4 h-4 mr-2 text-indigo-400" %}
+                  {% include "app/icons/bell-ringing.svg" with classes="w-4 h-4 mr-2 text-[var(--color-link)]" %}
                   Receive notifications for recently released media
                 </label>
                 <p class="text-xs text-[var(--color-text-muted)] mt-1 ml-6">Get notified when new episodes, chapters, or other media are released</p>
@@ -115,7 +115,7 @@
               <div>
                 <label for="id_premiere_notifications_enabled"
                        class="text-sm font-medium text-[var(--color-text-secondary)] flex items-center">
-                  {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-2 text-indigo-400" %}
+                  {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-2 text-[var(--color-link)]" %}
                   Enable Premiere Digest
                 </label>
                 <p class="text-xs text-[var(--color-text-muted)] mt-1 ml-6">Receive a weekly digest of new show and season premieres</p>
@@ -152,7 +152,7 @@
     {# Excluded Media Items #}
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-5">
-        {% include "app/icons/funnel.svg" with classes="lucide lucide-user w-6 h-6 text-indigo-400 mr-3" %}
+        {% include "app/icons/funnel.svg" with classes="lucide lucide-user w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">Excluded Media Items</h2>
       </div>
 

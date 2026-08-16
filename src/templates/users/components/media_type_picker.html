@@ -15,7 +15,7 @@ and `user` in context; renders into a form that also submits
     <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" data-sidebar-media-type="{{ media_type }}">
       <div class="flex items-center text-[var(--color-text-muted)]">
         <button type="button"
-                class="sidebar-drag-handle cursor-grab touch-none mr-2 text-gray-500 hover:text-[var(--color-text-secondary)]"
+                class="sidebar-drag-handle cursor-grab touch-none mr-2 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
                 aria-label="Reorder {{ media_type|media_type_readable_plural }}">
           {% include "app/icons/drag-handle.svg" with classes="w-4 h-4" %}
         </button>

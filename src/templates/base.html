@@ -215,7 +215,7 @@
                   <a href="{% url 'home' %}"
                      class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == "/" %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
                     {% if request.path|str_equals:"/" %}
-                      {% include "app/icons/house.svg" with classes="w-5 h-5 text-indigo-400 " %}
+                      {% include "app/icons/house.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
 
                     {% else %}
                       {% include "app/icons/house.svg" with classes="w-5 h-5" %}
@@ -230,7 +230,7 @@
                   <a href="{{ discover_url }}"
                      class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == discover_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
                     {% if request.path|str_equals:discover_url %}
-                      {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-indigo-400 " %}
+                      {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
                     {% else %}
                       {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
                     {% endif %}
@@ -258,7 +258,7 @@
                     <a href="{{ create_entry_url }}"
                        class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == create_entry_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
                       {% if request.path|str_equals:create_entry_url %}
-                        {% include "app/icons/circle-plus.svg" with classes="w-5 h-5 text-indigo-400 " %}
+                        {% include "app/icons/circle-plus.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
 
                       {% else %}
                         {% include "app/icons/circle-plus.svg" with classes="w-5 h-5" %}
@@ -281,7 +281,7 @@
                     <a href="{{ statistics_url }}"
                        class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == statistics_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
                       {% if request.path|str_equals:statistics_url %}
-                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5 text-indigo-400 " %}
+                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
 
                       {% else %}
                         {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5" %}
@@ -296,7 +296,7 @@
                     <a href="{{ lists_url }}"
                        class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == lists_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
                       {% if request.path|str_equals:lists_url %}
-                        {% include "app/icons/folder-plus.svg" with classes="w-5 h-5 text-indigo-400 " %}
+                        {% include "app/icons/folder-plus.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
 
                       {% else %}
                         {% include "app/icons/folder-plus.svg" with classes="w-5 h-5" %}
@@ -311,7 +311,7 @@
                     <a href="{{ calendar_url }}"
                        class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == calendar_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
                       {% if request.path|str_equals:calendar_url %}
-                        {% include "app/icons/calendar.svg" with classes="w-5 h-5 text-indigo-400 " %}
+                        {% include "app/icons/calendar.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
 
                       {% else %}
                         {% include "app/icons/calendar.svg" with classes="w-5 h-5" %}
@@ -326,7 +326,7 @@
                     <a href="{{ tag_index_url }}"
                        class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == tag_index_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
                       {% if request.path|str_equals:tag_index_url %}
-                        {% include "app/icons/tag.svg" with classes="w-5 h-5 text-indigo-400 " %}
+                        {% include "app/icons/tag.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
 
                       {% else %}
                         {% include "app/icons/tag.svg" with classes="w-5 h-5" %}
@@ -358,7 +358,7 @@
                    hx-boost="true"
                    class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
                   {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url %}
-                    {% include "app/icons/settings.svg" with classes="w-5 h-5 text-indigo-400 " %}
+                    {% include "app/icons/settings.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
 
                   {% else %}
                     {% include "app/icons/settings.svg" with classes="w-5 h-5" %}
@@ -429,7 +429,7 @@
                                  hx-target="#search-suggestions"
                                  hx-swap="innerHTML"
                                  hx-include="[name='media_type']"
-                                 class="w-full py-2 pl-10 pr-4 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-l-md focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-inset placeholder-gray-500"
+                                 class="w-full py-2 pl-10 pr-4 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-l-md focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-inset placeholder-[var(--color-text-muted)]"
                                  :class="selectedType.value === 'book' ? 'pr-10' : ''">
                           <button type="submit"
                                   x-ref="searchButton"
@@ -494,7 +494,7 @@
                            x-cloak
                            x-transition
                            class="absolute z-50 mt-2 w-full max-w-2xl">
-                        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info">
+                        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info">
                           {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0" %}
                           <p class="text-sm font-medium flex-1" x-text="barcodeError"></p>
                           <button type="button"
@@ -550,7 +550,7 @@
         <div class="w-full max-w-xl px-4 space-y-2 pointer-events-auto">
           {% for message in messages %}
             {# djlint:off #}
-            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-{{ message.tags }} opacity-0"
+            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-{{ message.tags }} opacity-0"
               x-data="{ 
                   init() { 
                     // Start entrance animation after a tiny delay
@@ -575,7 +575,10 @@
               {% endif %}
 
               <p class="text-sm font-medium flex-1">{{ message }}</p>
-              <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+              <button type="button"
+                      class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1 rounded focus:outline-none focus:ring-2 focus:ring-white/50"
+                      aria-label="Dismiss message"
+                      title="Dismiss message"
                       @click="$el.parentElement.remove()">
                 {% include "app/icons/x.svg" with classes="w-4 h-4" %}
               </button>

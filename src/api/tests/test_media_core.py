@@ -66,6 +66,7 @@ class MediaCoreTests(FloppyApiTestCase):
                     "end_date",
                     "notes",
                     "lists",
+                    "next_episode",
                 },
             )
 
@@ -167,7 +168,7 @@ class MediaCoreTests(FloppyApiTestCase):
             check_media_structure(self, item)
             self.assertNotEqual(item["item"]["media_type"], MediaTypes.MOVIE.value)
 
-    def test_media_list_get_invalid_status_returns_not_found(self):
+    def test_media_list_get_invalid_status_returns_bad_request(self):
         """Media list endpoint should reject unsupported status values."""
         response = self.call_api(
             "get",
@@ -176,9 +177,9 @@ class MediaCoreTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
 
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 400)
 
-    def test_media_list_get_invalid_sort_returns_not_found(self):
+    def test_media_list_get_invalid_sort_returns_bad_request(self):
         """Media list endpoint should reject unsupported sort values."""
         response = self.call_api(
             "get",
@@ -187,7 +188,7 @@ class MediaCoreTests(FloppyApiTestCase):
             headers=self.auth_headers,
         )
 
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 400)
 
     def test_media_type_list_invalid_type_returns_bad_request(self):
         """Media-type list endpoint should reject unsupported media types."""

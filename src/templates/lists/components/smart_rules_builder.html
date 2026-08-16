@@ -130,7 +130,7 @@
                   @click="clearFilters(); selectedTypes = availableMediaTypes.map((type) => type.value); open = false; onRuleChange()"
                   type="button">
             <span>All</span>
-            <span class="ml-auto text-xs text-gray-500" x-show="filterLabel() === 'All'">Active</span>
+            <span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="filterLabel() === 'All'">Active</span>
           </button>
 
           <div class="border-t border-gray-700 my-1"></div>
@@ -313,7 +313,7 @@
             <input type="text"
                    x-model="genreSearch"
                    placeholder="Filter Genre"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -358,7 +358,7 @@
             <input type="text"
                    x-model="impliedGenreSearch"
                    placeholder="Filter Implied Genre"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -446,7 +446,7 @@
                        max="10"
                        step="0.1"
                        placeholder="Min"
-                       class="w-full rounded-md border border-gray-700 bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-secondary)] placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                       class="w-full rounded-md border border-gray-700 bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500"
                        @input.debounce.400ms="onRuleChange()">
                 <input type="number"
                        x-model="rating_max"
@@ -454,7 +454,7 @@
                        max="10"
                        step="0.1"
                        placeholder="Max"
-                       class="w-full rounded-md border border-gray-700 bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-secondary)] placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                       class="w-full rounded-md border border-gray-700 bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500"
                        @input.debounce.400ms="onRuleChange()">
               </div>
             </div>
@@ -604,7 +604,7 @@
             <input type="text"
                    x-model="yearSearch"
                    placeholder="Filter Year"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -698,7 +698,7 @@
             <input type="text"
                    x-model="sourceSearch"
                    placeholder="Filter Source"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -743,7 +743,7 @@
             <input type="text"
                    x-model="languageSearch"
                    placeholder="Filter Language"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -788,7 +788,7 @@
             <input type="text"
                    x-model="countrySearch"
                    placeholder="Filter Country"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -833,7 +833,7 @@
             <input type="text"
                    x-model="platformSearch"
                    placeholder="Filter Platform"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -878,7 +878,7 @@
             <input type="text"
                    x-model="originSearch"
                    placeholder="Filter Origin"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -923,7 +923,7 @@
             <input type="text"
                    x-model="formatSearch"
                    placeholder="Filter Format"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -968,7 +968,7 @@
             <input type="text"
                    x-model="providerSearch"
                    placeholder="Filter Streaming Service"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -1009,7 +1009,7 @@
             </button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Tag</div>
             <button type="button"
-                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-indigo-300 hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
+                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-[var(--color-link)] hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
                     @click.stop="cycleTagMode(); onRuleChange()"
                     x-text="tagMode.toUpperCase()"></button>
           </div>
@@ -1017,7 +1017,7 @@
             <input type="text"
                    x-model="tagSearch"
                    placeholder="Filter Tags"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -1079,7 +1079,7 @@
                 hx-include="#smart-filter-form"
                 hx-indicator="#loading-indicator"
                 class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                 @click="statuses = []; onRuleChange()"
                 type="button">All</button>
         {% for value, label in status_choices %}
@@ -1089,7 +1089,7 @@
                     hx-include="#smart-filter-form"
                     hx-indicator="#loading-indicator"
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                    :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                    :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                     @click="toggleStatus('{{ value }}'); onRuleChange()"
                     type="button">
               <span>{{ label }}</span>
@@ -1116,7 +1116,7 @@
            x-cloak
            x-show="!(sort === 'custom' && canEdit && isOrderEditing)">
         <button class="flex items-center gap-2 px-2 py-2 transition-colors cursor-pointer"
-                :class="sort === 'custom' && canEdit ? 'rounded-l-md bg-indigo-600 text-white hover:bg-indigo-700' : 'rounded-md text-gray-200 hover:text-white'"
+                :class="sort === 'custom' && canEdit ? 'rounded-l-md bg-indigo-600 text-white hover:bg-indigo-700' : 'rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)]'"
                 @click="sortOpen = !sortOpen; orderOpen = false"
                 type="button">
           <span class="text-sm" x-text="sortLabels[sort] || sort"></span>
@@ -1162,7 +1162,7 @@
                   hx-include="#smart-filter-form"
                   hx-indicator="#loading-indicator"
                   class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                  :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                  :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                   @click="setSort('{{ value }}'); sortOpen = false; orderOpen = false"
                   type="button">{{ label }}</button>
         {% endfor %}

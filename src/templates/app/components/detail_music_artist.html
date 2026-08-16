@@ -11,7 +11,7 @@
            src="{{ artist.image }}">
     {% else %}
       <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
-        {% icon 'music' is_active=False extra_classes="w-24 h-24 text-gray-500" %}
+        {% icon 'music' is_active=False extra_classes="w-24 h-24 text-[var(--color-text-muted)]" %}
       </div>
     {% endif %}
   </div>
@@ -56,7 +56,7 @@
               <span class="text-[9px] font-black tracking-[0.12em] text-rose-100">MB</span>
             </span>
             <span class="text-sm font-semibold text-[var(--color-text)]">{{ music_artist_rating.rating|floatformat:1 }}</span>
-            <span class="text-sm text-gray-500">|</span>
+            <span class="text-sm text-[var(--color-text-muted)]">|</span>
             <span class="text-sm text-[var(--color-text-secondary)]">{{ music_artist_rating.rating_count|intcomma }} vote{{ music_artist_rating.rating_count|pluralize }}</span>
           </div>
         {% endif %}
@@ -75,7 +75,7 @@
                 <span class="text-sm font-semibold text-[var(--color-text)] {% if artist_tracker.score is None %}hidden{% endif %}"
                       :class="rating ? '' : 'hidden'"
                       x-text="formatRating(rating)">{% if artist_tracker.score is not None %}{% if user|rating_scale_max == 5 %}{{ artist_tracker.score|score_display:user }}/5{% else %}{{ artist_tracker.score|score_display:user }}{% endif %}{% endif %}</span>
-                <span class="text-sm text-gray-500 {% if artist_tracker.score is None %}hidden{% endif %}"
+                <span class="text-sm text-[var(--color-text-muted)] {% if artist_tracker.score is None %}hidden{% endif %}"
                       :class="rating ? '' : 'hidden'">|</span>
                 <span class="text-sm font-medium text-[var(--color-text-secondary)]"
                       x-text="rating ? 'Edit rating' : 'Add rating'">{% if artist_tracker.score is not None %}Edit rating{% else %}Add rating{% endif %}</span>
@@ -145,7 +145,7 @@
                @mouseleave="if (!linksPinned) linksOpen = false"
                @keydown.escape.window="linksOpen = false; linksPinned = false"
                @click.outside="linksOpen = false; linksPinned = false">
-            <button class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
+            <button class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
                     title="View source and external links"
                     aria-haspopup="true"
                     :aria-expanded="linksOpen.toString()"
@@ -159,9 +159,9 @@
                  x-transition:leave="transition ease-in duration-100"
                  x-transition:leave-start="opacity-100 translate-y-0"
                  x-transition:leave-end="opacity-0 -translate-y-1"
-                 class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
+                 class="absolute left-0 top-full z-20 mt-3 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm">
               {% for detail_link_section in detail_link_sections %}
-                <div class="{% if not forloop.first %}mt-3 border-t border-white/10 pt-3{% endif %}">
+                <div class="{% if not forloop.first %}mt-3 border-t border-[var(--color-surface-border)] pt-3{% endif %}">
                   <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{{ detail_link_section.title }}</div>
                   <div class="flex flex-wrap gap-2">
                     {% for detail_link in detail_link_section.entries %}
@@ -191,7 +191,7 @@
 
         {% for action in detail_secondary_actions %}
           {% if action.kind == "link" %}
-            <a class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
+            <a class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
                title="{{ action.title }}"
                href="{{ action.url }}">
               {% if action.icon == "history" %}
@@ -201,7 +201,7 @@
           {% else %}
             <button type="button"
                     title="{{ action.title }}"
-                    class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-white/10 bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 {% if action.button_classes %}{{ action.button_classes }}{% endif %}"
+                    class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 {% if action.button_classes %}{{ action.button_classes }}{% endif %}"
                     hx-post="{{ action.hx_post }}"
                     hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
                     hx-swap="none"
@@ -231,7 +231,7 @@
              class="text-[var(--color-text-secondary)] text-pretty">{{ media.synopsis|linebreaksbr|safe }}</p>
           <button x-show="isClamped"
                   @click="isExpanded = !isExpanded"
-                  class="text-indigo-400 hover:text-indigo-300 text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
+                  class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
             <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
           </button>
         </div>

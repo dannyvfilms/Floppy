@@ -50,6 +50,10 @@ lint = [
 test = [
     "coverage==7.13.5",
     "fakeredis[lua]==2.35.1",
+    # Expands the committed JSON-LD context in tests. Test-only on purpose: the
+    # Docker build runs `uv sync --no-default-groups`, so this never reaches the
+    # production image and runtime dependencies stay at zero.
+    "pyld==2.0.4",
     "pytest-django==4.12.0",
     "pytest-playwright==0.7.2",
     "tblib==3.2.2",

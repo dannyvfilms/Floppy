@@ -4,6 +4,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import sqlite3
 import stat
 import sys
@@ -28,7 +29,7 @@ _BUSY_HINT = (
 )
 _ALBUM_ARTIST_TABLE = "app_albumartist"
 _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
-_MAX_CONFLICT_SAMPLES = 20
+_MAX_CONFLICT_SAMPLES = 5
 _MAX_AFFECTED_TITLES = 5
 _REPORT_SUFFIX = ".integrity.json"
 _DECISION_SUFFIX = ".integrity.decision"
@@ -362,7 +363,8 @@ def _read_decision(db_path: str, incident: dict, incident_token: str) -> str | N
             "using halt",
         )
         return None
-    if decision.get("token") != incident_token:
+    token = decision.get("token")
+    if token and token != incident_token:
         _log("[entrypoint] The choice on file has an old code; using halt")
         return None
     action = decision.get("action")
@@ -375,21 +377,82 @@ def _selected_action(incident: dict, incident_token: str) -> str:
         return "halt"
 
     action, separator, supplied_token = configured.partition(":")
-    if action not in {"accept", "quarantine"} or not separator:
+    if action not in {"accept", "quarantine"}:
         _log(
             f"[entrypoint] Invalid {_ACTION_ENV}={configured!r}; using halt",
         )
         return "halt"
-    if supplied_token != incident_token:
-        # The operator must supply the one-time incident token, not the
-        # fingerprint; naming the fingerprint alone sends them to the wrong
-        # value and every retry halts again.
+    if separator and supplied_token != incident_token:
+        # The operator supplied a token, but it does not match current incident
         _log(
             f"[entrypoint] {_ACTION_ENV} does not carry the current incident "
             f"token for fingerprint {incident['fingerprint']}; using halt",
         )
         return "halt"
     return action
+
+
+def _prune_recovery_backups(recovery_dir: Path, max_keep: int = 10) -> None:
+    """Retain only the most recent recovery backups to bound disk usage."""
+    try:
+        backups = [
+            path
+            for path in recovery_dir.glob("*.sqlite3")
+            if path.is_file() and not path.is_symlink() and not path.name.startswith(".")
+        ]
+        if len(backups) <= max_keep:
+            return
+        backups.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        for stale in backups[max_keep:]:
+            with suppress(OSError):
+                stale.unlink()
+    except OSError:
+        pass
+
+
+def _check_disk_space(recovery_dir: Path, database_path: Path) -> None:
+    """Verify available space before attempting to stage a backup."""
+    try:
+        free_bytes = shutil.disk_usage(recovery_dir).free
+    except (AttributeError, OSError):
+        return
+    db_size = database_path.stat().st_size
+    if free_bytes < db_size:
+        message = (
+            f"insufficient free disk space in {recovery_dir} "
+            f"({free_bytes} bytes free, {db_size} bytes needed for backup)"
+        )
+        raise OSError(message)
+
+
+def _report_corruption(db_path: str, reason: str) -> None:
+    """Publish the report that makes the recovery page show the damaged card.
+
+    A damaged file cannot be repaired by removing rows, so any choice left on
+    disk is stale. It is removed here; otherwise the entrypoint sees a choice
+    that no code path consumes and never parks.
+    """
+    with suppress(OSError):
+        _decision_path(db_path).unlink()
+    try:
+        _write_incident_report(
+            db_path,
+            {
+                # groups and samples are read without a default, so a report
+                # that omits them is never written and the page never appears.
+                "groups": [],
+                "samples": [],
+                "total_conflicts": 0,
+                "fingerprint": secrets.token_hex(32),
+                "can_quarantine": False,
+                "unsafe_reasons": [f"Physical corruption detected: {reason}"],
+            },
+            status="corrupt",
+        )
+    except (OSError, KeyError, TypeError, ValueError) as error:
+        # The page is a courtesy; the log is the record. Say why it is missing
+        # rather than hiding the reason behind a bare except.
+        _log(f"[entrypoint] Could not publish the damaged-file report: {error}")
 
 
 def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
@@ -414,6 +477,7 @@ def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
             message = "recovery directory is not a safe real directory"
             raise OSError(message)
         os.fchmod(recovery_descriptor, 0o700)
+        _check_disk_space(recovery_dir, database_path)
 
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         final_name = (
@@ -481,6 +545,10 @@ def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
             os.unlink(staging_name, dir_fd=recovery_descriptor)
             os.fsync(recovery_descriptor)
             succeeded = True
+            # Prune after the new copy is in place, never before. Pruning first
+            # would leave max_keep copies and then add one more, so the folder
+            # would settle one above the bound it is meant to hold.
+            _prune_recovery_backups(recovery_dir)
             return recovery_dir / final_name
         finally:
             if destination is not None:
@@ -795,7 +863,16 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
     only_album_artist = {
         group["table"] for group in incident["groups"]
     } == {_ALBUM_ARTIST_TABLE}
-    if action == "quarantine" or only_album_artist:
+    auto_repair_enabled = (
+        os.environ.get("FLOPPY_SQLITE_AUTO_REPAIR", "true").strip().lower()
+        not in {"0", "false", "no", "off"}
+    )
+    should_quarantine = (
+        action == "quarantine"
+        or (auto_repair_enabled and incident["can_quarantine"])
+        or only_album_artist
+    )
+    if should_quarantine:
         if not incident["can_quarantine"]:
             conn.rollback()
             _log(
@@ -818,11 +895,12 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
                     f"{remaining['total_conflicts']} conflict(s) remain after quarantine"
                 )
                 raise sqlite3.IntegrityError(message)
-            resolution = (
-                "automatic-album-artist"
-                if only_album_artist and action != "quarantine"
-                else "quarantine"
-            )
+            if only_album_artist and action != "quarantine" and not auto_repair_enabled:
+                resolution = "automatic-album-artist"
+            elif action == "quarantine":
+                resolution = "quarantine"
+            else:
+                resolution = "auto-repair"
             _write_incident_report(
                 db_path,
                 incident,
@@ -885,10 +963,15 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
                 )
             _log(f"[entrypoint] {message}")
             sys.exit(1)
-        if only_album_artist:
+        if only_album_artist and resolution == "automatic-album-artist":
             _log(
                 f"[entrypoint] Removed {deleted} orphaned album artist credit "
                 f"row(s) after backup to {backup_path}",
+            )
+        elif resolution == "auto-repair":
+            _log(
+                f"[entrypoint] Auto-repaired {deleted} orphaned child row(s); "
+                f"backup: {backup_path}",
             )
         else:
             _log(
@@ -910,7 +993,7 @@ def check_database_integrity(db_path: str) -> None:
     """Check SQLite storage and foreign keys before migrations."""
     conn = None
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=30.0)
         result = conn.execute("PRAGMA quick_check").fetchone()
         status = result[0] if result else None
         if status != "ok":
@@ -919,18 +1002,22 @@ def check_database_integrity(db_path: str) -> None:
                 f"quick_check returned {status!r}",
             )
             _log(_CORRUPTION_HINT)
+            _report_corruption(db_path, f"quick_check returned {status!r}")
             sys.exit(1)
 
         _check_foreign_keys(conn, db_path)
     except sqlite3.DatabaseError as e:
         _log(f"[entrypoint] Database integrity check failed: {e}")
-        hint = (
-            _BUSY_HINT
-            if getattr(e, "sqlite_errorcode", None)
-            in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
-            else _CORRUPTION_HINT
-        )
-        _log(hint)
+        busy = getattr(e, "sqlite_errorcode", None) in {
+            sqlite3.SQLITE_BUSY,
+            sqlite3.SQLITE_LOCKED,
+        }
+        _log(_BUSY_HINT if busy else _CORRUPTION_HINT)
+        if not busy:
+            # A damaged file usually raises here rather than returning a
+            # quick_check string, so the recovery page needs the same report
+            # it gets from the returned-status path.
+            _report_corruption(db_path, str(e))
         sys.exit(1)
     finally:
         if conn is not None:

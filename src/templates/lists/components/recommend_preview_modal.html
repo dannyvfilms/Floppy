@@ -37,15 +37,15 @@
           
           {# Date info #}
           {% if media.details.first_air_date %}
-            <p class="text-gray-500 text-xs">{% if user.is_authenticated %}{{ media.details.first_air_date|user_date_format:user }}{% else %}{{ media.details.first_air_date }}{% endif %}</p>
+            <p class="text-[var(--color-text-muted)] text-xs">{% if user.is_authenticated %}{{ media.details.first_air_date|user_date_format:user }}{% else %}{{ media.details.first_air_date }}{% endif %}</p>
           {% elif media.details.release_date %}
-            <p class="text-gray-500 text-xs">{% if user.is_authenticated %}{{ media.details.release_date|user_date_format:user }}{% else %}{{ media.details.release_date }}{% endif %}</p>
+            <p class="text-[var(--color-text-muted)] text-xs">{% if user.is_authenticated %}{{ media.details.release_date|user_date_format:user }}{% else %}{{ media.details.release_date }}{% endif %}</p>
           {% elif media.first_air_date %}
-            <p class="text-gray-500 text-xs">{% if user.is_authenticated %}{{ media.first_air_date|user_date_format:user }}{% else %}{{ media.first_air_date }}{% endif %}</p>
+            <p class="text-[var(--color-text-muted)] text-xs">{% if user.is_authenticated %}{{ media.first_air_date|user_date_format:user }}{% else %}{{ media.first_air_date }}{% endif %}</p>
           {% elif media.release_date %}
-            <p class="text-gray-500 text-xs">{% if user.is_authenticated %}{{ media.release_date|user_date_format:user }}{% else %}{{ media.release_date }}{% endif %}</p>
+            <p class="text-[var(--color-text-muted)] text-xs">{% if user.is_authenticated %}{{ media.release_date|user_date_format:user }}{% else %}{{ media.release_date }}{% endif %}</p>
           {% elif media.year %}
-            <p class="text-gray-500 text-xs">{{ media.year }}</p>
+            <p class="text-[var(--color-text-muted)] text-xs">{{ media.year }}</p>
           {% endif %}
           
           {# Source score #}
@@ -54,7 +54,7 @@
               {% include "app/icons/star.svg" with classes="w-3.5 h-3.5 mr-1 text-yellow-400 fill-yellow-400" %}
               {% if media.score is not None %}
                 <span class="text-sm font-bold text-[var(--color-text)]">{{ media.score }}</span><span class="text-[var(--color-text-muted)] ml-0.5 text-xs">/10</span>
-                <span class="text-xs text-gray-500 ml-1.5">({{ media.score_count|intcomma }})</span>
+                <span class="text-xs text-[var(--color-text-muted)] ml-1.5">({{ media.score_count|intcomma }})</span>
               {% else %}
                 <span class="text-sm text-[var(--color-text-muted)]">-</span>
               {% endif %}
@@ -83,7 +83,7 @@
                class="text-[var(--color-text-secondary)] text-sm text-pretty leading-relaxed">{{ media.synopsis|linebreaksbr|safe }}</p>
             <button x-show="isClamped"
                     @click="isExpanded = !isExpanded"
-                    class="text-indigo-400 hover:text-indigo-300 text-xs mt-1 focus:outline-none transition-colors cursor-pointer">
+                    class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-xs mt-1 focus:outline-none transition-colors cursor-pointer">
               <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
             </button>
           </div>
@@ -97,56 +97,56 @@
           <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
             {% if media.details.status %}
               <div>
-                <span class="text-gray-500">Status:</span>
+                <span class="text-[var(--color-text-muted)]">Status:</span>
                 <span class="text-[var(--color-text-secondary)] ml-1">{{ media.details.status }}</span>
               </div>
             {% endif %}
             {% if media.details.format %}
               <div>
-                <span class="text-gray-500">Format:</span>
+                <span class="text-[var(--color-text-muted)]">Format:</span>
                 <span class="text-[var(--color-text-secondary)] ml-1">{{ media.details.format }}</span>
               </div>
             {% endif %}
             {% if media.details.episodes %}
               <div>
-                <span class="text-gray-500">Episodes:</span>
+                <span class="text-[var(--color-text-muted)]">Episodes:</span>
                 <span class="text-[var(--color-text-secondary)] ml-1">{{ media.details.episodes }}</span>
               </div>
             {% endif %}
             {% if media.details.seasons %}
               <div>
-                <span class="text-gray-500">Seasons:</span>
+                <span class="text-[var(--color-text-muted)]">Seasons:</span>
                 <span class="text-[var(--color-text-secondary)] ml-1">{{ media.details.seasons }}</span>
               </div>
             {% endif %}
             {% if media.details.runtime %}
               <div>
-                <span class="text-gray-500">Runtime:</span>
+                <span class="text-[var(--color-text-muted)]">Runtime:</span>
                 <span class="text-[var(--color-text-secondary)] ml-1">{{ media.details.runtime }}</span>
               </div>
             {% endif %}
             {% if media.details.chapters %}
               <div>
-                <span class="text-gray-500">Chapters:</span>
+                <span class="text-[var(--color-text-muted)]">Chapters:</span>
                 <span class="text-[var(--color-text-secondary)] ml-1">{{ media.details.chapters }}</span>
               </div>
             {% endif %}
             {% if media.details.volumes %}
               <div>
-                <span class="text-gray-500">Volumes:</span>
+                <span class="text-[var(--color-text-muted)]">Volumes:</span>
                 <span class="text-[var(--color-text-secondary)] ml-1">{{ media.details.volumes }}</span>
               </div>
             {% endif %}
             {% if media.details.pages %}
               <div>
-                <span class="text-gray-500">Pages:</span>
+                <span class="text-[var(--color-text-muted)]">Pages:</span>
                 <span class="text-[var(--color-text-secondary)] ml-1">{{ media.details.pages }}</span>
               </div>
             {% endif %}
           </div>
           {% if media.details.studios %}
             <div class="mt-1.5 text-xs">
-              <span class="text-gray-500">Studio:</span>
+              <span class="text-[var(--color-text-muted)]">Studio:</span>
               <span class="text-[var(--color-text-secondary)] ml-1">
                 {% for studio in media.details.studios %}{{ studio }}{% if not forloop.last %}, {% endif %}{% endfor %}
               </span>
@@ -157,7 +157,7 @@
 
       {# Status messages #}
       {% if already_in_list %}
-        <div class="mt-4 px-3 py-2.5 bg-gray-600/30 text-[var(--color-text-muted)] rounded-lg text-center">
+        <div class="mt-4 px-3 py-2.5 bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] rounded-lg text-center">
           <p class="font-medium text-sm">Already in this list</p>
         </div>
       {% elif already_recommended %}
@@ -180,15 +180,15 @@
             <div class="mb-3">
               <label class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">Your name (optional)</label>
               <input type="text" name="recommender_name" placeholder="Anonymous" 
-                     class="w-full p-2.5 bg-[var(--color-surface-strong)] rounded-lg text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-500">
-              <p class="text-xs text-gray-500 mt-1">Leave blank to recommend anonymously</p>
+                     class="w-full p-2.5 bg-[var(--color-surface-strong)] rounded-lg text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-[var(--color-text-muted)]">
+              <p class="text-xs text-[var(--color-text-muted)] mt-1">Leave blank to recommend anonymously</p>
             </div>
           {% endif %}
 
           <div class="mb-3">
             <label class="block text-xs font-medium text-[var(--color-text-secondary)] mb-1.5">Note (optional)</label>
             <textarea name="note" rows="2" placeholder="Why do you recommend this?" 
-                      class="w-full p-2.5 bg-[var(--color-surface-strong)] rounded-lg text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-500 resize-none"></textarea>
+                      class="w-full p-2.5 bg-[var(--color-surface-strong)] rounded-lg text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-[var(--color-text-muted)] resize-none"></textarea>
           </div>
 
           <div class="flex gap-2">

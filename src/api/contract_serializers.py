@@ -85,6 +85,14 @@ class MediaUpdateRequestSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
+class NextEpisodeSerializer(serializers.Serializer):
+    """The next released, unwatched TV-like episode."""
+
+    season_number = serializers.IntegerField(allow_null=True)
+    episode_number = serializers.IntegerField()
+    air_date = serializers.DateTimeField(allow_null=True)
+
+
 class TrackedMediaResponseSerializer(serializers.Serializer):
     """Exact MediaSerializer representation returned after tracking."""
 
@@ -105,6 +113,7 @@ class TrackedMediaResponseSerializer(serializers.Serializer):
     end_date = serializers.DateTimeField(allow_null=True)
     notes = serializers.CharField(allow_blank=True, allow_null=True)
     lists = serializers.ListField(child=serializers.DictField())
+    next_episode = NextEpisodeSerializer(allow_null=True)
 
 
 class TrackedMediaEnvelopeSerializer(serializers.Serializer):

@@ -54,15 +54,15 @@
       renderer.code = (code) =>
         `<pre class="bg-[#1f2328] text-gray-200 text-xs rounded-md p-3 mb-2 overflow-x-auto"><code>${escapeHtml(code)}</code></pre>`;
       renderer.codespan = (code) =>
-        `<code class="bg-[#1f2328] text-indigo-300 text-xs rounded px-1 py-0.5">${escapeHtml(code)}</code>`;
-      renderer.hr = () => '<hr class="border-gray-700 my-3" />';
+        `<code class="bg-[var(--color-surface-dim)] text-[var(--color-text)] text-xs rounded px-1 py-0.5">${escapeHtml(code)}</code>`;
+      renderer.hr = () => '<hr class="border-[var(--color-surface-border)] my-3" />';
       renderer.link = (href, title, text) => {
         const safeHref = sanitizeLink(href);
         if (!safeHref) {
           return text;
         }
         const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-        return `<a class="text-indigo-300 hover:text-indigo-200 underline" href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
+        return `<a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline" href="${escapeHtml(safeHref)}" target="_blank" rel="noopener noreferrer"${titleAttr}>${text}</a>`;
       };
       renderer.image = (_href, _title, text) =>
         `<span class="text-gray-400">[image${text ? `: ${escapeHtml(text)}` : ""}]</span>`;

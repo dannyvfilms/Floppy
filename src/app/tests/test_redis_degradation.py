@@ -9,7 +9,7 @@ control flow rather than caching resolve it deliberately.
 from unittest import mock
 
 import redis
-from django.test import SimpleTestCase, TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase
 
 from app import backfill_queue, interactive_requests, tasks_providers
 from app.interactive_requests import interactive_request_active
@@ -18,6 +18,53 @@ from app.models import Item, MediaTypes, Sources
 
 class InteractiveMarkerTests(SimpleTestCase):
     """The marker that background tasks yield to."""
+
+    def setUp(self):
+        """Build requests without requiring the full middleware stack."""
+        self.request_factory = RequestFactory()
+
+    def test_probe_paths_do_not_count_as_interactive_requests(self):
+        """Health and liveness probes must not defer maintenance forever."""
+        for path in ("/health/", "/health/full/", "/ping/"):
+            for method in ("get", "head"):
+                with self.subTest(path=path, method=method):
+                    request = getattr(self.request_factory, method)(
+                        path,
+                        HTTP_ACCEPT="*/*",
+                    )
+                    self.assertFalse(
+                        interactive_requests.should_mark_interactive_request(request),
+                    )
+
+    def test_api_requests_do_not_count_as_interactive_requests(self):
+        """Machine API traffic is separate from browser activity."""
+        request = self.request_factory.get(
+            "/api/v1/history/",
+            HTTP_ACCEPT="*/*",
+        )
+
+        self.assertFalse(
+            interactive_requests.should_mark_interactive_request(request),
+        )
+
+    def test_html_and_htmx_requests_count_as_interactive_requests(self):
+        """Real browser navigation and htmx requests still defer maintenance."""
+        html_request = self.request_factory.get(
+            "/history/",
+            HTTP_ACCEPT="text/html",
+        )
+        htmx_request = self.request_factory.get(
+            "/history/fragment/",
+            HTTP_ACCEPT="*/*",
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertTrue(
+            interactive_requests.should_mark_interactive_request(html_request),
+        )
+        self.assertTrue(
+            interactive_requests.should_mark_interactive_request(htmx_request),
+        )
 
     def test_unavailable_cache_reports_no_interactive_request(self):
         """True would defer every background task for the whole outage."""

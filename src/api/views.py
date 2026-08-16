@@ -19,6 +19,12 @@ from rest_framework.response import Response
 
 from app.db_retry import run_retryable_db_operation
 from app.forms import ManualItemForm, get_form_class
+from app.media_list_filters import (
+    MediaListFilterError,
+    get_media_list_entries,
+    get_next_episode_map,
+    parse_media_list_filters,
+)
 from app.models import BasicMedia, Item, MediaTypes, Sources
 from app.providers import services, tmdb
 from app.services import metadata_resolution
@@ -61,22 +67,23 @@ from .helpers import (
     build_lists_by_item_id,
     check_source_type,
     check_valid_type,
-    fetch_results_all_types,
-    fetch_results_for_type,
     get_item_lists,
     get_media_status,
     get_sorts,
     paginate_data,
-    parse_excluded_items,
     parse_limit_offset,
     parse_sort_filter,
-    parse_status_param,
     resolve_calendar_date_range,
     resolve_item_queryset,  # FORK: bucket-aware Item resolution
     try_parse_date,
     validate_body,
 )
-from .schema import MEDIA_TYPE_COMPLETE_PARAM, MEDIA_TYPE_PARAM
+from .schema import (
+    MEDIA_LIST_FILTER_PARAMS,
+    MEDIA_LIST_ROOT_PARAMS,
+    MEDIA_TYPE_COMPLETE_PARAM,
+    MEDIA_TYPE_PARAM,
+)
 from .serializers import (
     ChangesHistoryEntrySerializer,
     CompleteEpisodeSerializer,
@@ -87,6 +94,7 @@ from .serializers import (
     InfoSerializer,
     MediaSerializer,
     TimelineItemSerializer,
+    UntrackedMediaSerializer,
     serialize_data,
 )
 
@@ -774,163 +782,78 @@ class ListItemView(drf_views.APIView):
 
 
 # /api/v1/media/
+def _media_list_response(request, media_type=None):
+    """Build a filtered and serialized media-list response."""
+    limit, offset, error_response = parse_limit_offset(request)
+    if error_response:
+        return error_response
+
+    if media_type is not None and not check_valid_type(media_type, complete=True):
+        return Response(
+            {"detail": "Unsupported media type."},
+            status=HTTP.BAD_REQUEST,
+        )
+
+    try:
+        filters = parse_media_list_filters(request)
+        entries = get_media_list_entries(request.user, media_type, filters)
+    except MediaListFilterError as error:
+        return Response(
+            {"detail": f"Invalid {error.parameter}: {error}"},
+            status=HTTP.BAD_REQUEST,
+        )
+
+    paginated_data = paginate_data(request, entries, limit, offset)
+    page_entries = paginated_data["results"]
+    lists_by_item_id = build_lists_by_item_id(request.user, page_entries)
+    next_episode_by_item_id = get_next_episode_map(page_entries)
+    serializer_context = {
+        "request": request,
+        "lists_by_item_id": lists_by_item_id,
+        "next_episode_by_item_id": next_episode_by_item_id,
+    }
+    paginated_data["results"] = [
+        (
+            MediaSerializer(entry.media, context=serializer_context).data
+            if entry.media is not None
+            else UntrackedMediaSerializer(entry.item, context=serializer_context).data
+        )
+        for entry in page_entries
+    ]
+    return Response(paginated_data, status=HTTP.OK)
+
+
 class MediaListView(drf_views.APIView):
-    """List media view."""
+    """List media with the shared web/API filter contract."""
 
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
+        parameters=MEDIA_LIST_ROOT_PARAMS,
         operation_id="listTrackedMedia",
         responses={200: TrackedMediaEnvelopeSerializer},
     )
     def get(self, request):
-        """Retrieve the list of media for the authenticated user."""
-        # TODO: check progress sort might not be working
-        user = request.user
-        media_type = request.GET.get("media_type")
-        status = request.GET.get("status", "")
-        search = request.GET.get("search", "")
-        sort_filter = request.GET.get("sort", "")
-        exclude = parse_excluded_items(request)
-
-        limit, offset, err = parse_limit_offset(request)
-        if err:
-            return err
-
-        status = parse_status_param(status)
-        if status is None:
-            return Response(
-                {"detail": "Invalid status"},
-                status=HTTP.NOT_FOUND,
-            )
-
-        sort, sort_order = parse_sort_filter(sort_filter)
-
-        if media_type:
-            if not check_valid_type(media_type, complete=True):
-                return Response(
-                    {"detail": "Unsupported media type."},
-                    status=HTTP.BAD_REQUEST,
-                )
-            results, has_error = fetch_results_for_type(
-                user,
-                media_type,
-                status,
-                sort,
-                search,
-            )
-        else:
-            # Exclude EPISODES and SEASONS from results by default
-            # to declutter the results
-            # TODO: Add an option to return those too? (seasons=true&episodes=false)
-            results, has_error = fetch_results_all_types(
-                user,
-                status,
-                sort,
-                search,
-                exclude,
-            )
-
-        if has_error:
-            return Response(
-                {"detail": "Invalid sorting"},
-                status=HTTP.NOT_FOUND,
-            )
-
-        if isinstance(results, Response):
-            return results
-
-        if sort_order == "desc":
-            results.reverse()
-
-        paginated_data = paginate_data(request, results, limit, offset)
-        # TODO: see if this can be optimized with a single query for all medias instead of one per episode
-        # TODO: see if lists infos can be saved in the `results` object to avoid using `context` to pass additional parameters
-        lists_by_item_id = build_lists_by_item_id(user, paginated_data["results"])
-        serialized_data = serialize_data(
-            paginated_data["results"],
-            context={
-                "request": request,
-                "lists_by_item_id": lists_by_item_id,
-            },
-            many=True,
-            homogeneous=False,
-        )
-        paginated_data["results"] = serialized_data
-        return Response(paginated_data, status=HTTP.OK)
+        """Retrieve the filtered media list for the authenticated user."""
+        return _media_list_response(request, request.query_params.get("media_type"))
 
 
 # /api/v1/media/[media_type]/
 class MediaTypeListView(drf_views.APIView):
-    """List media by type view."""
+    """List media by type with the shared web/API filter contract."""
 
     serializer_class = MediaSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        parameters=[MEDIA_TYPE_COMPLETE_PARAM],
+        parameters=[MEDIA_TYPE_COMPLETE_PARAM, *MEDIA_LIST_FILTER_PARAMS],
         operation_id="listTrackedMediaByType",
         responses={200: TrackedMediaEnvelopeSerializer},
     )
     def get(self, request, media_type):
-        """Retrieve the list of media of a specific media type."""
-        user = request.user
-        status = request.GET.get("status", "")
-        search = request.GET.get("search", "")
-        sort_filter = request.GET.get("sort", "")
-        limit, offset, err = parse_limit_offset(request)
-        if err:
-            return err
-
-        status = parse_status_param(status)
-        if status is None:
-            return Response(
-                {"detail": "Invalid status"},
-                status=HTTP.NOT_FOUND,
-            )
-
-        sort, sort_order = parse_sort_filter(sort_filter)
-
-        if not check_valid_type(media_type, complete=True):
-            return Response(
-                {"detail": "Unsupported media type."},
-                status=HTTP.BAD_REQUEST,
-            )
-        results, has_error = fetch_results_for_type(
-            user,
-            media_type,
-            status,
-            sort,
-            search,
-        )
-
-        if has_error:
-            return Response(
-                {"detail": "Invalid sorting"},
-                status=HTTP.NOT_FOUND,
-            )
-
-        if isinstance(results, Response):
-            return results
-
-        if sort_order == "desc":
-            results.reverse()
-
-        paginated_data = paginate_data(request, results, limit, offset)
-        # TODO: see if this can be optimized with a single query for all medias instead of one per episode
-        # TODO: see if lists infos can be saved in the `results` object to avoid using `context` to pass additional parameters
-        lists_by_item_id = build_lists_by_item_id(user, paginated_data["results"])
-        serialized_data = serialize_data(
-            paginated_data["results"],
-            context={
-                "request": request,
-                "lists_by_item_id": lists_by_item_id,
-            },
-            many=True,
-        )
-        paginated_data["results"] = serialized_data
-        return Response(paginated_data, status=HTTP.OK)
+        """Retrieve the filtered media list of a specific media type."""
+        return _media_list_response(request, media_type)
 
     @extend_schema(
         parameters=[MEDIA_TYPE_COMPLETE_PARAM],

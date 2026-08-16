@@ -27,6 +27,21 @@ RATING_PERCENTAGE_SCALE_MAX = 100
 LIKELY_IMDB_NUMERIC_ID_THRESHOLD = 3_000_000
 
 
+def extract_plex_webhook_usernames(payload):
+    """Return normalized Plex identities present in a webhook payload."""
+    account = payload.get("Account") or {}
+    values = [
+        account.get("title") if isinstance(account, dict) else None,
+        payload.get("user"),
+        payload.get("owner"),
+    ]
+    return {
+        value.strip().casefold()
+        for value in values
+        if isinstance(value, str) and value.strip()
+    }
+
+
 class _TasksProxy:
     """Lazily import integrations.tasks to avoid circular imports."""
 
@@ -47,8 +62,27 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         "Track": MediaTypes.MUSIC.value,
     }
 
-    def process_payload(self, payload, user):
+    def process_payload(
+        self,
+        payload,
+        user,
+        *,
+        source_account=None,
+        source_username=None,
+        source_libraries=None,
+    ):
         """Process the incoming Plex webhook payload."""
+        self._source_plex_account = source_account
+        self._source_plex_usernames = (
+            {
+                username.strip().casefold()
+                for username in source_username.split(",")
+                if username.strip()
+            }
+            if source_username is not None
+            else None
+        )
+        self._source_plex_libraries = source_libraries
         event_type = payload.get("event")
         logger.info("Received Plex webhook event: %s", event_type)
         logger.debug(
@@ -61,7 +95,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             logger.debug("Ignoring Plex webhook event type: %s", event_type)
             return None
 
-        payload_user = payload["Account"]["title"].strip().lower()
+        payload_user = (
+            ((payload.get("Account") or {}).get("title") or "").strip().casefold()
+        )
         rejection_reason = self._get_user_rejection_reason(payload_user, payload, user)
         if rejection_reason is not None:
             metadata = payload.get("Metadata", {}) or {}
@@ -694,7 +730,11 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
     def _resolve_plex_server(self, user, payload):
         """Return (plex_account, server_uri) for API callbacks, or (None, None)."""
-        plex_account = getattr(user, "plex_account", None)
+        plex_account = getattr(self, "_source_plex_account", None) or getattr(
+            user,
+            "plex_account",
+            None,
+        )
         if not plex_account or not plex_account.plex_token:
             logger.debug("No Plex account found for API callback")
             return None, None
@@ -836,30 +876,45 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         return self._get_user_rejection_reason(payload_user, payload, user) is None
 
     def _get_user_rejection_reason(self, payload_user, payload, user):
-        stored_usernames = {
-            u.strip().lower()
-            for u in (user.plex_usernames or "").split(",")
-            if u.strip()
-        }
-        plex_account = getattr(user, "plex_account", None)
-        plex_username = str(getattr(plex_account, "plex_username", "") or "").strip()
-        if plex_username:
-            stored_usernames.add(plex_username.lower())
+        source_usernames = getattr(self, "_source_plex_usernames", None)
+        if source_usernames is not None:
+            stored_usernames = source_usernames
+            plex_account = getattr(self, "_source_plex_account", None)
+        else:
+            stored_usernames = {
+                u.strip().casefold()
+                for u in (user.plex_usernames or "").split(",")
+                if u.strip()
+            }
+            plex_account = getattr(user, "plex_account", None)
+            plex_username = str(
+                getattr(plex_account, "plex_username", "") or ""
+            ).strip()
+            if plex_username:
+                stored_usernames.add(plex_username.casefold())
 
-        payload_usernames = {
-            candidate
-            for candidate in [
-                payload_user,
-                self._extract_payload_username(payload),
-            ]
-            if candidate
-        }
+        payload_usernames = extract_plex_webhook_usernames(payload)
+        if payload_user:
+            payload_usernames.add(payload_user)
         logger.debug(
             "Checking Plex webhook payload user against configured usernames",
         )
 
         if stored_usernames and payload_usernames.intersection(stored_usernames):
             return self._get_library_rejection_reason(payload, user)
+
+        if source_usernames is not None:
+            configured_usernames = (
+                sorted(stored_usernames) if stored_usernames else ["<none>"]
+            )
+            payload_username_values = (
+                sorted(payload_usernames) if payload_usernames else ["<none>"]
+            )
+            return (
+                "payload user did not match the shared Plex identities "
+                f"(payload_usernames={payload_username_values}, "
+                f"configured_usernames={configured_usernames})"
+            )
 
         payload_account_id = self._extract_payload_account_id(payload)
         connected_account_id = str(
@@ -912,8 +967,13 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         return self._get_library_rejection_reason(payload, user) is None
 
     def _get_library_rejection_reason(self, payload, user):
-        selected_libraries = user.plex_webhook_libraries
-        if not selected_libraries:
+        is_shared = getattr(self, "_source_plex_usernames", None) is not None
+        selected_libraries = (
+            getattr(self, "_source_plex_libraries", None)
+            if is_shared
+            else user.plex_webhook_libraries
+        )
+        if selected_libraries is None or (not is_shared and not selected_libraries):
             return None
 
         machine_identifier = payload.get("Server", {}).get("uuid")
@@ -1174,7 +1234,11 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
     def _queue_collection_metadata_update(self, payload, user, item):
         """Queue collection metadata update task for Plex webhook."""
         # Get Plex account
-        plex_account = getattr(user, "plex_account", None)
+        plex_account = getattr(self, "_source_plex_account", None) or getattr(
+            user,
+            "plex_account",
+            None,
+        )
         if not plex_account or not plex_account.plex_token:
             logger.debug("No Plex account found, skipping collection update")
             return

@@ -286,6 +286,8 @@ REST_FRAMEWORK = {
         "api.authentication.APIKeyAuthentication",
     ],
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    # ``format`` is a media-list filter, not a renderer override.
+    "URL_FORMAT_OVERRIDE": None,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
@@ -455,7 +457,13 @@ else:
     }
 
     def configure_sqlite_connection(sender, connection, **_kwargs):
-        """Ensure SQLite connections wait for locks and use WAL."""
+        """Ensure SQLite connections wait for locks and use WAL.
+
+        Foreign keys are not set here. Django's SQLite backend already runs
+        "PRAGMA foreign_keys = ON" as it opens each connection, and it turns
+        them off on purpose while a migration rewrites a table. A second copy
+        here would be dead on the first count and wrong on the second.
+        """
         if connection.vendor != "sqlite":
             return
 
@@ -1012,6 +1020,11 @@ IMG_NONE = "https://www.themoviedb.org/assets/2/v4/glyphicons/basic/glyphicons-b
 REQUEST_TIMEOUT = 120  # seconds
 PER_PAGE = 24
 
+MUSICBRAINZ_URL = config(
+    "MUSICBRAINZ_URL",
+    default="https://musicbrainz.org/ws/2",
+)
+
 TMDB_API = config(
     "TMDB_API",
     default=secret(
@@ -1489,6 +1502,12 @@ def _scaled(value: int) -> int:
 
 
 CELERY_BEAT_SCHEDULE = {
+    "cleanup_task_results": {
+        "task": "Cleanup task results",
+        "schedule": 60 * 15,
+        "kwargs": {"batch_size": 5000},
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
     "reload_calendar": {
         "task": "Reload calendar",
         "schedule": 60 * 60 * 24,  # every 24 hours
@@ -1659,12 +1678,3 @@ if not REGISTRATION:
 REDIRECT_LOGIN_TO_SSO = config("REDIRECT_LOGIN_TO_SSO", default=False, cast=bool)
 
 DEMO_ACCOUNT_ENABLED = config("DEMO_ACCOUNT_ENABLED", default=True, cast=bool)
-
-# Configure LoginRequiredMiddleware to exclude static files
-LOGIN_REQUIRED_EXEMPT = [
-    r"^/static/.*$",
-    r"^/favicon\.ico$",
-    r"^/health/.*$",
-    r"^/list/[^/]+/rss/?$",  # Public list RSS feeds
-    r"^/list/[^/]+/json/?$",  # Public list JSON exports
-]

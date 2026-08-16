@@ -42,7 +42,7 @@
                   @click="clearFilters(); open = false"
                   type="button">
             <span>All</span>
-            <span class="ml-auto text-xs text-gray-500"
+            <span class="ml-auto text-xs text-[var(--color-text-muted)]"
                   x-show="filterLabel() === 'All'">Active</span>
           </button>
 
@@ -315,7 +315,7 @@
             <input type="text"
                    x-model="genreSearch"
                    placeholder="Filter Genre"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -358,7 +358,7 @@
             <input type="text"
                    x-model="impliedGenreSearch"
                    placeholder="Filter Implied Genre"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -544,7 +544,7 @@
             <input type="text"
                    x-model="yearSearch"
                    placeholder="Filter Year"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -634,7 +634,7 @@
             <input type="text"
                    x-model="sourceSearch"
                    placeholder="Filter Source"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -677,7 +677,7 @@
             <input type="text"
                    x-model="mediaStatusSearch"
                    placeholder="Filter Availability"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -720,7 +720,7 @@
             <input type="text"
                    x-model="languageSearch"
                    placeholder="Filter Language"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -763,7 +763,7 @@
             <input type="text"
                    x-model="countrySearch"
                    placeholder="Filter Country"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -802,7 +802,7 @@
                     type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Platform</div>
             <button type="button"
-                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-indigo-300 hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
+                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-[var(--color-link)] hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
                     @click.stop="cyclePlatformMode()"
                     hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
@@ -814,7 +814,7 @@
             <input type="text"
                    x-model="platformSearch"
                    placeholder="Filter Platform"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -857,7 +857,7 @@
             <input type="text"
                    x-model="originSearch"
                    placeholder="Filter Origin"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -900,7 +900,7 @@
             <input type="text"
                    x-model="formatSearch"
                    placeholder="Filter Format"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -943,7 +943,7 @@
             <input type="text"
                    x-model="authorSearch"
                    placeholder="Filter Author"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -986,7 +986,7 @@
             <input type="text"
                    x-model="providerSearch"
                    placeholder="Filter Streaming Service"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -1029,7 +1029,7 @@
             <input type="text"
                    x-model="departmentSearch"
                    placeholder="Filter Department"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -1068,7 +1068,7 @@
                     type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
             <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Tag</div>
             <button type="button"
-                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-indigo-300 hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
+                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-[var(--color-link)] hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
                     @click.stop="cycleTagMode()"
                     hx-get="{{ filter_hx_endpoint }}"
                     hx-target="{{ filter_hx_target }}"
@@ -1080,7 +1080,7 @@
             <input type="text"
                    x-model="tagSearch"
                    placeholder="Filter Tags"
-                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
             <button hx-get="{{ filter_hx_endpoint }}"
@@ -1144,7 +1144,7 @@
                   hx-include="#filter-form"
                   hx-indicator="#loading-indicator"
                   class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                  :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                  :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                   @click="statuses = []"
                   type="button">All</button>
           {% for value, label in status_choices %}
@@ -1154,7 +1154,7 @@
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                      :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                      :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                       @click="toggleStatus('{{ value }}')"
                       type="button">
                 <span>{{ label }}</span>
@@ -1204,7 +1204,7 @@
           {% if value != 'critic_rating' or supports_critic_rating_sort %}
             {% if value != 'author' or filter_data.show_authors %}
               <button class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                      :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                      :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                       @click="toggleSort('{{ value }}'); open = false; document.getElementById('filter-form').elements.sort.value = sort; document.getElementById('filter-form').elements.direction.value = direction; window.location.href = '{{ filter_hx_endpoint }}?' + new URLSearchParams(new FormData(document.getElementById('filter-form'))).toString()"
                       type="button">{{ label }}</button>
             {% endif %}

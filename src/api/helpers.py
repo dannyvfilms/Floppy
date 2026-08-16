@@ -2,7 +2,6 @@ import logging
 from calendar import monthrange
 from datetime import date, datetime
 from http import HTTPStatus as HTTP  # noqa: N814
-from urllib.parse import urlencode
 
 from django.db.models import Count, OuterRef, Subquery
 from django.utils.dateparse import parse_date, parse_datetime
@@ -404,10 +403,10 @@ def get_progress_from_status(status):
 
 def make_page_url(request, limit, new_offset):
     """Build a page URL with the given limit and offset."""
-    params = {k: v for k, v in request.GET.items() if v is not None and v != ""}
+    params = request.GET.copy()
     params["limit"] = str(limit)
     params["offset"] = str(new_offset)
-    return request.build_absolute_uri(request.path + "?" + urlencode(params))
+    return request.build_absolute_uri(request.path + "?" + params.urlencode())
 
 
 def paginate_data(request, results, limit, offset, *, total=None):

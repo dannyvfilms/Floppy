@@ -145,6 +145,81 @@ class ImportYamtrack(TestCase):
             self.assertNotEqual(row["image"], original_row["image"])
 
 
+class ImportYamtrackNewModeHealsMissingChildren(TestCase):
+    """"new" mode must add seasons/episodes an already-tracked show lacks.
+
+    Regression test: the existence check used to collapse to "does the
+    parent show exist", so an already-tracked show blocked every
+    season/episode row for it, even ones it didn't have yet.
+    """
+
+    def setUp(self):
+        """Import the base CSV once so the show already exists."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        with Path(mock_path / "import_yamtrack.csv").open("rb") as file:
+            yamtrack.importer(file, self.user, "new")
+
+    def test_new_mode_adds_missing_season_and_episode_to_existing_show(self):
+        """A second "new" mode import adds a season/episode the show lacks."""
+        self.assertEqual(TV.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(Season.objects.filter(user=self.user).count(), 1)
+
+        header = (
+            '"media_id","source","media_type","title","image","season_number",'
+            '"episode_number","score","progress","status","start_date","end_date",'
+            '"notes","progressed_at"\n'
+        )
+        rows = [
+            '"1668","tmdb","tv","Friends","https://image.tmdb.org/t/p/w500/x.jpg",'
+            '"","","","24","In progress","2024-02-09","2024-02-09","",'
+            '"2024-02-09T12:00:00Z"',
+            '"1668","tmdb","season","Friends","https://image.tmdb.org/t/p/w500/y.jpg",'
+            '"2","","","1","Completed","2024-03-01","2024-03-01","",'
+            '"2024-03-01T12:00:00Z"',
+            '"1668","tmdb","episode","Friends","https://image.tmdb.org/t/p/w500/z.jpg",'
+            '"2","1","","","","","2024-03-01","","2024-03-01T12:00:00Z"',
+        ]
+        csv_bytes = (header + "\n".join(rows) + "\n").encode("utf-8")
+
+        counts, warnings = yamtrack.importer(BytesIO(csv_bytes), self.user, "new")
+
+        self.assertEqual(warnings, "")
+        # The show itself was already tracked - no duplicate TV row.
+        self.assertEqual(TV.objects.filter(user=self.user).count(), 1)
+        # The new season was added alongside the existing one.
+        self.assertEqual(Season.objects.filter(user=self.user).count(), 2)
+        self.assertEqual(
+            Episode.objects.filter(
+                related_season__user=self.user,
+                related_season__item__season_number=2,
+            ).count(),
+            1,
+        )
+        # Season 1's existing episodes are untouched.
+        self.assertEqual(
+            Episode.objects.filter(
+                related_season__user=self.user,
+                related_season__item__season_number=1,
+            ).count(),
+            24,
+        )
+
+    def test_new_mode_still_skips_an_already_existing_season(self):
+        """Re-importing the same season/episode data does not duplicate it."""
+        with Path(mock_path / "import_yamtrack.csv").open("rb") as file:
+            counts, warnings = yamtrack.importer(file, self.user, "new")
+
+        self.assertEqual(warnings, "")
+        self.assertNotIn("season", counts)
+        self.assertNotIn("episode", counts)
+        self.assertEqual(Season.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(
+            Episode.objects.filter(related_season__user=self.user).count(),
+            24,
+        )
+
+
 class ImportYamtrackEpisodeHistoryDate(TestCase):
     """Test episode history dates from Yamtrack CSV exports."""
 

@@ -112,7 +112,7 @@
             {% for media_type in media_types %}
               <button type="button"
                       @click="mediaType = '{{ media_type }}'"
-                      :class="mediaType === '{{ media_type }}' ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-gray-600 text-gray-300 hover:bg-[var(--color-surface-strong)]'"
+                      :class="mediaType === '{{ media_type }}' ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-[var(--color-surface-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                       class="flex items-center gap-2 p-3 rounded-md border transition-colors cursor-pointer">
                 {% icon media_type is_active=False %}
                 <span class="text-sm font-medium">{{ media_type|media_type_readable }}</span>
@@ -239,7 +239,7 @@
             </div>
             <div id="image-preview"
                  class="w-20 h-20 rounded-md overflow-hidden bg-[var(--color-surface-strong)] border border-gray-600 flex items-center justify-center">
-              {% include "app/icons/image.svg" with classes="w-8 h-8 text-gray-500" %}
+              {% include "app/icons/image.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
             </div>
             <!-- Hidden error icon template -->
             <div id="error-icon" class="hidden">{% include "app/icons/circle-x.svg" with classes="w-8 h-8 text-red-500" %}</div>

@@ -17,7 +17,6 @@ from app.providers import services
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://musicbrainz.org/ws/2"
 COVER_ART_BASE = "https://coverartarchive.org"
 WIKIPEDIA_API_BASE = "https://en.wikipedia.org/api/rest_v1/page/summary"
 MIN_REQUEST_INTERVAL = 1.0  # MusicBrainz requires 1 req/sec for unauth requests
@@ -178,7 +177,7 @@ def _rate_limit():
 def _mb_request(endpoint, params=None):
     """Make a rate-limited request to the MusicBrainz API."""
     _rate_limit()
-    url = f"{BASE_URL}/{endpoint}"
+    url = f"{settings.MUSICBRAINZ_URL.rstrip('/')}/{endpoint}"
 
     if params is None:
         params = {}

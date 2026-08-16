@@ -3,9 +3,9 @@
     <div class="text-sm text-[var(--color-text-muted)] -mt-4 mb-4">
       <span class="font-semibold text-[var(--color-text)]">{{ filtered_items_count }}</span> result{{ filtered_items_count|pluralize }}
       {% if custom_list.can_recommend %}
-        <span class="text-gray-500">•</span>
+        <span class="text-[var(--color-text-muted)]">•</span>
         <a href="{% url 'recommend_item' custom_list.id %}"
-           class="text-indigo-400 hover:text-indigo-300 transition-colors">Recommend an item</a>
+           class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">Recommend an item</a>
       {% endif %}
     </div>
   {% endif %}

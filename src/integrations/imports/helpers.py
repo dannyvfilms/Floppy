@@ -98,6 +98,35 @@ def get_existing_media(user):
     return existing
 
 
+def get_existing_children(user):
+    """Get existing Season/Episode identity keys, for "new" mode healing.
+
+    ``get_existing_media`` only tracks top-level shows, so a season/episode
+    row's "new" mode existence check normally collapses to "does the parent
+    show exist" (see ``should_process_media``). That makes an already-tracked
+    show block every season/episode row for it, even ones the show doesn't
+    have yet. This tracks season/episode identity directly so callers can
+    check a row's own granularity instead.
+    """
+    existing = {
+        MediaTypes.SEASON.value: defaultdict(dict),
+        MediaTypes.EPISODE.value: defaultdict(dict),
+    }
+    for season in app.models.Season.objects.filter(user=user).select_related("item"):
+        item = season.item
+        existing[MediaTypes.SEASON.value][item.source][
+            (item.media_id, item.season_number)
+        ] = season
+    for episode in app.models.Episode.objects.filter(
+        related_season__user=user,
+    ).select_related("item"):
+        item = episode.item
+        existing[MediaTypes.EPISODE.value][item.source][
+            (item.media_id, item.season_number, item.episode_number)
+        ] = episode
+    return existing
+
+
 def get_deleted_media(user):
     """Get media the user explicitly deleted, so imports don't recreate it."""
     deleted = defaultdict(lambda: defaultdict(set))

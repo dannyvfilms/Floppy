@@ -18,6 +18,7 @@ GAME_METADATA = {
     "1227": {"title": "Dragon Warrior I & II", "image": ""},
     "128167": {"title": "RoboCop: Rogue City", "image": ""},
     "5001": {"title": "Retro Backlog Game", "image": ""},
+    "7001": {"title": "Custom Shelf Only Game", "image": ""},
 }
 
 
@@ -48,7 +49,7 @@ class ImportGrouvee(TestCase):
 
     def test_import_counts(self):
         """Games with an IGDB ID are imported; the unmatched one is skipped."""
-        self.assertEqual(Game.objects.filter(user=self.user).count(), 3)
+        self.assertEqual(Game.objects.filter(user=self.user).count(), 4)
 
     def test_missing_igdb_id_warning(self):
         """A game without an igdb_id produces a warning and is not imported."""
@@ -81,7 +82,7 @@ class ImportGrouvee(TestCase):
         with Path(mock_path / "import_grouvee.json").open("rb") as file:
             grouvee.importer(file, self.user, "overwrite")
 
-        self.assertEqual(Game.objects.filter(user=self.user).count(), 3)
+        self.assertEqual(Game.objects.filter(user=self.user).count(), 4)
 
     def test_new_mode_skips_existing(self):
         """Re-importing in new mode does not duplicate existing games."""
@@ -89,4 +90,10 @@ class ImportGrouvee(TestCase):
             imported_counts, _ = grouvee.importer(file, self.user, "new")
 
         self.assertNotIn("game", imported_counts)
-        self.assertEqual(Game.objects.filter(user=self.user).count(), 3)
+        self.assertEqual(Game.objects.filter(user=self.user).count(), 4)
+
+    def test_custom_shelf_only_maps_to_planning(self):
+        """A game on only a custom shelf is Planning, not Completed (issue #764)."""
+        game = Game.objects.get(user=self.user, item__media_id="7001")
+        self.assertEqual(game.status, Status.PLANNING.value)
+        self.assertIsNone(game.end_date)

@@ -537,7 +537,212 @@ paths:
   /api/v1/media/:
     get:
       operationId: listTrackedMedia
-      description: Retrieve the list of media for the authenticated user.
+      description: Retrieve the filtered media list for the authenticated user.
+      parameters:
+      - in: query
+        name: author
+        schema:
+          type: string
+      - in: query
+        name: collection
+        schema:
+          type: string
+          enum:
+          - all
+          - collected
+          - not_collected
+      - in: query
+        name: country
+        schema:
+          type: string
+      - in: query
+        name: direction
+        schema:
+          type: string
+          enum:
+          - asc
+          - desc
+      - in: query
+        name: exclude
+        schema:
+          type: array
+          items:
+            type: string
+        description: Root-list type exclusions; repeated and comma-separated syntax
+          are accepted.
+      - in: query
+        name: format
+        schema:
+          type: string
+      - in: query
+        name: genre
+        schema:
+          type: string
+      - in: query
+        name: implied_genre
+        schema:
+          type: string
+        description: Music-only implied genre filter.
+      - in: query
+        name: language
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Maximum 200; defaults to 20.
+      - in: query
+        name: media_status
+        schema:
+          type: string
+        description: Provider metadata status, not the user's tracking status.
+      - in: query
+        name: media_type
+        schema:
+          type: string
+          enum:
+          - anime
+          - boardgame
+          - book
+          - comic
+          - comicissue
+          - episode
+          - game
+          - manga
+          - movie
+          - music
+          - podcast
+          - season
+          - tv
+        description: Optional type restriction; omitted returns the default media
+          types.
+      - in: query
+        name: offset
+        schema:
+          type: integer
+        description: Zero-based result offset; defaults to 0.
+      - in: query
+        name: origin
+        schema:
+          type: string
+      - in: query
+        name: platform
+        schema:
+          type: array
+          items:
+            type: string
+        description: Repeat for multiple platforms; comma-separated values are also
+          accepted.
+      - in: query
+        name: platform_mode
+        schema:
+          type: string
+          enum:
+          - and
+          - not
+          - or
+      - in: query
+        name: progress
+        schema:
+          type: string
+          enum:
+          - all
+          - caught_up
+          - not_caught_up
+        description: Currently meaningful for TV and anime lists.
+      - in: query
+        name: provider
+        schema:
+          type: string
+      - in: query
+        name: rating
+        schema:
+          type: string
+          enum:
+          - all
+          - not_rated
+          - rated
+      - in: query
+        name: release
+        schema:
+          type: string
+          enum:
+          - all
+          - not_released
+          - released
+      - in: query
+        name: search
+        schema:
+          type: string
+      - in: query
+        name: sort
+        schema:
+          type: string
+          enum:
+          - added
+          - author
+          - critic_rating
+          - date_added
+          - end_date
+          - ended
+          - id
+          - itemid
+          - mediaid
+          - next_episode_air_date
+          - platform
+          - plays
+          - popularity
+          - progress
+          - release_date
+          - runtime
+          - score
+          - source
+          - start_date
+          - started
+          - time_left
+          - time_to_beat
+          - time_watched
+          - title
+          - type
+          - updated
+        description: Legacy `field_asc`/`field_desc` suffixes remain accepted.
+      - in: query
+        name: source
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: array
+          items:
+            type: string
+        description: Repeated status values. Accepts numeric codes 0=Planning, 1=In
+          progress, 2=Paused, 3=Completed, 4=Dropped; labels; `all`; and `no_status`.
+      - in: query
+        name: tag
+        schema:
+          type: array
+          items:
+            type: string
+        description: Repeat for multiple tags; comma-separated values are also accepted.
+      - in: query
+        name: tag_exclude
+        schema:
+          type: string
+        description: Legacy alias for `tag=<value>&tag_mode=not`.
+      - in: query
+        name: tag_mode
+        schema:
+          type: string
+          enum:
+          - and
+          - not
+          - or
+      - in: query
+        name: year
+        schema:
+          type: string
       tags:
       - api
       security:
@@ -553,8 +758,58 @@ paths:
   /api/v1/media/{media_type}/:
     get:
       operationId: listTrackedMediaByType
-      description: Retrieve the list of media of a specific media type.
+      description: Retrieve the filtered media list of a specific media type.
       parameters:
+      - in: query
+        name: author
+        schema:
+          type: string
+      - in: query
+        name: collection
+        schema:
+          type: string
+          enum:
+          - all
+          - collected
+          - not_collected
+      - in: query
+        name: country
+        schema:
+          type: string
+      - in: query
+        name: direction
+        schema:
+          type: string
+          enum:
+          - asc
+          - desc
+      - in: query
+        name: format
+        schema:
+          type: string
+      - in: query
+        name: genre
+        schema:
+          type: string
+      - in: query
+        name: implied_genre
+        schema:
+          type: string
+        description: Music-only implied genre filter.
+      - in: query
+        name: language
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Maximum 200; defaults to 20.
+      - in: query
+        name: media_status
+        schema:
+          type: string
+        description: Provider metadata status, not the user's tracking status.
       - in: path
         name: media_type
         schema:
@@ -577,6 +832,132 @@ paths:
           collection creates a new consumption; omitted status defaults to Planning.
           Use the history/{consumption_id} route to update one specific existing consumption.
         required: true
+      - in: query
+        name: offset
+        schema:
+          type: integer
+        description: Zero-based result offset; defaults to 0.
+      - in: query
+        name: origin
+        schema:
+          type: string
+      - in: query
+        name: platform
+        schema:
+          type: array
+          items:
+            type: string
+        description: Repeat for multiple platforms; comma-separated values are also
+          accepted.
+      - in: query
+        name: platform_mode
+        schema:
+          type: string
+          enum:
+          - and
+          - not
+          - or
+      - in: query
+        name: progress
+        schema:
+          type: string
+          enum:
+          - all
+          - caught_up
+          - not_caught_up
+        description: Currently meaningful for TV and anime lists.
+      - in: query
+        name: provider
+        schema:
+          type: string
+      - in: query
+        name: rating
+        schema:
+          type: string
+          enum:
+          - all
+          - not_rated
+          - rated
+      - in: query
+        name: release
+        schema:
+          type: string
+          enum:
+          - all
+          - not_released
+          - released
+      - in: query
+        name: search
+        schema:
+          type: string
+      - in: query
+        name: sort
+        schema:
+          type: string
+          enum:
+          - added
+          - author
+          - critic_rating
+          - date_added
+          - end_date
+          - ended
+          - id
+          - itemid
+          - mediaid
+          - next_episode_air_date
+          - platform
+          - plays
+          - popularity
+          - progress
+          - release_date
+          - runtime
+          - score
+          - source
+          - start_date
+          - started
+          - time_left
+          - time_to_beat
+          - time_watched
+          - title
+          - type
+          - updated
+        description: Legacy `field_asc`/`field_desc` suffixes remain accepted.
+      - in: query
+        name: source
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: array
+          items:
+            type: string
+        description: Repeated status values. Accepts numeric codes 0=Planning, 1=In
+          progress, 2=Paused, 3=Completed, 4=Dropped; labels; `all`; and `no_status`.
+      - in: query
+        name: tag
+        schema:
+          type: array
+          items:
+            type: string
+        description: Repeat for multiple tags; comma-separated values are also accepted.
+      - in: query
+        name: tag_exclude
+        schema:
+          type: string
+        description: Legacy alias for `tag=<value>&tag_mode=not`.
+      - in: query
+        name: tag_mode
+        schema:
+          type: string
+          enum:
+          - and
+          - not
+          - or
+      - in: query
+        name: year
+        schema:
+          type: string
       tags:
       - api
       security:
@@ -2023,7 +2404,12 @@ paths:
           description: ''
     patch:
       operationId: api_v1_user_preferences_partial_update
-      description: Update the provided preference fields.
+      description: |-
+        Update only the preference fields present in the request body.
+
+        Omitted fields keep their stored value. Clients that change one
+        preference, such as the header theme toggle, therefore do not need to
+        echo the rest of the form back.
       tags:
       - api
       requestBody:
@@ -2486,6 +2872,23 @@ components:
         notes:
           type: string
           nullable: true
+    NextEpisode:
+      type: object
+      description: The next released, unwatched TV-like episode.
+      properties:
+        season_number:
+          type: integer
+          nullable: true
+        episode_number:
+          type: integer
+        air_date:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - air_date
+      - episode_number
+      - season_number
     Pagination:
       type: object
       description: Stable limit/offset response metadata.
@@ -2676,6 +3079,10 @@ components:
           items:
             type: object
             additionalProperties: {}
+        next_episode:
+          allOf:
+          - $ref: '#/components/schemas/NextEpisode'
+          nullable: true
       required:
       - consumption_id
       - created_at
@@ -2684,6 +3091,7 @@ components:
       - item
       - item_id
       - lists
+      - next_episode
       - notes
       - parent_id
       - progress

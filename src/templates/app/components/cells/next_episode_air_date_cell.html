@@ -4,6 +4,6 @@
   {% if next_episode_air_date %}
     {{ next_episode_air_date|user_date_format:user }}
   {% else %}
-    <span class="text-gray-500">-</span>
+    <span class="text-[var(--color-text-muted)]">-</span>
   {% endif %}
 {% endwith %}

@@ -11,7 +11,7 @@
   <div class="space-y-6">
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-5">
-        {% include "app/icons/person.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+        {% include "app/icons/person.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">Profile Information</h2>
       </div>
 
@@ -51,7 +51,7 @@
 
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-5">
-        {% include "app/icons/padlock.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+        {% include "app/icons/padlock.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">Change Password</h2>
       </div>
 
@@ -149,13 +149,13 @@
 
     <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-4">
       <div class="flex items-center">
-        {% include "app/icons/shield.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+        {% include "app/icons/shield.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">Account Recovery & Authenticator</h2>
       </div>
 
       <div class="text-sm text-[var(--color-text-secondary)]">
         <p class="mb-3 flex items-start gap-2 text-sm text-[var(--color-text-muted)] leading-relaxed">
-          {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 mt-0.5" %}
+          {% include "app/icons/info.svg" with classes="w-4 h-4 text-[var(--color-link)] shrink-0 mt-0.5" %}
           <span>Floppy cannot send password reset emails or text messages. Authenticator codes, recovery codes, or an admin password reset in the container terminal are the only recovery options.</span>
         </p>
 
@@ -218,7 +218,7 @@
       <div class="clear-both border-t border-gray-700 pt-4 space-y-3">
         <p class="text-sm text-[var(--color-text-secondary)]">Unused recovery codes: <span class="font-semibold text-[var(--color-text)]">{{ unused_recovery_code_count }}</span></p>
         {% if fresh_recovery_codes %}
-          <div class="p-3 rounded-md border border-amber-700 bg-amber-900/40 text-amber-200 text-sm">
+          <div class="p-3 rounded-md border border-amber-500/30 bg-amber-500/10 text-[var(--color-warning-text)] text-sm">
             Save these recovery codes now. They are shown only once.
           </div>
           <ul class="grid grid-cols-2 gap-2 text-xs font-mono">
@@ -249,7 +249,7 @@
     {% if socialaccount_providers %}
       <div class="bg-[var(--color-surface)] rounded-lg p-6">
         <div class="flex items-center mb-5">
-          {% include "app/icons/shield.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+          {% include "app/icons/shield.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
           <h2 class="text-xl font-semibold">Third-Party Connections</h2>
         </div>
         <p class="text-[var(--color-text-muted)] mb-5 text-sm">Manage your connected third-party accounts for easier sign-in.</p>

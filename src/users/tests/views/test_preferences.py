@@ -128,3 +128,29 @@ class PreferencesViewTests(TestCase):
             session_control["x-data"],
         )
         self.assertNotIn("selectedLabel: '\n", session_control["x-data"])
+
+    def test_preferences_save_bar_renders_with_dirty_tracking_and_a11y(self):
+        """Regression test for #796.
+
+        The save bar must dynamically track dirty state, initialize with clean
+        text ('All changes saved'), and expose an aria-live region for accessibility.
+        """
+        response = self.client.get(reverse("preferences"))
+        self.assertContains(response, "formDirtyTracker()")
+        self.assertContains(response, 'aria-live="polite"')
+        self.assertContains(response, "All changes saved")
+        self.assertContains(response, "Your preferences are up to date.")
+
+        soup = BeautifulSoup(response.content, "html.parser")
+        preferences_form = soup.find("form", {"x-data": "formDirtyTracker()"})
+        self.assertIsNotNone(preferences_form, "formDirtyTracker form not found")
+        self.assertEqual(preferences_form.get("@input"), "onFormChange()")
+        self.assertEqual(preferences_form.get("@change"), "onFormChange()")
+        self.assertEqual(preferences_form.get("@click"), "onFormChange()")
+
+        save_bar = preferences_form.find("div", class_="preferences-actions")
+        self.assertIsNotNone(save_bar, "preferences-actions save bar not found")
+        live_region = save_bar.find("div", attrs={"aria-live": "polite"})
+        self.assertIsNotNone(live_region, "aria-live region not found in save bar")
+        self.assertEqual(live_region.get("aria-atomic"), "true")
+

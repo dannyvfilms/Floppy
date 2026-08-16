@@ -1,5 +1,7 @@
+from datetime import timedelta
 from unittest.mock import patch
 
+from celery import states
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -23,7 +25,7 @@ from integrations.tasks import scheduled_backup_export
 
 class TaskResultOnPublishTests(TestCase):
     HEADERS = {
-        "task": "app.tasks.example",
+        "task": "Import from Trakt",
         "id": "00000000-0000-0000-0000-000000000341",
     }
 
@@ -33,6 +35,16 @@ class TaskResultOnPublishTests(TestCase):
         self.assertTrue(
             TaskResult.objects.filter(task_id=self.HEADERS["id"]).exists(),
         )
+
+    def test_skips_untracked_task(self):
+        headers = {
+            **self.HEADERS,
+            "task": "app.tasks.example",
+        }
+
+        signals.create_task_result_on_publish(headers=headers)
+
+        self.assertFalse(TaskResult.objects.filter(task_id=headers["id"]).exists())
 
     def test_skips_task_result_during_app_initialization(self):
         with patch.object(signals.apps, "ready", new=False):
@@ -56,7 +68,14 @@ class TaskResultOnCompletionTests(TestCase):
 
     def test_success_signal_marks_task_result_as_success(self):
         self._create_pending_result()
-        sender = type("Sender", (), {"request": type("Request", (), {"id": self.TASK_ID})()})()
+        sender = type(
+            "Sender",
+            (),
+            {
+                "name": "Scheduled backup export",
+                "request": type("Request", (), {"id": self.TASK_ID})(),
+            },
+        )()
 
         signals.update_task_result_on_success(
             sender=sender,
@@ -73,7 +92,14 @@ class TaskResultOnCompletionTests(TestCase):
 
     def test_success_signal_preserves_task_name_and_kwargs(self):
         self._create_pending_result()
-        sender = type("Sender", (), {"request": type("Request", (), {"id": self.TASK_ID})()})()
+        sender = type(
+            "Sender",
+            (),
+            {
+                "name": "Scheduled backup export",
+                "request": type("Request", (), {"id": self.TASK_ID})(),
+            },
+        )()
 
         signals.update_task_result_on_success(sender=sender, result="ok")
 
@@ -85,6 +111,7 @@ class TaskResultOnCompletionTests(TestCase):
         self._create_pending_result()
 
         signals.update_task_result_on_failure(
+            sender=type("Sender", (), {"name": "Scheduled backup export"})(),
             task_id=self.TASK_ID,
             exception=ValueError("boom"),
             einfo="Traceback (most recent call last): ValueError: boom",
@@ -97,12 +124,44 @@ class TaskResultOnCompletionTests(TestCase):
 
     def test_success_signal_no_op_without_task_id(self):
         self._create_pending_result()
-        sender = type("Sender", (), {"request": type("Request", (), {"id": None})()})()
+        sender = type(
+            "Sender",
+            (),
+            {
+                "name": "Scheduled backup export",
+                "request": type("Request", (), {"id": None})(),
+            },
+        )()
 
         signals.update_task_result_on_success(sender=sender, result="ok")
 
         task = TaskResult.objects.get(task_id=self.TASK_ID)
         self.assertEqual(task.status, "PENDING")
+
+    def test_completion_signals_ignore_untracked_tasks(self):
+        TaskResult.objects.create(
+            task_id=self.TASK_ID,
+            status=states.PENDING,
+            task_name="app.tasks.example",
+        )
+        sender = type(
+            "Sender",
+            (),
+            {
+                "name": "app.tasks.example",
+                "request": type("Request", (), {"id": self.TASK_ID})(),
+            },
+        )()
+
+        signals.update_task_result_on_success(sender=sender, result="ignored")
+        signals.update_task_result_on_failure(
+            sender=sender,
+            task_id=self.TASK_ID,
+            exception=ValueError("ignored"),
+        )
+
+        task = TaskResult.objects.get(task_id=self.TASK_ID)
+        self.assertEqual(task.status, states.PENDING)
 
     def test_scheduled_backup_export_task_marks_result_success_end_to_end(self):
         """Regression test for issue #518: scheduled export history stuck on Pending.
@@ -130,6 +189,65 @@ class TaskResultOnCompletionTests(TestCase):
         task = TaskResult.objects.get(task_id=self.TASK_ID)
         self.assertEqual(task.status, "SUCCESS")
         self.assertIn("Backup saved to backup.csv", task.result)
+
+
+class TaskResultCleanupTests(TestCase):
+    def _create_result(self, task_id, status, when):
+        result = TaskResult.objects.create(
+            task_id=task_id,
+            status=status,
+            task_name="app.tasks.example",
+        )
+        TaskResult.objects.filter(pk=result.pk).update(
+            date_created=when,
+            date_done=when,
+        )
+        return result
+
+    def test_cleanup_removes_expired_and_abandoned_rows(self):
+        now = timezone.now()
+        old = now - timedelta(days=8)
+        stale_pending = now - timedelta(hours=1)
+        recent = now - timedelta(days=1)
+        recent_pending = now - timedelta(minutes=10)
+
+        expired_success = self._create_result("cleanup-success", states.SUCCESS, old)
+        stale_pending_result = self._create_result(
+            "cleanup-pending",
+            states.PENDING,
+            stale_pending,
+        )
+        stale_started = self._create_result("cleanup-started", states.STARTED, old)
+        recent_success = self._create_result("keep-success", states.SUCCESS, recent)
+        recent_pending_result = self._create_result(
+            "keep-pending",
+            states.PENDING,
+            recent_pending,
+        )
+
+        deleted = tasks.cleanup_task_results.run(batch_size=10)
+
+        self.assertEqual(deleted, 3)
+        self.assertFalse(
+            TaskResult.objects.filter(
+                pk__in=[expired_success.pk, stale_pending_result.pk, stale_started.pk],
+            ).exists(),
+        )
+        self.assertTrue(
+            TaskResult.objects.filter(
+                pk__in=[recent_success.pk, recent_pending_result.pk],
+            ).exists(),
+        )
+
+    def test_cleanup_respects_batch_size(self):
+        old = timezone.now() - timedelta(days=8)
+        self._create_result("cleanup-batch-1", states.SUCCESS, old)
+        self._create_result("cleanup-batch-2", states.SUCCESS, old)
+
+        deleted = tasks.cleanup_task_results.run(batch_size=1)
+
+        self.assertEqual(deleted, 1)
+        self.assertEqual(TaskResult.objects.filter(status=states.SUCCESS).count(), 1)
 
 
 class ItemSignalTests(TestCase):

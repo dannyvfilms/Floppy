@@ -120,6 +120,51 @@ def _parse_entry_datetime(entry, *keys):
     return None
 
 
+def _show_keys(show_data):
+    """Return provider identifiers that can match one show's rows."""
+    if not isinstance(show_data, dict):
+        return set()
+
+    ids = show_data.get("ids")
+    if not isinstance(ids, dict):
+        ids = {}
+    return {
+        (source, str(value))
+        for source in ("tmdb", "tvdb", "imdb", "mdblist")
+        if (value := ids.get(source) or show_data.get(f"{source}_id"))
+    }
+
+
+def _show_season_keys(show_data, season_number):
+    """Return provider identifiers that can match one show's season rows."""
+    if season_number is None:
+        return set()
+    return {(*show_key, str(season_number)) for show_key in _show_keys(show_data)}
+
+
+def _next_page_params(params, pagination, page_size):
+    """Return advancing cursor or offset parameters for another provider page."""
+    if page_size <= 0 or not isinstance(pagination, dict):
+        return None
+
+    next_params = dict(params)
+    cursor = pagination.get("next_cursor")
+    if cursor:
+        next_params["cursor"] = cursor
+    elif pagination.get("has_more"):
+        current_offset = params.get("offset", pagination.get("offset", 0))
+        try:
+            current_offset = int(current_offset or 0)
+        except (TypeError, ValueError):
+            current_offset = 0
+        next_params.pop("cursor", None)
+        next_params["offset"] = current_offset + page_size
+    else:
+        return None
+
+    return next_params if next_params != params else None
+
+
 class MDBListImporter(TraktMetadataResolverMixin):
     """Import watched/watchlist/ratings/dropped/collection data from MDBList."""
 
@@ -133,9 +178,11 @@ class MDBListImporter(TraktMetadataResolverMixin):
         # Track existing media to handle "new" mode correctly
         self.existing_media = helpers.get_existing_media(user)
 
-        # Track previously imported episode plays so rerunning the same sync
-        # does not create duplicate episode history rows.
-        self.existing_episode_watch_keys = self._get_existing_episode_watch_keys()
+        # Track existing plays for exact dedupe and distinct-episode roll-up.
+        (
+            self.existing_episode_watch_keys,
+            self.watched_episode_numbers,
+        ) = self._get_existing_episode_state()
 
         # Track media IDs to delete in overwrite mode
         self.to_delete = defaultdict(lambda: defaultdict(set))
@@ -148,7 +195,6 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         # Track existing DB objects promoted to COMPLETED during import
         self.completed_seasons = []
-        self.completed_tvs = []
 
         # TMDB IDs of shows the user has dropped on MDBList
         self.dropped_tmdb_ids: set = set()
@@ -160,22 +206,34 @@ class MDBListImporter(TraktMetadataResolverMixin):
             mode,
         )
 
-    def _get_existing_episode_watch_keys(self):
-        """Return exact episode play keys already stored for this user."""
+    def _get_existing_episode_state(self):
+        """Return exact play keys and completed coordinates for new-mode import."""
+        watch_keys = set()
+        watched = defaultdict(set)
         if self.mode != "new":
-            return set()
+            return watch_keys, watched
 
-        return set(
-            app.models.Episode.objects.filter(
-                related_season__user=self.user,
-                end_date__isnull=False,
-            ).values_list(
-                "item__media_id",
-                "item__season_number",
-                "item__episode_number",
-                "end_date",
-            ),
+        rows = app.models.Episode.objects.filter(
+            related_season__user=self.user,
+        ).values_list(
+            "item__media_id",
+            "item__season_number",
+            "item__episode_number",
+            "end_date",
+            "status",
         )
+        for media_id, season_number, episode_number, end_date, status in rows:
+            if end_date is not None:
+                watch_keys.add(
+                    (media_id, season_number, episode_number, end_date),
+                )
+            if (
+                status == Status.COMPLETED.value
+                and season_number is not None
+                and episode_number is not None
+            ):
+                watched[(str(media_id), season_number)].add(episode_number)
+        return watch_keys, watched
 
     def import_data(self):
         """Import all user data from MDBList."""
@@ -194,12 +252,6 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 app.models.Season,
                 fields=["status"],
             )
-        if self.completed_tvs:
-            bulk_update_with_history(
-                self.completed_tvs,
-                app.models.TV,
-                fields=["status"],
-            )
         if self.dropped_tvs:
             bulk_update_with_history(
                 self.dropped_tvs,
@@ -216,14 +268,20 @@ class MDBListImporter(TraktMetadataResolverMixin):
         return imported_counts, deduplicated_messages
 
     def _get_grouped_sync_data(self, path, item_type):
-        """Fetch a grouped ``/sync/*`` payload, following cursor pagination.
+        """Fetch a grouped ``/sync/*`` payload across cursor or offset pages.
 
         Returns a dict of entry lists keyed by group name (``movies``,
         ``shows``, ``seasons``, ``episodes``).
         """
         grouped = defaultdict(list)
         params = {"limit": PAGE_SIZE}
+        seen_pages = set()
         while True:
+            page_token = tuple(sorted(params.items()))
+            if page_token in seen_pages:
+                break
+            seen_pages.add(page_token)
+
             response = request(self.api_key, path, params=params)
             if not isinstance(response, dict):
                 break
@@ -238,11 +296,11 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 total=None,
                 label=f"MDBList: gathering {item_type}…",
             )
-            pagination = response.get("pagination") or {}
-            cursor = pagination.get("next_cursor")
-            if not cursor or not page_size:
+            pagination = response.get("pagination") or response
+            next_params = _next_page_params(params, pagination, page_size)
+            if next_params is None:
                 break
-            params = {"limit": PAGE_SIZE, "cursor": cursor}
+            params = next_params
 
         logger.info(
             "Retrieved %s %s for user %s",
@@ -289,10 +347,40 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         MDBList stores watched state at whatever level the user marked it:
         movie, whole show, whole season, or individual episode. Season entries
-        are expanded into their episodes via TMDB metadata; show entries are
-        recorded as a COMPLETED show without per-episode fan-out.
+        are expanded into their episodes via TMDB metadata unless explicit
+        episode rows exist for that season; show entries are recorded as a
+        COMPLETED show without per-episode fan-out.
         """
         data = self._get_grouped_sync_data("/sync/watched", "watched entries")
+        explicit_episode_seasons = set()
+        detailed_shows = set()
+        for entry in data.get("seasons", []):
+            if not isinstance(entry, dict):
+                continue
+            season_data = entry.get("season") or {}
+            if not isinstance(season_data, dict):
+                continue
+            season_number = season_data.get("number")
+            if season_number is None:
+                continue
+            show_data = season_data.get("show") or entry.get("show") or {}
+            detailed_shows.update(_show_keys(show_data))
+
+        for entry in data.get("episodes", []):
+            if not isinstance(entry, dict):
+                continue
+            episode_data = entry.get("episode") or {}
+            if not isinstance(episode_data, dict):
+                continue
+            season_number = episode_data.get("season")
+            if season_number is None or episode_data.get("number") is None:
+                continue
+            show_data = episode_data.get("show") or entry.get("show") or {}
+            detailed_shows.update(_show_keys(show_data))
+            explicit_episode_seasons.update(
+                _show_season_keys(show_data, season_number),
+            )
+
         total = sum(
             len(data.get(group, []))
             for group in ("movies", "shows", "seasons", "episodes")
@@ -313,6 +401,9 @@ class MDBListImporter(TraktMetadataResolverMixin):
             current += 1
             import_progress.report(current, total, "MDBList: watched history")
             try:
+                show_data = entry.get("show") or {}
+                if _show_keys(show_data) & detailed_shows:
+                    continue
                 self.process_watched_show(entry)
             except MediaImportError:
                 raise
@@ -323,6 +414,16 @@ class MDBListImporter(TraktMetadataResolverMixin):
             current += 1
             import_progress.report(current, total, "MDBList: watched history")
             try:
+                season_data = entry.get("season") or {}
+                show_data = season_data.get("show") or entry.get("show") or {}
+                if (
+                    _show_season_keys(
+                        show_data,
+                        season_data.get("number"),
+                    )
+                    & explicit_episode_seasons
+                ):
+                    continue
                 self.process_watched_season(entry)
             except MediaImportError:
                 raise
@@ -522,10 +623,15 @@ class MDBListImporter(TraktMetadataResolverMixin):
         )
         season_key = f"{tmdb_id}:{season_number}"
         if season_key not in self.media_instances[MediaTypes.SEASON.value]:
-            season_obj = app.models.Season.objects.filter(
-                user=self.user,
-                item=season_item,
-            ).first()
+            replacing_tv = (
+                tmdb_id in self.to_delete[MediaTypes.TV.value][Sources.TMDB.value]
+            )
+            season_obj = None
+            if not replacing_tv:
+                season_obj = app.models.Season.objects.filter(
+                    user=self.user,
+                    item=season_item,
+                ).first()
             if season_obj is None:
                 season_obj = app.models.Season(
                     item=season_item,
@@ -565,14 +671,13 @@ class MDBListImporter(TraktMetadataResolverMixin):
         self.media_instances[MediaTypes.EPISODE.value][ep_key].append(episode_obj)
         self.bulk_media[MediaTypes.EPISODE.value].append(episode_obj)
         self.existing_episode_watch_keys.add(episode_watch_key)
+        watched_episode_numbers = self.watched_episode_numbers[(tmdb_id, season_number)]
+        watched_episode_numbers.add(episode_number)
 
         self._update_completion_status(
             season_obj,
-            tv_obj,
-            season_number,
-            episode_number,
             season_metadata,
-            tv_metadata,
+            watched_episode_numbers,
         )
 
     def _get_or_create_tv_instance(self, tmdb_id, tv_metadata, history_date, status):
@@ -583,9 +688,14 @@ class MDBListImporter(TraktMetadataResolverMixin):
         if tv_key in self.media_instances[MediaTypes.TV.value]:
             return self.media_instances[MediaTypes.TV.value][tv_key][0]
 
-        tv_obj = self.existing_media[MediaTypes.TV.value][Sources.TMDB.value].get(
-            tmdb_id,
+        replacing_tv = (
+            tmdb_id in self.to_delete[MediaTypes.TV.value][Sources.TMDB.value]
         )
+        tv_obj = None
+        if not replacing_tv:
+            tv_obj = self.existing_media[MediaTypes.TV.value][Sources.TMDB.value].get(
+                tmdb_id,
+            )
         if tv_obj is None:
             tv_obj = app.models.TV(
                 item=tv_item,
@@ -604,29 +714,37 @@ class MDBListImporter(TraktMetadataResolverMixin):
     def _update_completion_status(
         self,
         season_obj,
-        tv_obj,
-        season_number,
-        episode_number,
         season_metadata,
-        tv_metadata,
+        watched_episode_numbers,
     ):
-        """Update completion status for season and TV show if applicable."""
-        if episode_number == season_metadata["max_progress"]:
-            season_obj.status = Status.COMPLETED.value
-            if season_obj.pk:
-                self.completed_seasons.append(season_obj)
+        """Complete a season only when distinct episode evidence covers it."""
+        required_episode_numbers = {
+            episode.get("episode_number")
+            for episode in season_metadata.get("episodes", [])
+            if episode.get("episode_number") is not None
+        }
+        if not required_episode_numbers or not required_episode_numbers.issubset(
+            watched_episode_numbers,
+        ):
+            return
+        if season_obj.status in {Status.COMPLETED.value, Status.DROPPED.value}:
+            return
 
-            last_season = tv_metadata.get("last_episode_season")
-            if last_season and last_season == season_number:
-                tv_obj.status = Status.COMPLETED.value
-                if tv_obj.pk:
-                    self.completed_tvs.append(tv_obj)
+        season_obj.status = Status.COMPLETED.value
+        if season_obj.pk:
+            self.completed_seasons.append(season_obj)
 
     def _get_watchlist_entries(self):
-        """Fetch the user's MDBList watchlist, following cursor pagination."""
+        """Fetch the user's MDBList watchlist across cursor or offset pages."""
         entries = []
         params = {"limit": PAGE_SIZE}
+        seen_pages = set()
         while True:
+            page_token = tuple(sorted(params.items()))
+            if page_token in seen_pages:
+                break
+            seen_pages.add(page_token)
+
             response = request(self.api_key, "/watchlist/items", params=params)
             page = normalize_items_response(response)
             entries.extend(page)
@@ -635,17 +753,14 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 total=None,
                 label="MDBList: gathering watchlist…",
             )
-            pagination = (
-                response.get("pagination") if isinstance(response, dict) else None
-            ) or {}
-            cursor = pagination.get("next_cursor")
-            if cursor:
-                params = {"limit": PAGE_SIZE, "cursor": cursor}
-                continue
-            if isinstance(response, list) and len(page) >= PAGE_SIZE:
-                params["offset"] = params.get("offset", 0) + PAGE_SIZE
-                continue
-            break
+            if isinstance(response, dict):
+                pagination = response.get("pagination") or response
+            else:
+                pagination = {"has_more": len(page) >= PAGE_SIZE}
+            next_params = _next_page_params(params, pagination, len(page))
+            if next_params is None:
+                break
+            params = next_params
         return entries
 
     def process_watchlist(self):

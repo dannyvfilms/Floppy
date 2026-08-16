@@ -40,14 +40,14 @@
     {% include "socialaccount/snippets/login.html" with page_layout="entrance" %}
   {% endif %}
 
-  <div class="mt-6 p-3 rounded-md border border-amber-700 bg-amber-900/40 text-amber-200 text-sm">
+  <div class="mt-6 p-3 rounded-md border border-amber-500/30 bg-amber-500/10 text-[var(--color-warning-text)] text-sm">
     Set up an authenticator app right after sign up. Without authenticator or recovery details, account recovery may be impossible.
   </div>
 
   <div class="mt-6 text-center">
     <p class="text-[var(--color-text-muted)]">
       Already have an account?
-      <a class="text-indigo-400 hover:text-indigo-300"
+      <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
          href="{% url 'account_login' %}">Sign in</a>
     </p>
   </div>

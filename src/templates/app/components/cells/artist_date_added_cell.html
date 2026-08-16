@@ -2,5 +2,5 @@
 {% if media.created_at %}
   {{ media.created_at|user_date_format:user }}
 {% else %}
-  <span class="text-gray-500">-</span>
+  <span class="text-[var(--color-text-muted)]">-</span>
 {% endif %}

@@ -93,12 +93,12 @@
     <div class="py-3 flex-1 flex flex-col">
       <div class="flex-1">
         <div class="flex justify-between items-start mb-2 space-x-2 px-4">
-          {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block min-w-0 hover:text-indigo-400 transition-colors">{% endif %}
+          {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block min-w-0 hover:text-[var(--color-link)] transition-colors">{% endif %}
           <div>
             <h2 class="text-xl font-semibold mb-1 line-clamp-1 flex items-center gap-1.5">
               {{ episode.title }}
               {% if episode.collection_entry %}
-                <span class="text-indigo-400 shrink-0"
+                <span class="text-[var(--color-link)] shrink-0"
                       title="Collected{% if episode.collection_entry.resolution %} • {{ episode.collection_entry.resolution }}{% endif %}">
                   {% include "app/icons/cube.svg" with classes="w-4 h-4" %}
                 </span>
@@ -135,17 +135,17 @@
      x-show="$store.epLayout === 'list'"
      style="display:none">
   {# Episode number #}
-  <span class="shrink-0 w-9 text-center text-[11px] font-mono text-gray-500 tabular-nums">
+  <span class="shrink-0 w-9 text-center text-[11px] font-mono text-[var(--color-text-muted)] tabular-nums">
     {% if episode.display_episode_number|default:episode.episode_number %}E{{ episode.display_episode_number|default:episode.episode_number }}{% endif %}
   </span>
 
   {# Title + metadata #}
   <div class="flex-1 min-w-0">
     {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="group/ep-row block">{% endif %}
-    <p class="text-sm font-medium truncate flex items-center gap-1.5 {% if ep_detail_url %}group-hover/ep-row:text-indigo-400 transition-colors{% endif %}">
+    <p class="text-sm font-medium truncate flex items-center gap-1.5 {% if ep_detail_url %}group-hover/ep-row:text-[var(--color-link)] transition-colors{% endif %}">
       <span class="truncate">{{ episode.title }}</span>
       {% if episode.collection_entry %}
-        <span class="text-indigo-400 shrink-0"
+        <span class="text-[var(--color-link)] shrink-0"
               title="Collected{% if episode.collection_entry.resolution %} • {{ episode.collection_entry.resolution }}{% endif %}">
           {% include "app/icons/cube.svg" with classes="w-3.5 h-3.5" %}
         </span>

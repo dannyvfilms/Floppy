@@ -632,7 +632,7 @@
       <div x-show="cacheRefreshing && !metadataRefreshing"
            x-cloak
            x-transition
-           class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info opacity-0"
+           class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info opacity-0"
            x-init="setTimeout(() => $el.classList.add('opacity-100', 'transform-none'), 10); $el.classList.add('transition-all', 'duration-300', 'ease-out', 'transform', 'translate-y-[-1rem]')">
         {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 animate-pulse" %}
         <p class="text-sm font-medium flex-1">Refreshing statistics in background...</p>
@@ -644,7 +644,7 @@
       <div x-show="metadataRefreshing"
            x-cloak
            x-transition
-           class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info opacity-0"
+           class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info opacity-0"
            x-init="setTimeout(() => $el.classList.add('opacity-100', 'transform-none'), 10); $el.classList.add('transition-all', 'duration-300', 'ease-out', 'transform', 'translate-y-[-1rem]')">
         {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 animate-pulse" %}
         <p class="text-sm font-medium flex-1">Updating metadata in background...</p>
@@ -693,7 +693,7 @@
                stroke-width="2"
                stroke-linecap="round"
                stroke-linejoin="round"
-               class="w-5 h-5 text-indigo-400 shrink-0">
+               class="w-5 h-5 text-[var(--color-link)] shrink-0">
             <path d="M8 2v4"></path>
             <path d="M16 2v4"></path>
             <rect width="18" height="18" x="3" y="4" rx="2"></rect>
@@ -784,7 +784,7 @@
 
 <div class="flex justify-end gap-2 pt-2">
                 <button @click="isRangeOpen = false"
-                        class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-[var(--color-text-secondary)] text-sm rounded-md transition-colors cursor-pointer">
+                        class="px-4 py-2 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] text-sm rounded-md transition-colors cursor-pointer">
                   Cancel
                 </button>
                 <button @click="applyCustomRange()"
@@ -821,7 +821,7 @@
                stroke-width="2"
                stroke-linecap="round"
                stroke-linejoin="round"
-               class="w-5 h-5 text-indigo-400 shrink-0">
+               class="w-5 h-5 text-[var(--color-link)] shrink-0">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
           </svg>
           <span class="stats-button-title" x-text="mediaTypeTriggerLabel()"></span>
@@ -946,7 +946,7 @@
              stroke-width="2"
              stroke-linecap="round"
              stroke-linejoin="round"
-             class="w-5 h-5 text-indigo-400 transition-transform duration-300"
+             class="w-5 h-5 text-[var(--color-link)] transition-transform duration-300"
              :class="{'animate-spin': refreshing}">
           <path d="M21.5 2v6h-6"></path>
           <path d="M21.34 15.57a10 10 0 1 1-.57-8.38"></path>
@@ -963,13 +963,13 @@
       <div class="stats-hero-row grid grid-cols-1 gap-x-3 sm:gap-x-4 items-start">
         <div class="flex flex-col justify-center stats-hero-text">
           <p class="stats-hero-title font-bold text-[var(--color-text)] leading-snug">
-            You've spent <span class="text-indigo-400 tabular-nums" x-text="(currentTypeSummary.total_hours || 0).toLocaleString()"></span> hours
+            You've spent <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total_hours || 0).toLocaleString()"></span> hours
           </p>
           <p class="stats-hero-title font-bold text-[var(--color-text)] leading-snug">
-            with <span class="text-indigo-400 tabular-nums" x-text="(currentTypeSummary.total || 0).toLocaleString()"></span> <span x-text="currentTypeLabel + '.'"></span>
+            with <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total || 0).toLocaleString()"></span> <span x-text="currentTypeLabel + '.'"></span>
           </p>
           <div class="flex items-center gap-2 mt-4 pb-3 text-sm text-[var(--color-text-muted)]">
-            <div class="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-indigo-400 shrink-0">
+            <div class="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-[var(--color-link)] shrink-0">
               <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path d="M10 2l1.8 5.4L17 10l-5.2 2.6L10 18l-1.8-5.4L3 10l5.2-2.6z"/></svg>
             </div>
             <span>That's <span x-text="(currentTypeSummary.total_days || 0).toLocaleString()"></span> days of <span x-text="currentTypeFlavor"></span>. Keep exploring.</span>
@@ -1004,7 +1004,7 @@
                  stroke-width="2"
                  stroke-linecap="round"
                  stroke-linejoin="round"
-                 class="w-4 h-4 sm:w-6 sm:h-6 text-indigo-400">
+                 class="w-4 h-4 sm:w-6 sm:h-6 text-[var(--color-link)]">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
               <path d="m9 11 3 3L22 4"></path>
             </svg>
@@ -1013,9 +1013,9 @@
             <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Completed Items</h3>
             <p x-show="currentTypeSummary.total" class="text-xl sm:text-2xl font-bold" style="display:none">
               <span x-text="currentTypeSummary.completed"></span>
-              <span class="text-gray-500 text-sm sm:text-lg">/ <span x-text="currentTypeSummary.total"></span></span>
+              <span class="text-[var(--color-text-muted)] text-sm sm:text-lg">/ <span x-text="currentTypeSummary.total"></span></span>
             </p>
-            <p x-show="!currentTypeSummary.total" class="text-xl sm:text-2xl font-bold text-gray-500" style="display:none">--</p>
+            <p x-show="!currentTypeSummary.total" class="text-xl sm:text-2xl font-bold text-[var(--color-text-muted)]" style="display:none">--</p>
           </div>
         </div>
         <div class="bg-[var(--color-surface)] rounded-lg p-3 sm:p-5 flex items-center min-w-0">
@@ -1039,9 +1039,9 @@
             <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Average Rating</h3>
             <p x-show="currentTypeSummary.has_score" class="text-xl sm:text-2xl font-bold" style="display:none">
               <span x-text="currentTypeSummary.average_score"></span>
-              <span class="text-gray-500 text-sm sm:text-lg">/ {{ user|rating_scale_max }}</span>
+              <span class="text-[var(--color-text-muted)] text-sm sm:text-lg">/ {{ user|rating_scale_max }}</span>
             </p>
-            <p x-show="!currentTypeSummary.has_score" class="text-xl sm:text-2xl font-bold text-gray-500" style="display:none">--</p>
+            <p x-show="!currentTypeSummary.has_score" class="text-xl sm:text-2xl font-bold text-[var(--color-text-muted)]" style="display:none">--</p>
           </div>
         </div>
         <div class="bg-[var(--color-surface)] rounded-lg p-3 sm:p-5 flex items-center min-w-0">
@@ -1065,8 +1065,8 @@
           <div>
             <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Most Active Day</h3>
             <p x-show="currentTypeSummary.most_active_day" class="text-xl sm:text-2xl font-bold" x-text="currentTypeSummary.most_active_day" style="display:none"></p>
-            <p x-show="currentTypeSummary.most_active_day" class="text-xs sm:text-sm text-gray-500" x-text="currentTypeSummary.most_active_day_percentage + '% of activity'" style="display:none"></p>
-            <p x-show="!currentTypeSummary.most_active_day" class="text-xl sm:text-2xl font-bold text-gray-500" style="display:none">--</p>
+            <p x-show="currentTypeSummary.most_active_day" class="text-xs sm:text-sm text-[var(--color-text-muted)]" x-text="currentTypeSummary.most_active_day_percentage + '% of activity'" style="display:none"></p>
+            <p x-show="!currentTypeSummary.most_active_day" class="text-xl sm:text-2xl font-bold text-[var(--color-text-muted)]" style="display:none">--</p>
           </div>
         </div>
         <div class="bg-[var(--color-surface)] rounded-lg p-3 sm:p-5 flex items-center min-w-0">
@@ -1089,10 +1089,10 @@
             <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Current Streak</h3>
             <div x-show="currentTypeSummary.most_active_day" style="display:none">
               <div class="text-xl sm:text-2xl font-bold" x-text="currentTypeSummary.current_streak + ' day' + (currentTypeSummary.current_streak === 1 ? '' : 's')"></div>
-              <div class="flex items-center gap-1 text-xs sm:text-sm text-gray-500">
+              <div class="flex items-center gap-1 text-xs sm:text-sm text-[var(--color-text-muted)]">
                 <span x-text="'Longest: ' + currentTypeSummary.longest_streak + ' day' + (currentTypeSummary.longest_streak === 1 ? '' : 's')"></span>
                 <div x-show="currentTypeSummary.longest_streak_start" class="relative" x-data="{ tooltipOpen: false }">
-                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show information" style="transform: translateY(1px);">
+                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show information" style="transform: translateY(1px);">
                     {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                   </button>
                   <div x-show="tooltipOpen"
@@ -1110,7 +1110,7 @@
                 </div>
               </div>
             </div>
-            <p x-show="!currentTypeSummary.most_active_day" class="text-xl sm:text-2xl font-bold text-gray-500" style="display:none">--</p>
+            <p x-show="!currentTypeSummary.most_active_day" class="text-xl sm:text-2xl font-bold text-[var(--color-text-muted)]" style="display:none">--</p>
           </div>
         </div>
         <div class="bg-[var(--color-surface)] rounded-lg p-3 sm:p-5 flex items-center min-w-0">
@@ -1125,15 +1125,15 @@
           </div>
           <div class="min-w-0">
             <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Activity</h3>
-            <p class="text-xl sm:text-2xl font-bold {% if total_activity_comparison.badge_state == 'up' %}text-green-400{% elif total_activity_comparison.badge_state == 'down' %}text-red-400{% else %}text-gray-500{% endif %}">
+            <p class="text-xl sm:text-2xl font-bold {% if total_activity_comparison.badge_state == 'up' %}text-green-400{% elif total_activity_comparison.badge_state == 'down' %}text-red-400{% else %}text-[var(--color-text-muted)]{% endif %}">
               {% if total_activity_comparison.badge %}{{ total_activity_comparison.badge }}{% else %}--{% endif %}
             </p>
             {% if total_activity_comparison.badge %}
-              <div class="flex items-center gap-1 text-xs sm:text-sm text-gray-500">
+              <div class="flex items-center gap-1 text-xs sm:text-sm text-[var(--color-text-muted)]">
                 <span>vs {{ activity_comparison_period_label }}</span>
                 {% if total_activity_comparison.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show comparison totals" style="transform: translateY(1px);">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show comparison totals" style="transform: translateY(1px);">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -1183,7 +1183,7 @@
       <div class="text-xs text-[var(--color-text-muted)] mb-3 flex items-center gap-1">
         <span id="timeWorldsSubtitle">Where your hours go.</span>
         <div id="timeWorldsInfo" class="relative hidden" x-data="{ tooltipOpen: false }">
-          <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show information">
+          <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show information">
             {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
           </button>
           <div x-show="tooltipOpen"
@@ -1306,7 +1306,7 @@
         <div class="min-w-0">
           <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]" x-text="tile.label"></h3>
           <p class="text-xl sm:text-2xl font-bold" x-text="tile.value"></p>
-          <p class="text-xs text-gray-500" x-text="tile.caption"></p>
+          <p class="text-xs text-[var(--color-text-muted)]" x-text="tile.caption"></p>
         </div>
       </div>
     </template>
@@ -1375,7 +1375,7 @@
             <span class="text-sm font-semibold text-[var(--color-text)] w-10 text-center shrink-0" x-text="row.average_score_display"></span>
           </div>
         </template>
-        <p x-show="averageRatingRows().length === 0" class="text-sm text-gray-500 text-center py-6" style="display:none">No ratings yet.</p>
+        <p x-show="averageRatingRows().length === 0" class="text-sm text-[var(--color-text-muted)] text-center py-6" style="display:none">No ratings yet.</p>
       </div>
     </div>
   </div>
@@ -1505,9 +1505,9 @@
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <h2 class="text-2xl font-semibold text-[var(--color-text)]">Most Played</h2>
-                <span class="text-sm text-gray-500" x-text="selectedRange"></span>
+                <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
               </div>
-              <a href="{% url 'medialist' 'movie' %}" class="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
+              <a href="{% url 'medialist' 'movie' %}" class="text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">
                 See all your top movies →
               </a>
             </div>
@@ -1568,12 +1568,12 @@
                 
                 <div class="p-3">
                   <a href="{{ item.media.item|media_url }}"
-                     class="text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1"
+                     class="text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1"
                      title="{{ item.media.item }}">{{ item.media.item }}</a>
                   <p class="text-xs text-[var(--color-text-muted)] mt-1">
                     {{ item.play_count }} play{{ item.play_count|pluralize }}
                   </p>
-                  <p class="text-xs text-indigo-400 mt-1">{{ item.formatted_duration }}</p>
+                  <p class="text-xs text-[var(--color-link)] mt-1">{{ item.formatted_duration }}</p>
                 </div>
               </div>
             {% endfor %}
@@ -1595,9 +1595,9 @@
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <h2 class="text-2xl font-semibold text-[var(--color-text)]">Most Played</h2>
-                <span class="text-sm text-gray-500" x-text="selectedRange"></span>
+                <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
               </div>
-              <a href="{% url 'medialist' 'tv' %}" class="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
+              <a href="{% url 'medialist' 'tv' %}" class="text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">
                 See all your top TV shows →
               </a>
             </div>
@@ -1658,10 +1658,10 @@
                 
                 <div class="p-3">
                   <a href="{{ item.media.item|media_url }}"
-                     class="text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1"
+                     class="text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1"
                      title="{{ item.media.item }}">{{ item.media.item }}</a>
                   <p class="text-xs text-[var(--color-text-muted)] mt-1">{{ item.episode_count }} episodes</p>
-                  <p class="text-xs text-indigo-400 mt-1">{{ item.formatted_duration }}</p>
+                  <p class="text-xs text-[var(--color-link)] mt-1">{{ item.formatted_duration }}</p>
                 </div>
               </div>
             {% endfor %}
@@ -1678,9 +1678,9 @@
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
                 <h2 class="text-2xl font-semibold text-[var(--color-text)]">Most Played</h2>
-                <span class="text-sm text-gray-500" x-text="selectedRange"></span>
+                <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
               </div>
-              <a href="{% url 'medialist' 'boardgame' %}" class="text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
+              <a href="{% url 'medialist' 'boardgame' %}" class="text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">
                 See all your top board games →
               </a>
             </div>
@@ -1741,9 +1741,9 @@
                 
                 <div class="p-3">
                   <a href="{{ item.media.item|media_url }}"
-                     class="text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1"
+                     class="text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1"
                      title="{{ item.media.item }}">{{ item.media.item }}</a>
-                  <p class="text-xs text-indigo-400 mt-1">{{ item.formatted_duration }}</p>
+                  <p class="text-xs text-[var(--color-link)] mt-1">{{ item.formatted_duration }}</p>
                 </div>
               </div>
             {% endfor %}

@@ -6,6 +6,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from celery import states
 from celery.result import AsyncResult
 from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -49,6 +50,20 @@ MAX_INTERNAL_RATING_SCORE = 10
 def generate_token():
     """Generate a user token."""
     return secrets.token_urlsafe(24)
+
+
+class FloppyUserManager(DjangoUserManager):
+    """User manager with an explicit helper for disposable test accounts."""
+
+    def create_test_user(self, username, email=None, password=None, **extra_fields):
+        """Create a user that is excluded from normal user pickers."""
+        extra_fields["is_test_account"] = True
+        return self.create_user(
+            username=username,
+            email=email,
+            password=password,
+            **extra_fields,
+        )
 
 
 class HomeSortChoices(models.TextChoices):
@@ -414,6 +429,13 @@ class User(AbstractUser):
     """Custom user model."""
 
     is_demo = models.BooleanField(default=False)
+    is_test_account = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Exclude this account from normal user pickers and sharing controls.",
+    )
+
+    objects = FloppyUserManager()
 
     last_search_type = models.CharField(
         max_length=10,
@@ -529,8 +551,8 @@ class User(AbstractUser):
         choices=MediaStatusChoices,
     )
     anime_show_each_play = models.BooleanField(
-    default=False,
-    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+        default=False,
+        help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Manga
@@ -556,8 +578,8 @@ class User(AbstractUser):
         choices=MediaStatusChoices,
     )
     manga_show_each_play = models.BooleanField(
-    default=False,
-    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+        default=False,
+        help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Games
@@ -583,8 +605,8 @@ class User(AbstractUser):
         choices=MediaStatusChoices,
     )
     game_show_each_play = models.BooleanField(
-    default=False,
-    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+        default=False,
+        help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Board Games
@@ -633,8 +655,8 @@ class User(AbstractUser):
         choices=MediaStatusChoices,
     )
     book_show_each_play = models.BooleanField(
-    default=False,
-    help_text="Show each play/entry as its own row instead of aggregating duplicates",
+        default=False,
+        help_text="Show each play/entry as its own row instead of aggregating duplicates",
     )
 
     # Media type preferences: Comics
@@ -1911,9 +1933,11 @@ class User(AbstractUser):
 
         # Get task results for this user
         task_result_filter_text = f"'user_id': {self.id},"
+        seven_days_ago = timezone.now() - timedelta(days=7)
         task_results = TaskResult.objects.filter(
             task_kwargs__contains=task_result_filter_text,
             task_name=export_task_name,
+            date_done__gte=seven_days_ago,
         ).order_by("-date_done")
 
         results = []

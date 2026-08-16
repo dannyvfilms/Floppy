@@ -16,3 +16,12 @@ jobs:
           delete-ghost-images: true
           delete-orphaned-images: true
           validate: true
+
+      # Mirrors the pr-* purge in image-cleanup.yml. Run this first and read
+      # the log before running the real one.
+      - uses: dataaxiom/ghcr-cleanup-action@v1
+        with:
+          packages: floppy,yamtrack
+          dry-run: true
+          delete-tags: pr-*
+          validate: true

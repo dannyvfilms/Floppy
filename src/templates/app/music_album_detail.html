@@ -19,7 +19,7 @@
              referrerpolicy="origin">
       {% else %}
         <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
-          {% icon 'music' is_active=False extra_classes="w-24 h-24 text-gray-500" %}
+          {% icon 'music' is_active=False extra_classes="w-24 h-24 text-[var(--color-text-muted)]" %}
         </div>
       {% endif %}
 
@@ -73,7 +73,7 @@
           <span class="px-3 py-1 bg-rose-600 text-white rounded-full text-sm">Album</span>
         {% endif %}
         {% if album.release_date %}
-          <span class="px-3 py-1 bg-gray-600 text-[var(--color-text)] rounded-full text-sm">{{ album.release_date|date:"Y" }}</span>
+          <span class="px-3 py-1 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-full text-sm">{{ album.release_date|date:"Y" }}</span>
         {% endif %}
         {# Collection metadata chips (aggregated from tracks) #}
         {% if collection_metadata.has_collection %}
@@ -275,7 +275,7 @@
           <div>
             <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">SOURCE</h3>
             <a href="{{ album_details.musicbrainz_url }}"
-               class="text-[var(--color-text-secondary)] hover:text-indigo-400 transition-colors duration-200"
+               class="text-[var(--color-text-secondary)] hover:text-[var(--color-link)] transition-colors duration-200"
                target="_blank">MusicBrainz</a>
           </div>
         {% endif %}

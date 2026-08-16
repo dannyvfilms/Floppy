@@ -85,7 +85,7 @@
             <a href="{{ row.view_all_url }}"
                target="_blank"
                rel="noreferrer"
-               class="text-sm font-medium text-indigo-400 hover:text-indigo-300 transition-colors">
+               class="text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">
               {{ row.view_all_text }}
             </a>
           {% endif %}
@@ -98,19 +98,19 @@
               data-scroll-dir="prev"
               data-scroll-target="media-grid-row-{{ row.row_id }}"
               aria-label="Scroll left"
-              class="p-1 rounded text-gray-500 hover:text-[var(--color-text-secondary)] transition-colors opacity-0 pointer-events-none">
+              class="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors opacity-0 pointer-events-none">
         {% include "app/icons/chevron-left.svg" with classes="w-5 h-5" %}
       </button>
       <button type="button"
               data-scroll-dir="next"
               data-scroll-target="media-grid-row-{{ row.row_id }}"
               aria-label="Scroll right"
-              class="p-1 rounded text-gray-500 hover:text-[var(--color-text-secondary)] transition-colors">
+              class="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors">
         {% include "app/icons/chevron-right.svg" with classes="w-5 h-5" %}
       </button>
       {% if collapse_key %}
       <button type="button"
-              class="flex items-center justify-center p-1 rounded text-gray-500 hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer ml-1"
+              class="flex items-center justify-center p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer ml-1"
               @click="open = !open"
               :aria-expanded="open.toString()"
               aria-label="Toggle section">
@@ -154,7 +154,7 @@
   </div>
   {% endif %}
   {% if row.poll_for_covers %}
-    <p class="text-xs text-gray-500 mt-1">Refreshing artwork...</p>
+    <p class="text-xs text-[var(--color-text-muted)] mt-1">Refreshing artwork...</p>
   {% endif %}
 </div>
 {% if collapse_key %}

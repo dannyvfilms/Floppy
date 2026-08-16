@@ -7,7 +7,7 @@
         <div class="flex flex-col space-y-1">
           <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">Video Games</span>
           <h2 class="text-2xl font-semibold text-[var(--color-text)]">Activity Overview</h2>
-          <span class="text-sm text-gray-500" x-text="selectedRange"></span>
+          <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
         </div>
 
         <div class="space-y-4 sm:space-y-6">
@@ -100,12 +100,12 @@
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for item in top_played.game %}
                   <a href="{{ item.media.item|media_url }}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
-                    <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
+                    <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                     {% if item.media.item.image and item.media.item.image != IMG_NONE %}
                     <img src="{{ IMG_NONE }}" data-src="{{ item.media.item.image }}" alt="{{ item.media.item.title }}" class="lazyload w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
                     {% else %}
                     <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
@@ -113,7 +113,7 @@
                     {% endif %}
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ item.media.item.title }}</p>
-                      <p class="text-xs text-gray-500">{{ item.formatted_duration }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)]">{{ item.formatted_duration }}</p>
                     </div>
                   </a>
                   {% endfor %}
@@ -151,13 +151,13 @@
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for platform in game_consumption.platform_breakdown %}
                   <div class="flex items-center space-x-3 p-1 -m-1">
-                    <span class="text-gray-500 text-sm font-medium w-4">{{ forloop.counter }}</span>
+                    <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                     <div class="w-10 h-10 rounded bg-[var(--color-surface)] flex items-center justify-center text-[var(--color-text-secondary)] text-xs font-semibold uppercase flex-shrink-0">
                       {{ platform.name|slice:":2" }}
                     </div>
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ platform.name }}</p>
-                      <p class="text-xs text-gray-500 truncate">{{ platform.formatted_hours }} · {{ platform.games }} game{{ platform.games|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)] truncate">{{ platform.formatted_hours }} · {{ platform.games }} game{{ platform.games|pluralize }}</p>
                     </div>
                   </div>
                   {% endfor %}

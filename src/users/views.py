@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import re
+import uuid
 from io import BytesIO
 
 import apprise
@@ -32,7 +33,12 @@ from app.providers import tmdb
 from app.services import metadata_resolution
 from app.templatetags import app_tags
 from integrations import exports, plex
-from integrations.models import ImportRun, LastFMAccount, PlexAccount
+from integrations.models import (
+    ImportRun,
+    LastFMAccount,
+    PlexAccount,
+    PlexWebhookShare,
+)
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
 from users import cache_management
 from users.forms import (
@@ -70,6 +76,7 @@ from users.models import (
     TimeFormatChoices,
     TitleDisplayPreferenceChoices,
     TopTalentSortChoices,
+    User,
     WeekStartDayChoices,
 )
 
@@ -910,16 +917,23 @@ def preferences(request):
         )
         hide_zero_rating_raw = request.POST.get("hide_zero_rating")
         progress_bar_raw = request.POST.get("progress_bar")
-        _qsu_raw = request.POST.get("quick_season_update_mobile", "none")
+        # Read these as None-when-absent. The header theme toggle posts only
+        # `theme` to this endpoint, so defaulting an absent field to its
+        # "off" value silently reset preferences the user never touched.
+        _qsu_raw = request.POST.get("quick_season_update_mobile")
         from users.models import QuickSeasonUpdateChoices
 
         quick_season_update_mobile = (
-            _qsu_raw
-            if _qsu_raw in QuickSeasonUpdateChoices.values
-            else QuickSeasonUpdateChoices.NONE
+            None
+            if _qsu_raw is None
+            else (
+                _qsu_raw
+                if _qsu_raw in QuickSeasonUpdateChoices.values
+                else QuickSeasonUpdateChoices.NONE
+            )
         )
-        book_comic_manga_progress_percentage = (
-            request.POST.get("book_comic_manga_progress_percentage") == "1"
+        book_comic_manga_progress_percentage_raw = request.POST.get(
+            "book_comic_manga_progress_percentage"
         )
 
         duration_format = request.POST.get("duration_format")
@@ -1078,7 +1092,10 @@ def preferences(request):
                 request.user.progress_bar = progress_bar
                 fields_to_update.append("progress_bar")
 
-        if request.user.quick_season_update_mobile != quick_season_update_mobile:
+        if (
+            quick_season_update_mobile is not None
+            and request.user.quick_season_update_mobile != quick_season_update_mobile
+        ):
             request.user.quick_season_update_mobile = quick_season_update_mobile
             fields_to_update.append("quick_season_update_mobile")
 
@@ -1104,14 +1121,18 @@ def preferences(request):
             request.user.auto_pause_rules = normalized_rules
             fields_to_update.append("auto_pause_rules")
 
-        if (
-            request.user.book_comic_manga_progress_percentage
-            != book_comic_manga_progress_percentage
-        ):
-            request.user.book_comic_manga_progress_percentage = (
-                book_comic_manga_progress_percentage
+        if book_comic_manga_progress_percentage_raw is not None:
+            book_comic_manga_progress_percentage = (
+                book_comic_manga_progress_percentage_raw == "1"
             )
-            fields_to_update.append("book_comic_manga_progress_percentage")
+            if (
+                request.user.book_comic_manga_progress_percentage
+                != book_comic_manga_progress_percentage
+            ):
+                request.user.book_comic_manga_progress_percentage = (
+                    book_comic_manga_progress_percentage
+                )
+                fields_to_update.append("book_comic_manga_progress_percentage")
 
         provider_region = request.POST.get("watch_provider_region", "")
         if provider_region in [region[0] for region in watch_provider_regions]:
@@ -1264,6 +1285,28 @@ def integrations(request):
         ]
 
     jellyfin_account = getattr(user, "jellyfin_account", None)
+    plex_webhook_shares = list(
+        PlexWebhookShare.objects.filter(owner=user)
+        .select_related("recipient")
+        .order_by("recipient__username")
+    )
+    received_plex_webhook_shares = list(
+        PlexWebhookShare.objects.filter(recipient=user)
+        .select_related("owner")
+        .order_by("owner__username")
+    )
+    all_plex_library_values = [option["value"] for option in plex_library_options]
+    for share in plex_webhook_shares:
+        share.selected_libraries_json = json.dumps(
+            share.allowed_libraries
+            if share.allowed_libraries is not None
+            else all_plex_library_values,
+        )
+    plex_share_recipients = list(
+        User.objects.filter(is_active=True, is_demo=False, is_test_account=False)
+        .exclude(pk=user.pk)
+        .order_by("username")
+    )
 
     return render(
         request,
@@ -1272,9 +1315,14 @@ def integrations(request):
             "user": user,
             "plex_webhook_needs_update": plex_webhook_needs_update,
             "plex_library_options_json": json.dumps(plex_library_options),
+            "plex_library_options": plex_library_options,
             "selected_plex_webhook_libraries_json": json.dumps(
                 selected_plex_webhook_libraries
             ),
+            "plex_webhook_shares": plex_webhook_shares,
+            "received_plex_webhook_shares": received_plex_webhook_shares,
+            "plex_share_recipients": plex_share_recipients,
+            "plex_connected": bool(plex_account and plex_account.plex_token),
             "jellyfin_account": jellyfin_account,
             "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
         },
@@ -1809,19 +1857,6 @@ def create_export_schedule(request):
         messages.error(request, "Invalid export time.")
         return redirect("export_data")
 
-    # Check for existing schedule
-    existing = PeriodicTask.objects.filter(
-        task="Scheduled backup export",
-        kwargs__contains=f'"user_id": {request.user.id}',
-        enabled=True,
-    ).first()
-    if existing:
-        messages.error(
-            request,
-            "A backup schedule already exists. Delete it first to create a new one.",
-        )
-        return redirect("export_data")
-
     if frequency == "daily":
         day_of_week = "*"
     elif frequency == "2days":
@@ -1846,8 +1881,31 @@ def create_export_schedule(request):
         "include_collection": include_collection,
     }
 
+    # A user can have several schedules at once (e.g. daily watch history,
+    # weekly lists, monthly collection); only reject an exact duplicate -
+    # same content and same cadence - rather than any second schedule.
+    existing_schedules = PeriodicTask.objects.filter(
+        task="Scheduled backup export",
+        kwargs__contains=f'"user_id": {request.user.id}',
+        enabled=True,
+        crontab=crontab,
+    )
+    for schedule in existing_schedules:
+        existing_kwargs = json.loads(schedule.kwargs)
+        if (
+            sorted(existing_kwargs.get("media_types") or []) == sorted(media_types)
+            and existing_kwargs.get("include_lists") == include_lists
+            and existing_kwargs.get("include_collection") == include_collection
+        ):
+            messages.error(
+                request,
+                "An identical backup schedule already exists.",
+            )
+            return redirect("export_data")
+
     task_name = (
-        f"Backup export for {request.user.username} at {parsed_time} {frequency}"
+        f"Backup export for {request.user.username} at {parsed_time} {frequency} "
+        f"({uuid.uuid4().hex[:8]})"
     )
     PeriodicTask.objects.create(
         name=task_name,
@@ -1936,6 +1994,154 @@ def update_jellyfin_webhook_events(request):
     )
     messages.success(request, "Jellyfin webhook settings updated successfully")
 
+    return redirect("integrations")
+
+
+def _plex_library_values(account):
+    """Return the library keys currently available through a Plex account."""
+    if not account or not account.plex_token:
+        return set()
+
+    return {
+        f"{section.get('machine_identifier')}::{section.get('id')}"
+        for section in (account.sections or [])
+        if section.get("machine_identifier") and section.get("id")
+    }
+
+
+@require_POST
+def update_plex_webhook_share(request):
+    """Create or update one owner-managed Plex webhook share."""
+    user = request.user
+    plex_account = getattr(user, "plex_account", None)
+    if not plex_account or not plex_account.plex_token:
+        messages.error(request, "Connect Plex before sharing its webhook.")
+        return redirect("integrations")
+
+    share_id = request.POST.get("plex_webhook_share_id")
+    if share_id:
+        share = get_object_or_404(
+            PlexWebhookShare.objects.select_related("recipient"),
+            pk=share_id,
+            owner=user,
+        )
+        recipient = share.recipient
+    else:
+        recipient = get_object_or_404(
+            User,
+            pk=request.POST.get("plex_webhook_share_recipient"),
+            is_active=True,
+            is_demo=False,
+            is_test_account=False,
+        )
+        if recipient == user:
+            messages.error(request, "You cannot share a Plex webhook with yourself.")
+            return redirect("integrations")
+        share = PlexWebhookShare(owner=user, recipient=recipient)
+
+    submitted_usernames = [
+        username.strip()
+        for username in request.POST.get("plex_webhook_share_username", "").split(",")
+        if username.strip()
+    ]
+    plex_usernames = []
+    seen_usernames = set()
+    for username in submitted_usernames:
+        normalized_username = username.casefold()
+        if normalized_username not in seen_usernames:
+            seen_usernames.add(normalized_username)
+            plex_usernames.append(username)
+
+    if not plex_usernames:
+        messages.error(request, "Enter one or more Plex usernames for this share.")
+        return redirect("integrations")
+
+    duplicate_usernames = {
+        username.casefold() for username in plex_usernames
+    }
+    existing_shares = (
+        PlexWebhookShare.objects.filter(owner=user)
+        .exclude(pk=share.pk or None)
+        .values_list("plex_username", flat=True)
+    )
+    if any(
+        duplicate_usernames
+        & {
+            username.strip().casefold()
+            for username in existing_username.split(",")
+            if username.strip()
+        }
+        for existing_username in existing_shares
+    ):
+        messages.error(
+            request,
+            "One or more Plex usernames are already assigned to another shared profile.",
+        )
+        return redirect("integrations")
+
+    valid_library_values = _plex_library_values(plex_account)
+    selected_libraries = []
+    seen_libraries = set()
+    for raw_library in request.POST.getlist("plex_webhook_share_libraries"):
+        library = raw_library.strip()
+        if library and library not in seen_libraries:
+            seen_libraries.add(library)
+            selected_libraries.append(library)
+
+    invalid_libraries = set(selected_libraries) - valid_library_values
+    if invalid_libraries:
+        messages.error(request, "One or more selected Plex libraries are invalid.")
+        return redirect("integrations")
+
+    share.plex_username = ", ".join(plex_usernames)
+    share.allowed_libraries = (
+        None
+        if "plex_webhook_share_all_libraries" in request.POST
+        else selected_libraries
+    )
+    share.save()
+    messages.success(
+        request,
+        f"Plex webhook shared with {recipient.username}. They must enable it from Integrations.",
+    )
+    return redirect("integrations")
+
+
+@require_POST
+def toggle_plex_webhook_share(request):
+    """Enable or disable a received Plex webhook share."""
+    share = get_object_or_404(
+        PlexWebhookShare.objects.select_related("owner"),
+        pk=request.POST.get("plex_webhook_share_id"),
+        recipient=request.user,
+    )
+    enabled = request.POST.get("enabled") == "1"
+    if enabled:
+        owner_account = getattr(share.owner, "plex_account", None)
+        if not owner_account or not owner_account.plex_token:
+            messages.error(request, "The Plex owner is not currently connected.")
+            return redirect("integrations")
+
+    share.recipient_enabled = enabled
+    share.save(update_fields=["recipient_enabled", "updated_at"])
+    messages.success(
+        request,
+        "Shared Plex webhook enabled." if enabled else "Shared Plex webhook disabled.",
+    )
+    return redirect("integrations")
+
+
+@require_POST
+def delete_plex_webhook_share(request):
+    """Revoke one owner-managed Plex webhook share."""
+    share = get_object_or_404(
+        PlexWebhookShare,
+        pk=request.POST.get("plex_webhook_share_id"),
+        owner=request.user,
+    )
+    recipient_name = share.recipient.username
+    share.delete()
+    messages.success(request, f"Plex webhook access revoked for {recipient_name}.")
     return redirect("integrations")
 
 

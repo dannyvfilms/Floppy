@@ -116,6 +116,7 @@ class SimklImporter:
 
         # Track existing media for "new" mode
         self.existing_media = helpers.get_existing_media(user)
+        self.existing_children = helpers.get_existing_children(user)
 
         # Track media IDs to delete in overwrite mode
         self.to_delete = defaultdict(lambda: defaultdict(set))
@@ -237,36 +238,48 @@ class SimklImporter:
                     raise
 
                 # Check if we should process this entry based on mode.
-                if not helpers.should_process_media(
+                should_process_tv = helpers.should_process_media(
                     self.existing_media,
                     self.to_delete,
                     MediaTypes.TV.value,
                     tv_source,
                     str(tv_media_id),
                     self.mode,
-                ):
+                )
+
+                if should_process_tv:
+                    tv_item, _ = app.models.Item.objects.get_or_create(
+                        media_id=tv_media_id,
+                        source=tv_source,
+                        media_type=MediaTypes.TV.value,
+                        defaults={
+                            **app.models.Item.title_fields_from_metadata(metadata),
+                            "image": metadata["image"],
+                        },
+                    )
+
+                    tv_instance = app.models.TV(
+                        item=tv_item,
+                        user=self.user,
+                        status=tv_status,
+                        score=tv["user_rating"],
+                        notes=tv["memo"]["text"] if tv["memo"] != {} else "",
+                    )
+                    tv_instance._history_date = self._get_history_date(tv)
+                    self.bulk_media[MediaTypes.TV.value].append(tv_instance)
+                    existing_tv_ids.add(tmdb_id)
+                elif self.mode == "new":
+                    # The show already exists, but this entry's seasons/
+                    # episodes shouldn't be dropped wholesale - reuse the
+                    # existing TV row so any it doesn't have yet can still
+                    # be added below.
+                    tv_instance = self.existing_media[MediaTypes.TV.value][
+                        tv_source
+                    ].get(str(tv_media_id))
+                    if tv_instance is None:
+                        continue
+                else:
                     continue
-
-                tv_item, _ = app.models.Item.objects.get_or_create(
-                    media_id=tv_media_id,
-                    source=tv_source,
-                    media_type=MediaTypes.TV.value,
-                    defaults={
-                        **app.models.Item.title_fields_from_metadata(metadata),
-                        "image": metadata["image"],
-                    },
-                )
-
-                tv_instance = app.models.TV(
-                    item=tv_item,
-                    user=self.user,
-                    status=tv_status,
-                    score=tv["user_rating"],
-                    notes=tv["memo"]["text"] if tv["memo"] != {} else "",
-                )
-                tv_instance._history_date = self._get_history_date(tv)
-                self.bulk_media[MediaTypes.TV.value].append(tv_instance)
-                existing_tv_ids.add(tmdb_id)
 
                 if season_numbers:
                     self._process_seasons_and_episodes(
@@ -389,46 +402,69 @@ class SimklImporter:
                 )
                 continue
 
-            # Use season poster if available, otherwise fallback to TV show poster
-            season_image = season_metadata.get("image") or metadata.get("image")
+            # In "new" mode, an already-tracked show must not block a season
+            # it doesn't have yet - check this season's own existence rather
+            # than skip solely because the show already exists.
+            existing_season = None
+            if self.mode == "new":
+                existing_season = self.existing_children[MediaTypes.SEASON.value][
+                    tv_source
+                ].get((tv_media_id, season_number))
 
-            season_bucket = self._child_bucket(tv_instance.item, MediaTypes.SEASON.value)
-            season_item = helpers.find_item_across_buckets(
-                preferred_bucket=season_bucket,
-                media_id=tv_media_id,
-                source=tv_source,
-                media_type=MediaTypes.SEASON.value,
-                season_number=season_number,
-            )
-            if season_item is None:
-                season_item, _ = app.models.Item.objects.get_or_create(
+            if existing_season is not None:
+                season_instance = existing_season
+            else:
+                # Use season poster if available, otherwise fallback to TV
+                # show poster
+                season_image = season_metadata.get("image") or metadata.get("image")
+
+                season_bucket = self._child_bucket(
+                    tv_instance.item,
+                    MediaTypes.SEASON.value,
+                )
+                season_item = helpers.find_item_across_buckets(
+                    preferred_bucket=season_bucket,
                     media_id=tv_media_id,
                     source=tv_source,
                     media_type=MediaTypes.SEASON.value,
-                    library_media_type=season_bucket,
                     season_number=season_number,
-                    defaults={
-                        **app.models.Item.title_fields_from_metadata(metadata),
-                        "image": season_image,
-                    },
                 )
+                if season_item is None:
+                    season_item, _ = app.models.Item.objects.get_or_create(
+                        media_id=tv_media_id,
+                        source=tv_source,
+                        media_type=MediaTypes.SEASON.value,
+                        library_media_type=season_bucket,
+                        season_number=season_number,
+                        defaults={
+                            **app.models.Item.title_fields_from_metadata(metadata),
+                            "image": season_image,
+                        },
+                    )
 
-            if episodes[-1]["number"] == season_metadata["max_progress"]:
-                season_status = Status.COMPLETED.value
-            else:
-                season_status = tv_instance.status
+                if episodes[-1]["number"] == season_metadata["max_progress"]:
+                    season_status = Status.COMPLETED.value
+                else:
+                    season_status = tv_instance.status
 
-            season_instance = app.models.Season(
-                item=season_item,
-                user=self.user,
-                related_tv=tv_instance,
-                status=season_status,
-            )
-            season_instance._history_date = self._get_history_date(tv)
-            self.bulk_media[MediaTypes.SEASON.value].append(season_instance)
+                season_instance = app.models.Season(
+                    item=season_item,
+                    user=self.user,
+                    related_tv=tv_instance,
+                    status=season_status,
+                )
+                season_instance._history_date = self._get_history_date(tv)
+                self.bulk_media[MediaTypes.SEASON.value].append(season_instance)
 
             # Process episodes
             for episode in episodes:
+                if self.mode == "new" and (
+                    tv_media_id,
+                    season_number,
+                    episode["number"],
+                ) in self.existing_children[MediaTypes.EPISODE.value][tv_source]:
+                    continue
+
                 ep_img = self._get_episode_image(episode, season_number, metadata)
                 episode_bucket = self._child_bucket(tv_instance.item, MediaTypes.EPISODE.value)
                 episode_item = helpers.find_item_across_buckets(
@@ -782,38 +818,49 @@ class SimklImporter:
                 return
             raise
 
-        if not helpers.should_process_media(
+        should_process_tv = helpers.should_process_media(
             self.existing_media,
             self.to_delete,
             MediaTypes.TV.value,
             tv_source,
             str(tv_media_id),
             self.mode,
-        ):
+        )
+
+        if should_process_tv:
+            tv_status = self._get_status(anime["status"])
+
+            tv_item, _ = app.models.Item.objects.get_or_create(
+                media_id=tv_media_id,
+                source=tv_source,
+                media_type=MediaTypes.TV.value,
+                defaults={
+                    **app.models.Item.title_fields_from_metadata(metadata),
+                    "image": metadata["image"],
+                },
+            )
+
+            tv_instance = app.models.TV(
+                item=tv_item,
+                user=self.user,
+                status=tv_status,
+                score=anime["user_rating"],
+                notes=anime["memo"]["text"] if anime["memo"] != {} else "",
+            )
+            tv_instance._history_date = self._get_history_date(anime)
+            self.bulk_media[MediaTypes.TV.value].append(tv_instance)
+            existing_tv_ids.add(tmdb_id)
+        elif self.mode == "new":
+            # The show already exists, but this entry's seasons/episodes
+            # shouldn't be dropped wholesale - reuse the existing TV row so
+            # any it doesn't have yet can still be added below.
+            tv_instance = self.existing_media[MediaTypes.TV.value][tv_source].get(
+                str(tv_media_id),
+            )
+            if tv_instance is None:
+                return
+        else:
             return
-
-        tv_status = self._get_status(anime["status"])
-
-        tv_item, _ = app.models.Item.objects.get_or_create(
-            media_id=tv_media_id,
-            source=tv_source,
-            media_type=MediaTypes.TV.value,
-            defaults={
-                **app.models.Item.title_fields_from_metadata(metadata),
-                "image": metadata["image"],
-            },
-        )
-
-        tv_instance = app.models.TV(
-            item=tv_item,
-            user=self.user,
-            status=tv_status,
-            score=anime["user_rating"],
-            notes=anime["memo"]["text"] if anime["memo"] != {} else "",
-        )
-        tv_instance._history_date = self._get_history_date(anime)
-        self.bulk_media[MediaTypes.TV.value].append(tv_instance)
-        existing_tv_ids.add(tmdb_id)
 
         if season_numbers:
             self._process_seasons_and_episodes(

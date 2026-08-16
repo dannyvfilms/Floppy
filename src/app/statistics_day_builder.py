@@ -649,6 +649,9 @@ def build_stats_for_day(
         localized = stats._localize_datetime(activity_dt)
         if not localized:
             return
+        # Exact midnight is the date-only placeholder used when no time is known.
+        if localized.time() == datetime.min.time():
+            return
         hour_counts[media_type][localized.hour] += 1
         hour_minutes[media_type][localized.hour] += minutes or 0
 

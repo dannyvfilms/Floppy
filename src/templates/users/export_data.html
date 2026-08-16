@@ -13,7 +13,7 @@
     {# Export Data + Scheduled Backup #}
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-4">
-        {% include "app/icons/export.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+        {% include "app/icons/export.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">Export Data</h2>
       </div>
       <p class="text-[var(--color-text-muted)] mb-5 text-sm">
@@ -97,7 +97,7 @@
         {# Media Types Selection #}
         <div class="mb-5">
           <div class="flex items-center mb-4">
-            {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+            {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
             <h3 class="text-lg font-semibold">Export Content</h3>
           </div>
           <p class="text-[var(--color-text-muted)] mb-4 text-sm">
@@ -173,7 +173,7 @@
     {# Active Scheduled Backups #}
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-4">
-        {% include "app/icons/repeat.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+        {% include "app/icons/repeat.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">Active Scheduled Exports</h2>
       </div>
       <p class="text-[var(--color-text-muted)] mb-5 text-sm">
@@ -184,7 +184,7 @@
           <div class="bg-[var(--color-surface-strong)] rounded-lg p-4">
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-3">
-                {% include "app/icons/download.svg" with classes="w-5 h-5 text-indigo-400" %}
+                {% include "app/icons/download.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
                 <span class="text-sm font-medium text-[var(--color-text-secondary)]">CSV Export</span>
                 <span class="text-sm text-[var(--color-text-muted)]">{{ scheduled_backup.schedule }}</span>
               </div>
@@ -215,7 +215,7 @@
         {% empty %}
           <div class="bg-[var(--color-surface-strong)] rounded-lg p-6 text-center">
             <p class="text-[var(--color-text-muted)] text-sm">No scheduled exports configured</p>
-            <p class="text-gray-500 text-xs mt-1">Set up a schedule above to automatically export your data</p>
+            <p class="text-[var(--color-text-muted)] text-xs mt-1">Set up a schedule above to automatically export your data</p>
           </div>
         {% endfor %}
       </div>
@@ -224,7 +224,7 @@
     {# Backup History #}
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-4">
-        {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+        {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">Export History</h2>
       </div>
 
@@ -256,7 +256,7 @@
               <div class="mt-2" x-data="{ showDetails: false }" x-cloak>
                 {% if result.errors %}
                   <button @click="showDetails = !showDetails"
-                          class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
+                          class="text-xs text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors cursor-pointer"
                           x-text="showDetails ? 'Hide details' : 'Show details'">Show details</button>
 
                   <div class="mt-2 space-y-1 text-sm bg-[var(--color-surface)] p-3 rounded"
@@ -272,7 +272,7 @@
         {% empty %}
           <div class="bg-[var(--color-surface-strong)] rounded-lg p-6 text-center">
             <p class="text-[var(--color-text-muted)] text-sm">No exports in the last 7 days</p>
-            <p class="text-gray-500 text-xs mt-1">Set up a schedule to see the history here</p>
+            <p class="text-[var(--color-text-muted)] text-xs mt-1">Set up a schedule to see the history here</p>
           </div>
         {% endfor %}
       </div>

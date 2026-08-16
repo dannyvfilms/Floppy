@@ -86,11 +86,11 @@
         <a href="{{ game_lengths.source_url }}"
            target="_blank"
            rel="noreferrer noopener"
-           class="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold tracking-wide text-indigo-300 transition hover:border-indigo-400/50 hover:bg-indigo-500/15 hover:text-indigo-200">
+           class="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold tracking-wide text-[var(--color-link)] transition hover:border-indigo-400/50 hover:bg-indigo-500/15 hover:text-[var(--color-link-hover)]">
           {{ game_lengths.source_label }}
         </a>
       {% else %}
-        <span class="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold tracking-wide text-indigo-300">
+        <span class="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold tracking-wide text-[var(--color-link)]">
           {{ game_lengths.source_label }}
         </span>
       {% endif %}

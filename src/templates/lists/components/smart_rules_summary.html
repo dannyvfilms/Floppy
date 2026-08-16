@@ -88,7 +88,7 @@
       </span>
 
       <span class="ml-auto text-xs"
-            :class="saveState === 'saving' ? 'text-yellow-300' : (saveState === 'error' ? 'text-red-400' : 'text-indigo-300')">
+            :class="saveState === 'saving' ? 'text-yellow-300' : (saveState === 'error' ? 'text-red-400' : 'text-[var(--color-link)]')">
         <span>Edit mode active</span>
         <span x-show="saveState === 'saving'"> • Saving…</span>
         <span x-show="saveState === 'error'"> • Save failed</span>

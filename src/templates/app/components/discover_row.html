@@ -7,12 +7,12 @@
       <div class="mt-1 flex items-center justify-between gap-4">
         <p class="text-sm text-[var(--color-text-muted)]">{{ row.why }}</p>
         {% if row.match_signal %}
-          <p class="shrink-0 text-xs text-gray-500">{{ row.match_signal }}</p>
+          <p class="shrink-0 text-xs text-[var(--color-text-muted)]">{{ row.match_signal }}</p>
         {% endif %}
       </div>
     </div>
     {% if row.is_stale %}
-      <span class="text-xs text-amber-300">Refreshing…</span>
+      <span class="text-xs text-[var(--color-warning-text)]">Refreshing…</span>
     {% endif %}
   </div>
 

@@ -55,6 +55,52 @@ RUNTIME_UNKNOWN_FAILED = 999999  # runtime completely unknown / failed lookup
 
 RUNTIME_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl")
 GENRE_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl", "igdb", "bgg")
+TRACKED_TASK_NAMES = frozenset(
+    {
+        "Import from Trakt",
+        "Import Trakt data export",
+        "Import Trakt collection CSV",
+        "Import from SIMKL",
+        "Import from MyAnimeList",
+        "Import from AniList",
+        "Import from Kitsu",
+        "Import from Yamtrack",
+        "Import from HowLongToBeat",
+        "Import from Grouvee",
+        "Import from Steam",
+        "Import from Xbox",
+        "Import from Xbox (Recurring)",
+        "Import from IMDB",
+        "Import from Goodreads",
+        "Import from GoodReads",
+        "integrations.tasks.import_goodreads",
+        "Import from MDBList",
+        "Import MDBList Lists",
+        "Import from Plex",
+        "Sync Plex Watchlist",
+        "Import from Radarr",
+        "Import from Radarr (Recurring)",
+        "Import from Sonarr",
+        "Import from Sonarr (Recurring)",
+        "Import from Audiobookshelf",
+        "Import from Audiobookshelf (Recurring)",
+        "Import from Storyteller",
+        "Import from Storyteller (Recurring)",
+        "Import from Pocket Casts",
+        "Import from Pocket Casts (Recurring)",
+        "Import from GPodder",
+        "Import from GPodder (Recurring)",
+        "Import from Stremio",
+        "Import from Stremio (Recurring)",
+        "Import from Last.fm History",
+        "Import from Hardcover",
+        "Import from StoryGraph",
+        "Import from Koito History",
+        "Scheduled backup export",
+        "Bulk Episode Plays",
+        "Bulk Music Plays",
+    },
+)
 DISCOVER_PRIORITY_HISTORY_DEBOUNCE_SECONDS = 15
 DISCOVER_PRIORITY_HISTORY_COUNTDOWN = 15
 DISCOVER_PRIORITY_STATISTICS_DEBOUNCE_SECONDS = 20
@@ -99,6 +145,20 @@ def media_change_side_effects_suppressed() -> bool:
     return bool(_SUPPRESS_MEDIA_CHANGE_SIDE_EFFECTS.get())
 
 
+def _is_tracked_task(task_name):
+    """Return whether a task needs durable status for a user-facing consumer."""
+    return task_name in TRACKED_TASK_NAMES
+
+
+def _sender_task_name(sender):
+    """Return the Celery task name carried by a completion signal sender."""
+    return getattr(sender, "name", None) or getattr(
+        getattr(sender, "request", None),
+        "task",
+        None,
+    )
+
+
 @before_task_publish.connect
 def create_task_result_on_publish(
     sender=None,
@@ -110,7 +170,8 @@ def create_task_result_on_publish(
 
     https://github.com/celery/django-celery-results/issues/286#issuecomment-1279161047
     """
-    if "task" not in headers:
+    task_name = headers.get("task") if headers else None
+    if not _is_tracked_task(task_name):
         return
 
     if not apps.ready:
@@ -126,7 +187,7 @@ def create_task_result_on_publish(
             task_id=headers["id"],
             result=None,
             status=states.PENDING,
-            task_name=headers["task"],
+            task_name=task_name,
             task_args=headers.get("argsrepr", ""),
             task_kwargs=headers.get("kwargsrepr", ""),
         )
@@ -148,6 +209,9 @@ def update_task_result_on_success(sender=None, result=None, **kwargs):
     the PENDING row from create_task_result_on_publish is never updated.
     """
     if not apps.ready or sender is None:
+        return
+
+    if not _is_tracked_task(_sender_task_name(sender)):
         return
 
     task_id = getattr(sender.request, "id", None)
@@ -176,6 +240,9 @@ def update_task_result_on_failure(
 ):
     """Mark the TaskResult row created on publish as FAILURE."""
     if not apps.ready or not task_id:
+        return
+
+    if not _is_tracked_task(_sender_task_name(sender)):
         return
 
     try:

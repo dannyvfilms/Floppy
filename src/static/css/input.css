@@ -20,9 +20,16 @@
   --color-sidebar: #1a1d20;
   --color-text: #f3f4f6;
   --color-text-secondary: #d1d5db;
-  --color-text-muted: #9ca3af;
+  /* Lifted from #9ca3af: that value reached only 4.1:1 on --color-surface-strong,
+     the raised surface settings cards use, so muted copy missed WCAG AA there. */
+  --color-text-muted: #adb5bd;
   --color-warning-text: #fde68a;
   --color-info-text: #c7d2fe;
+  --color-error-text: #fca5a5;
+  --color-link: #a5b4fc;
+  --color-link-hover: #c7d2fe;
+  --color-status-clean: #10b981;
+  --color-status-dirty: #f59e0b;
   color-scheme: dark;
 }
 
@@ -37,7 +44,10 @@
     --color-surface-muted: #e9ecef;
     --color-surface-dim: #dee2e6;
     --color-border: #dee2e6;
-    --color-hover-dim: #f1f3f5;
+    /* Must differ from --color-sidebar (#f1f3f5): the sidebar and header
+       hover targets paint this over that surface, so an equal value gave
+       them no background feedback at all in the light theme. */
+    --color-hover-dim: #e9ecef;
     --color-page-bg: #f8f9fa;
     --color-surface-border: #ced4da;
     --color-sidebar: #f1f3f5;
@@ -46,6 +56,11 @@
     --color-text-muted: #4b5563;
     --color-warning-text: #92400e;
     --color-info-text: #3730a3;
+    --color-error-text: #b91c1c;
+    --color-link: #4f46e5;
+    --color-link-hover: #4338ca;
+    --color-status-clean: #047857;
+    --color-status-dirty: #b45309;
     color-scheme: light;
   }
 }
@@ -60,7 +75,7 @@ html.light {
   --color-surface-muted: #e9ecef;
   --color-surface-dim: #dee2e6;
   --color-border: #dee2e6;
-  --color-hover-dim: #f1f3f5;
+  --color-hover-dim: #e9ecef;
   --color-page-bg: #f8f9fa;
   --color-surface-border: #ced4da;
   --color-sidebar: #f1f3f5;
@@ -69,12 +84,38 @@ html.light {
   --color-text-muted: #4b5563;
   --color-warning-text: #92400e;
   --color-info-text: #3730a3;
+  --color-error-text: #b91c1c;
+  --color-link: #4f46e5;
+  --color-link-hover: #4338ca;
+  --color-status-clean: #047857;
+  --color-status-dirty: #b45309;
   color-scheme: light;
 }
 
 html.dark {
+  --color-surface: #2a2f35;
+  --color-surface-strong: #39404b;
+  --color-surface-hover: #454d5a;
+  --color-panel: #272c31;
+  --color-accent: #4a9eff;
+  --color-surface-alt: #3e454d;
+  --color-surface-muted: #343a40;
+  --color-surface-dim: #262a2f;
+  --color-border: #2c3136;
+  --color-hover-dim: #23272b;
+  --color-page-bg: #212529;
+  --color-surface-border: #454d59;
+  --color-sidebar: #1a1d20;
+  --color-text: #f3f4f6;
+  --color-text-secondary: #d1d5db;
+  --color-text-muted: #adb5bd;
   --color-warning-text: #fde68a;
   --color-info-text: #c7d2fe;
+  --color-error-text: #fca5a5;
+  --color-link: #a5b4fc;
+  --color-link-hover: #c7d2fe;
+  --color-status-clean: #10b981;
+  --color-status-dirty: #f59e0b;
   color-scheme: dark;
 }
 
@@ -311,6 +352,27 @@ html.light .theme-toggle-icon-moon {
   border-radius: 0.5rem;
   box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(0.75rem);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.preferences-actions.is-dirty {
+  border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-surface-border));
+}
+
+.preferences-actions-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+  transition: background-color 0.2s ease;
+}
+
+.preferences-actions-status-dot.is-clean {
+  background-color: var(--color-status-clean, #10b981);
+}
+
+.preferences-actions-status-dot.is-dirty {
+  background-color: var(--color-status-dirty, #f59e0b);
 }
 
 .preferences-actions-title {
@@ -323,6 +385,13 @@ html.light .theme-toggle-icon-moon {
   margin-top: 0.15rem;
   color: var(--color-text-muted);
   font-size: 0.7rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preferences-actions,
+  .preferences-actions-status-dot {
+    transition: none !important;
+  }
 }
 
 @media (min-width: 48rem) {
@@ -517,19 +586,19 @@ html.light .theme-toggle-icon-moon {
 @custom-variant parent-hover-tap (.hover-tap:hover &);
 
 .toast-error {
-  @apply bg-red-700/95 border-red-600;
+  @apply bg-red-700/95 border-red-600 text-white;
 }
 
 .toast-warning {
-  @apply bg-amber-700/95 border-amber-600;
+  @apply bg-amber-700/95 border-amber-600 text-white;
 }
 
 .toast-success {
-  @apply bg-emerald-700/95 border-emerald-600;
+  @apply bg-emerald-700/95 border-emerald-600 text-white;
 }
 
 .toast-info {
-  @apply bg-indigo-700/95 border-indigo-600;
+  @apply bg-indigo-700/95 border-indigo-600 text-white;
 }
 
 /*
@@ -1333,7 +1402,7 @@ html.light .theme-toggle-icon-moon {
 }
 
 .select2-container--tailwindcss-4 .select2-selection--multiple .select2-search--inline .select2-search__field {
-  @apply w-auto min-w-[6ch] h-[1.5rem] p-0 m-0 text-sm/6 bg-transparent border-0 focus:outline-hidden focus:ring-0 placeholder:text-gray-500 placeholder:text-sm/6 placeholder:font-sans;
+  @apply w-auto min-w-[6ch] h-[1.5rem] p-0 m-0 text-sm/6 bg-transparent border-0 focus:outline-hidden focus:ring-0 placeholder:text-[var(--color-text-muted)] placeholder:text-sm/6 placeholder:font-sans;
 }
 
 /* Focus styles for keyboard navigation */

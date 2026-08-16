@@ -124,7 +124,7 @@
             <span class="flex-1 min-w-0">
               <span class="block truncate text-[var(--color-text)]">{{ hardcover_selected_edition.title }}</span>
               {% if hardcover_selected_edition.language or hardcover_selected_edition.format %}
-                <span class="block text-xs text-gray-500 truncate">
+                <span class="block text-xs text-[var(--color-text-muted)] truncate">
                   {{ hardcover_selected_edition.language|default:"" }}{% if hardcover_selected_edition.language and hardcover_selected_edition.format %} · {% endif %}{{ hardcover_selected_edition.format|default:"" }}
                 </span>
               {% endif %}
@@ -173,23 +173,29 @@
                      for="{{ field.id_for_label }}">{{ field.label }}</label>
               <div class="relative">
                 {% if field.field.widget.input_type == "number" %}
-                  {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
+                  {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
                   <div class="absolute inset-y-0 right-0 flex flex-col border-l border-gray-600">
                     <button type="button"
-                            class="flex-1 px-2 hover:bg-gray-700 transition-colors rounded-tr-md border-t border-r border-gray-600"
+                            class="flex-1 px-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors rounded-tr-md border-t border-r border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                            aria-label="Increase {{ field.label }}"
+                            title="Increase {{ field.label }}"
+                            aria-controls="{{ field.id_for_label }}"
                             onclick="this.parentElement.previousElementSibling.stepUp()">
                       {% include "app/icons/chevron-up.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <button type="button"
-                            class="flex-1 px-2 hover:bg-gray-700 transition-colors rounded-br-md border-b border-r border-gray-600"
+                            class="flex-1 px-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors rounded-br-md border-b border-r border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                            aria-label="Decrease {{ field.label }}"
+                            title="Decrease {{ field.label }}"
+                            aria-controls="{{ field.id_for_label }}"
                             onclick="this.parentElement.previousElementSibling.stepDown()">
                       {% include "app/icons/chevron-down.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                   </div>
                 {% elif field.name == 'synopsis' or field.name == 'genres' or field.name == 'studios' or field.name == 'languages' or field.name == 'authors' or field.name == 'isbn' or field.name == 'platforms' or field.name == 'themes' or field.name == 'creators' %}
-                  {{ field|add_class:"w-full min-h-28 p-2 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
+                  {{ field|add_class:"w-full min-h-28 p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
                 {% else %}
-                  {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
+                  {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
                 {% endif %}
               </div>
               {% if field.help_text %}
@@ -296,7 +302,7 @@
                         {% endif %}
                       </p>
                       {% if season.is_mapped_target %}
-                        <span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                        <span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-[var(--color-link)] border border-indigo-500/30">
                           Conversion target
                         </span>
                       {% endif %}
@@ -305,7 +311,7 @@
                       <p class="text-xs text-[var(--color-text-muted)]">{{ season.first_air_date|user_date_format:user }}</p>
                     {% endif %}
                     {% if season.is_mapped_target and season.mapped_episode_start and season.mapped_episode_end %}
-                      <p class="text-xs text-indigo-300 mt-1">
+                      <p class="text-xs text-[var(--color-link)] mt-1">
                         {{ identity_provider|upper }} episodes: E{{ season.mapped_episode_start }}-E{{ season.mapped_episode_end }}
                       </p>
                     {% endif %}

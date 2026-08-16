@@ -424,3 +424,30 @@ async def test_connection_error_is_surfaced_not_raised(api_base_url):
         )
         result = await server.get_home()
         assert result == {"error": True, "detail": "Connection failed"}
+
+
+async def test_domain_context_resource_returns_the_served_context():
+    with respx.mock:
+        respx.get("https://floppy.test/api/context.jsonld").mock(
+            return_value=Response(200, text='{"@context": {"@version": 1.1}}'),
+        )
+        body = await server.domain_context()
+        assert json.loads(body)["@context"]["@version"] == 1.1
+
+
+async def test_domain_context_resource_reports_failure_without_blocking_tools():
+    """A missing context must degrade to a structured error, not an exception."""
+    with respx.mock:
+        respx.get("https://floppy.test/api/context.jsonld").mock(
+            return_value=Response(404, text="not found"),
+        )
+        respx.get("https://floppy.test/api/v1/search/movie").mock(
+            return_value=ok({"results": []}),
+        )
+
+        error = json.loads(await server.domain_context())
+        assert error["error"] is True
+        assert error["status_code"] == 404
+
+        # The tool path is unaffected by the resource failure.
+        assert await server.search_media("movie", "matrix") == {"results": []}

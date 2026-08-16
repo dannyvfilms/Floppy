@@ -134,7 +134,7 @@
                     hx-include="#filter-form"
                     hx-indicator="#loading-indicator"
                     class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                    :class="mediaType === 'all' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                    :class="mediaType === 'all' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                     @click="mediaType = 'all'; open = false"
                     type="button">All Types</button>
             {% for media_type in media_types %}
@@ -143,7 +143,7 @@
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
                       class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                      :class="mediaType === '{{ media_type }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                      :class="mediaType === '{{ media_type }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                       @click="mediaType = '{{ media_type }}'; open = false"
                       type="button">{{ media_type|media_type_readable_plural }}</button>
             {% endfor %}
@@ -187,7 +187,7 @@
                       hx-include="#filter-form"
                       hx-indicator="#loading-indicator"
                       class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                      :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                      :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                       @click="toggleSort('{{ value }}'); open = false"
                       type="button">{{ label }}</button>
             {% endfor %}
@@ -269,7 +269,7 @@
                          id="trakt-redirect-uri-step-1"
                          value="{{ trakt_redirect_uri }}"
                          readonly
-                         class="flex-1 text-sm text-indigo-300 font-mono bg-[var(--color-surface-dim)] p-3 rounded border-0 focus:ring-0 focus:outline-none cursor-text">
+                         class="flex-1 text-sm text-[var(--color-link)] font-mono bg-[var(--color-surface-dim)] p-3 rounded border-0 focus:ring-0 focus:outline-none cursor-text">
                   <button type="button"
                           class="flex items-center justify-center w-10 h-10 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] bg-[var(--color-surface-hover)] hover:bg-[var(--color-surface-hover)] rounded transition-colors cursor-pointer"
                           data-copy-target="#trakt-redirect-uri-step-1"
@@ -320,7 +320,7 @@
                          id="trakt-redirect-uri-step-2"
                          value="{{ trakt_redirect_uri }}"
                          readonly
-                         class="flex-1 text-sm text-indigo-300 font-mono bg-[var(--color-surface-dim)] p-3 rounded border-0 focus:ring-0 focus:outline-none cursor-text">
+                         class="flex-1 text-sm text-[var(--color-link)] font-mono bg-[var(--color-surface-dim)] p-3 rounded border-0 focus:ring-0 focus:outline-none cursor-text">
                   <button type="button"
                           class="flex items-center justify-center w-10 h-10 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] bg-[var(--color-surface-hover)] hover:bg-[var(--color-surface-hover)] rounded transition-colors cursor-pointer"
                           data-copy-target="#trakt-redirect-uri-step-2"
@@ -478,7 +478,7 @@
               <a href="https://mdblist.com/preferences/"
                  target="_blank"
                  rel="noopener noreferrer"
-                 class="text-indigo-400 hover:text-indigo-300 underline">MDBList preferences</a>.
+                 class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">MDBList preferences</a>.
             </p>
 
             <form method="post" action="{% url 'mdblist_connect' %}" class="space-y-3">

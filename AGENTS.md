@@ -157,14 +157,14 @@ Do not run a full test suite or full build unless risk justifies it or the user 
 
 ### Preexisting Failures (Baseline Zero Policy)
 
-App tests, ruff, and lint were driven to zero as a dedicated cleanup effort. The expectation is to hold that baseline, not let it erode.
+App tests, ruff, and lint were driven to zero as a dedicated cleanup effort. The expectation is to hold that baseline at zero, not merely avoid adding to it. Baseline zero means zero — finding a preexisting failure is the trigger to fix it, not to leave it and move on.
 
 If you discover a test/ruff/lint failure while working on something unrelated:
 
 1. Check it against baseline to confirm it's preexisting and not introduced by your change.
-2. It's fine not to fix it inline as part of the current change.
-3. Do not just silently note it — flag it explicitly to the user and state plainly that the expectation is to fix it, not just document it.
-4. Prefer fixing it in a separate commit, and where practical a separate PR, so the cleanup is easy to review independently of the change at hand.
+2. Fix it. Do not defer it, note it as acceptable to skip, or treat "it's fine not to fix it inline" as the default — that lets the baseline erode one skipped finding at a time. Skipping is the exception, reserved for fixes that are large, risky, or clearly outside what you're equipped to validate right now — and even then say so explicitly and why, don't just quietly pass over it.
+3. Tell the user what you found and that you fixed it (or, in the exception case, why you didn't).
+4. Prefer landing the fix in a separate commit, and where practical a separate PR, so the cleanup is easy to review independently of the change at hand — separate from the main change, not skipped.
 
 ## Command Output
 
@@ -302,6 +302,8 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/music_integration.md`: music-specific data model and UI integration notes.
 - `docs/agents/pocketcasts_workflow.md`: Pocket Casts import/schedule workflow details.
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
+- `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
+
 
 ## Local Commands
 - Install locked dev dependencies: `uv sync --locked`

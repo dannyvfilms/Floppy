@@ -73,7 +73,7 @@
                       <span>Yes</span>
                     </label>
                   {% elif field.field.widget.input_type == 'number' %}
-                    {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
+                    {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
                     <div class="absolute inset-y-0 right-0 flex flex-col border-l border-gray-600">
                       <button type="button"
                               class="flex-1 px-2 hover:bg-gray-700 transition-colors rounded-tr-md border-t border-r border-gray-600"
@@ -164,7 +164,7 @@
                               id="{{ field.id_for_label }}"
                               :aria-expanded="open"
                               class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
-                        <span x-text="selectedLabel" :class="selectedValue === '' ? 'text-gray-500' : ''"></span>
+                        <span x-text="selectedLabel" :class="selectedValue === '' ? 'text-[var(--color-text-muted)]' : ''"></span>
                         {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
                       </button>
                       <div x-show="open"
@@ -183,7 +183,7 @@
                                   data-choice-value="{{ value|default_if_none:'' }}"
                                   data-choice-label="{{ label }}"
                                   @click="choose('{{ value|default_if_none:''|escapejs }}', '{{ label|escapejs }}')"
-                                  class="block w-full px-3 py-2 text-left text-sm transition-colors {% if value == '' %}text-gray-500{% else %}text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]{% endif %}">
+                                  class="block w-full px-3 py-2 text-left text-sm transition-colors {% if value == '' %}text-[var(--color-text-muted)]{% else %}text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]{% endif %}">
                             {{ label }}
                           </button>
                         {% endfor %}
@@ -191,7 +191,7 @@
                       <input type="hidden" name="{{ field.name }}" x-model="selectedValue">
                     </div>
                   {% else %}
-                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
+                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
                   {% endif %}
                 </div>
               </div>

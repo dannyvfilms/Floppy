@@ -771,7 +771,7 @@ class ListDetailViewTests(TestCase):
 
         content = response.content.decode()
         self.assertIn(
-            'class="inline-flex items-center text-[var(--color-text-muted)] transition-colors hover:text-indigo-300"',
+            'class="inline-flex items-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-link-hover)]"',
             content,
         )
         self.assertLess(content.index("3 items"), content.index(self.user.username))
