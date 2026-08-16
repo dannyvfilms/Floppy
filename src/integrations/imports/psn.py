@@ -350,6 +350,15 @@ class PSNImporter:
 
         if existing:
             if self.mode == "overwrite":
+                # PSN's cumulative play duration only ever grows, so an
+                # aggregate below the stored progress never means the user
+                # played less: it means incomplete data -- a sibling title ID
+                # whose IGDB lookup failed this run, or a title whose
+                # playDuration PSN reports as absent (psnawp collapses that
+                # to zero). Mirror the Xbox importer's invariant that unknown
+                # playtime must never overwrite tracked hours: progress is
+                # only ever raised.
+                minutes = max(existing.progress, minutes)
                 existing.progress = minutes
                 if existing.status not in {
                     Status.COMPLETED.value,

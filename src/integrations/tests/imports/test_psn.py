@@ -248,6 +248,66 @@ class ImportPSN(TestCase):
         self.assertEqual(game.status, Status.COMPLETED.value)
         self.assertEqual(game.progress, 1250)
 
+    @patch("integrations.imports.psn.services.search")
+    @patch("integrations.psn_api.PSNAWP")
+    def test_partial_lookup_failure_never_lowers_progress(
+        self,
+        mock_psnawp,
+        mock_search,
+    ):
+        """A failed lookup for one of several aggregated title IDs must not
+        shrink progress to the partial sum of the titles that did match."""
+        item = self.existing_game(progress=1200)
+        recent = timezone.now() - timedelta(days=1)
+        mock_psnawp.side_effect = FakePSNAWP(
+            [
+                stats(
+                    "CUSA00001_00",
+                    "Halo Infinite PS4EDITION",
+                    PlatformCategory.PS4,
+                    900,
+                    recent,
+                ),
+                stats("PPSA00001_00", "Halo Infinite", PlatformCategory.PS5, 300, recent),
+            ],
+        )
+        good = self.search_stub(media_id="1")
+
+        def search(media_type, query, page, source=None):
+            if "PS4EDITION" in query:
+                raise services.ProviderAPIError("IGDB", "transient")
+            return good(media_type, query, page, source=source)
+
+        mock_search.side_effect = search
+
+        _, warnings = psn.importer(None, self.user, "overwrite")
+
+        game = Game.objects.get(user=self.user, item=item)
+        self.assertEqual(game.progress, 1200)
+        self.assertIn("Halo Infinite PS4EDITION", warnings)
+
+    @patch("integrations.imports.psn.services.search")
+    @patch("integrations.psn_api.PSNAWP")
+    def test_zero_reported_playtime_never_lowers_progress(
+        self,
+        mock_psnawp,
+        mock_search,
+    ):
+        """PSN reports playDuration 0 for some played games (e.g. Life Is
+        Strange); like Xbox's unreported minutes, that must not zero
+        tracked hours on overwrite."""
+        item = self.existing_game(progress=1200)
+        recent = timezone.now() - timedelta(days=1)
+        mock_psnawp.side_effect = FakePSNAWP(
+            [stats("CUSA00001_00", "Halo Infinite", PlatformCategory.PS4, 0, recent)],
+        )
+        mock_search.side_effect = self.search_stub(media_id="1")
+
+        psn.importer(None, self.user, "overwrite")
+
+        game = Game.objects.get(user=self.user, item=item)
+        self.assertEqual(game.progress, 1200)
+
     def tombstone(self, media_id):
         """Record that the user deleted this IGDB game locally."""
         return DeletedMedia.objects.create(
