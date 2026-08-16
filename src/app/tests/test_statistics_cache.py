@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import call, patch
 
 from django.conf import settings
@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from app import statistics_cache
-from app.models import Item, MediaTypes, Sources
+from app.models import Item, MediaTypes, Movie, Sources, Status
 
 
 class StatisticsRefreshSchedulingTests(TestCase):
@@ -102,6 +102,62 @@ class StatisticsRefreshSchedulingTests(TestCase):
             countdown=5,
             allow_inline=False,
             priority=settings.CELERY_TASK_PRIORITY_FOLLOWUP,
+        )
+
+
+class StatisticsHourBucketTests(TestCase):
+    """Time-of-day statistics omit date-only midnight placeholders."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(
+            username="stats-hour-user",
+            password="secret123",
+        )
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_exact_midnight_is_excluded_but_later_midnight_activity_remains(self):
+        """Only exact 00:00 placeholders are omitted from hour buckets."""
+        midnight = timezone.make_aware(datetime(2025, 1, 15))
+        for index, (watched_at, runtime) in enumerate(
+            ((midnight, 120), (midnight + timedelta(minutes=30), 90)),
+            start=1,
+        ):
+            item = Item.objects.create(
+                media_id=f"midnight-movie-{index}",
+                source=Sources.MANUAL.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=f"Midnight Movie {index}",
+                runtime_minutes=runtime,
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                progress=1,
+                start_date=watched_at,
+                end_date=watched_at,
+            )
+
+        day_stats = statistics_cache.build_stats_for_day(
+            self.user.id,
+            midnight.date(),
+        )
+
+        self.assertEqual(day_stats["hour_counts"][MediaTypes.MOVIE.value], {"0": 1})
+        self.assertEqual(
+            day_stats["hour_minutes"][MediaTypes.MOVIE.value],
+            {"0": 90},
+        )
+        self.assertEqual(
+            day_stats["totals"]["minutes_by_type"][MediaTypes.MOVIE.value],
+            210,
+        )
+        self.assertEqual(
+            day_stats["totals"]["plays_by_type"][MediaTypes.MOVIE.value],
+            2,
         )
 
 
