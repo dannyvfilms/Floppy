@@ -3,11 +3,14 @@ import datetime
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
+from django.urls import reverse
+
 from app.models import (
     Podcast,
     PodcastEpisode,
     PodcastShow,
     PodcastShowTracker,
+    Status,
 )
 
 from .base import FloppyApiTestCase
@@ -130,6 +133,93 @@ class EpisodePlayTests(PodcastApiTestCase):
         podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
         self.assertEqual(podcast.item.media_id, "ep-uuid-1")
         self.assertEqual(podcast.progress, 30)
+
+    def test_blank_date_uses_current_server_time(self):
+        """A blank date records a completed play at the current server time."""
+        completed_at = datetime.datetime(2025, 1, 15, 12, tzinfo=datetime.UTC)
+
+        with patch(
+            "app.fork_services_podcast.timezone.now",
+            return_value=completed_at,
+        ):
+            response = self.call_api(
+                "post",
+                "api_podcast_episode_play",
+                payload={
+                    "show_id": self.show.id,
+                    "episode_id": self.episode1.id,
+                    "end_date": "",
+                },
+                headers=self.auth_headers,
+            )
+
+        self.assertEqual(response.status_code, HTTP.CREATED)
+        podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
+        self.assertEqual(podcast.status, Status.COMPLETED.value)
+        self.assertEqual(podcast.end_date, completed_at)
+
+    def test_blank_and_omitted_dates_share_duplicate_protection(self):
+        """Repeated date-free plays create one completed activity entry."""
+        completed_at = datetime.datetime(2025, 1, 15, 12, tzinfo=datetime.UTC)
+
+        with patch(
+            "app.fork_services_podcast.timezone.now",
+            return_value=completed_at,
+        ):
+            first = self.call_api(
+                "post",
+                "api_podcast_episode_play",
+                payload={
+                    "show_id": self.show.id,
+                    "episode_uuid": self.episode2.episode_uuid,
+                    "end_date": "",
+                },
+                headers=self.auth_headers,
+            )
+            second = self.call_api(
+                "post",
+                "api_podcast_episode_play",
+                payload={
+                    "show_id": self.show.id,
+                    "episode_uuid": self.episode2.episode_uuid,
+                },
+                headers=self.auth_headers,
+            )
+
+        self.assertEqual(first.status_code, HTTP.CREATED)
+        self.assertEqual(second.status_code, HTTP.OK)
+        self.assertTrue(second.json()["duplicate"])
+        self.assertEqual(
+            Podcast.objects.filter(user=self.user1, episode=self.episode2).count(),
+            1,
+        )
+
+    def test_legacy_null_date_play_can_be_deleted(self):
+        """A legacy completed row with no date does not crash on deletion."""
+        response = self.call_api(
+            "post",
+            "api_podcast_episode_play",
+            payload={
+                "show_id": self.show.id,
+                "episode_id": self.episode1.id,
+                "end_date": "2024-03-01T10:00:00",
+            },
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.CREATED)
+
+        podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
+        Podcast.objects.filter(pk=podcast.pk).update(end_date=None)
+
+        self.client.force_login(self.user1)
+        deleted = self.client.post(
+            reverse("media_delete"),
+            {"instance_id": podcast.pk, "media_type": "podcast"},
+            HTTP_REFERER="/",
+        )
+
+        self.assertEqual(deleted.status_code, HTTP.FOUND)
+        self.assertFalse(Podcast.objects.filter(pk=podcast.pk).exists())
 
     def test_duplicate_play_within_window(self):
         """A second play within five minutes reports duplicate."""
