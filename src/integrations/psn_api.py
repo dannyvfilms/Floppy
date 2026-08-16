@@ -31,6 +31,27 @@ logger = logging.getLogger(__name__)
 
 PROVIDER = "PSN"
 
+# psnawp issues its requests without any timeout, so a stalled PSN response
+# would hang the Celery worker (or the connect view) indefinitely. Every
+# request goes through the request builder's ``request`` method, so a default
+# timeout is injected there right after construction -- authentication
+# included, since the token exchange is lazy.
+REQUEST_TIMEOUT_SECONDS = 30
+
+
+def _client(npsso):
+    """Return a PSNAWP instance whose requests carry a default timeout."""
+    psn = PSNAWP(npsso)
+    builder = psn.authenticator.request_builder
+    original_request = builder.request
+
+    def request_with_timeout(method, **kwargs):
+        kwargs.setdefault("timeout", REQUEST_TIMEOUT_SECONDS)
+        return original_request(method, **kwargs)
+
+    builder.request = request_with_timeout
+    return psn
+
 
 @contextmanager
 def _translated(operation):
@@ -85,7 +106,7 @@ def _translated(operation):
 def get_account(npsso):
     """Return ``(account_id, online_id)`` for the owner of the NPSSO token."""
     with _translated("account lookup"):
-        client = PSNAWP(npsso).me()
+        client = _client(npsso).me()
         return str(client.account_id), str(client.online_id)
 
 
@@ -100,7 +121,7 @@ def get_played_games(npsso):
     videos don't. See :func:`_is_game`.
     """
     with _translated("library fetch"):
-        psn = PSNAWP(npsso)
+        psn = _client(npsso)
         titles = list(psn.me().title_stats())
 
         games = []

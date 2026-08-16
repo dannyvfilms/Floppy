@@ -69,6 +69,10 @@ class FakePSNAWP:
         self.details_by_id = details_by_id or {}
         self.account = account
         self.detail_calls = []
+        # psn_api._client wraps this to inject a request timeout.
+        self.authenticator = SimpleNamespace(
+            request_builder=SimpleNamespace(request=lambda method, **kwargs: None),
+        )
 
     def __call__(self, npsso):
         """Mimic ``PSNAWP(npsso)``."""
@@ -665,6 +669,26 @@ class PSNAPITests(TestCase):
 
         self.assertIn("Invalid or expired PSN NPSSO token", str(context.exception))
         self.assertNotIn("super-secret", str(context.exception))
+
+    @patch("integrations.psn_api.PSNAWP")
+    def test_client_injects_request_timeout(self, mock_psnawp):
+        """Requests get a default timeout injected, since psnawp sends none."""
+        captured = {}
+
+        def raw_request(method, **kwargs):
+            captured.update(kwargs, method=method)
+
+        fake = FakePSNAWP()
+        fake.authenticator.request_builder.request = raw_request
+        mock_psnawp.side_effect = fake
+
+        client = psn_api._client("npsso")
+        client.authenticator.request_builder.request("get", url="https://x")
+
+        self.assertEqual(
+            captured["timeout"],
+            psn_api.REQUEST_TIMEOUT_SECONDS,
+        )
 
     @patch("integrations.psn_api.PSNAWP")
     def test_unknown_psnawp_error_names_the_type_only(self, mock_psnawp):
