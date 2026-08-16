@@ -250,6 +250,62 @@ class ImportPSN(TestCase):
 
     @patch("integrations.imports.psn.services.search")
     @patch("integrations.psn_api.PSNAWP")
+    def test_new_mode_leaves_existing_progress_and_status_alone(
+        self,
+        mock_psnawp,
+        mock_search,
+    ):
+        """The default "new" mode must never touch an existing game's
+        progress or status, only refresh the item metadata."""
+        item = self.existing_game(progress=10)
+        recent = timezone.now() - timedelta(days=1)
+        mock_psnawp.side_effect = FakePSNAWP(
+            [
+                stats(
+                    "PPSA00001_00",
+                    "Halo Infinite",
+                    PlatformCategory.PS5,
+                    1250,
+                    recent,
+                ),
+            ],
+        )
+        mock_search.side_effect = self.search_stub(media_id="1")
+
+        imported_counts, _ = psn.importer(None, self.user, "new")
+
+        self.assertEqual(imported_counts.get(MediaTypes.GAME.value, 0), 0)
+        game = Game.objects.get(user=self.user, item=item)
+        self.assertEqual(game.progress, 10)
+        self.assertEqual(game.status, Status.PAUSED.value)
+
+    @patch("integrations.imports.psn.services.search")
+    @patch("integrations.psn_api.PSNAWP")
+    def test_overwrite_preserves_dropped_status(self, mock_psnawp, mock_search):
+        """A manually dropped game keeps its status but gets fresh hours."""
+        item = self.existing_game(progress=10, status=Status.DROPPED.value)
+        recent = timezone.now() - timedelta(days=1)
+        mock_psnawp.side_effect = FakePSNAWP(
+            [
+                stats(
+                    "PPSA00001_00",
+                    "Halo Infinite",
+                    PlatformCategory.PS5,
+                    1250,
+                    recent,
+                ),
+            ],
+        )
+        mock_search.side_effect = self.search_stub(media_id="1")
+
+        psn.importer(None, self.user, "overwrite")
+
+        game = Game.objects.get(user=self.user, item=item)
+        self.assertEqual(game.status, Status.DROPPED.value)
+        self.assertEqual(game.progress, 1250)
+
+    @patch("integrations.imports.psn.services.search")
+    @patch("integrations.psn_api.PSNAWP")
     def test_partial_lookup_failure_never_lowers_progress(
         self,
         mock_psnawp,
