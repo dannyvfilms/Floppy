@@ -200,10 +200,14 @@ class PodcastMarkAllPlayedView(drf_views.APIView):
 
 # /api/v1/podcasts/episodes/plays/
 class PodcastEpisodePlayView(drf_views.APIView):
-    """Record a play for a podcast episode (mirrors web podcast_save)."""
+    """Record a completed podcast episode play."""
 
     def post(self, request):
-        """Add a play; duplicates within five minutes are reported as 200."""
+        """Add a completed play.
+
+        If end_date is omitted or blank, use the current server time. Report
+        a repeat within five minutes as HTTP 200 with duplicate set to true.
+        """
         show_id = request.data.get("show_id")
         if not show_id:
             return Response(
