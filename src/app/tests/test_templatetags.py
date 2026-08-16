@@ -621,34 +621,33 @@ class AppTagsTests(TestCase):
         request = self.request_factory.get("/history")
         request.user = self.user
 
+        context = {
+            "entry": SimpleNamespace(
+                media_type=MediaTypes.EPISODE.value,
+                album=None,
+                item=item,
+                poster=item.image,
+                status=None,
+                runtime_display=None,
+                display_title=item.title,
+                title=item.title,
+                played_at_local=timezone.now(),
+                time_range_display="6:00 PM",
+                play_count=1,
+                progress_display=None,
+                episode_label="S1E2",
+                episode_code="S1E2",
+                show=None,
+                score=8,
+                entry_key="episode-entry-1",
+                instance_id=7,
+            ),
+            "card_class": "search-result-card",
+            "history_mode": "activity",
+            "user": self.user,
+        }
         content = render_to_string(
-            "app/components/history_card.html",
-            {
-                "entry": SimpleNamespace(
-                    media_type=MediaTypes.EPISODE.value,
-                    album=None,
-                    item=item,
-                    poster=item.image,
-                    status=None,
-                    runtime_display=None,
-                    display_title=item.title,
-                    title=item.title,
-                    played_at_local=timezone.now(),
-                    time_range_display="6:00 PM",
-                    play_count=1,
-                    progress_display=None,
-                    episode_label="S1E2",
-                    episode_code="S1E2",
-                    show=None,
-                    score=8,
-                    entry_key="episode-entry-1",
-                    instance_id=7,
-                ),
-                "card_class": "search-result-card",
-                "history_mode": "activity",
-                "user": self.user,
-            },
-            request=request,
+            "app/components/history_card.html", context, request=request
         )
 
         expected_track_url = reverse(
@@ -665,7 +664,16 @@ class AppTagsTests(TestCase):
         self.assertIn('"standard_modal": "1"', content)
         self.assertNotIn('hx-get="/history_modal/', content)
         self.assertIn("media-status-chip", content)
-        self.assertIn('d="M21.801 10A10 10 0 1 1 17 3.335"', content)
+        self.assertIn("Status: Completed", content)
+        self.assertIn('aria-hidden="true"', content)
+
+        release_content = render_to_string(
+            "app/components/history_card.html",
+            {**context, "history_mode": "release"},
+            request=request,
+        )
+        self.assertNotIn("media-status-chip", release_content)
+        self.assertNotIn("Status: Completed", release_content)
 
     def test_history_card_teleports_alt_title_tooltip(self):
         """History cards should teleport alternate-title tooltips outside the clipped shell."""

@@ -19,10 +19,11 @@
     {% endwith %}
 
     {# Status chip (top-left) #}
-    {% if entry.status %}
-      <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md">
-        {% with status_value=entry.status %}
-          <div class="w-4 h-4 {{ status_value|status_color }}">
+    {% if entry.status or entry.media_type == MediaTypes.EPISODE.value and history_mode != "release" %}
+      {% with status_value=entry.status|default:"Completed" %}
+        <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md">
+          <span class="sr-only">Status: {{ status_value }}</span>
+          <div class="w-4 h-4 {{ status_value|status_color }}" aria-hidden="true">
             {% if status_value == "Completed" %}
               {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
             {% elif status_value == "In progress" %}
@@ -35,16 +36,8 @@
               {% include "app/icons/states/dropped.svg" with classes="w-full h-full" %}
             {% endif %}
           </div>
-        {% endwith %}
-      </div>
-    {% elif entry.media_type == MediaTypes.EPISODE.value and history_mode != "release" %}
-      <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md">
-        {% with status_value="Completed" %}
-          <div class="w-4 h-4 {{ status_value|status_color }}">
-            {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
-          </div>
-        {% endwith %}
-      </div>
+        </div>
+      {% endwith %}
     {% endif %}
 
     {# Runtime chip (top-right) #}
