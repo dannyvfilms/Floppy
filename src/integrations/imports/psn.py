@@ -147,7 +147,7 @@ class PSNImporter:
     def import_data(self):
         """Import the account's played PSN titles."""
         try:
-            titles = psn_api.get_played_games(self.npsso)
+            titles, skipped = psn_api.get_played_games(self.npsso)
         except MediaImportError as error:
             self._mark_broken(str(error))
             raise
@@ -167,10 +167,19 @@ class PSNImporter:
             self._mark_broken(msg)
             raise MediaImportError(msg) from error
 
+        if skipped:
+            # The genre heuristic behind the app filter is best-effort; a
+            # misclassified game must be auditable by the user, not only
+            # visible in the server log.
+            self.warnings.append(
+                f"Skipped {len(skipped)} non-game apps (no genres in the "
+                f"PlayStation store): {', '.join(sorted(skipped))}",
+            )
+
         if not titles:
             logger.info("No PSN titles found for user %s", self.user.username)
             self._mark_synced()
-            return {}, ""
+            return {}, "\n".join(dict.fromkeys(self.warnings))
 
         total = len(titles)
         aggregated = {}

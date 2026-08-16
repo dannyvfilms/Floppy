@@ -10,6 +10,7 @@ from django_celery_beat.models import PeriodicTask
 from psnawp_api.core import psnawp_exceptions
 from psnawp_api.models.title_stats import PlatformCategory
 from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import Timeout as RequestsTimeout
 
 from app.models import DeletedMedia, Game, Item, MediaTypes, Sources, Status
 from app.providers import services
@@ -256,7 +257,8 @@ class ImportPSN(TestCase):
         mock_search,
     ):
         """The default "new" mode must never touch an existing game's
-        progress or status, only refresh the item metadata."""
+        progress or status, only refresh the item metadata.
+        """
         item = self.existing_game(progress=10)
         recent = timezone.now() - timedelta(days=1)
         mock_psnawp.side_effect = FakePSNAWP(
@@ -312,7 +314,8 @@ class ImportPSN(TestCase):
         mock_search,
     ):
         """A failed lookup for one of several aggregated title IDs must not
-        shrink progress to the partial sum of the titles that did match."""
+        shrink progress to the partial sum of the titles that did match.
+        """
         item = self.existing_game(progress=1200)
         recent = timezone.now() - timedelta(days=1)
         mock_psnawp.side_effect = FakePSNAWP(
@@ -351,7 +354,8 @@ class ImportPSN(TestCase):
     ):
         """PSN reports playDuration 0 for some played games (e.g. Life Is
         Strange); like Xbox's unreported minutes, that must not zero
-        tracked hours on overwrite."""
+        tracked hours on overwrite.
+        """
         item = self.existing_game(progress=1200)
         recent = timezone.now() - timedelta(days=1)
         mock_psnawp.side_effect = FakePSNAWP(
@@ -455,7 +459,12 @@ class ImportPSN(TestCase):
         imported_counts, warnings = psn.importer(None, self.user, "new")
 
         self.assertEqual(imported_counts[MediaTypes.GAME.value], 2)
-        self.assertEqual(warnings, "")
+        # The skip is deliberate but must stay auditable by the user: the
+        # genre heuristic is best-effort, and a misclassified game would
+        # otherwise vanish silently.
+        self.assertIn("Netflix", warnings)
+        self.assertIn("non-game", warnings)
+        self.assertNotIn("Stray", warnings)
         # Only the uncategorised titles cost a concept lookup.
         self.assertEqual(
             sorted(fake.detail_calls),
@@ -484,6 +493,45 @@ class ImportPSN(TestCase):
         self.assertTrue(
             Game.objects.filter(user=self.user, item__media_id="7").exists(),
         )
+
+    @patch("integrations.imports.psn.services.search")
+    @patch("integrations.psn_api.PSNAWP")
+    def test_concept_lookup_failures_fail_open_per_title(
+        self,
+        mock_psnawp,
+        mock_search,
+    ):
+        """Rate limits, auth blips and transport errors on the per-title
+        concept lookup keep the title and never abort the whole sync.
+        """
+        errors = (
+            psnawp_exceptions.PSNAWPTooManyRequests("429"),
+            psnawp_exceptions.PSNAWPUnauthorized("401"),
+            psnawp_exceptions.PSNAWPClientError("418"),
+            RequestsTimeout("timed out"),
+        )
+        for index, error in enumerate(errors):
+            with self.subTest(error=type(error).__name__):
+                mock_psnawp.side_effect = FakePSNAWP(
+                    [
+                        stats(
+                            "CUSA18723_00",
+                            "ELDEN RING",
+                            PlatformCategory.UNKNOWN,
+                            3000,
+                        ),
+                    ],
+                    details_by_id={"CUSA18723_00": error},
+                )
+                # A fresh IGDB id per subtest: deleting games between runs
+                # would leave DeletedMedia tombstones that block the import.
+                mock_search.side_effect = self.search_stub(media_id=str(100 + index))
+
+                imported_counts, _ = psn.importer(None, self.user, "new")
+
+                self.assertEqual(imported_counts[MediaTypes.GAME.value], 1)
+                self.account.refresh_from_db()
+                self.assertFalse(self.account.connection_broken)
 
     @patch("integrations.psn_api.PSNAWP")
     def test_invalid_token_marks_account_broken(self, mock_psnawp):

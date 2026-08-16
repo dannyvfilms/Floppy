@@ -111,7 +111,7 @@ def get_account(npsso):
 
 
 def get_played_games(npsso):
-    """Return every game the account has played, in playback order.
+    """Return ``(games, skipped)`` for the account's played titles.
 
     ``title_stats`` covers PS4 and PS5 titles, media apps (Netflix, Plex, ...)
     included. PSN labels real games with a platform category, but leaves both
@@ -119,6 +119,10 @@ def get_played_games(npsso):
     uncategorised, so uncategorised titles are resolved through the store
     concept metadata instead: games carry genres there, apps and interactive
     videos don't. See :func:`_is_game`.
+
+    ``skipped`` names the titles dropped as non-games, so callers can surface
+    them: the genre heuristic is best-effort, and a silently vanishing game
+    would otherwise be indistinguishable from a filtered app.
     """
     with _translated("library fetch"):
         psn = _client(npsso)
@@ -131,7 +135,7 @@ def get_played_games(npsso):
                 psn,
                 stats,
             ):
-                skipped.append(stats.name)
+                skipped.append(stats.name or stats.title_id)
                 continue
             play_duration = stats.play_duration
             games.append(
@@ -156,7 +160,7 @@ def get_played_games(npsso):
             ", ".join(sorted(skipped)),
         )
     logger.info("Found %d played PSN games", len(games))
-    return games
+    return games, skipped
 
 
 def _is_game(psn, stats):
@@ -164,8 +168,10 @@ def _is_game(psn, stats):
 
     The store concept metadata reports genres for games only -- media apps
     (Netflix, Plex, "My Videos") and interactive videos come back with an
-    empty list. A title whose lookup fails is kept: an unavailable signal
-    should degrade to the old behaviour, not silently drop a game.
+    empty list. A title whose lookup fails -- for any reason, a rate limit
+    or transport timeout included -- is kept: an unavailable signal should
+    degrade to the old behaviour, not silently drop a game or abort the
+    whole sync over one of dozens of per-title lookups.
     """
     try:
         details = psn.game_title(
@@ -174,10 +180,8 @@ def _is_game(psn, stats):
             np_communication_id="",
         ).get_details()
     except (
-        psnawp_exceptions.PSNAWPNotFound,
-        psnawp_exceptions.PSNAWPBadRequest,
-        psnawp_exceptions.PSNAWPForbidden,
-        psnawp_exceptions.PSNAWPServerError,
+        psnawp_exceptions.PSNAWPException,
+        requests.RequestException,
     ) as e:
         logger.warning(
             "PSN concept lookup for %s failed, keeping title: %s",
