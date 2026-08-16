@@ -90,8 +90,14 @@ jobs:
           # flaky, and a pull request from a fork cannot read repository secrets,
           # so they fail there regardless of the change. Run them deliberately
           # with scripts/test.sh --network.
+          #
+          # Keep this app list the same as APPS in scripts/test.sh. The runner
+          # names apps rather than discovering them, so an app that is missing
+          # here has no test on a pull request while it still passes locally.
+          # "config" holds the settings, the startup integrity check and the
+          # recovery page; "api" holds the endpoint and contract suites.
           uv run --no-sync coverage run src/manage.py test \
-            app users integrations lists events \
+            app users integrations lists events api config \
             --parallel --exclude-tag network
 
       - name: Build Coverage Report
