@@ -24,6 +24,7 @@ _SECRET_NAME_KEYWORDS = (
     "password",
     "passwd",
     "apikey",
+    "npsso",
     "api_key",
     "api-key",
     "sessionid",
