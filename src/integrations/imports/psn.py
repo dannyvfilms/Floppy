@@ -220,8 +220,22 @@ class PSNImporter:
         if self.to_update:
             app.models.Game.objects.bulk_update(
                 self.to_update,
-                fields=["progress", "status"],
+                fields=["progress"],
             )
+            # Statuses are written with the Completed/Dropped guard enforced
+            # by the database, not only by the snapshot read at the start of
+            # the run: the IGDB matching phase is long, and a user marking a
+            # game Completed or Dropped mid-sync must not have that clobbered
+            # by a status computed from stale data.
+            protected = {Status.COMPLETED.value, Status.DROPPED.value}
+            pks_by_status = defaultdict(list)
+            for game in self.to_update:
+                if game.status not in protected:
+                    pks_by_status[game.status].append(game.pk)
+            for status_value, pks in pks_by_status.items():
+                app.models.Game.objects.filter(pk__in=pks).exclude(
+                    status__in=protected,
+                ).update(status=status_value)
             logger.info(
                 "Updated %d existing games for user %s",
                 len(self.to_update),

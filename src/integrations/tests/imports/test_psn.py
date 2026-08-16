@@ -251,6 +251,48 @@ class ImportPSN(TestCase):
 
     @patch("integrations.imports.psn.services.search")
     @patch("integrations.psn_api.PSNAWP")
+    def test_status_set_completed_mid_sync_is_not_clobbered(
+        self,
+        mock_psnawp,
+        mock_search,
+    ):
+        """A user marking a game Completed while the sync runs keeps that
+        status: the guard must hold against the database state at write
+        time, not the snapshot read before the long matching phase.
+        """
+        item = self.existing_game(progress=10)
+        recent = timezone.now() - timedelta(days=1)
+        mock_psnawp.side_effect = FakePSNAWP(
+            [
+                stats(
+                    "PPSA00001_00",
+                    "Halo Infinite",
+                    PlatformCategory.PS5,
+                    1250,
+                    recent,
+                ),
+            ],
+        )
+        good = self.search_stub(media_id="1")
+
+        def search_and_complete_concurrently(media_type, query, page, source=None):
+            # Simulates the user's edit landing between the importer's
+            # snapshot and its final write.
+            Game.objects.filter(user=self.user, item__media_id="1").update(
+                status=Status.COMPLETED.value,
+            )
+            return good(media_type, query, page, source=source)
+
+        mock_search.side_effect = search_and_complete_concurrently
+
+        psn.importer(None, self.user, "overwrite")
+
+        game = Game.objects.get(user=self.user, item=item)
+        self.assertEqual(game.status, Status.COMPLETED.value)
+        self.assertEqual(game.progress, 1250)
+
+    @patch("integrations.imports.psn.services.search")
+    @patch("integrations.psn_api.PSNAWP")
     def test_new_mode_leaves_existing_progress_and_status_alone(
         self,
         mock_psnawp,
