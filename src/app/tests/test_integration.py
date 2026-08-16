@@ -290,7 +290,11 @@ class IntegrationTest(StaticLiveServerTestCase):
             modal.locator('input[name="end_date"]'),
             f"{fixed_date.isoformat()}T12:00",
         )
-        self.page.get_by_role("button", name="Add", exact=True).click()
+        with self.page.expect_request(
+            lambda request: request.method == "POST" and "/episode_save" in request.url,
+        ) as save_request:
+            self.page.get_by_role("button", name="Add", exact=True).click()
+        save_request.value.response()
 
         expect(self.page.get_by_role("main")).to_contain_text(
             f"Ended: {fixed_date.strftime(datetime_format)}",
@@ -311,7 +315,11 @@ class IntegrationTest(StaticLiveServerTestCase):
             first_watch_operation_id,
         )
         self.set_date_input(modal.locator('input[name="end_date"]'), f"{today}T12:00")
-        self.page.get_by_role("button", name="Add", exact=True).click()
+        with self.page.expect_request(
+            lambda request: request.method == "POST" and "/episode_save" in request.url,
+        ) as save_request:
+            self.page.get_by_role("button", name="Add", exact=True).click()
+        save_request.value.response()
         expect(self.page.get_by_role("main")).to_contain_text(f"Ended: {today}")
 
     def test_tv_completed(self):
