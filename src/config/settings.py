@@ -1020,6 +1020,11 @@ IMG_NONE = "https://www.themoviedb.org/assets/2/v4/glyphicons/basic/glyphicons-b
 REQUEST_TIMEOUT = 120  # seconds
 PER_PAGE = 24
 
+MUSICBRAINZ_URL = config(
+    "MUSICBRAINZ_URL",
+    default="https://musicbrainz.org/ws/2",
+)
+
 TMDB_API = config(
     "TMDB_API",
     default=secret(

@@ -391,6 +391,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `HARDCOVER_API` - Hardcover book metadata/imports
 - `COMICVINE_API` - comic metadata
 - `LASTFM_API_KEY` - Last.fm integration and scrobble polling
+- `MUSICBRAINZ_URL` - custom MusicBrainz-compatible API root, including `/ws/2` (defaults to `https://musicbrainz.org/ws/2`)
 - `TRAKT_API` / `TRAKT_API_SECRET` - Trakt private-profile OAuth imports
 - `URLS` - your public URL if using a reverse proxy, for example `https://floppy.mydomain.com`
 - `ADMIN_ENABLED` - set to `True` to enable the Django admin interface at `/admin/` (see the [Admin Guide](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#admin-guide))

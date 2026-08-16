@@ -2,9 +2,35 @@ from unittest.mock import patch
 
 import requests
 from django.conf import settings
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 from app.providers import musicbrainz
+
+
+class MusicBrainzRequestTests(SimpleTestCase):
+    """Test MusicBrainz request configuration."""
+
+    @override_settings(MUSICBRAINZ_URL="http://musicbrainz:5000/ws/2/")
+    def test_mb_request_uses_custom_instance_url(self):
+        with (
+            patch("app.providers.musicbrainz._rate_limit") as mock_rate_limit,
+            patch(
+                "app.providers.musicbrainz.services.api_request",
+                return_value={"id": "artist-mbid"},
+            ) as mock_api_request,
+        ):
+            data = musicbrainz._mb_request("artist/artist-mbid", {"inc": "genres"})
+
+        self.assertEqual(data, {"id": "artist-mbid"})
+        mock_rate_limit.assert_called_once_with()
+        self.assertEqual(
+            mock_api_request.call_args.args[2],
+            "http://musicbrainz:5000/ws/2/artist/artist-mbid",
+        )
+        self.assertEqual(
+            mock_api_request.call_args.kwargs["params"],
+            {"inc": "genres", "fmt": "json"},
+        )
 
 
 class MusicBrainzReleaseTests(SimpleTestCase):
