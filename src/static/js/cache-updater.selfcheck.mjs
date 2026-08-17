@@ -147,6 +147,31 @@ try {
     navigator.onLine = true;
     updater.stop();
 
+    // If an offline abort settles after the browser has already reported
+    // online again, that old request must not schedule work beside the new
+    // request lifecycle.
+    resetEnvironment();
+    let offlineAbort = false;
+    globalThis.fetch = (_url, options) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+            offlineAbort = true;
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+            reject(error);
+        }, { once: true });
+    });
+    updater = new CacheUpdater('statistics');
+    updater.isPolling = true;
+    const offlineRequest = updater.poll();
+    navigator.onLine = false;
+    updater.pauseForOffline();
+    navigator.onLine = true;
+    await offlineRequest;
+    assert.equal(offlineAbort, true);
+    assert.deepEqual(timerDelays(), []);
+    assert.notEqual(updater.offlineSince, null);
+    updater.stop();
+
     // Back/forward-cache storage is not a real page exit. Keep the updater
     // live so a restored page can continue its refresh state. A normal page
     // exit still stops it.
