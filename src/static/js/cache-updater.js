@@ -37,7 +37,13 @@ class CacheUpdater {
         this.pagePath = window.location.pathname;
         this.handleOnline = () => this.resumeAfterOffline();
         this.handleOffline = () => this.pauseForOffline();
-        this.handlePageHide = () => this.stop();
+        this.handlePageHide = (event) => {
+            // A page placed in the back/forward cache can resume later with
+            // the same JavaScript state. Keep the updater alive in that case.
+            if (!event.persisted) {
+                this.stop();
+            }
+        };
     }
 
     currentRefreshActive(data) {
