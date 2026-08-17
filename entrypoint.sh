@@ -58,39 +58,36 @@ reject_unsafe_managed_directory LOG_DIR "$LOG_DIR_PATH"
 # opens its log file while it loads settings, so the process dies with a
 # traceback before the command runs. Test it here, where a clear message is
 # still possible, and say which directory and which fix.
-# Returns 1 and explains why when the directory cannot be written to. Creating
-# it when it is absent matches what Django does with both of these a moment
-# later, so a first start on a fresh volume is not treated as a fault.
-report_unwritable_directory() {
+# Name an unwritable directory before Django loads.
+#
+# This reports and never stops. The gates that follow already stop: the
+# ownership step exits when it cannot chown the data directory, and Django
+# raises when it cannot create the generated secret. What neither of them gives
+# is a readable line for the log directory, because Django opens its log file
+# while it loads settings, so the process dies with a logging traceback before
+# any of Floppy's own messages appear. This is that line.
+#
+# Reporting rather than exiting also keeps the check harmless: a pre-check that
+# can fail a start which would otherwise have worked is worse than no check.
+warn_when_not_writable() {
     name=$1
     directory=$2
-    if [ ! -d "$directory" ] && ! mkdir -p "$directory" 2>/dev/null; then
-        echo "[entrypoint] ${name} ${directory} cannot be created. Check the volume mapping." >&2
-        return 1
+    if [ ! -d "$directory" ]; then
+        # Absent is normal on a first start. Django creates both of these.
+        return 0
     fi
     probe="${directory}/.floppy-write-probe.$$"
     if ! (: > "$probe") 2>/dev/null; then
-        echo "[entrypoint] ${name} ${directory} is not writable." >&2
-        echo "[entrypoint] The mount is read-only, or it belongs to another user. Give it to PUID=${PUID:-1000} PGID=${PGID:-1000} on the host, then start the container again." >&2
-        return 1
+        echo "[entrypoint] WARNING: ${name} ${directory} is not writable." >&2
+        echo "[entrypoint] The mount is read-only, or it belongs to another user. Give it to PUID=${PUID:-1000} PGID=${PGID:-1000} on the host. Startup will fail until then." >&2
+        return 0
     fi
     rm -f "$probe"
     return 0
 }
 
-# The data directory holds the database and the generated secret. Nothing works
-# without it, so stop here rather than fail later and less clearly.
-if ! report_unwritable_directory FLOPPY_DATA_DIR "$DATA_DIR"; then
-    echo "[entrypoint] Floppy cannot start without a writable data directory." >&2
-    exit 1
-fi
-
-# The log directory is a warning, which is how the ownership step below already
-# treats it. Django opens its log file while it loads settings, so a directory
-# it cannot write to ends the process with a traceback before any command runs.
-# This line is what tells the operator which directory caused it.
-report_unwritable_directory LOG_DIR "$LOG_DIR_PATH" || \
-    echo "[entrypoint] WARNING: Floppy will fail to start while ${LOG_DIR_PATH} stays unwritable." >&2
+warn_when_not_writable FLOPPY_DATA_DIR "$DATA_DIR"
+warn_when_not_writable LOG_DIR "$LOG_DIR_PATH"
 
 if [ -z "$DB_HOST" ]; then
     DB_FILE_INPUT=${FLOPPY_DB_PATH:-"${DATA_DIR_INPUT}/db.sqlite3"}

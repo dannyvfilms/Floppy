@@ -271,10 +271,17 @@ class MigrationsCheckTests(SimpleTestCase):
         self.assertEqual(result.status, SKIPPED)
 
     def test_reports_no_pending_migrations(self):
+        # The database file has to exist, or the check short-circuits before it
+        # reaches the planner. Point at a real one rather than inheriting
+        # whatever the machine running the tests happens to have.
         executor = mock.Mock()
         executor.migration_plan.return_value = []
-        with mock.patch.object(preflight, "MigrationExecutor", return_value=executor):
-            result = preflight.check_migrations(database_ok=True)
+        with _TempDatabase() as temp:
+            _make_database(temp.db_path)
+            with temp.settings(), mock.patch.object(
+                preflight, "MigrationExecutor", return_value=executor
+            ):
+                result = preflight.check_migrations(database_ok=True)
 
         self.assertEqual(result.status, OK)
 
@@ -283,8 +290,12 @@ class MigrationsCheckTests(SimpleTestCase):
         migration.name = "0042_add_thing"
         executor = mock.Mock()
         executor.migration_plan.return_value = [(migration, False)]
-        with mock.patch.object(preflight, "MigrationExecutor", return_value=executor):
-            result = preflight.check_migrations(database_ok=True)
+        with _TempDatabase() as temp:
+            _make_database(temp.db_path)
+            with temp.settings(), mock.patch.object(
+                preflight, "MigrationExecutor", return_value=executor
+            ):
+                result = preflight.check_migrations(database_ok=True)
 
         self.assertEqual(result.status, FAIL)
         self.assertIn("1 migration(s) pending", result.summary)
