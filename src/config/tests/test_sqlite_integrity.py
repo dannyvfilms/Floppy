@@ -1042,6 +1042,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 "FLOPPY_DB_PATH": db_path,
                 "PATH": f"{bin_path}:{os.environ['PATH']}",
                 "PYTHONPATH": str(ENTRYPOINT.parent / "src"),
+                "VIRTUAL_ENV": "",
             }
             output_path = tmp_path / "entrypoint-term.log"
             with output_path.open("w") as output:
