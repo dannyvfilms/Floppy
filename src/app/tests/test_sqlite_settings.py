@@ -59,3 +59,8 @@ class SQLiteSettingsTests(SimpleTestCase):
     def test_discover_warmup_defaults_off_on_sqlite(self):
         """SQLite deployments should not auto-enable Discover warmup by default."""
         self.assertFalse(settings.DISCOVER_WARMUP_ON_STARTUP)
+
+    def test_img_none_default_is_embedded_data_uri(self):
+        """IMG_NONE should default to a self-contained data URI, not a hotlink."""
+        self.assertTrue(settings.IMG_NONE.startswith("data:image/svg+xml;base64,"))
+        self.assertNotIn("themoviedb.org", settings.IMG_NONE)
