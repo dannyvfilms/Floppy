@@ -24,6 +24,10 @@ _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
 # an idle machine and ran out on CI, which failed the assertion that followed as
 # if the entrypoint had misbehaved.
 _STARTUP_WAIT_SECONDS = 60
+# Same reasoning for the wait after terminate(). Handling SIGTERM should be
+# quick, so this is a smaller risk than the startup poll, but it is the same
+# tight bound on the same loaded runner.
+_SHUTDOWN_WAIT_SECONDS = 30
 
 
 class SqliteIntegrityTests(SimpleTestCase):
@@ -999,7 +1003,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                     except ProcessLookupError:
                         pass
                 process.terminate()
-                process.wait(timeout=5)
+                process.wait(timeout=_SHUTDOWN_WAIT_SECONDS)
             output = output_path.read_text()
 
             # Report the entrypoint log on failure. Without it these read as
@@ -1070,7 +1074,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 ):
                     time.sleep(0.02)
                 process.terminate()
-                process.wait(timeout=5)
+                process.wait(timeout=_SHUTDOWN_WAIT_SECONDS)
             output = output_path.read_text()
 
             self.assertEqual(process.returncode, 0)
