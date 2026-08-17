@@ -1,6 +1,10 @@
 # FORK: tests for the first-class music API endpoints.
+import datetime
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
+
+from django.contrib.messages import get_messages
+from django.urls import reverse
 
 from app.models import (
     Album,
@@ -8,6 +12,7 @@ from app.models import (
     Artist,
     ArtistTracker,
     Music,
+    Status,
     Track,
 )
 
@@ -397,3 +402,147 @@ class AlbumTrackerScopeTests(MusicApiTestCase):
         AlbumTracker.objects.create(user=self.user2, album=self.album)
         listed = self.call_api("get", "api_music_albums", headers=self.auth_headers)
         self.assertEqual(listed.json()["pagination"]["total"], 0)
+
+
+class SongPlayDateTests(MusicApiTestCase):
+    """A listen without a date must still carry a completion timestamp."""
+
+    def test_blank_date_records_the_current_server_time(self):
+        """A blank date records a completed listen at the current server time.
+
+        Listen counts read history records that have an end_date, so a listen
+        stored without one does not appear.
+        """
+        completed_at = datetime.datetime(2025, 1, 15, 12, tzinfo=datetime.UTC)
+
+        with patch(
+            "app.fork_services_music.timezone.now",
+            return_value=completed_at,
+        ):
+            response = self.call_api(
+                "post",
+                "api_music_song_play",
+                payload={
+                    "album_id": self.album.id,
+                    "track_id": self.track1.id,
+                    "end_date": "",
+                },
+                headers=self.auth_headers,
+            )
+
+        music = Music.objects.get(user=self.user1, album=self.album, track=self.track1)
+        self.assertEqual(response.status_code, HTTP.CREATED)
+        self.assertEqual(music.status, Status.COMPLETED.value)
+        self.assertEqual(music.end_date, completed_at)
+
+    def test_dateless_listen_does_not_clear_an_earlier_timestamp(self):
+        """A later dateless listen must not erase the date already recorded.
+
+        The row was updated with whatever the caller sent, so a dateless listen
+        wrote NULL over a good timestamp and the earlier listen stopped being
+        counted.
+        """
+        completed_at = datetime.datetime(2025, 1, 15, 12, tzinfo=datetime.UTC)
+        self.call_api(
+            "post",
+            "api_music_song_play",
+            payload={
+                "album_id": self.album.id,
+                "track_id": self.track1.id,
+                "end_date": "2024-06-01",
+            },
+            headers=self.auth_headers,
+        )
+
+        with patch(
+            "app.fork_services_music.timezone.now",
+            return_value=completed_at,
+        ):
+            self.call_api(
+                "post",
+                "api_music_song_play",
+                payload={"album_id": self.album.id, "track_id": self.track1.id},
+                headers=self.auth_headers,
+            )
+
+        music = Music.objects.get(user=self.user1, album=self.album, track=self.track1)
+        self.assertIsNotNone(music.end_date)
+        self.assertEqual(music.end_date, completed_at)
+
+
+class SongSaveWebDateTests(MusicApiTestCase):
+    """The music web form and the REST API must read a date the same way."""
+
+    def _post(self, end_date, **extra):
+        self.client.force_login(self.user1)
+        return self.client.post(
+            reverse("song_save"),
+            {
+                "album_id": self.album.id,
+                "track_id": self.track1.id,
+                "recording_id": self.track1.musicbrainz_recording_id,
+                "end_date": end_date,
+            },
+            HTTP_REFERER="/",
+            **extra,
+        )
+
+    def test_blank_date_records_the_current_server_time(self):
+        """A blank date on the web form behaves like a blank date on the API."""
+        completed_at = datetime.datetime(2025, 1, 15, 12, tzinfo=datetime.UTC)
+
+        with patch(
+            "app.fork_services_music.timezone.now",
+            return_value=completed_at,
+        ):
+            response = self._post("")
+
+        music = Music.objects.get(user=self.user1, album=self.album, track=self.track1)
+        self.assertEqual(response.status_code, HTTP.FOUND)
+        self.assertEqual(music.end_date, completed_at)
+
+    def test_unreadable_date_records_nothing_and_reports_the_problem(self):
+        """An unreadable date must not become "now" behind the user's back.
+
+        The API answers 400 for the same input. The web form discarded the
+        value, so the listen was recorded against a time the user never entered.
+        """
+        response = self._post("not-a-date")
+
+        self.assertEqual(response.status_code, HTTP.FOUND)
+        self.assertFalse(
+            Music.objects.filter(
+                user=self.user1,
+                album=self.album,
+                track=self.track1,
+            ).exists(),
+        )
+        messages = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertTrue(any("YYYY-MM-DD" in message for message in messages), messages)
+
+    def test_unreadable_date_keeps_the_modal_open_for_htmx(self):
+        """The modal must survive the error so the typed date can be fixed."""
+        response = self._post("not-a-date", HTTP_HX_REQUEST="true")
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response["HX-Reswap"], "none")
+        self.assertNotIn("closeModal", response["HX-Trigger"])
+        self.assertIn("showToast", response["HX-Trigger"])
+        self.assertFalse(
+            Music.objects.filter(
+                user=self.user1,
+                album=self.album,
+                track=self.track1,
+            ).exists(),
+        )
+
+    def test_explicit_date_is_kept_exactly(self):
+        """An explicit date must survive unchanged."""
+        response = self._post("2024-03-01T10:00:00")
+
+        music = Music.objects.get(user=self.user1, album=self.album, track=self.track1)
+        self.assertEqual(response.status_code, HTTP.FOUND)
+        self.assertEqual(
+            music.end_date,
+            datetime.datetime(2024, 3, 1, 10, tzinfo=datetime.UTC),
+        )
