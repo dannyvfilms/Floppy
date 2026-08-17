@@ -1,5 +1,7 @@
 """Contains views for importing and exporting media data from various sources."""
 
+from app.models import MediaTypes, Sources
+
 import hmac
 import json
 import logging
@@ -3021,19 +3023,28 @@ def kodi_webhook(request, token):
 
 
 STREMIO_ADDON_MANIFEST = {
-    # Id stays "org.yamtrack.scrobbler": Stremio clients key installed
-    # addons by it, and changing it would force everyone to reinstall.
+    # Keep the existing addon id so installed clients remain compatible.
     "id": "org.yamtrack.scrobbler",
-    "version": "1.0.0",
-    "name": "Floppy Scrobbler",
+    "version": "1.1.0",
+    "name": "Floppy",
     "description": (
-        "Marks movies and episodes as in progress on Floppy when playback "
-        "starts in Stremio."
+        "Floppy Watchlist catalogs and playback scrobbling for Stremio."
     ),
-    "resources": ["subtitles"],
+    "resources": ["catalog", "subtitles"],
     "types": ["movie", "series"],
     "idPrefixes": ["tt"],
-    "catalogs": [],
+    "catalogs": [
+        {
+            "type": "movie",
+            "id": "floppy-watchlist-movies",
+            "name": "Floppy Watchlist",
+        },
+        {
+            "type": "series",
+            "id": "floppy-watchlist-series",
+            "name": "Floppy Watchlist",
+        },
+    ],
 }
 STREMIO_SCROBBLE_THROTTLE_SECONDS = 1800
 STREMIO_MAX_MEDIA_ID_LENGTH = 128
@@ -3047,6 +3058,200 @@ def _stremio_addon_response(payload, status=200):
     response = JsonResponse(payload, status=status)
     response["Access-Control-Allow-Origin"] = "*"
     return response
+
+
+STREMIO_IMDB_CACHE_SECONDS = 60 * 60 * 24 * 7
+STREMIO_IMDB_FAILURE_CACHE_SECONDS = 60 * 60
+
+
+def _stremio_watchlist_for_user(user, stremio_type):
+    """Return the appropriate Floppy source list for a Stremio catalog.
+
+    Prefer dedicated Movies / Series lists, but remain compatible with
+    the original combined Watchlist.
+    """
+    from lists.models import CustomList
+
+    user_lists = CustomList.objects.get_user_lists(user)
+
+    if stremio_type == "movie":
+        preferred_name = "Movies"
+    elif stremio_type == "series":
+        preferred_name = "Series"
+    else:
+        return None
+
+    source_list = (
+        user_lists
+        .filter(name__iexact=preferred_name)
+        .order_by("id")
+        .first()
+    )
+
+    if source_list:
+        return source_list
+
+    return (
+        user_lists
+        .filter(name__iexact="Watchlist")
+        .order_by("id")
+        .first()
+    )
+
+
+def _stremio_item_imdb_id(item):
+    """Resolve a Floppy Item to an IMDb id for Stremio."""
+    import re
+
+    from django.core.cache import cache
+    from app.providers import services
+
+    if (
+        item.source == Sources.IMDB.value
+        and str(item.media_id).startswith("tt")
+    ):
+        return str(item.media_id)
+
+    cache_key = (
+        f"stremio_imdb_"
+        f"{item.source}_"
+        f"{item.media_type}_"
+        f"{item.media_id}"
+    )
+
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached or None
+
+    try:
+        metadata = services.get_media_metadata(
+            item.media_type,
+            item.media_id,
+            item.source,
+        )
+    except Exception:
+        logger.exception(
+            "Stremio catalog metadata lookup failed for %s:%s:%s",
+            item.source,
+            item.media_type,
+            item.media_id,
+        )
+        cache.set(
+            cache_key,
+            "",
+            timeout=STREMIO_IMDB_FAILURE_CACHE_SECONDS,
+        )
+        return None
+
+    external_links = metadata.get("external_links") or {}
+
+    imdb_value = (
+        external_links.get("IMDb")
+        or external_links.get("IMDB")
+        or external_links.get("imdb")
+        or metadata.get("imdb_id")
+        or ""
+    )
+
+    match = re.search(r"(tt\d+)", str(imdb_value))
+    imdb_id = match.group(1) if match else ""
+
+    if not imdb_id:
+        cache.set(
+            cache_key,
+            "",
+            timeout=STREMIO_IMDB_FAILURE_CACHE_SECONDS,
+        )
+        return None
+
+    cache.set(
+        cache_key,
+        imdb_id,
+        timeout=STREMIO_IMDB_CACHE_SECONDS,
+    )
+
+    return imdb_id
+
+
+def _stremio_catalog_items(user, stremio_type):
+    """Build Stremio meta entries from the user's Floppy watchlist."""
+    watchlist = _stremio_watchlist_for_user(user, stremio_type)
+
+    if watchlist is None:
+        return []
+
+    if stremio_type == "movie":
+        floppy_media_type = MediaTypes.MOVIE.value
+    elif stremio_type == "series":
+        floppy_media_type = MediaTypes.TV.value
+    else:
+        return []
+
+    items = (
+        watchlist.items
+        .filter(media_type=floppy_media_type)
+        .order_by("-customlistitem__date_added", "-id")
+        .distinct()
+    )
+
+    metas = []
+
+    for item in items:
+        imdb_id = _stremio_item_imdb_id(item)
+
+        if not imdb_id:
+            logger.warning(
+                "Stremio catalog: no IMDb id for %s (%s:%s)",
+                item.title,
+                item.source,
+                item.media_id,
+            )
+            continue
+
+        meta = {
+            "id": imdb_id,
+            "type": stremio_type,
+            "name": item.title,
+        }
+
+        if item.image:
+            meta["poster"] = item.image
+
+        metas.append(meta)
+
+    return metas
+
+
+@login_not_required
+@csrf_exempt
+@require_GET
+def stremio_addon_catalog(
+    request,
+    token,
+    media_type,
+    catalog_id,
+):
+    """Serve a Floppy Watchlist catalog to Stremio."""
+    try:
+        user = users.models.User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning("Invalid token on Stremio addon catalog request")
+        return _stremio_addon_response(
+            {"error": "Invalid token"},
+            status=401,
+        )
+
+    valid_catalogs = {
+        ("movie", "floppy-watchlist-movies"),
+        ("series", "floppy-watchlist-series"),
+    }
+
+    if (media_type, catalog_id) not in valid_catalogs:
+        return _stremio_addon_response({"metas": []})
+
+    return _stremio_addon_response(
+        {"metas": _stremio_catalog_items(user, media_type)}
+    )
 
 
 @login_not_required
