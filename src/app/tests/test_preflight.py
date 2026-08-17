@@ -262,6 +262,87 @@ class DatabaseCheckTests(SimpleTestCase):
         self.assertNotIn(".integrity.json", " ".join(after))
 
 
+class _DriverError(Exception):
+    """Stand in for the driver exception psycopg attaches as the cause."""
+
+    def __init__(self, sqlstate):
+        super().__init__("driver failure")
+        self.sqlstate = sqlstate
+
+
+class PostgresCheckTests(SimpleTestCase):
+    """A refused connection and a refused password are different problems.
+
+    Both read as "could not connect", and they send the operator to different
+    places: one to the network, one to their credentials. PostgreSQL says which
+    it is in the SQLSTATE, so these check that the distinction survives into the
+    advice.
+    """
+
+    def _run_with(self, error):
+        cursor = mock.MagicMock()
+        cursor.__enter__.return_value.execute.side_effect = error
+        connection = mock.Mock()
+        connection.cursor.return_value = cursor
+        with override_settings(
+            USING_SQLITE_DATABASE=False,
+            DATABASES={"default": {"HOST": "db.example", "ENGINE": "x"}},
+        ):
+            with mock.patch.object(preflight, "connections", {"default": connection}):
+                return preflight.check_database()
+
+    def _database_error(self, sqlstate, message="connection failed"):
+        """Build the error shape psycopg raises, cause and SQLSTATE included."""
+        error = preflight.DatabaseError(message)
+        error.__cause__ = _DriverError(sqlstate)
+        return error
+
+    def test_reports_a_reachable_server(self):
+        cursor = mock.MagicMock()
+        connection = mock.Mock()
+        connection.cursor.return_value = cursor
+        with override_settings(
+            USING_SQLITE_DATABASE=False,
+            DATABASES={"default": {"HOST": "db.example", "ENGINE": "x"}},
+        ):
+            with mock.patch.object(preflight, "connections", {"default": connection}):
+                result = preflight.check_database()
+
+        self.assertEqual(result.status, OK)
+        self.assertEqual(result.facts["engine"], "postgresql")
+
+    def test_a_refused_password_points_at_the_credentials(self):
+        result = self._run_with(self._database_error("28P01"))
+
+        self.assertEqual(result.status, FAIL)
+        self.assertIn("refused the credentials", result.summary)
+        self.assertIn("DB_PASSWORD", result.fix)
+
+    def test_a_missing_database_points_at_the_name(self):
+        result = self._run_with(self._database_error("3D000"))
+
+        self.assertEqual(result.status, FAIL)
+        self.assertIn("no database of that name", result.summary)
+        self.assertIn("DB_NAME", result.fix)
+
+    def test_anything_else_points_at_the_network(self):
+        result = self._run_with(self._database_error(None))
+
+        self.assertEqual(result.status, FAIL)
+        self.assertIn("did not answer", result.summary)
+        self.assertIn("DB_HOST", result.fix)
+
+    def test_no_database_password_reaches_the_report(self):
+        result = self._run_with(
+            self._database_error(
+                "28P01",
+                message='connection to server failed: password="hunter2" rejected',
+            )
+        )
+
+        self.assertNotIn("hunter2", json.dumps(result.as_dict()))
+
+
 class MigrationsCheckTests(SimpleTestCase):
     def test_skips_itself_when_the_database_is_unavailable(self):
         """Planning needs a connection, so the database result decides this."""
