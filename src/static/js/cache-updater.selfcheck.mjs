@@ -147,6 +147,17 @@ try {
     navigator.onLine = true;
     updater.stop();
 
+    // Back/forward-cache storage is not a real page exit. Keep the updater
+    // live so a restored page can continue its refresh state. A normal page
+    // exit still stops it.
+    resetEnvironment();
+    updater = new CacheUpdater('statistics');
+    updater.isPolling = true;
+    updater.handlePageHide({ persisted: true });
+    assert.equal(updater.isPolling, true);
+    updater.handlePageHide({ persisted: false });
+    assert.equal(updater.isPolling, false);
+
     // Stopping an updater aborts its in-flight request and must not create a
     // retry after the abort settles.
     resetEnvironment();
