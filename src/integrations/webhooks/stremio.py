@@ -109,9 +109,11 @@ class StremioWebhookProcessor(BaseWebhookProcessor):
         return True
 
     def _is_played(self, payload):
-        # The subtitles request only proves playback started; completion is
-        # picked up by the recurring library sync.
-        return False
+        # A normal Stremio subtitles request only proves playback started.
+        # The delayed verifier sets this private flag only after correlating
+        # the exact video_id, >=90% timeWatched, Stremio completion flags,
+        # and lastWatched against the observed playback session.
+        return payload.get("_floppy_verified_completion") is True
 
     def _get_media_type(self, payload):
         return self.MEDIA_TYPE_MAPPING.get(payload.get("type"))
