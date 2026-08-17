@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.text import slugify
 from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
@@ -480,9 +481,6 @@ def podcast_mark_all_played(request, show_id):
 @require_POST
 def podcast_save(request):
     """Handle adding a play for a podcast episode - mirrors song_save for music."""
-    from django.utils import timezone
-    from django.utils.dateparse import parse_date, parse_datetime
-
     from app.models import Podcast, PodcastEpisode, PodcastShow
 
     episode_uuid = request.POST.get("episode_uuid")
@@ -494,23 +492,40 @@ def podcast_save(request):
         fallback_media_type=MediaTypes.PODCAST.value,
     )
 
-    end_date = None
-    if end_date_str:
-        end_date = parse_datetime(end_date_str)
-        if end_date:
-            if timezone.is_naive(end_date):
-                end_date = timezone.make_aware(end_date)
-        else:
-            parsed_date = parse_date(end_date_str)
-            if parsed_date:
-                end_date = timezone.make_aware(
-                    timezone.datetime.combine(
-                        parsed_date, timezone.datetime.min.time()
-                    ),
-                )
-
     show = get_object_or_404(PodcastShow, id=show_id)
     episode = get_object_or_404(PodcastEpisode, id=episode_id) if episode_id else None
+
+    # A blank date means "now" and is resolved in the service. A date that was
+    # supplied but cannot be read is a different case: recording it as "now"
+    # would store a time the user did not choose and never tell them.
+    end_date = None
+    if end_date_str:
+        try:
+            end_date = helpers.parse_completion_datetime(end_date_str)
+        except (TypeError, ValueError):
+            message = (
+                f'Floppy cannot read the date "{end_date_str}". '
+                "Enter the date as YYYY-MM-DD. "
+                "To record this play at the current time, keep the date empty."
+            )
+            if request.headers.get("HX-Request"):
+                # Do not swap and do not close the modal. The date the user
+                # typed stays on screen for them to correct. Closing it would
+                # make them find the episode and type everything again.
+                response = HttpResponse(status=200)
+                response["HX-Reswap"] = "none"
+                response["HX-Trigger"] = json.dumps(
+                    {"showToast": {"message": message, "type": "error"}},
+                )
+                return response
+            messages.error(request, message)
+            return redirect(
+                "media_details",
+                source=show.source,
+                media_type=MediaTypes.PODCAST.value,
+                media_id=show.podcast_uuid,
+                title=show.slug or slugify(show.title),
+            )
 
     # FORK: play-recording core shared with the REST API.
     from app import fork_services_podcast
@@ -523,15 +538,17 @@ def podcast_save(request):
         end_date=end_date,
     )
     item = recorded_podcast.item
+    episode_title = episode.title if episode else "episode"
     if duplicate:
+        # Say that nothing was added. A plain "already recorded" reads as
+        # success, and the user then finds the play count unchanged.
         messages.info(
             request,
-            f"Play already recorded for {episode.title if episode else 'episode'}",
+            f"Floppy recorded a play for {episode_title} less than five "
+            "minutes ago. Floppy did not add a second play.",
         )
     else:
-        messages.success(
-            request, f"Added play for {episode.title if episode else 'episode'}"
-        )
+        messages.success(request, f"Added play for {episode_title}")
 
     if request.headers.get("HX-Request"):
         from django.template.loader import render_to_string
@@ -678,8 +695,6 @@ def podcast_save(request):
         response = HttpResponse(html)
         response["HX-Trigger"] = "closeModal"
         return response
-
-    from django.utils.text import slugify
 
     return redirect(
         "media_details",
