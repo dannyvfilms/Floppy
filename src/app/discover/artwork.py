@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from django.conf import settings
 
-from app.discover.adapters import TMDB_ADAPTER
 from app.discover.service_helpers import MAX_ITEMS_PER_ROW
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
@@ -25,6 +24,29 @@ PROVIDER_ARTWORK_HYDRATION_ROW_KEYS = {
     "all_time_greats_unseen",
     "coming_soon",
 }
+PROVIDER_ARTWORK_HYDRATION_PROVIDERS = frozenset(
+    {
+        (MediaTypes.BOARDGAME.value, Sources.BGG.value),
+        (MediaTypes.MUSIC.value, Sources.MUSICBRAINZ.value),
+    },
+)
+
+# These values can remain in persisted rows or cached Discover payloads after
+# the configured placeholder changes. Keep exact historical values here instead
+# of importing a migration at runtime; migrations must remain deterministic.
+LEGACY_IMG_NONE_VALUES = frozenset(
+    {
+        (
+            "https://www.themoviedb.org/assets/2/v4/glyphicons/basic/"
+            "glyphicons-basic-38-picture-grey-"
+            "c2ebdbb057f2a7614185931650f8cee23fa137b93812ccb132b9df511df1cfac.svg"
+        ),
+        (
+            "data:image/svg+xml;base64,"
+            "PHN2ZyBpZD0iZ2x5cGhpY29ucy1iYXNpYyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMzIgMzIiPgogIDxwYXRoIGZpbGw9IiNiNWI1YjUiIGlkPSJwaWN0dXJlIiBkPSJNMjcuNSw1SDQuNUExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMyw2LjV2MTlBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDQuNSwyN2gyM0ExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMjksMjUuNVY2LjVBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDI3LjUsNVpNMjYsMTguNWwtNC43OTQyNS01LjIzMDFhLjk5MzgzLjk5MzgzLDAsMCAwLTEuNDQ0MjgtLjAzMTM3bC01LjM0NzQxLDUuMzQ3NDFMMTkuODI4MTIsMjRIMTdsLTQuNzkyOTEtNC43OTNhMS4wMDAyMiwxLjAwMDIyLDAsMCAwLTEuNDE0MTgsMEw2LDI0VjhIMjZabS0xNy45LTZhMi40LDIuNCwwLDEsMSwyLjQsMi40QTIuNDAwMDUsMi40MDAwNSwwLDAsMSw4LjEsMTIuNVoiLz4KPC9zdmc+Cg=="
+        ),
+    },
+)
 
 
 def _row_ttl_seconds(row_definition: RowDefinition) -> int:
@@ -35,26 +57,47 @@ def _row_ttl_seconds(row_definition: RowDefinition) -> int:
     )
 
 
+def _is_missing_image_value(image: str | None) -> bool:
+    """Return whether an image value represents missing artwork."""
+    return (
+        not image
+        or image == settings.IMG_NONE
+        or image in LEGACY_IMG_NONE_VALUES
+    )
+
+
 def _is_missing_image(candidate: CandidateItem) -> bool:
-    return not candidate.image or candidate.image == settings.IMG_NONE
+    return _is_missing_image_value(candidate.image)
 
 
-def _provider_media_type_for_artwork(candidate_media_type: str) -> str | None:
-    if candidate_media_type == MediaTypes.MOVIE.value:
-        return MediaTypes.MOVIE.value
-    if candidate_media_type in {MediaTypes.TV.value, MediaTypes.ANIME.value}:
-        return MediaTypes.TV.value
-    return None
+def _local_images_for_candidates(
+    candidates: list[CandidateItem],
+) -> dict[tuple[str, str, str], str]:
+    """Return usable local artwork keyed by normalized candidate identity."""
+    identities = {candidate.identity() for candidate in candidates}
+    if not identities:
+        return {}
+
+    items = Item.objects.filter(
+        media_id__in={candidate.media_id for candidate in candidates},
+        media_type__in={candidate.media_type for candidate in candidates},
+        source__in={candidate.source for candidate in candidates},
+    ).only("media_type", "source", "media_id", "image")
+
+    local_images = {}
+    for item in items:
+        identity = (item.media_type, item.source, str(item.media_id))
+        if identity not in identities or _is_missing_image_value(item.image):
+            continue
+        local_images[identity] = item.image
+    return local_images
 
 
 def _supports_provider_artwork_hydration(candidate: CandidateItem) -> bool:
     return (
-        candidate.media_type == MediaTypes.BOARDGAME.value
-        and candidate.source == Sources.BGG.value
-    ) or (
-        candidate.media_type == MediaTypes.MUSIC.value
-        and candidate.source == Sources.MUSICBRAINZ.value
-    )
+        candidate.media_type,
+        candidate.source,
+    ) in PROVIDER_ARTWORK_HYDRATION_PROVIDERS
 
 
 def _hydrate_provider_ranked_artwork(
@@ -78,16 +121,7 @@ def _hydrate_provider_ranked_artwork(
     if not missing:
         return
 
-    local_images = {
-        (item.media_type, item.source, str(item.media_id)): item.image
-        for item in Item.objects.filter(
-            media_id__in=[candidate.media_id for candidate in missing],
-            media_type__in=[MediaTypes.BOARDGAME.value, MediaTypes.MUSIC.value],
-            source__in=[Sources.BGG.value, Sources.MUSICBRAINZ.value],
-        ).only("media_type", "source", "media_id", "image")
-        if item.image and item.image != settings.IMG_NONE
-    }
-
+    local_images = _local_images_for_candidates(missing)
     for candidate in missing:
         local_image = local_images.get(candidate.identity())
         if local_image:
@@ -116,7 +150,7 @@ def _hydrate_provider_ranked_artwork(
             continue
 
         image = (metadata or {}).get("image")
-        if image and image != settings.IMG_NONE:
+        if not _is_missing_image_value(image):
             candidate.image = image
 
 
@@ -127,16 +161,21 @@ def _hydrate_trakt_ranked_artwork(
     allow_remote: bool = True,
     hydrate_limit: int = MAX_ITEMS_PER_ROW,
 ) -> None:
-    """Hydrate missing artwork for displayed Trakt-ranked TMDB candidates."""
-    provider_media_type = _provider_media_type_for_artwork(media_type)
-    if provider_media_type is None:
+    """Hydrate missing artwork for displayed Trakt-ranked candidates."""
+    if media_type not in {
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.ANIME.value,
+    }:
         return
 
+    # Trakt ranks the row. CandidateItem.source owns the metadata identity used
+    # for local and remote artwork, so a different mapping/provider can be
+    # introduced without changing this hydration path.
     display_candidates = [
         candidate
         for candidate in candidates[:hydrate_limit]
         if candidate.media_type == media_type
-        and candidate.source == TMDB_ADAPTER.provider
     ]
     if not display_candidates:
         return
@@ -147,18 +186,9 @@ def _hydrate_trakt_ranked_artwork(
     if not missing:
         return
 
-    local_images = {
-        str(item.media_id): item.image
-        for item in Item.objects.filter(
-            media_type=media_type,
-            source=TMDB_ADAPTER.provider,
-            media_id__in=[candidate.media_id for candidate in missing],
-        ).only("media_id", "image")
-        if item.image and item.image != settings.IMG_NONE
-    }
-
+    local_images = _local_images_for_candidates(missing)
     for candidate in missing:
-        local_image = local_images.get(str(candidate.media_id))
+        local_image = local_images.get(candidate.identity())
         if local_image:
             candidate.image = local_image
 
@@ -170,20 +200,22 @@ def _hydrate_trakt_ranked_artwork(
             continue
         try:
             metadata = services.get_media_metadata(
-                provider_media_type,
+                candidate.media_type,
                 candidate.media_id,
-                TMDB_ADAPTER.provider,
+                candidate.source,
             )
         except Exception as error:
             logger.warning(
-                "discover_tmdb_artwork_lookup_failed media_id=%s error=%s",
+                "discover_artwork_lookup_failed media_type=%s source=%s media_id=%s error=%s",
+                candidate.media_type,
+                candidate.source,
                 candidate.media_id,
                 error,
             )
             continue
 
         image = (metadata or {}).get("image")
-        if image:
+        if not _is_missing_image_value(image):
             candidate.image = image
 
 
