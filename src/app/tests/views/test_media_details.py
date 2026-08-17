@@ -8073,6 +8073,43 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "Episode One")
         self.assertNotContains(response, "Mark All Played")
 
+    def test_podcast_media_details_renders_for_show_without_artwork(self):
+        """Podcast details should render when the show has no artwork.
+
+        The episode rows fall back to a microphone glyph when there is no
+        image to show. Every other podcast test here gives the show an image,
+        so the fallback branch was never rendered and a missing glyph took the
+        whole page down with a 500.
+        """
+        show = PodcastShow.objects.create(
+            podcast_uuid="itunes:1002937872",
+            title="Artless Show",
+            author="Host",
+            image="",
+            rss_feed_url="",
+        )
+        PodcastEpisode.objects.create(
+            show=show,
+            episode_uuid="artless-episode-1",
+            title="Episode Without Art",
+            duration=1800,
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.POCKETCASTS.value,
+                    "media_type": MediaTypes.PODCAST.value,
+                    "media_id": show.podcast_uuid,
+                    "title": "artless-show",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Episode Without Art")
+
     def test_podcast_episode_fragment_renders_for_show_with_no_user_plays(self):
         """Podcast episode HTMX fragments should render when no play history exists."""
         show = PodcastShow.objects.create(
