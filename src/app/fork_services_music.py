@@ -4,6 +4,7 @@
 import logging
 
 from django.conf import settings
+from django.utils import timezone
 
 from app.models import Artist, Item, MediaTypes, Music, Sources, Status
 
@@ -18,7 +19,13 @@ def record_song_play(user, album, track=None, recording_id=None, end_date=None):
     history record), and the first listen creates the row Completed. The
     backing Item is keyed on the MusicBrainz recording id when available,
     else a track_{id} synthetic id.
+
+    Uses the current server time when the caller supplies no completion date.
+    Listen counts read history records that have an end_date, so a completed
+    listen stored without one is invisible, and a later dateless listen used to
+    clear a timestamp an earlier listen had already recorded.
     """
+    completed_at = end_date if end_date is not None else timezone.now()
     existing_music = Music.objects.filter(
         user=user,
         album=album,
@@ -30,7 +37,7 @@ def record_song_play(user, album, track=None, recording_id=None, end_date=None):
         runtime_minutes = track.duration_ms // 60000  # Convert ms to minutes
 
     if existing_music:
-        existing_music.end_date = end_date
+        existing_music.end_date = completed_at
         existing_music.save()
 
         if (
@@ -67,7 +74,7 @@ def record_song_play(user, album, track=None, recording_id=None, end_date=None):
         album=album,
         track=track,
         status=Status.COMPLETED.value,
-        end_date=end_date,
+        end_date=completed_at,
     )
 
 
