@@ -19,11 +19,13 @@ logger = logging.getLogger(__name__)
 ROW_CACHE_TTL_SECONDS = 60 * 60
 ROW_CACHE_TTL_LOCAL_SECONDS = 60 * 30
 
-RANKED_ARTWORK_ROW_KEYS = {
-    "trending_right_now",
-    "all_time_greats_unseen",
-    "coming_soon",
-}
+RANKED_ARTWORK_ROW_KEYS = frozenset(
+    {
+        "trending_right_now",
+        "all_time_greats_unseen",
+        "coming_soon",
+    },
+)
 VIDEO_ARTWORK_MEDIA_TYPES = frozenset(
     {
         MediaTypes.MOVIE.value,
@@ -37,6 +39,10 @@ PROVIDER_ARTWORK_HYDRATION_PROVIDERS = frozenset(
         (MediaTypes.MUSIC.value, Sources.MUSICBRAINZ.value),
     },
 )
+
+# Keep existing orchestration imports stable while new code uses the generic
+# ranked-row vocabulary above. Both names describe the same immutable contract.
+PROVIDER_ARTWORK_HYDRATION_ROW_KEYS = RANKED_ARTWORK_ROW_KEYS
 
 # These values can remain in persisted rows or cached Discover payloads after
 # the configured placeholder changes. Keep exact historical values here instead
@@ -190,6 +196,11 @@ def _hydrate_ranked_video_artwork(
         return
 
     _hydrate_missing_artwork(display_candidates, allow_remote=allow_remote)
+
+
+# Existing service imports use this private name. Keep it as a direct alias so
+# the canonical implementation stays provider-neutral without duplicating code.
+_hydrate_trakt_ranked_artwork = _hydrate_ranked_video_artwork
 
 
 def hydrate_visible_row_artwork(
