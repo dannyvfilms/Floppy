@@ -341,6 +341,11 @@ Run tests through `scripts/test.sh`, in this priority order:
 
 Notes:
 - Quick confidence: `uv run --no-sync ruff check src`
+- Deployment confidence: `uv run --no-sync python src/manage.py floppy_preflight` — paths,
+  settings, database, migrations and Redis in one pass. Reads only, so it is safe against a
+  running instance. Add `--json` for a machine-readable report. This is the fastest way to tell
+  a broken environment from a broken change, and it is what a bug report should carry when
+  Floppy will not start.
 - Migration sync confidence: `uv run --no-sync python src/manage.py check_migration_hygiene --strict`
 - Migration upgrade replay: `scripts/replay_upgrade_matrix.sh --from-tag <previous_release_tag> --to-ref latest --db sqlite,postgres --with-drift-scenarios`
 - Tag vocabulary: `slow` and `network` are the exclusion tags used by the fast

@@ -13,6 +13,17 @@ and API keys are automatically redacted). Attach the downloaded file below — t
 always the fastest way for us to diagnose issues like webhook/integration bugs, and reports
 without it are much harder to act on.
 
+**If Floppy will not start**, you cannot reach that page. Run the startup check instead and
+paste its output below. It redacts passwords and tokens, the same as the log download:
+
+```bash
+# The container runs, but it is unhealthy or idle.
+docker exec floppy python manage.py floppy_preflight --json
+
+# The container restarts or has exited.
+docker compose run --rm floppy python manage.py floppy_preflight --json
+```
+
 **Describe the bug**
 A clear and concise description of what the bug is.
 

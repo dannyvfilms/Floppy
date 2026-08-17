@@ -639,6 +639,90 @@ If the log says that the database is busy, another process still holds a
 write lock. Stop that process, then restart Floppy. Do not delete the database
 or its lock files to resolve this conflict.
 
+### Startup diagnostics
+
+`floppy_preflight` answers one question: can this installation start? It checks
+the data paths, the settings, the database, the migrations and every Redis
+endpoint, then reports each result and exits non-zero if any check failed.
+
+Use it when the container does not start. Which command to use depends on what
+the container is doing:
+
+```bash
+# The container runs, but it is unhealthy or idle.
+docker exec floppy python manage.py floppy_preflight
+
+# The container restarts or has exited.
+docker compose run --rm floppy python manage.py floppy_preflight
+```
+
+`docker exec` attaches to a running container. If Docker answers with
+`Container is restarting, wait until container is running`, use the second
+command. It starts a one-off container that reads the same volumes.
+
+For a source install, load the environment first. All `manage.py` commands need
+`SECRET`:
+
+```bash
+SECRET=your-secret uv run --no-sync python src/manage.py floppy_preflight
+```
+
+Each check reports one of four results:
+
+| Result | Meaning | Effect on the exit code |
+|--------|---------|-------------------------|
+| `ok` | The check passed. | none |
+| `warn` | Floppy can start, but there is a risk. | none |
+| `FAIL` | Floppy cannot start until you correct this. | exit code 1 |
+| `skip` | The check did not run. | none |
+
+A failure names the problem, the cause, and what to do. Each instruction starts
+with the place to do it: `[HOST]` for the machine that runs Docker, `[COMPOSE]`
+for the stack definition, and `[CONTAINER]` for a shell inside Floppy. An
+example:
+
+```
+paths      ok    /floppy/db (12.4 GB free)
+config     ok    no settings errors
+database   ok    sqlite storage and relationships are intact
+migrations ok    none pending
+redis      FAIL  cannot reach redis://redis:6379/0 (celery broker)
+                 cause: Error 111 connecting to redis:6379. Connection refused.
+                 fix:   [COMPOSE] check that the Redis service is running and reachable
+preflight: failed (redis)
+```
+
+Options:
+
+| Option | Effect |
+|--------|--------|
+| `--json` | Print one JSON object and nothing else. |
+| `--no-redis` | Do not check Redis. |
+| `--auto-migrate` | Apply the pending migrations, then check again. |
+| `--timeout SECONDS` | Bound the database storage check. The default is 600. |
+
+The command reads only. `--auto-migrate` is the one exception, and it is for an
+operator at a terminal. Containers do not need it, because the startup sequence
+already applies migrations and retries them.
+
+`--json` prints a `version` field. This number increases only when a key is
+removed or renamed. New keys do not change it, so a supervisor that reads the
+current keys keeps working.
+
+Use `--json` for a systemd unit that must not start Floppy on a broken
+installation:
+
+```ini
+[Service]
+ExecStartPre=/path/to/.venv/bin/python /path/to/src/manage.py floppy_preflight --json
+ExecStart=/path/to/.venv/bin/gunicorn --config python:config.gunicorn config.wsgi:application
+```
+
+There is one failure `floppy_preflight` cannot report. If the data directory
+denies access to the container user, Django stops while it loads its settings,
+which is before this command starts. The startup log reports that condition
+directly.
+
 ### Grouped anime migration diagnostics
 
 Grouped anime conversion validates provider data before it writes and commits
