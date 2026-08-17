@@ -792,7 +792,7 @@ class TimelineItemSerializer(serializers.ModelSerializer):
     item_id = ItemIdField(source="item", read_only=True)
     parent_id = ParentIdField(source="item", read_only=True)
     title = serializers.CharField(source="item.title", read_only=True, allow_null=True)
-    image = serializers.URLField(source="item.image", read_only=True, allow_null=True)
+    image = serializers.CharField(source="item.image", read_only=True, allow_null=True)
     media_type = serializers.CharField(
         source="item.media_type",
         read_only=True,
