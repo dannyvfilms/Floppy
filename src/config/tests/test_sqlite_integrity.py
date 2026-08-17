@@ -18,16 +18,11 @@ from config.sqlite_integrity import check_database_integrity
 
 ENTRYPOINT = Path(__file__).resolve().parents[3] / "entrypoint.sh"
 _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
-# How long to wait for the entrypoint shell script to reach the state under
-# test. This budget covers process startup on a shared runner, not the timing of
-# the behaviour itself, so it is generous on purpose: five seconds was enough on
-# an idle machine and ran out on CI, which failed the assertion that followed as
-# if the entrypoint had misbehaved.
-_STARTUP_WAIT_SECONDS = 60
-# Same reasoning for the wait after terminate(). Handling SIGTERM should be
-# quick, so this is a smaller risk than the startup poll, but it is the same
-# tight bound on the same loaded runner.
-_SHUTDOWN_WAIT_SECONDS = 30
+# The entrypoint reaches the state under test in well under a second once it is
+# not waiting on a live recovery server, so a short bound is correct here and
+# reports a deadlock quickly instead of hiding one.
+_STARTUP_WAIT_SECONDS = 5
+_SHUTDOWN_WAIT_SECONDS = 5
 
 
 class SqliteIntegrityTests(SimpleTestCase):
@@ -947,13 +942,27 @@ class SqliteIntegrityTests(SimpleTestCase):
                     '    echo "[entrypoint] bounded integrity failure" >&2\n'
                     "    exit 1\n"
                     "    ;;\n"
+                    # The real recovery page binds port 8000 and serves until it
+                    # is stopped. The entrypoint waits on it, and only parks in
+                    # the sleep loop this test measures once it exits. Whether
+                    # that happens depended on whether port 8000 was already
+                    # taken on the machine running the suite: taken, and the
+                    # server gave up and the test passed; free, and it served
+                    # forever and the test timed out. Exit here so the path under
+                    # test is reached either way.
+                    "  *sqlite_recovery_server*)\n"
+                    "    exit 0\n"
+                    "    ;;\n"
                     "esac\n"
                     f'exec "{sys.executable}" "$@"\n'
                 ),
                 "sleep": (
                     "#!/bin/sh\n"
                     'echo "$$" > "$PARKING_PID_FILE"\n'
-                    "exec /bin/sleep 30\n"
+                    # Sleep for what the entrypoint asked for. A fixed shorter
+                    # sleep ends, the parking loop starts another one, and the
+                    # pid file is overwritten while the test is reading it.
+                    'exec /bin/sleep "$@"\n'
                 ),
             }
             for name, script in wrappers.items():
@@ -1031,6 +1040,9 @@ class SqliteIntegrityTests(SimpleTestCase):
             )
             self.assertEqual(process.returncode, 0)
             self.assertEqual(output.count("bounded integrity failure"), 1)
+            # The point of the test: park once. Running the check again means
+            # the outer loop spun instead of parking.
+            self.assertEqual(output.count("Checking SQLite storage"), 1, output)
             self.assertNotIn("Still checking SQLite integrity", output)
             self.assertIn("SQLite startup is paused", output)
             self.assertNotIn("exceeded its 600s timeout", output)
