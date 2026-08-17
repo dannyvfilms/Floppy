@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('integrations', '0023_plexwebhookshare'),
+        ('integrations', '0025_integrationeventreceipt'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
