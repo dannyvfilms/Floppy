@@ -980,7 +980,8 @@ class SqliteIntegrityTests(SimpleTestCase):
                     stderr=output,
                     text=True,
                 )
-                deadline = time.monotonic() + _STARTUP_WAIT_SECONDS
+                started_waiting = time.monotonic()
+                deadline = started_waiting + _STARTUP_WAIT_SECONDS
                 while (
                     (
                         "SQLite startup is paused" not in output_path.read_text()
@@ -989,6 +990,12 @@ class SqliteIntegrityTests(SimpleTestCase):
                     and time.monotonic() < deadline
                 ):
                     time.sleep(0.02)
+                # Two different faults leave parking_child_before_term False: the
+                # wait ran out before the pid file appeared, or the pid file
+                # appeared and the process it names had already exited. They need
+                # opposite fixes, so record which one happened.
+                waited_seconds = time.monotonic() - started_waiting
+                pid_file_appeared = (tmp_path / "parking.pid").is_file()
                 parked_before_term = process.poll() is None
                 parking_pid = (
                     int((tmp_path / "parking.pid").read_text())
@@ -1015,7 +1022,12 @@ class SqliteIntegrityTests(SimpleTestCase):
             )
             self.assertTrue(
                 parking_child_before_term,
-                f"no live parking child was found. Log:\n{output}",
+                "no live parking child was found after "
+                f"{waited_seconds:.2f}s of {_STARTUP_WAIT_SECONDS}s. "
+                f"parking.pid present: {pid_file_appeared}. "
+                "A pid file that never appeared means startup was too slow. "
+                "A pid file naming a dead process means the parking child "
+                f"exited, which no wait can fix. Log:\n{output}",
             )
             self.assertEqual(process.returncode, 0)
             self.assertEqual(output.count("bounded integrity failure"), 1)
