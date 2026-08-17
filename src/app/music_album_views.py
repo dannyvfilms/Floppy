@@ -7,11 +7,9 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
 from django.urls import reverse
-from django.utils import timezone
-from django.utils.dateparse import parse_date, parse_datetime
 from django.views.decorators.http import require_POST
 
-from app import fork_services_music
+from app import fork_services_music, helpers
 from app.discover import tab_cache as discover_tab_cache
 from app.forms import AlbumTrackerForm
 from app.models import (
@@ -137,23 +135,36 @@ def song_save(request):
         fallback_media_type=MediaTypes.MUSIC.value,
     )
 
-    end_date = None
-    if end_date_str:
-        end_date = parse_datetime(end_date_str)
-        if end_date:
-            if timezone.is_naive(end_date):
-                end_date = timezone.make_aware(end_date)
-        else:
-            parsed_date = parse_date(end_date_str)
-            if parsed_date:
-                end_date = timezone.make_aware(
-                    timezone.datetime.combine(
-                        parsed_date, timezone.datetime.min.time()
-                    ),
-                )
-
     album = get_object_or_404(Album, id=album_id)
     track = get_object_or_404(Track, id=track_id) if track_id else None
+
+    # A blank date means "now" and is resolved in the service. A date that was
+    # supplied but cannot be read is a different case: recording it as "now"
+    # would store a time the user did not choose and never tell them.
+    end_date = None
+    if end_date_str:
+        try:
+            end_date = helpers.parse_completion_datetime(end_date_str)
+        except (TypeError, ValueError):
+            message = (
+                f'Floppy cannot read the date "{end_date_str}". '
+                "Enter the date as YYYY-MM-DD. "
+                "To record this listen at the current time, keep the date empty."
+            )
+            if request.headers.get("HX-Request"):
+                # Do not swap and do not close the modal. The date the user
+                # typed stays on screen for them to correct.
+                response = HttpResponse(status=200)
+                response["HX-Reswap"] = "none"
+                response["HX-Trigger"] = json.dumps(
+                    {"showToast": {"message": message, "type": "error"}},
+                )
+                return response
+            messages.error(request, message)
+            next_url = request.GET.get("next", "")
+            if next_url:
+                return redirect(next_url)
+            return redirect(_music_album_detail_url(album))
 
     existed_before = Music.objects.filter(
         user=request.user,
