@@ -23,7 +23,7 @@ class Artist(models.Model):
         blank=True,
         help_text="MusicBrainz Artist ID (UUID)",
     )
-    image = models.URLField(blank=True, default="")
+    image = models.TextField(blank=True, default="")
     country = models.CharField(
         max_length=5,
         blank=True,
@@ -99,7 +99,7 @@ class Album(models.Model):
         blank=True,
     )
     release_date = models.DateField(null=True, blank=True)
-    image = models.URLField(blank=True, default="")
+    image = models.TextField(blank=True, default="")
     release_type = models.CharField(
         max_length=50,
         blank=True,
