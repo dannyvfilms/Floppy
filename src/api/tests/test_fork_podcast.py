@@ -3,8 +3,10 @@ import datetime
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
+from django.contrib.messages import get_messages
 from django.urls import reverse
 
+from app import fork_services_podcast
 from app.models import (
     Podcast,
     PodcastEpisode,
@@ -276,3 +278,141 @@ class MarkAllPlayedTests(PodcastApiTestCase):
             headers=self.auth_headers,
         )
         self.assertEqual(again.json()["marked_played"], 0)
+
+
+class PodcastPlayDeduplicationTests(PodcastApiTestCase):
+    """Duplicate suppression across imports, replays, and the window edge."""
+
+    def _record(self, end_date=None):
+        return fork_services_podcast.record_podcast_play(
+            self.user1,
+            self.show,
+            episode=self.episode1,
+            episode_uuid=self.episode1.episode_uuid,
+            end_date=end_date,
+        )
+
+    def test_reimported_play_stays_a_duplicate_after_a_dateless_play(self):
+        """A play recorded "now" must not unmask an already-imported old play.
+
+        Duplicate detection once compared against the newest play only. One
+        dateless play then sat at the top of the history and every re-imported
+        old play looked new, so a repeated import multiplied the play count.
+        """
+        old = datetime.datetime(2020, 1, 1, tzinfo=datetime.UTC)
+        now = datetime.datetime(2025, 6, 1, 12, tzinfo=datetime.UTC)
+
+        self._record(end_date=old)
+        with patch("app.fork_services_podcast.timezone.now", return_value=now):
+            self._record()
+        _, duplicate = self._record(end_date=old)
+
+        podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
+        self.assertTrue(duplicate)
+        self.assertEqual(podcast.completed_play_count, 2)
+
+    def test_play_just_outside_the_window_is_a_new_play(self):
+        """A play five minutes and one second later counts separately."""
+        first = datetime.datetime(2025, 6, 1, 12, 0, 0, tzinfo=datetime.UTC)
+        outside = first + datetime.timedelta(seconds=301)
+
+        self._record(end_date=first)
+        _, duplicate = self._record(end_date=outside)
+
+        podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
+        self.assertFalse(duplicate)
+        self.assertEqual(podcast.completed_play_count, 2)
+
+    def test_play_just_inside_the_window_is_a_duplicate(self):
+        """A play four minutes and fifty-nine seconds later is suppressed."""
+        first = datetime.datetime(2025, 6, 1, 12, 0, 0, tzinfo=datetime.UTC)
+        inside = first + datetime.timedelta(seconds=299)
+
+        self._record(end_date=first)
+        _, duplicate = self._record(end_date=inside)
+
+        podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
+        self.assertTrue(duplicate)
+        self.assertEqual(podcast.completed_play_count, 1)
+
+
+class PodcastWebPlayDateTests(PodcastApiTestCase):
+    """The web form and the REST API must read a date the same way."""
+
+    def _post(self, end_date):
+        self.client.force_login(self.user1)
+        return self.client.post(
+            reverse("podcast_save"),
+            {
+                "show_id": self.show.id,
+                "episode_id": self.episode1.id,
+                "episode_uuid": self.episode1.episode_uuid,
+                "end_date": end_date,
+            },
+            HTTP_REFERER="/",
+        )
+
+    def test_blank_date_records_the_current_server_time(self):
+        """A blank date on the web form behaves like a blank date on the API."""
+        completed_at = datetime.datetime(2025, 1, 15, 12, tzinfo=datetime.UTC)
+
+        with patch(
+            "app.fork_services_podcast.timezone.now",
+            return_value=completed_at,
+        ):
+            response = self._post("")
+
+        podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
+        self.assertEqual(response.status_code, HTTP.FOUND)
+        self.assertEqual(podcast.status, Status.COMPLETED.value)
+        self.assertEqual(podcast.end_date, completed_at)
+
+    def test_unreadable_date_records_nothing_and_reports_the_problem(self):
+        """An unreadable date must not become "now" behind the user's back.
+
+        The API answers 400 for the same input. The web form used to discard
+        the value and record the current time under a success message, so the
+        user kept a timestamp they never chose.
+        """
+        response = self._post("not-a-date")
+
+        self.assertEqual(response.status_code, HTTP.FOUND)
+        self.assertFalse(
+            Podcast.objects.filter(user=self.user1, episode=self.episode1).exists(),
+        )
+        messages = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertTrue(any("YYYY-MM-DD" in message for message in messages))
+
+    def test_unreadable_date_keeps_the_modal_open_for_htmx(self):
+        """The modal must survive the error so the typed date can be fixed."""
+        self.client.force_login(self.user1)
+        response = self.client.post(
+            reverse("podcast_save"),
+            {
+                "show_id": self.show.id,
+                "episode_id": self.episode1.id,
+                "episode_uuid": self.episode1.episode_uuid,
+                "end_date": "not-a-date",
+            },
+            HTTP_REFERER="/",
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response["HX-Reswap"], "none")
+        self.assertNotIn("closeModal", response["HX-Trigger"])
+        self.assertIn("showToast", response["HX-Trigger"])
+        self.assertFalse(
+            Podcast.objects.filter(user=self.user1, episode=self.episode1).exists(),
+        )
+
+    def test_explicit_date_is_kept_exactly(self):
+        """An explicit date must survive unchanged."""
+        response = self._post("2024-03-01T10:00:00")
+
+        podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
+        self.assertEqual(response.status_code, HTTP.FOUND)
+        self.assertEqual(
+            podcast.end_date,
+            datetime.datetime(2024, 3, 1, 10, tzinfo=datetime.UTC),
+        )
