@@ -29,7 +29,7 @@
           {% else %}
             <div class="w-20 h-20 rounded bg-[var(--color-sidebar)] flex items-center justify-center shrink-0">
               {% if music and music.item and music.item.media_type == 'podcast' %}
-                {% icon 'microphone' is_active=False extra_classes="w-8 h-8 text-gray-600" %}
+                {% include "app/icons/microphone.svg" with classes="w-8 h-8 text-gray-600" %}
               {% else %}
                 {% icon 'music' is_active=False extra_classes="w-8 h-8 text-gray-600" %}
               {% endif %}
