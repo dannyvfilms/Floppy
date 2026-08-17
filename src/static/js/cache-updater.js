@@ -381,6 +381,12 @@ class CacheUpdater {
                 return;
             }
 
+            // stop(), offline pause, or a fast restart can intentionally abort
+            // an older request. Never let that stale request schedule new work.
+            if (controller.signal.aborted && !requestTimedOut) {
+                return;
+            }
+
             if (requestTimedOut) {
                 console.warn('CacheUpdater: Cache status request timed out, retrying with backoff');
             } else {
