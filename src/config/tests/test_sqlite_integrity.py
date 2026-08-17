@@ -17,6 +17,16 @@ from config import sqlite_integrity
 from config.sqlite_integrity import check_database_integrity
 
 ENTRYPOINT = Path(__file__).resolve().parents[3] / "entrypoint.sh"
+
+# The entrypoint tests below poll for a condition and continue the moment it
+# holds, so these bounds only take effect when something is actually wrong. That
+# makes a generous value free on the passing path and a tight one expensive: CI
+# runs this suite in parallel across four thousand tests, and the parking path
+# starts the recovery server, which is a cold Django import competing for CPU
+# with everything else. Five seconds was not enough for that, so the tests
+# reported a busy runner as a broken entrypoint.
+ENTRYPOINT_STARTUP_TIMEOUT = 60
+ENTRYPOINT_SHUTDOWN_TIMEOUT = 30
 _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
 
 
@@ -970,7 +980,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                     stderr=output,
                     text=True,
                 )
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + ENTRYPOINT_STARTUP_TIMEOUT
                 while (
                     (
                         "SQLite startup is paused" not in output_path.read_text()
@@ -993,7 +1003,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                     except ProcessLookupError:
                         pass
                 process.terminate()
-                process.wait(timeout=5)
+                process.wait(timeout=ENTRYPOINT_SHUTDOWN_TIMEOUT)
             output = output_path.read_text()
 
             self.assertTrue(parked_before_term)
@@ -1048,14 +1058,14 @@ class SqliteIntegrityTests(SimpleTestCase):
                     stderr=output,
                     text=True,
                 )
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + ENTRYPOINT_STARTUP_TIMEOUT
                 while (
                     "checker waiting" not in output_path.read_text()
                     and time.monotonic() < deadline
                 ):
                     time.sleep(0.02)
                 process.terminate()
-                process.wait(timeout=5)
+                process.wait(timeout=ENTRYPOINT_SHUTDOWN_TIMEOUT)
             output = output_path.read_text()
 
             self.assertEqual(process.returncode, 0)
