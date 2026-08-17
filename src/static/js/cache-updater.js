@@ -3,7 +3,7 @@
  *
  * Usage:
  *   Initialize with: CacheUpdater.init(cacheType, options)
- *   Options: { rangeName, loggingStyle, pollInterval, timeout }
+ *   Options: { rangeName, loggingStyle, pollInterval, timeout, requestTimeout, maxRetryInterval }
  */
 
 // Guard against re-execution: this script is re-evaluated when pages are
@@ -18,11 +18,16 @@ class CacheUpdater {
         this.loggingStyle = options.loggingStyle || 'repeats';
         this.mediaType = options.mediaType || null;
         this.showMore = Boolean(options.showMore);
-        this.pollInterval = options.pollInterval || 2500; // 2.5 seconds
-        this.timeout = options.timeout || 180000; // 180 seconds — stats rebuild can take 90s+ for large libraries
+        this.pollInterval = options.pollInterval ?? 2500; // 2.5 seconds
+        this.timeout = options.timeout ?? 180000; // 180 seconds — stats rebuild can take 90s+ for large libraries
+        this.requestTimeout = options.requestTimeout ?? 10000; // Bound one status request independently
+        this.maxRetryInterval = options.maxRetryInterval ?? 30000; // Cap transient-failure backoff
         this.startTime = Date.now();
         this.pollTimer = null;
+        this.abortController = null;
         this.isPolling = false;
+        this.retryAttempt = 0;
+        this.offlineSince = null;
         this.wasRefreshing = false; // Track if we were refreshing in previous poll
         this.lastBuiltAt = null; // Track built_at to detect fresh builds even if lock lingers
         this.onUpdateCallback = options.onUpdate || null;
@@ -30,6 +35,9 @@ class CacheUpdater {
         // Remember which page started this updater so an orphaned poll loop
         // can't reload an unrelated page after boosted navigation away.
         this.pagePath = window.location.pathname;
+        this.handleOnline = () => this.resumeAfterOffline();
+        this.handleOffline = () => this.pauseForOffline();
+        this.handlePageHide = () => this.stop();
     }
 
     currentRefreshActive(data) {
@@ -59,6 +67,11 @@ class CacheUpdater {
 
         this.isPolling = true;
         this.startTime = Date.now();
+        this.retryAttempt = 0;
+        this.offlineSince = null;
+        window.addEventListener('online', this.handleOnline);
+        window.addEventListener('offline', this.handleOffline);
+        window.addEventListener('pagehide', this.handlePageHide);
         // Don't reset wasRefreshing here - it may have been set by the caller
         // to track the initial state (e.g., if refresh was already in progress)
         this.poll();
@@ -73,6 +86,108 @@ class CacheUpdater {
             clearTimeout(this.pollTimer);
             this.pollTimer = null;
         }
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+        window.removeEventListener('online', this.handleOnline);
+        window.removeEventListener('offline', this.handleOffline);
+        window.removeEventListener('pagehide', this.handlePageHide);
+        this.offlineSince = null;
+    }
+
+    schedulePoll(delay = this.pollInterval) {
+        if (!this.isPolling) {
+            return;
+        }
+
+        if (this.pollTimer) {
+            clearTimeout(this.pollTimer);
+        }
+        this.pollTimer = setTimeout(() => {
+            this.pollTimer = null;
+            this.poll();
+        }, delay);
+    }
+
+    finishTimeout() {
+        this.stop();
+        if (this.onRefreshCompleteCallback) {
+            this.onRefreshCompleteCallback(false, 'timeout');
+        }
+    }
+
+    pauseForOffline() {
+        if (!this.isPolling || this.offlineSince !== null) {
+            return;
+        }
+
+        this.offlineSince = Date.now();
+        if (this.pollTimer) {
+            clearTimeout(this.pollTimer);
+            this.pollTimer = null;
+        }
+        if (this.abortController) {
+            this.abortController.abort();
+        }
+        console.log('CacheUpdater: Offline, pausing cache status polling');
+    }
+
+    resumeAfterOffline() {
+        if (!this.isPolling || this.offlineSince === null) {
+            return;
+        }
+
+        // Offline time should not consume the active refresh timeout.
+        this.startTime += Date.now() - this.offlineSince;
+        this.offlineSince = null;
+        this.retryAttempt = 0;
+        console.log('CacheUpdater: Online, resuming cache status polling');
+        this.poll();
+    }
+
+    shouldRetryStatus(status) {
+        return status === 408 || status === 425 || status === 429 || status >= 500;
+    }
+
+    retryAfterMs(response) {
+        if (!response.headers || typeof response.headers.get !== 'function') {
+            return 0;
+        }
+
+        const value = response.headers.get('Retry-After');
+        if (!value) {
+            return 0;
+        }
+
+        const seconds = Number(value);
+        if (Number.isFinite(seconds) && seconds >= 0) {
+            return seconds * 1000;
+        }
+
+        const retryAt = Date.parse(value);
+        return Number.isNaN(retryAt) ? 0 : Math.max(0, retryAt - Date.now());
+    }
+
+    scheduleRetry(retryAfter = 0) {
+        if (!this.isPolling) {
+            return;
+        }
+
+        const elapsed = Date.now() - this.startTime;
+        const remaining = this.timeout - elapsed;
+        if (remaining <= 0) {
+            this.finishTimeout();
+            return;
+        }
+
+        const backoff = Math.min(
+            this.pollInterval * (2 ** this.retryAttempt),
+            this.maxRetryInterval,
+        );
+        this.retryAttempt += 1;
+        const delay = Math.min(Math.max(backoff, retryAfter), remaining);
+        this.schedulePoll(delay);
     }
 
     /**
@@ -90,14 +205,27 @@ class CacheUpdater {
             return;
         }
 
-        // Check timeout
-        if (Date.now() - this.startTime > this.timeout) {
-            this.stop();
-            if (this.onRefreshCompleteCallback) {
-                this.onRefreshCompleteCallback(false, 'timeout');
-            }
+        // Do not send status traffic while the browser knows it is offline.
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            this.pauseForOffline();
             return;
         }
+
+        // Check timeout
+        if (Date.now() - this.startTime >= this.timeout) {
+            this.finishTimeout();
+            return;
+        }
+
+        const controller = new AbortController();
+        let requestTimedOut = false;
+        this.abortController = controller;
+        const remaining = this.timeout - (Date.now() - this.startTime);
+        const requestTimeout = Math.min(this.requestTimeout, remaining);
+        const requestTimer = setTimeout(() => {
+            requestTimedOut = true;
+            controller.abort();
+        }, requestTimeout);
 
         try {
             const params = new URLSearchParams({
@@ -113,13 +241,26 @@ class CacheUpdater {
                 params.append('show_more', this.showMore ? '1' : '0');
             }
 
-            const response = await fetch(`/api/cache-status/?${params.toString()}`);
+            const response = await fetch(`/api/cache-status/?${params.toString()}`, {
+                signal: controller.signal,
+            });
 
             if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+                if (this.shouldRetryStatus(response.status)) {
+                    console.warn(`CacheUpdater: HTTP ${response.status}, retrying with backoff`);
+                    this.scheduleRetry(this.retryAfterMs(response));
+                } else {
+                    console.error(`CacheUpdater: HTTP ${response.status}, stopping polling`);
+                    this.stop();
+                    if (this.onRefreshCompleteCallback) {
+                        this.onRefreshCompleteCallback(false, `http_${response.status}`);
+                    }
+                }
+                return;
             }
 
             const data = await response.json();
+            this.retryAttempt = 0;
             const prevBuiltAt = this.lastBuiltAt;
             const refreshActive = this.currentRefreshActive(data);
             console.log('CacheUpdater: Poll result', {
@@ -189,7 +330,7 @@ class CacheUpdater {
             // If still refreshing, continue polling
             if (refreshActive) {
                 console.log('CacheUpdater: Still refreshing, continuing to poll');
-                this.pollTimer = setTimeout(() => this.poll(), this.pollInterval);
+                this.schedulePoll();
             } else if (data.exists && !data.is_stale && !refreshActive) {
                 // If we were waiting for a refresh, we should have caught it above.
                 // Otherwise, the current page is already up to date.
@@ -214,7 +355,7 @@ class CacheUpdater {
                     }
                 } else {
                     console.log('CacheUpdater: Cache is stale, continuing to poll');
-                    this.pollTimer = setTimeout(() => this.poll(), this.pollInterval);
+                    this.schedulePoll();
                 }
             } else if (!data.exists) {
                 // Cache doesn't exist and no refresh in progress, stop polling
@@ -225,9 +366,28 @@ class CacheUpdater {
                 }
             }
         } catch (error) {
-            console.error('Cache status poll error:', error);
-            // Continue polling on error (might be temporary network issue)
-            this.pollTimer = setTimeout(() => this.poll(), this.pollInterval);
+            if (!this.isPolling) {
+                return;
+            }
+
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                this.pauseForOffline();
+                return;
+            }
+
+            if (requestTimedOut) {
+                console.warn('CacheUpdater: Cache status request timed out, retrying with backoff');
+            } else {
+                console.error('Cache status poll error:', error);
+            }
+            // Network failures may be temporary, but repeated fixed-interval requests
+            // waste client and server resources. Back off while keeping the refresh live.
+            this.scheduleRetry();
+        } finally {
+            clearTimeout(requestTimer);
+            if (this.abortController === controller) {
+                this.abortController = null;
+            }
         }
     }
 
