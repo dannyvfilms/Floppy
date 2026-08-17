@@ -47,7 +47,7 @@ class Item(CalendarTriggerMixin, models.Model):
         default="",
         help_text="Cached provider synopsis, used as a fallback when live metadata is unavailable",
     )
-    image = models.URLField()  # if add default, custom media entry will show the value
+    image = models.TextField(blank=True, default="")  # if add default, custom media entry will show the value
     season_number = models.PositiveIntegerField(null=True, blank=True)
     episode_number = models.PositiveIntegerField(null=True, blank=True)
     runtime_minutes = models.PositiveIntegerField(
