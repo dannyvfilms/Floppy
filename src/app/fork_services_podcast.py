@@ -3,6 +3,7 @@
 # mark-all-played (extracted from podcast_views.podcast_mark_all_played).
 import hashlib
 import logging
+from datetime import timedelta
 
 from django.conf import settings
 from django.utils import timezone
@@ -68,20 +69,20 @@ def record_podcast_play(user, show, episode=None, episode_uuid=None, end_date=No
 
     existing_podcast = Podcast.objects.filter(user=user, item=item).first()
     if existing_podcast:
-        latest_history = (
-            existing_podcast.history.filter(end_date__isnull=False)
-            .order_by("-end_date")
-            .first()
-        )
-        if latest_history and latest_history.end_date:
-            time_diff = abs((completed_at - latest_history.end_date).total_seconds())
-            if time_diff < _DUPLICATE_PLAY_WINDOW_SECONDS:
-                logger.debug(
-                    "Skipping duplicate podcast history entry "
-                    "(time difference: %d seconds)",
-                    time_diff,
-                )
-                return existing_podcast, True
+        # Compare against the plays near this timestamp, not against the newest
+        # one. An import that re-delivers a 2020 play has to be measured against
+        # the stored 2020 play; measuring it against the newest play means one
+        # "played just now" in between makes every replayed import look new.
+        window = timedelta(seconds=_DUPLICATE_PLAY_WINDOW_SECONDS)
+        if existing_podcast.history.filter(
+            end_date__gt=completed_at - window,
+            end_date__lt=completed_at + window,
+        ).exists():
+            logger.debug(
+                "Skipping duplicate podcast history entry near %s",
+                completed_at,
+            )
+            return existing_podcast, True
 
         existing_podcast.end_date = completed_at
         if runtime_minutes and existing_podcast.progress != runtime_minutes:
