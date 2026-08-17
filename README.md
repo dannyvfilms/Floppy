@@ -656,9 +656,14 @@ docker exec floppy python manage.py floppy_preflight
 docker compose run --rm floppy python manage.py floppy_preflight
 ```
 
-`docker exec` attaches to a running container. If Docker answers with
-`Container is restarting, wait until container is running`, use the second
-command. It starts a one-off container that reads the same volumes.
+`docker exec` attaches to a running container, so it cannot reach one that keeps
+restarting. Docker answers `Container is restarting, wait until container is
+running`; Podman kills the attempt instead and returns exit code 137. Use the
+second command in either case. It starts a one-off container that reads the same
+volumes, and it replaces the startup script instead of running after it, so the
+check runs even when startup is what fails.
+
+Both commands work with `podman` in place of `docker`.
 
 For a source install, load the environment first. All `manage.py` commands need
 `SECRET`:

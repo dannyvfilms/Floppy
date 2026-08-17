@@ -116,6 +116,25 @@ class PathsCheckTests(SimpleTestCase):
         self.assertIn("not writable", result.summary)
         self.assertTrue(result.fix.startswith(preflight.HOST))
 
+    def test_every_container_runtime_is_recognised(self):
+        """Found by running the real image. Podman writes a different marker.
+
+        Docker writes /.dockerenv and Podman writes /run/.containerenv. Checking
+        only the Docker file gave a Podman operator the advice meant for a bare
+        install, and Podman is common in the setups Floppy runs in.
+        """
+        for marker in preflight._CONTAINER_MARKERS:
+            with self.subTest(marker=str(marker)):
+                with mock.patch.object(
+                    Path, "exists", autospec=True,
+                    side_effect=lambda self, w=marker: self == w,
+                ):
+                    self.assertTrue(preflight.in_container())
+
+    def test_no_container_marker_means_a_plain_install(self):
+        with mock.patch.object(Path, "exists", autospec=True, return_value=False):
+            self.assertFalse(preflight.in_container())
+
     def test_advice_suits_the_environment_floppy_runs_in(self):
         """PUID and compose files mean nothing to a source or desktop install.
 

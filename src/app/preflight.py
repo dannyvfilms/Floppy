@@ -64,14 +64,20 @@ CONFIG = "[CONFIG]"
 FLOPPY = "[FLOPPY]"
 
 
+# Each runtime leaves its own marker. Docker writes /.dockerenv, and Podman
+# writes /run/.containerenv, which matters because Podman is common in the
+# self-hosted setups Floppy runs in. Checking only the Docker file gives a
+# Podman operator the advice meant for a bare install.
+_CONTAINER_MARKERS = (Path("/.dockerenv"), Path("/run/.containerenv"))
+
+
 def in_container() -> bool:
     """Report whether Floppy runs inside a container.
 
     Floppy also runs from source and as a packaged desktop application, where
-    advice about compose files, PUID and PGID is wrong. Settings already decides
-    this the same way when it generates a secret key.
+    advice about compose files, PUID and PGID is wrong.
     """
-    return Path("/.dockerenv").exists()
+    return any(marker.exists() for marker in _CONTAINER_MARKERS)
 
 
 def _where(container: str, plain: str) -> str:
