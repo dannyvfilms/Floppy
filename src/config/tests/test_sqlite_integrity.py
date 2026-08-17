@@ -18,6 +18,12 @@ from config.sqlite_integrity import check_database_integrity
 
 ENTRYPOINT = Path(__file__).resolve().parents[3] / "entrypoint.sh"
 _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
+# How long to wait for the entrypoint shell script to reach the state under
+# test. This budget covers process startup on a shared runner, not the timing of
+# the behaviour itself, so it is generous on purpose: five seconds was enough on
+# an idle machine and ran out on CI, which failed the assertion that followed as
+# if the entrypoint had misbehaved.
+_STARTUP_WAIT_SECONDS = 60
 
 
 class SqliteIntegrityTests(SimpleTestCase):
@@ -970,7 +976,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                     stderr=output,
                     text=True,
                 )
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + _STARTUP_WAIT_SECONDS
                 while (
                     (
                         "SQLite startup is paused" not in output_path.read_text()
@@ -996,8 +1002,17 @@ class SqliteIntegrityTests(SimpleTestCase):
                 process.wait(timeout=5)
             output = output_path.read_text()
 
-            self.assertTrue(parked_before_term)
-            self.assertTrue(parking_child_before_term)
+            # Report the entrypoint log on failure. Without it these read as
+            # "False is not true", which does not say whether the entrypoint
+            # behaved wrongly or simply had not started yet.
+            self.assertTrue(
+                parked_before_term,
+                f"entrypoint exited instead of parking. Log:\n{output}",
+            )
+            self.assertTrue(
+                parking_child_before_term,
+                f"no live parking child was found. Log:\n{output}",
+            )
             self.assertEqual(process.returncode, 0)
             self.assertEqual(output.count("bounded integrity failure"), 1)
             self.assertNotIn("Still checking SQLite integrity", output)
@@ -1048,7 +1063,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                     stderr=output,
                     text=True,
                 )
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + _STARTUP_WAIT_SECONDS
                 while (
                     "checker waiting" not in output_path.read_text()
                     and time.monotonic() < deadline
