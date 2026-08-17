@@ -44,6 +44,48 @@ class LogSafetyTests(SimpleTestCase):
             "https://example.com/library",
         )
 
+    def test_safe_url_drops_credentials_from_the_authority(self):
+        cases = {
+            # Redis and database connection strings.
+            "redis://:hunter2@cache:6379/0": "redis://cache:6379/0",
+            "redis://admin:hunter2@cache:6379/1": "redis://cache:6379/1",
+            "postgres://floppy:hunter2@db:5432/floppy": "postgres://db:5432/floppy",
+            # Private podcast feeds authenticate this way.
+            "https://user:hunter2@feeds.example.com/p.rss": (
+                "https://feeds.example.com/p.rss"
+            ),
+            # A username with no password still identifies the subscriber.
+            "https://subscriber@feeds.example.com/p.rss": (
+                "https://feeds.example.com/p.rss"
+            ),
+        }
+        for value, expected in cases.items():
+            with self.subTest(url=value):
+                result = safe_url(value)
+                self.assertEqual(result, expected)
+                self.assertNotIn("hunter2", result)
+                self.assertNotIn("@", result)
+
+    def test_safe_url_omits_an_absent_port_instead_of_writing_none(self):
+        cases = {
+            "redis://cache/0": "redis://cache/0",
+            "rediss://cache/1": "rediss://cache/1",
+            "https://example.com/path": "https://example.com/path",
+        }
+        for value, expected in cases.items():
+            with self.subTest(url=value):
+                result = safe_url(value)
+                self.assertEqual(result, expected)
+                self.assertNotIn("None", result)
+
+    def test_safe_url_keeps_a_unix_socket_path_usable(self):
+        # A socket URL has no host at all. It must survive without becoming
+        # "unix://None:None/..." and without losing the path an operator needs.
+        result = safe_url("unix:///var/run/redis/redis.sock")
+
+        self.assertNotIn("None", result)
+        self.assertIn("/var/run/redis/redis.sock", result)
+
     def test_stable_hmac_is_namespaced_and_deterministic(self):
         digest = stable_hmac("value", namespace="discover")
 

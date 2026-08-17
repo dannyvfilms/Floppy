@@ -185,14 +185,28 @@ def presence_map(
 
 
 def safe_url(value: str | None) -> str:
-    """Return a URL with query parameters and fragments removed."""
+    """Return a URL with credentials, query parameters and fragments removed.
+
+    Credentials travel in three places in a URL. Query parameters carry them in
+    public feeds, fragments carry them in OAuth redirects, and the authority
+    carries them as ``user:password@`` in private podcast feeds and in Redis and
+    database connection strings. All three are dropped here rather than matched
+    by pattern: a URL has structure, and parsing that structure cannot miss a
+    spelling the way a keyword list can.
+    """
     if not value:
         return ""
 
     parts = urlsplit(str(value))
     if not parts.scheme and not parts.netloc:
         return parts.path
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+    # Rebuild the authority from its host and port so any userinfo is left
+    # behind. The port is absent from most URLs and ``parts.port`` is then None,
+    # which an unconditional f-string would render as the text "None".
+    host = parts.hostname or ""
+    netloc = f"{host}:{parts.port}" if parts.port else host
+    return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
 
 
 def stable_hmac(value: str, *, namespace: str, length: int | None = None) -> str:
