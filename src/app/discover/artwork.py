@@ -93,96 +93,13 @@ def _local_images_for_candidates(
     return local_images
 
 
-def _supports_provider_artwork_hydration(candidate: CandidateItem) -> bool:
-    return (
-        candidate.media_type,
-        candidate.source,
-    ) in PROVIDER_ARTWORK_HYDRATION_PROVIDERS
-
-
-def _hydrate_provider_ranked_artwork(
+def _hydrate_missing_artwork(
     candidates: list[CandidateItem],
     *,
-    allow_remote: bool = True,
-    hydrate_limit: int = MAX_ITEMS_PER_ROW,
+    allow_remote: bool,
 ) -> None:
-    """Hydrate missing artwork for top provider-ranked boardgame/music candidates."""
-    display_candidates = [
-        candidate
-        for candidate in candidates[:hydrate_limit]
-        if _supports_provider_artwork_hydration(candidate)
-    ]
-    if not display_candidates:
-        return
-
-    missing = [
-        candidate for candidate in display_candidates if _is_missing_image(candidate)
-    ]
-    if not missing:
-        return
-
-    local_images = _local_images_for_candidates(missing)
-    for candidate in missing:
-        local_image = local_images.get(candidate.identity())
-        if local_image:
-            candidate.image = local_image
-
-    if not allow_remote:
-        return
-
-    for candidate in missing:
-        if not _is_missing_image(candidate):
-            continue
-        try:
-            metadata = services.get_media_metadata(
-                candidate.media_type,
-                candidate.media_id,
-                candidate.source,
-            )
-        except Exception as error:
-            logger.warning(
-                "discover_provider_artwork_lookup_failed media_type=%s source=%s media_id=%s error=%s",
-                candidate.media_type,
-                candidate.source,
-                candidate.media_id,
-                error,
-            )
-            continue
-
-        image = (metadata or {}).get("image")
-        if not _is_missing_image_value(image):
-            candidate.image = image
-
-
-def _hydrate_trakt_ranked_artwork(
-    media_type: str,
-    candidates: list[CandidateItem],
-    *,
-    allow_remote: bool = True,
-    hydrate_limit: int = MAX_ITEMS_PER_ROW,
-) -> None:
-    """Hydrate missing artwork for displayed Trakt-ranked candidates."""
-    if media_type not in {
-        MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-        MediaTypes.ANIME.value,
-    }:
-        return
-
-    # Trakt ranks the row. CandidateItem.source owns the metadata identity used
-    # for local and remote artwork, so a different mapping/provider can be
-    # introduced without changing this hydration path.
-    display_candidates = [
-        candidate
-        for candidate in candidates[:hydrate_limit]
-        if candidate.media_type == media_type
-    ]
-    if not display_candidates:
-        return
-
-    missing = [
-        candidate for candidate in display_candidates if _is_missing_image(candidate)
-    ]
+    """Hydrate missing artwork using each candidate's metadata identity."""
+    missing = [candidate for candidate in candidates if _is_missing_image(candidate)]
     if not missing:
         return
 
@@ -217,6 +134,60 @@ def _hydrate_trakt_ranked_artwork(
         image = (metadata or {}).get("image")
         if not _is_missing_image_value(image):
             candidate.image = image
+
+
+def _supports_provider_artwork_hydration(candidate: CandidateItem) -> bool:
+    return (
+        candidate.media_type,
+        candidate.source,
+    ) in PROVIDER_ARTWORK_HYDRATION_PROVIDERS
+
+
+def _hydrate_provider_ranked_artwork(
+    candidates: list[CandidateItem],
+    *,
+    allow_remote: bool = True,
+    hydrate_limit: int = MAX_ITEMS_PER_ROW,
+) -> None:
+    """Hydrate missing artwork for top provider-ranked boardgame/music candidates."""
+    display_candidates = [
+        candidate
+        for candidate in candidates[:hydrate_limit]
+        if _supports_provider_artwork_hydration(candidate)
+    ]
+    if not display_candidates:
+        return
+
+    _hydrate_missing_artwork(display_candidates, allow_remote=allow_remote)
+
+
+def _hydrate_trakt_ranked_artwork(
+    media_type: str,
+    candidates: list[CandidateItem],
+    *,
+    allow_remote: bool = True,
+    hydrate_limit: int = MAX_ITEMS_PER_ROW,
+) -> None:
+    """Hydrate missing artwork for displayed Trakt-ranked candidates."""
+    if media_type not in {
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.ANIME.value,
+    }:
+        return
+
+    # Trakt ranks the row. CandidateItem.source owns the metadata identity used
+    # for local and remote artwork, so a different mapping/provider can be
+    # introduced without changing this hydration path.
+    display_candidates = [
+        candidate
+        for candidate in candidates[:hydrate_limit]
+        if candidate.media_type == media_type
+    ]
+    if not display_candidates:
+        return
+
+    _hydrate_missing_artwork(display_candidates, allow_remote=allow_remote)
 
 
 def hydrate_visible_row_artwork(
