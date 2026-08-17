@@ -9,6 +9,7 @@ import sqlite3
 import stat
 import sys
 import tempfile
+import time
 from collections import Counter
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -34,6 +35,12 @@ _MAX_AFFECTED_TITLES = 5
 _REPORT_SUFFIX = ".integrity.json"
 _DECISION_SUFFIX = ".integrity.decision"
 _RECOVERY_PAGE_NAME = "floppy-recovery.html"
+# Lock contention and scan duration are different failures and need different
+# bounds. A long busy timeout turns a fast "another process holds the database"
+# answer into a long stall, so the diagnostic scan waits briefly for the lock and
+# bounds the scan itself with a progress handler instead.
+_SCAN_BUSY_TIMEOUT_SECONDS = 5.0
+_SCAN_PROGRESS_INSTRUCTIONS = 10_000
 
 
 def _log(message: str) -> None:
@@ -987,6 +994,67 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
     _print_resolution_options(incident, incident_token)
     _log(_RELATIONSHIP_HINT)
     sys.exit(1)
+
+
+class IntegrityScanTimeoutError(Exception):
+    """The storage scan did not finish inside its deadline."""
+
+
+def inspect_database(db_path: str, *, timeout_seconds: float | None = None) -> dict:
+    """Report SQLite storage and relationship state without changing anything.
+
+    Returns ``{"quick_check": str, "conflicts": dict | None}``. ``conflicts`` is
+    the summary from :func:`_inspect_foreign_keys`, or ``None`` when every
+    relationship is intact.
+
+    The startup path (:func:`check_database_integrity`) reaches its verdict from
+    the same two primitives, but it also repairs rows, quarantines them,
+    publishes incident reports and exits the process. Diagnostics need the
+    verdict alone. The two callers therefore share the primitives; neither calls
+    the other. :func:`_check_foreign_keys` inspects inside ``BEGIN IMMEDIATE``
+    because the quarantine delete that follows must operate on the rows that
+    inspection found. Taking that write lock here would block a running Floppy,
+    so this function does not take it.
+
+    ``timeout_seconds`` bounds the scan. ``sqlite3.connect(timeout=...)`` bounds
+    only the wait for a lock, so ``PRAGMA quick_check`` on a large file would run
+    past any value given there. A progress handler aborts the running statement
+    instead, and raises :class:`IntegrityScanTimeoutError`.
+
+    SQLite may checkpoint the write-ahead log when the last connection closes.
+    That moves committed data from the log into the main file. It does not change
+    what the database contains.
+    """
+    conn = None
+    deadline = None
+    if timeout_seconds is not None:
+        deadline = time.monotonic() + timeout_seconds
+    try:
+        conn = sqlite3.connect(db_path, timeout=_SCAN_BUSY_TIMEOUT_SECONDS)
+        if deadline is not None:
+            # Returning non-zero from the handler aborts the running statement.
+            conn.set_progress_handler(
+                lambda: 1 if time.monotonic() > deadline else 0,
+                _SCAN_PROGRESS_INSTRUCTIONS,
+            )
+        try:
+            row = conn.execute("PRAGMA quick_check").fetchone()
+            status = row[0] if row else None
+            incident = _inspect_foreign_keys(conn)
+        except sqlite3.OperationalError as error:
+            if deadline is not None and time.monotonic() > deadline:
+                message = f"storage scan exceeded {timeout_seconds:g}s"
+                raise IntegrityScanTimeoutError(message) from error
+            raise
+    finally:
+        if conn is not None:
+            conn.set_progress_handler(None, 0)
+            conn.close()
+
+    return {
+        "quick_check": status,
+        "conflicts": incident if incident["total_conflicts"] else None,
+    }
 
 
 def check_database_integrity(db_path: str) -> None:
