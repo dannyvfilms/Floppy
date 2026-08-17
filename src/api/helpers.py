@@ -1,13 +1,14 @@
 import logging
 from calendar import monthrange
-from datetime import date, datetime
+from datetime import date
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.db.models import Count, OuterRef, Subquery
-from django.utils.dateparse import parse_date, parse_datetime
-from django.utils.timezone import is_naive, localdate, make_aware
+from django.utils.dateparse import parse_date
+from django.utils.timezone import localdate
 from rest_framework.response import Response
 
+from app.helpers import parse_completion_datetime
 from app.models import (
     TV,
     Anime,
@@ -558,23 +559,7 @@ def try_parse_date(value):
 
 def try_parse_datetime_input(value):
     """Parse an ISO date or datetime value for writable DateTimeField inputs."""
-    if isinstance(value, datetime):
-        parsed = value
-    elif isinstance(value, date):
-        parsed = datetime.combine(value, datetime.min.time())
-    else:
-        parsed = parse_datetime(value)
-        if parsed is None:
-            parsed_date = parse_date(value)
-            if parsed_date is None:
-                msg = "Invalid date format"
-                raise ValueError(msg)
-            parsed = datetime.combine(parsed_date, datetime.min.time())
-
-    if is_naive(parsed):
-        parsed = make_aware(parsed)
-
-    return parsed
+    return parse_completion_datetime(value)
 
 
 def _validate_score(filtered_body):
