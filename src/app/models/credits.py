@@ -260,7 +260,7 @@ class Person(models.Model):
     )
     source_person_id = models.CharField(max_length=32)
     name = models.CharField(max_length=255)
-    image = models.URLField(blank=True, default="")
+    image = models.TextField(blank=True, default="")
     known_for_department = models.CharField(max_length=120, blank=True, default="")
     biography = models.TextField(blank=True, default="")
     gender = models.CharField(
