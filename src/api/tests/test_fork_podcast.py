@@ -416,3 +416,26 @@ class PodcastWebPlayDateTests(PodcastApiTestCase):
             podcast.end_date,
             datetime.datetime(2024, 3, 1, 10, tzinfo=datetime.UTC),
         )
+
+    def test_repeat_play_reports_that_nothing_was_added(self):
+        """A suppressed play must not read as success on the web form.
+
+        "Play already recorded" told the user the action worked while the play
+        count stayed where it was.
+        """
+        completed_at = datetime.datetime(2025, 1, 15, 12, tzinfo=datetime.UTC)
+
+        with patch(
+            "app.fork_services_podcast.timezone.now",
+            return_value=completed_at,
+        ):
+            self._post("")
+            response = self._post("")
+
+        podcast = Podcast.objects.get(user=self.user1, episode=self.episode1)
+        self.assertEqual(podcast.completed_play_count, 1)
+        messages = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertTrue(
+            any("did not add a second play" in message for message in messages),
+            messages,
+        )
