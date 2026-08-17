@@ -14,12 +14,13 @@ new application is invisible to it until someone adds the name. ``config`` and
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import tempfile
 from contextlib import redirect_stdout, suppress
 from io import StringIO
 from pathlib import Path
-from unittest import mock
+from unittest import mock, skipIf
 
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -160,6 +161,7 @@ class PathsCheckTests(SimpleTestCase):
                 self.assertIn(expected, result.fix)
                 self.assertNotIn(forbidden, result.fix)
 
+    @skipIf(os.geteuid() == 0, "root bypasses the permission bits this asserts on")
     def test_fails_when_the_database_file_itself_cannot_be_written_to(self):
         """Found by QA. Every other check reads, so a read-only file passed them.
 
