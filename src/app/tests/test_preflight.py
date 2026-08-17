@@ -160,6 +160,26 @@ class PathsCheckTests(SimpleTestCase):
                 self.assertIn(expected, result.fix)
                 self.assertNotIn(forbidden, result.fix)
 
+    def test_fails_when_the_database_file_itself_cannot_be_written_to(self):
+        """Found by QA. Every other check reads, so a read-only file passed them.
+
+        The integrity scan reads, the directory probe checks the parent, and
+        nothing touched the file. An operator got a clean report and a container
+        that died on its first write.
+        """
+        with _TempDatabase() as temp:
+            _make_database(temp.db_path)
+            temp.db_path.chmod(0o444)
+            try:
+                with temp.settings():
+                    result = preflight.check_paths()
+            finally:
+                temp.db_path.chmod(0o644)
+
+        self.assertEqual(result.status, FAIL)
+        self.assertIn("not writable", result.summary)
+        self.assertIn("-wal", result.fix)
+
     def test_fails_on_a_full_disk_even_though_the_permissions_allow_writing(self):
         """os.access reports permission bits, so a full volume looks writable."""
         usage = mock.Mock(free=1024)
@@ -198,6 +218,22 @@ class DatabaseCheckTests(SimpleTestCase):
         self.assertEqual(result.status, FAIL)
         self.assertIn("child", result.summary)
         self.assertEqual(result.facts["conflicts"], 1)
+
+    def test_a_directory_at_the_database_path_is_not_called_corruption(self):
+        """Found by QA. The worst possible advice for a mount mistake.
+
+        The paths check already explains this. Opening it here as well added
+        "the database file cannot be read" and told the operator to restore a
+        backup, sending them to recover data that was never lost.
+        """
+        with _TempDatabase() as temp:
+            temp.db_path.mkdir()
+            with temp.settings():
+                result = preflight.check_database()
+
+        self.assertEqual(result.status, SKIPPED)
+        self.assertIn("directory", result.summary)
+        self.assertNotIn("backup", result.fix)
 
     def test_fails_on_a_file_that_is_not_a_database(self):
         with _TempDatabase() as temp:
@@ -648,6 +684,7 @@ class CommandTests(TestCase):
              mock.patch(
                  _CMD + "call_command"
              ) as migrate, \
+             mock.patch(_CMD + "check_database", return_value=self._passing()[2]), \
              mock.patch(
                  _CMD + "check_migrations",
                  return_value=applied,
@@ -672,6 +709,7 @@ class CommandTests(TestCase):
              mock.patch(
                  _CMD + "call_command"
              ) as migrate, \
+             mock.patch(_CMD + "check_database", return_value=self._passing()[2]), \
              mock.patch(
                  _CMD + "check_migrations",
                  return_value=applied,
@@ -709,6 +747,7 @@ class CommandTests(TestCase):
         buffer = StringIO()
         with mock.patch(_CMD + "run_checks", return_value=results), \
              mock.patch(_CMD + "call_command", side_effect=print_then_migrate), \
+             mock.patch(_CMD + "check_database", return_value=self._passing()[2]), \
              mock.patch(_CMD + "check_migrations", return_value=applied), \
              redirect_stdout(buffer):
             with suppress(SystemExit):  # the report is what matters here
@@ -763,6 +802,70 @@ class CommandTests(TestCase):
 
         self.assertEqual(code, 0)
         migrate.assert_called_once()
+
+    def test_refuses_to_migrate_on_top_of_a_failed_check(self):
+        """Found by QA. Migrating an unreadable database can only make it worse.
+
+        When the database check fails, migrations reports "skipped", which means
+        unknown rather than pending. Treating that as work to do ran migrate
+        against a corrupt file.
+        """
+        results = self._passing()
+        results[2] = preflight.CheckResult(
+            name="database", status=FAIL, summary="the database file cannot be read"
+        )
+        results[3] = preflight.CheckResult(
+            name="migrations", status=SKIPPED, summary="the database is unavailable"
+        )
+        with mock.patch(_CMD + "run_checks", return_value=results), \
+             mock.patch(_CMD + "call_command") as migrate:
+            _output, code = self._run("--auto-migrate")
+
+        self.assertEqual(code, 1)
+        migrate.assert_not_called()
+
+    def test_the_database_result_is_refreshed_after_migrating(self):
+        """Found by QA. The report claimed no database existed, after creating it.
+
+        On a first start the database check says "no database file yet". Once
+        migrate has run, that sentence is false, so the check has to be asked
+        again rather than reprinted.
+        """
+        results = self._passing()
+        results[2] = preflight.CheckResult(
+            name="database", status=OK, summary="no database file yet"
+        )
+        results[3] = preflight.CheckResult(
+            name="migrations", status=SKIPPED, summary="every migration will run"
+        )
+        built = preflight.CheckResult(
+            name="database", status=OK, summary="sqlite storage is intact"
+        )
+        with mock.patch(_CMD + "run_checks", return_value=results), \
+             mock.patch(_CMD + "call_command"), \
+             mock.patch(_CMD + "check_database", return_value=built) as recheck, \
+             mock.patch(
+                 _CMD + "check_migrations",
+                 return_value=preflight.CheckResult(
+                     name="migrations", status=OK, summary="none pending"
+                 ),
+             ):
+            output, code = self._run("--auto-migrate")
+
+        self.assertEqual(code, 0)
+        recheck.assert_called_once()
+        self.assertIn("sqlite storage is intact", output)
+        self.assertNotIn("no database file yet", output)
+
+    def test_an_unexpected_failure_cannot_leak_a_connection_string(self):
+        """The crash report printed the exception verbatim, unredacted."""
+        boom = RuntimeError("could not connect to redis://user:hunter2@cache:6379/0")
+        with mock.patch(_CMD + "run_checks", side_effect=boom):
+            output, code = self._run("--json")
+
+        self.assertEqual(code, 1)
+        self.assertNotIn("hunter2", output)
+        json.loads(output)
 
     def test_does_not_migrate_when_nothing_is_pending(self):
         with mock.patch(_CMD + "run_checks", return_value=self._passing()), \

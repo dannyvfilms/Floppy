@@ -162,6 +162,19 @@ def _probe_writable(path: Path) -> str | None:
     return None
 
 
+def _probe_write_file(path: Path) -> str | None:
+    """Return why an existing file cannot be written to, or None when it can be.
+
+    Opened for append so nothing is added and nothing is truncated.
+    """
+    try:
+        with path.open("a"):
+            pass
+    except OSError as error:
+        return str(error)
+    return None
+
+
 def check_paths() -> CheckResult:
     """Report the configured directories and whether Floppy can write to them.
 
@@ -201,6 +214,26 @@ def check_paths() -> CheckResult:
     required = [("data directory", data_dir), ("log directory", log_dir)]
     if settings.USING_SQLITE_DATABASE:
         required.append(("database directory", db_path.parent))
+
+    # An existing database file needs its own check. Every check here reads, and
+    # so does the integrity scan, so a file that is readable but not writable
+    # passes all of them and then fails on the first write after boot.
+    if settings.USING_SQLITE_DATABASE and db_path.is_file():
+        unwritable = _probe_write_file(db_path)
+        if unwritable is not None:
+            return CheckResult(
+                name="paths",
+                status=FAIL,
+                summary=f"the database file {db_path} is not writable",
+                cause=clean(unwritable),
+                fix=_where(
+                    f"{HOST} give the file to the container's user (PUID and "
+                    "PGID, 1000 by default), including its -wal and -shm files",
+                    f"{HOST} give the file to the user that runs Floppy, "
+                    "including its -wal and -shm files",
+                ),
+                facts=facts,
+            )
 
     for label, path in required:
         if not path.exists():
@@ -323,7 +356,14 @@ def _check_postgres() -> CheckResult:
         with connections["default"].cursor() as cursor:
             cursor.execute("SELECT 1")
     except DatabaseError as error:
-        code = getattr(getattr(error, "__cause__", None), "sqlstate", None)
+        # psycopg 3 calls it sqlstate and psycopg 2 calls it pgcode. Read both
+        # rather than silently losing the distinction on one of them.
+        cause = getattr(error, "__cause__", None)
+        code = (
+            getattr(cause, "sqlstate", None)
+            or getattr(cause, "pgcode", None)
+            or getattr(error, "pgcode", None)
+        )
         if code in {_PG_AUTH_FAILED, _PG_NO_SUCH_USER}:
             return CheckResult(
                 name="database",
@@ -377,6 +417,17 @@ def check_database(
 
     db_path = Path(settings.FLOPPY_DB_PATH)
     facts = {"engine": "sqlite", "path": str(db_path)}
+
+    if db_path.is_dir():
+        # The paths check already explained this one. Opening it here would only
+        # add "the database file cannot be read" and advise restoring a backup,
+        # which sends the operator to recover data that was never lost.
+        return CheckResult(
+            name="database",
+            status=SKIPPED,
+            summary="not checked; the database path is a directory",
+            facts=facts,
+        )
 
     if not db_path.exists():
         return CheckResult(

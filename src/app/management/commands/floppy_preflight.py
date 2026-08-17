@@ -37,6 +37,7 @@ from app.preflight import (
     WARN,
     CheckResult,
     build_report,
+    check_database,
     check_migrations,
     clean,
     run_checks,
@@ -46,6 +47,10 @@ _LABEL = {OK: "ok", WARN: "warn", FAIL: "FAIL", SKIPPED: "skip"}
 _NAME_WIDTH = 11
 _STATUS_WIDTH = 6
 _DETAIL_INDENT = " " * (_NAME_WIDTH + _STATUS_WIDTH)
+
+# Migrating is only safe once these three agree. Redis is irrelevant to it,
+# and the migration check itself is the reason for migrating at all.
+_MIGRATION_PREREQUISITES = ("paths", "config", "database")
 
 
 class Command(BaseCommand):
@@ -121,7 +126,7 @@ class Command(BaseCommand):
                     "name": "preflight",
                     "status": FAIL,
                     "summary": "the checks could not be completed",
-                    "cause": f"{type(error).__name__}: {error}",
+                    "cause": clean(f"{type(error).__name__}: {error}"),
                 }
             ],
         }
@@ -136,6 +141,14 @@ class Command(BaseCommand):
         standard output. ``lists.0004`` does exactly that to report its progress.
         Redirecting the stream itself catches both.
         """
+        # Never migrate on top of a broken foundation. When paths, settings or
+        # the database itself failed, "skipped" migrations means unknown rather
+        # than pending, and migrating an unreadable database can only make the
+        # incident worse. A failing Redis does not block this, and neither does
+        # the migration check itself: that one is the reason to be here.
+        if any(r.failed for r in results if r.name in _MIGRATION_PREREQUISITES):
+            return results
+
         migrations = next(r for r in results if r.name == "migrations")
         # Anything other than a clean bill means there is work to do. A first
         # start reports "skipped", because asking an absent database about its
@@ -155,18 +168,25 @@ class Command(BaseCommand):
             # crash line would throw away the paths, settings, database and
             # Redis answers the operator already has, so this stays a migration
             # failure and the rest of the report survives.
+            tail = (errors.getvalue() or captured.getvalue()).strip().splitlines()
             rechecked = CheckResult(
                 name="migrations",
                 status=FAIL,
                 summary="the migrations could not be applied",
                 cause=clean(f"{type(error).__name__}: {error}"),
-                fix=f"{FLOPPY} read the migration error above and correct it first",
+                fix=f"{FLOPPY} correct the cause above, then run migrate again",
+                # The migration run's own output was captured to keep the report
+                # parseable, so carry it here rather than discarding it.
+                facts={"output": [clean(line) for line in tail[-20:]]} if tail else {},
             )
             return [rechecked if r.name == "migrations" else r for r in results]
 
-        database = next(r for r in results if r.name == "database")
+        # Migrating changes what the database check would say, so ask it again
+        # rather than printing an answer from before the migration ran.
+        database = check_database()
         rechecked = check_migrations(database_ok=not database.failed)
-        return [rechecked if r.name == "migrations" else r for r in results]
+        replacements = {"database": database, "migrations": rechecked}
+        return [replacements.get(r.name, r) for r in results]
 
     def _emit(self, report: dict, *, as_json: bool) -> None:
         """Write the report in the form the caller asked for."""
