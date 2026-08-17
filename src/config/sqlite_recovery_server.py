@@ -25,6 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from config.server_port import DEFAULT_SERVER_PORT, resolve_server_port, validate_port
 from config.sqlite_integrity import (
     _RECOVERY_PAGE_NAME,
     _decision_path,
@@ -33,11 +34,12 @@ from config.sqlite_integrity import (
     _read_incident_report,
 )
 
-_PORT = 8000
 _HEALTH_PATHS = frozenset({"/health", "/health/"})
 _MAX_BODY_BYTES = 4096
 _SOCKET_TIMEOUT_SECONDS = 15
 _DOWNLOAD_CHUNK_BYTES = 1024 * 1024
+_DB_PATH_ARG_INDEX = 1
+_PORT_ARG_INDEX = 2
 # This page has no sign-in. It runs before Django, on the port the app is
 # published on, so every request it answers is anonymous. A report with the
 # names redacted is safe to answer that way; the database file is not, because
@@ -225,8 +227,14 @@ def _affected_list(report: dict) -> str:
     return "<div class='card'><h2>What is affected</h2><ul>" + "".join(rows) + "</ul></div>"
 
 
-def render_page(report: dict | None, *, interactive: bool) -> str:
+def render_page(
+    report: dict | None,
+    *,
+    interactive: bool,
+    port: int = DEFAULT_SERVER_PORT,
+) -> str:
     """Build the page. The written file is the same page without the buttons."""
+    port = validate_port(port, source="recovery page port")
     if not report:
         body = (
             "<h1>Your data is safe. Nothing was deleted.</h1>"
@@ -296,7 +304,7 @@ def render_page(report: dict | None, *, interactive: bool) -> str:
         parts.append(
             "<div class='card'><h2>How to choose</h2>"
             "<p>This is a copy on disk. To choose an action, open Floppy at "
-            "port 8000 while the container runs.</p></div>",
+            f"port {port} while the container runs.</p></div>",
         )
 
     parts.append(
@@ -369,10 +377,19 @@ def _document(body: str, script: str = _COPY_SCRIPT) -> str:
     )
 
 
-def write_page(db_path: str, report: dict | None) -> Path:
+def write_page(
+    db_path: str,
+    report: dict | None,
+    *,
+    port: int = DEFAULT_SERVER_PORT,
+) -> Path:
     """Write the page beside the database so it is always available."""
     page_path = Path(db_path).resolve().with_name(_RECOVERY_PAGE_NAME)
-    _publish_report(page_path, render_page(report, interactive=False), mode=0o644)
+    _publish_report(
+        page_path,
+        render_page(report, interactive=False, port=port),
+        mode=0o644,
+    )
     return page_path
 
 
@@ -394,6 +411,7 @@ def _write_decision(db_path: str, report: dict, action: str) -> None:
 
 class _Handler(BaseHTTPRequestHandler):
     db_path = ""
+    server_port = DEFAULT_SERVER_PORT
     timeout = _SOCKET_TIMEOUT_SECONDS
 
     def log_message(self, *_args) -> None:
@@ -423,7 +441,7 @@ class _Handler(BaseHTTPRequestHandler):
         report = _read_incident_report(self.db_path)
         self._send(
             200,
-            render_page(report, interactive=True),
+            render_page(report, interactive=True, port=self.server_port),
             "text/html; charset=utf-8",
         )
 
@@ -533,27 +551,33 @@ class _Handler(BaseHTTPRequestHandler):
         threading.Thread(target=self.server.shutdown, daemon=True).start()
 
 
-def serve(db_path: str) -> None:
+def serve(db_path: str, port: object | None = None) -> None:
     """Write the page, then serve it until the container stops."""
+    server_port = (
+        resolve_server_port()
+        if port is None
+        else validate_port(port, source="recovery server port")
+    )
     report = _read_incident_report(db_path)
     try:
-        page_path = write_page(db_path, report)
+        page_path = write_page(db_path, report, port=server_port)
         _log(f"[entrypoint] Recovery page written to {page_path}")
     except OSError as error:
         _log(f"[entrypoint] Could not write the recovery page: {error}")
 
     _Handler.db_path = db_path
+    _Handler.server_port = server_port
     socket.setdefaulttimeout(_SOCKET_TIMEOUT_SECONDS)
     try:
-        server = ThreadingHTTPServer(("", _PORT), _Handler)
+        server = ThreadingHTTPServer(("", server_port), _Handler)
     except OSError as error:
         _log(
-            f"[entrypoint] Could not use port {_PORT} for the recovery page: "
+            f"[entrypoint] Could not use port {server_port} for the recovery page: "
             f"{error}. Open the file above instead.",
         )
         return
     _log(
-        f"[entrypoint] Open http://localhost:{_PORT}/ to choose what Floppy does "
+        f"[entrypoint] Open http://localhost:{server_port}/ to choose what Floppy does "
         "next.",
     )
     try:
@@ -563,4 +587,9 @@ def serve(db_path: str) -> None:
 
 
 if __name__ == "__main__":
-    serve(sys.argv[1])
+    cli_port = (
+        sys.argv[_PORT_ARG_INDEX]
+        if len(sys.argv) > _PORT_ARG_INDEX
+        else None
+    )
+    serve(sys.argv[_DB_PATH_ARG_INDEX], cli_port)

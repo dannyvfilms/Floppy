@@ -73,10 +73,6 @@ ARG COMMIT_SHA=unknown
 ENV VERSION=$VERSION
 ENV COMMIT_SHA=$COMMIT_SHA
 
-# Default target for the bundled MCP server (see mcp_server/) when invoked
-# via `docker exec` — nginx already listens on 8000 inside the container.
-ENV FLOPPY_URL=http://127.0.0.1:8000
-
 # supervisord expands %(ENV_...)s in supervisord.conf and refuses to start if a
 # referenced variable is unset, so these need image-level defaults even though
 # entrypoint.sh overwrites them from the detected resource tier (issue #521).
@@ -85,11 +81,12 @@ ENV FLOPPY_CELERY_QUEUES=celery
 ENV FLOPPY_START_INTERACTIVE_WORKER=true
 ENV FLOPPY_START_DISCOVER_WORKER=true
 
+COPY ./runtime-entrypoint.sh /runtime-entrypoint.sh
 COPY ./entrypoint.sh /entrypoint.sh
 COPY ./supervisord.conf /etc/supervisord.conf
-COPY ./nginx.conf /etc/nginx/nginx.conf
-# Generate a copy of the nginx config with IPv6 support.
-RUN sed 's/listen 8000;/listen 8000; listen [::]:8000;/' /etc/nginx/nginx.conf > /etc/nginx/nginx.ipv6.conf
+# Keep one checked-in listener marker. runtime-entrypoint.sh validates the
+# configured port and renders the IPv4/IPv6 runtime configs from this template.
+COPY ./nginx.conf /etc/nginx/nginx.conf.template
 
 WORKDIR /floppy
 
@@ -99,7 +96,7 @@ WORKDIR /floppy
 RUN ln -s /floppy /yamtrack
 
 RUN apk add --no-cache nginx shadow \
-    && chmod +x /entrypoint.sh \
+    && chmod +x /runtime-entrypoint.sh /entrypoint.sh \
     # create user abc for later PUID/PGID mapping
     && useradd -U -M -s /bin/sh abc \
     # Create required nginx directories and set permissions
@@ -119,9 +116,14 @@ RUN SECRET=build-time-placeholder python manage.py collectstatic --noinput
 # can silently drift from the app version.
 COPY mcp_server ./mcp_server
 
+# 8000 remains the documented/default port. FLOPPY_PORT can select a different
+# runtime listener; EXPOSE is image metadata and cannot express a dynamic port.
 EXPOSE 8000
 
-CMD ["/entrypoint.sh"]
+CMD ["/runtime-entrypoint.sh"]
 
 HEALTHCHECK --interval=45s --timeout=15s --start-period=30s --retries=5 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8000/health/ || exit 1
+  CMD port="$(cat /run/floppy/server-port 2>/dev/null)" \
+      && case "$port" in *[!0-9]*|'') exit 1 ;; esac \
+      && wget --no-verbose --tries=1 --spider "http://127.0.0.1:${port}/health/" \
+      || exit 1

@@ -11,11 +11,13 @@ at any Floppy instance:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 DEFAULT_TIMEOUT = 30.0
+CONTAINER_RUNTIME_PORT_FILE = Path("/run/floppy/server-port")
 
 
 class FloppyConfigError(RuntimeError):
@@ -32,9 +34,29 @@ class FloppyAPIError(RuntimeError):
         super().__init__(f"Floppy API error {status_code}: {detail}")
 
 
+def _container_runtime_url() -> str | None:
+    """Return the packaged-container URL when its launcher publishes a port."""
+
+    try:
+        text = CONTAINER_RUNTIME_PORT_FILE.read_text(encoding="ascii").strip()
+    except (FileNotFoundError, OSError, UnicodeDecodeError):
+        return None
+
+    if not text.isascii() or not text.isdecimal():
+        return None
+    port = int(text, 10)
+    if not 1 <= port <= 65535:
+        return None
+    return f"http://127.0.0.1:{port}"
+
+
 def _base_url() -> str:
     # YAMTRACK_* names stay readable so pre-rename configs keep working.
-    url = os.environ.get("FLOPPY_URL") or os.environ.get("YAMTRACK_URL")
+    url = (
+        os.environ.get("FLOPPY_URL")
+        or os.environ.get("YAMTRACK_URL")
+        or _container_runtime_url()
+    )
     if not url:
         msg = "FLOPPY_URL environment variable is required."
         raise FloppyConfigError(msg)

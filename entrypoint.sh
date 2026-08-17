@@ -2,6 +2,11 @@
 
 set -e
 
+# The packaged runtime wrapper passes the already-resolved public listener.
+# Direct entrypoint use can omit it; the recovery server then uses the same
+# local resolver itself if database recovery is needed.
+RUNTIME_SERVER_PORT=${1:-}
+
 # Keep the application virtual environment first even if an orchestrator
 # restores a stale PATH. A matching entry later in PATH is not sufficient,
 # because an earlier system Python would still be selected (issue #762).
@@ -86,7 +91,11 @@ if [ -z "$DB_HOST" ]; then
             # Show the recovery page. It writes a copy beside the database, then
             # serves it. If a choice is submitted, the server exits cleanly so
             # the loop can apply the decision and continue to migrations.
-            python -m config.sqlite_recovery_server "$DB_FILE" &
+            if [ -n "$RUNTIME_SERVER_PORT" ]; then
+                python -m config.sqlite_recovery_server "$DB_FILE" "$RUNTIME_SERVER_PORT" &
+            else
+                python -m config.sqlite_recovery_server "$DB_FILE" &
+            fi
             parking_pid=$!
             wait "$parking_pid" || :
             if [ ! -f "$decision_file" ]; then

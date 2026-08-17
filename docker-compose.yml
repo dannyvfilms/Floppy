@@ -18,6 +18,13 @@ services:
       # Keep DEBUG off in production: the debug toolbar slows every request
       # and disables Django's cached template loader.
       - DEBUG=False
+      # Floppy listens on 8000 by default. To change the internal listener,
+      # set FLOPPY_PORT and change the published mapping to the same port.
+      # Example:
+      # - FLOPPY_PORT=9000
+      # then use "9000:9000" below. Do not set FLOPPY_PORT just to change the
+      # host-side port; "9000:8000" is enough for normal bridge networking.
+      # See docs/server-port.md for CLI, UI, shared-namespace, and package notes.
       # Web concurrency is sized from the host automatically for a lean
       # one-worker default. Set
       # WEB_CONCURRENCY/GUNICORN_THREADS only when you intentionally want to

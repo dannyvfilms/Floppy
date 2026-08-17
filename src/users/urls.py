@@ -1,6 +1,6 @@
 from django.urls import path
 
-from users import onboarding_views, views
+from users import onboarding_views, server_port_views, views
 
 urlpatterns = [
     path("setup/", onboarding_views.onboarding_media_types, name="onboarding_media_types"),
@@ -101,6 +101,11 @@ urlpatterns = [
     path("settings/export", views.export_data, name="export_data"),
     path("settings/advanced", views.advanced, name="advanced"),
     path("settings/advanced/logs", views.export_logs, name="export_logs"),
+    path(
+        "settings/advanced/server-port",
+        server_port_views.update_server_port,
+        name="update_server_port",
+    ),
     path("settings/about", views.about, name="about"),
     path(
         "delete_import_schedule",

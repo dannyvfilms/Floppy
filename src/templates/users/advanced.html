@@ -3,6 +3,7 @@
 {% load app_tags %}
 {% load socialaccount %}
 {% load static %}
+{% load server_port_tags %}
 
 {% block title %}
   Advanced - Floppy
@@ -451,5 +452,7 @@
       </div>
     </div>
   </div>
+
+  {% server_port_panel %}
 
 {% endblock settings_content %}
