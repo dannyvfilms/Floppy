@@ -19,11 +19,18 @@ logger = logging.getLogger(__name__)
 ROW_CACHE_TTL_SECONDS = 60 * 60
 ROW_CACHE_TTL_LOCAL_SECONDS = 60 * 30
 
-PROVIDER_ARTWORK_HYDRATION_ROW_KEYS = {
+RANKED_ARTWORK_ROW_KEYS = {
     "trending_right_now",
     "all_time_greats_unseen",
     "coming_soon",
 }
+VIDEO_ARTWORK_MEDIA_TYPES = frozenset(
+    {
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+        MediaTypes.ANIME.value,
+    },
+)
 PROVIDER_ARTWORK_HYDRATION_PROVIDERS = frozenset(
     {
         (MediaTypes.BOARDGAME.value, Sources.BGG.value),
@@ -43,7 +50,7 @@ LEGACY_IMG_NONE_VALUES = frozenset(
         ),
         (
             "data:image/svg+xml;base64,"
-            "PHN2ZyBpZD0iZ2x5cGhpY29ucy1iYXNpYyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMzIgMzIiPgogIDxwYXRoIGZpbGw9IiNiNWI1YjUiIGlkPSJwaWN0dXJlIiBkPSJNMjcuNSw1SDQuNUExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMyw2LjV2MTlBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDQuNSwyN2gyM0ExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMjksMjUuNVY2LjVBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDI3LjUsNVpNMjYsMTguNWwtNC43OTQyNS01LjIzMDFhLjk5MzgzLjk5MzgzLDAsMCAwLTEuNDQ0MjgtLjAzMTM3bC01LjM0NzQxLDUuMzQ3NDFMMTkuODI4MTIsMjRIMTdsLTQuNzkyOTEtNC43OTNhMS4wMDAyMiwxLjAwMDIyLDAsMCAwLTEuNDE0MTgsMEw2LDI0VjhIMjZabS0xNy45LTZhMi40LDIuNCwwLDEsMSwyLjQsMi40QTIuNDAwMDUsMi40MDAwNSwwLDAsMSw4LjEsMTIuNVoiLz4KPC9zdmc+Cg=="
+            "PHN2ZyBpZD0iZ2x5cGhpY29ucy1iYXNpYyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMzIgMzIiPgogIDxwYXRoIGZpbGw9IiNiNWI1YjUiIGlkPSJwaWN0dXJlIiBkPSJNMjcuNSw1SDQuNUExLjUwMDA4LDEuNTAwMDgsMCwwLDAsMyw2LjV2MTlBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDQuNSwyN2gyM0ExLjUwMDAwOCwxLjUwMDA4LDAsMCwwLDAsMjksMjUuNVY2LjVBMS41MDAwOCwxLjUwMDA4LDAsMCwwLDI3LjUsNVpNMjYsMTguNWwtNC43OTQyNS01LjIzMDFhLjk5MzgzLjk5MzgzLDAsMCAwLTEuNDQ0MjgtLjAzMTM3bC01LjM0NzQxLDUuMzQ3NDFMMTkuODI4MTIsMjRIMTdsLTQuNzkyOTEtNC43OTNhMS4wMDAyMiwxLjAwMDIyLDAsMCAwLTEuNDE0MTgsMEw2LDI0VjhIMjZabS0xNy45LTZhMi40LDIuNCwwLDEsMSwyLjQsMi40QTIuNDAwMDUsMi40MDAwNSwwLDAsMSw4LjEsMTIuNVoiLz4KPC9zdmc+Cg=="
         ),
     },
 )
@@ -161,24 +168,19 @@ def _hydrate_provider_ranked_artwork(
     _hydrate_missing_artwork(display_candidates, allow_remote=allow_remote)
 
 
-def _hydrate_trakt_ranked_artwork(
+def _hydrate_ranked_video_artwork(
     media_type: str,
     candidates: list[CandidateItem],
     *,
     allow_remote: bool = True,
     hydrate_limit: int = MAX_ITEMS_PER_ROW,
 ) -> None:
-    """Hydrate missing artwork for displayed Trakt-ranked candidates."""
-    if media_type not in {
-        MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-        MediaTypes.ANIME.value,
-    }:
+    """Hydrate missing artwork for displayed ranked video candidates."""
+    if media_type not in VIDEO_ARTWORK_MEDIA_TYPES:
         return
 
-    # Trakt ranks the row. CandidateItem.source owns the metadata identity used
-    # for local and remote artwork, so a different mapping/provider can be
-    # introduced without changing this hydration path.
+    # The row source owns ranking. CandidateItem.source owns metadata identity,
+    # so ranking and metadata providers can change independently.
     display_candidates = [
         candidate
         for candidate in candidates[:hydrate_limit]
@@ -218,23 +220,18 @@ def hydrate_visible_row_artwork(
     if not effective_media_type:
         return
 
-    if effective_media_type in {
-        MediaTypes.MOVIE.value,
-        MediaTypes.TV.value,
-        MediaTypes.ANIME.value,
-    } and row.key in {
-        "trending_right_now",
-        "all_time_greats_unseen",
-        "coming_soon",
-    }:
-        _hydrate_trakt_ranked_artwork(
+    if (
+        effective_media_type in VIDEO_ARTWORK_MEDIA_TYPES
+        and row.key in RANKED_ARTWORK_ROW_KEYS
+    ):
+        _hydrate_ranked_video_artwork(
             effective_media_type,
             row.items,
             allow_remote=allow_remote,
         )
         return
 
-    if row.source == "provider" and row.key in PROVIDER_ARTWORK_HYDRATION_ROW_KEYS:
+    if row.source == "provider" and row.key in RANKED_ARTWORK_ROW_KEYS:
         _hydrate_provider_ranked_artwork(
             row.items,
             allow_remote=allow_remote,

@@ -9,7 +9,7 @@ from django.test import SimpleTestCase, override_settings
 
 from app.discover.artwork import (
     LEGACY_IMG_NONE_VALUES,
-    _hydrate_trakt_ranked_artwork,
+    _hydrate_ranked_video_artwork,
     _is_missing_image,
 )
 from app.discover.schemas import CandidateItem
@@ -59,7 +59,7 @@ class ProviderNeutralArtworkHydrationTests(SimpleTestCase):
     @override_settings(IMG_NONE="https://example.invalid/custom-placeholder.svg")
     @patch("app.discover.artwork.services.get_media_metadata")
     @patch("app.discover.artwork.Item.objects.filter")
-    def test_trakt_ranked_hydration_uses_candidate_metadata_source(
+    def test_ranked_video_hydration_uses_candidate_metadata_source(
         self,
         filter_mock,
         metadata_mock,
@@ -79,7 +79,7 @@ class ProviderNeutralArtworkHydrationTests(SimpleTestCase):
             image=migration.NEW_IMG_NONE,
         )
 
-        _hydrate_trakt_ranked_artwork(MediaTypes.TV.value, [candidate])
+        _hydrate_ranked_video_artwork(MediaTypes.TV.value, [candidate])
 
         metadata_mock.assert_called_once_with(
             MediaTypes.TV.value,
@@ -118,7 +118,7 @@ class ProviderNeutralArtworkHydrationTests(SimpleTestCase):
             image=migration.NEW_IMG_NONE,
         )
 
-        _hydrate_trakt_ranked_artwork(
+        _hydrate_ranked_video_artwork(
             MediaTypes.TV.value,
             [candidate],
             allow_remote=False,
@@ -147,6 +147,6 @@ class ProviderNeutralArtworkHydrationTests(SimpleTestCase):
             image=settings.IMG_NONE,
         )
 
-        _hydrate_trakt_ranked_artwork(MediaTypes.MOVIE.value, [candidate])
+        _hydrate_ranked_video_artwork(MediaTypes.MOVIE.value, [candidate])
 
         self.assertEqual(candidate.image, settings.IMG_NONE)
