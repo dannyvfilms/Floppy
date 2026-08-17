@@ -2049,7 +2049,11 @@ paths:
   /api/v1/podcasts/episodes/plays/:
     post:
       operationId: api_v1_podcasts_episodes_plays_create
-      description: Add a play; duplicates within five minutes are reported as 200.
+      description: |-
+        Add a completed play.
+
+        If end_date is omitted or blank, use the current server time. Report
+        a repeat within five minutes as HTTP 200 with duplicate set to true.
       tags:
       - api
       requestBody:
