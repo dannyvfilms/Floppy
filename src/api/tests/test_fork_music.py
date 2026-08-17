@@ -546,3 +546,33 @@ class SongSaveWebDateTests(MusicApiTestCase):
             music.end_date,
             datetime.datetime(2024, 3, 1, 10, tzinfo=datetime.UTC),
         )
+
+    def test_dateless_listen_is_counted_in_history(self):
+        """The point of the fix: a dateless listen must be countable.
+
+        Listen counts read history records that have an end_date. Asserting the
+        row's end_date alone does not prove the history record carries one.
+        """
+        completed_at = datetime.datetime(2025, 1, 15, 12, tzinfo=datetime.UTC)
+
+        with patch(
+            "app.fork_services_music.timezone.now",
+            return_value=completed_at,
+        ):
+            self._post("")
+
+        music = Music.objects.get(user=self.user1, album=self.album, track=self.track1)
+        dated_history = music.history.filter(end_date__isnull=False)
+        self.assertEqual(dated_history.count(), 1)
+        self.assertEqual(dated_history.first().end_date, completed_at)
+
+    def test_date_without_a_time_is_read_as_midnight(self):
+        """The error copy asks for YYYY-MM-DD, so that form must work."""
+        response = self._post("2024-03-01")
+
+        music = Music.objects.get(user=self.user1, album=self.album, track=self.track1)
+        self.assertEqual(response.status_code, HTTP.FOUND)
+        self.assertEqual(
+            music.end_date,
+            datetime.datetime(2024, 3, 1, 0, 0, tzinfo=datetime.UTC),
+        )

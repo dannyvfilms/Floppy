@@ -161,9 +161,9 @@ def song_save(request):
                 )
                 return response
             messages.error(request, message)
-            next_url = request.GET.get("next", "")
-            if next_url:
-                return redirect(next_url)
+            # Return to the album rather than following ?next=. The value is
+            # unvalidated where the success path uses it, and an error page is
+            # not the place to widen that.
             return redirect(_music_album_detail_url(album))
 
     existed_before = Music.objects.filter(
