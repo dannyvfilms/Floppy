@@ -5,7 +5,7 @@ from unittest.mock import Mock
 from django.test import SimpleTestCase, TestCase
 
 from app import credits
-from app.models import Item, MediaTypes, Sources, Studio
+from app.models import Item, MediaTypes, PodcastShow, Sources, Studio
 
 
 class ProviderStorageResilienceTests(TestCase):
@@ -47,6 +47,20 @@ class ProviderStorageResilienceTests(TestCase):
         )
         self.assertEqual(studio.logo, long_logo)
         self.assertTrue(item.studio_credits.filter(studio=studio).exists())
+
+    def test_podcast_feed_storage_preserves_long_provider_url(self):
+        long_feed = "https://feeds.example.com/" + ("path-segment/" * 24) + "feed.xml"
+        self.assertGreater(len(long_feed), 200)
+
+        show = PodcastShow.objects.create(
+            podcast_uuid="00000000-0000-0000-0000-000000000001",
+            title="Long Feed",
+            rss_feed_url=long_feed,
+        )
+        show.refresh_from_db()
+
+        self.assertIsNone(PodcastShow._meta.get_field("rss_feed_url").max_length)
+        self.assertEqual(show.rss_feed_url, long_feed)
 
 
 class PlaceholderMigrationSafetyTests(SimpleTestCase):
