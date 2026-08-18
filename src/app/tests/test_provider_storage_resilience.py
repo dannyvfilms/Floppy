@@ -2,6 +2,7 @@ from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from django.db import models
 from django.test import SimpleTestCase, TestCase
 
 from app import credits
@@ -64,7 +65,7 @@ class ProviderStorageResilienceTests(TestCase):
 
 
 class PlaceholderMigrationSafetyTests(SimpleTestCase):
-    """The first placeholder rewrite must never overflow a bounded DB column."""
+    """The placeholder migration chain must be safe at each historical schema."""
 
     def test_0155_skips_models_that_cannot_store_new_placeholder(self):
         migration = import_module("app.migrations.0155_rewrite_old_img_none_placeholder")
@@ -100,5 +101,42 @@ class PlaceholderMigrationSafetyTests(SimpleTestCase):
 
         migration.rewrite_old_placeholder(apps, schema_editor=None)
 
+        self.assertEqual(manager.filter.call_count, 5)
+        self.assertEqual(queryset.update.call_count, 5)
+
+    def test_0156_widens_every_placeholder_image_field_before_replay(self):
+        migration = import_module(
+            "app.migrations.0156_alter_album_image_alter_artist_image_and_more",
+        )
+        expected_models = {"album", "artist", "item", "person", "podcastshow"}
+        image_alters = {
+            operation.model_name: operation.field
+            for operation in migration.Migration.operations
+            if isinstance(operation, models.AlterField) and operation.name == "image"
+        }
+
+        self.assertEqual(set(image_alters), expected_models)
+        for field in image_alters.values():
+            self.assertIsInstance(field, models.TextField)
+            self.assertIsNone(field.max_length)
+
+    def test_0157_replays_placeholder_after_0156_widening(self):
+        migration = import_module(
+            "app.migrations.0157_rewrite_old_img_none_placeholder_after_widening",
+        )
+        queryset = Mock()
+        manager = Mock()
+        manager.filter.return_value = queryset
+        model = SimpleNamespace(objects=manager)
+        apps = SimpleNamespace(get_model=Mock(return_value=model))
+
+        self.assertEqual(
+            migration.Migration.dependencies,
+            [("app", "0156_alter_album_image_alter_artist_image_and_more")],
+        )
+
+        migration.rewrite_old_placeholder_after_widening(apps, schema_editor=None)
+
+        self.assertEqual(apps.get_model.call_count, 5)
         self.assertEqual(manager.filter.call_count, 5)
         self.assertEqual(queryset.update.call_count, 5)

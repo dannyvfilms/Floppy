@@ -2,10 +2,70 @@ import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.conf import settings
+from django.db import IntegrityError
 from django.http import JsonResponse
 from django.template.response import ContentNotRenderedError, TemplateResponse
 
 logger = logging.getLogger(__name__)
+
+_TRACKED_MEDIA_CONSTRAINT_SUFFIX = "_unique_item_user"
+
+
+def _is_sqlite_tracked_media_unique_error(exception):
+    """Return whether SQLite reports the tracked-media user/item constraint."""
+    message = str(exception).lower()
+    marker = "unique constraint failed:"
+    if marker not in message:
+        return False
+
+    raw_columns = message.split(marker, 1)[1].strip().split(",")
+    if len(raw_columns) != 2:
+        return False
+
+    columns = []
+    for raw_column in raw_columns:
+        table, separator, column = raw_column.strip().rpartition(".")
+        if not separator:
+            return False
+        columns.append((table, column))
+
+    (first_table, first_column), (second_table, second_column) = columns
+    return (
+        first_table == second_table
+        and first_table.startswith("app_")
+        and {first_column, second_column} == {"user_id", "item_id"}
+    )
+
+
+def is_tracked_media_unique_error(exception):
+    """Return whether an IntegrityError is the tracked-media duplicate constraint.
+
+    PostgreSQL exposes the constraint name through the driver diagnostic. SQLite
+    reports the constrained columns in the exception text. Keep both checks here
+    so API behavior does not depend on the selected database backend.
+    """
+    if not isinstance(exception, IntegrityError):
+        return False
+
+    cause = exception.__cause__ or exception
+    diagnostic = getattr(cause, "diag", None)
+    constraint_name = getattr(diagnostic, "constraint_name", "") or ""
+    if constraint_name.endswith(_TRACKED_MEDIA_CONSTRAINT_SUFFIX):
+        return True
+
+    message = str(cause).lower()
+    if "duplicate key" in message and _TRACKED_MEDIA_CONSTRAINT_SUFFIX in message:
+        return True
+
+    return _is_sqlite_tracked_media_unique_error(cause)
+
+
+def _is_media_collection_post(request, path):
+    """Return whether this is POST /api/v1/media/{media_type}."""
+    if getattr(request, "method", "").upper() != "POST":
+        return False
+    parts = path.strip("/").split("/")
+    return len(parts) == 4 and parts[:3] == ["api", "v1", "media"]
 
 
 class ApiJsonErrorMiddleware:
@@ -106,6 +166,15 @@ class ApiJsonErrorMiddleware:
 
         if not path.startswith("/api/"):
             return None
+
+        if _is_media_collection_post(request, path) and is_tracked_media_unique_error(
+            exception,
+        ):
+            logger.info("Tracked media create conflict: %s", path)
+            return JsonResponse(
+                {"detail": "Conflict. Media is already tracked."},
+                status=HTTP.CONFLICT,
+            )
 
         logger.exception("Unhandled exception during API request: %s", path)
 
