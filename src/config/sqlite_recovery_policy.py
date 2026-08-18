@@ -29,6 +29,18 @@ _SAFE_CHECK_ENV = {
 }
 
 
+class UnsafeRecoverySchemaError(sqlite3.IntegrityError):
+    """Raised when the current relationship shape is not safe to repair."""
+
+
+class RecoveryDidNotConvergeError(sqlite3.IntegrityError):
+    """Raised when required repair leaves one or more foreign-key conflicts."""
+
+    def __init__(self, conflict_count: int):
+        message = f"{conflict_count} relationship conflict(s) remain after repair"
+        super().__init__(message)
+
+
 def _auto_repair_enabled() -> bool:
     return os.environ.get("FLOPPY_SQLITE_AUTO_REPAIR", "true").strip().lower() not in {
         "0",
@@ -120,6 +132,17 @@ def _current_incident(conn: sqlite3.Connection, report: dict) -> dict:
     return incident
 
 
+def _require_repairable(plan: dict) -> None:
+    if not plan.get("can_repair"):
+        raise UnsafeRecoverySchemaError
+
+
+def _require_converged(remaining: dict) -> None:
+    conflict_count = int(remaining.get("total_conflicts", 0))
+    if conflict_count:
+        raise RecoveryDidNotConvergeError(conflict_count)
+
+
 def _apply_plan(
     db_path: str,
     report: dict,
@@ -132,8 +155,7 @@ def _apply_plan(
         conn.execute("BEGIN IMMEDIATE")
         incident = _current_incident(conn, report)
         plan = build_repair_plan(conn, incident)
-        if not plan.get("can_repair"):
-            raise sqlite3.IntegrityError("relationship repair is not safe for this schema")
+        _require_repairable(plan)
         backup_path = _create_verified_backup(db_path, incident["fingerprint"])
         result = apply_repair_plan(
             conn,
@@ -141,15 +163,14 @@ def _apply_plan(
             include_required=include_required,
         )
         remaining = _inspect_foreign_keys(conn)
-        if include_required and remaining["total_conflicts"]:
-            raise sqlite3.IntegrityError(
-                f"{remaining['total_conflicts']} relationship conflict(s) remain after repair"
-            )
-        conn.commit()
-        return incident, plan, result, backup_path, remaining
+        if include_required:
+            _require_converged(remaining)
     except Exception:
         conn.rollback()
         raise
+    else:
+        conn.commit()
+        return incident, plan, result, backup_path, remaining
     finally:
         conn.close()
 
@@ -198,13 +219,11 @@ def _handle_operator_decision(db_path: str, report: dict) -> bool:
     if action != "quarantine":
         return False
 
-    _incident, plan, result, backup_path, remaining = _apply_plan(
+    _incident, plan, result, backup_path, _remaining = _apply_plan(
         db_path,
         report,
         include_required=True,
     )
-    if remaining["total_conflicts"]:
-        raise sqlite3.IntegrityError("relationship repair did not converge")
     summary = _repair_summary(result, backup_path)
     _publish_policy_report(
         db_path,
@@ -269,9 +288,12 @@ def check_database_for_startup(db_path: str) -> None:
         )
 
     report = _read_incident_report(db_path)
-    if report and report.get("status") == "blocked":
-        if _handle_operator_decision(db_path, report):
-            return
+    if (
+        report
+        and report.get("status") == "blocked"
+        and _handle_operator_decision(db_path, report)
+    ):
+        return
 
     report = _run_and_capture_block(db_path)
     if report is None:
