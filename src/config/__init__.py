@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+from importlib import import_module
 
 from decouple import config
 
@@ -40,7 +41,8 @@ if _sqlite_policy is not None:
             _effective_synchronous,
         )
 
-# Ensure Celery application is loaded when Django starts.
-from config.celery import app as celery_app
+# Load Celery only after the SQLite policy has been published. import_module()
+# keeps this required runtime order without a late module-level import.
+celery_app = import_module("config.celery").app
 
 __all__ = ("celery_app",)
