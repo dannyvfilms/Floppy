@@ -6,7 +6,7 @@ Floppy stores metadata from providers that Floppy does not control. Provider tex
 
 - Keep identifiers bounded when the provider contract gives a stable bound or Floppy needs the bound for identity and indexes.
 - Do not silently truncate identifiers. Reject or report an invalid identity instead.
-- Store opaque artwork URLs and data URIs in text fields when they are not indexed. Signed URLs, CDN parameters, and inline placeholders can exceed Django `URLField`'s 200-character default.
+- Store opaque artwork URLs, feed URLs, and data URIs in text fields when they are not indexed. Signed URLs, CDN parameters, RSS feed paths, and inline placeholders can exceed Django `URLField`'s 200-character default.
 - Keep user-visible names bounded where the application has a deliberate display/storage contract. Validate before persistence if provider data can exceed that contract.
 - Do not use database-specific truncation behavior as validation. SQLite and PostgreSQL must accept or reject the same application value intentionally.
 
@@ -25,7 +25,9 @@ Migrations `0155` through `0157` use this sequence for the image placeholder. Th
 
 ## Runtime behavior
 
-Provider metadata failures should not make an otherwise valid media page unavailable when the data can be stored safely. The studio logo field is therefore text storage rather than a 200-character URL field. The complete provider value is preserved; it is not truncated.
+Provider metadata failures should not make an otherwise valid media page or import unavailable when the data can be stored safely. Studio logo and podcast feed URLs therefore use text storage rather than the implicit 200-character `URLField` limit. The complete provider value is preserved; it is not truncated.
+
+`PodcastEpisode.audio_url` already has an explicit 500-character contract from migration `0113`. This change does not widen every bounded field automatically. Explicit bounds remain where the application or provider contract gives them a useful meaning.
 
 This does not add network access, a cache dependency, or a Docker requirement. The schema is valid for SQLite, PostgreSQL, source installs, containers, and packaged runtimes.
 
