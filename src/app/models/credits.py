@@ -203,15 +203,20 @@ class BackfillReconcileState(models.Model):
     durable fact, so the beat entry can poll infrequently and back off.
 
     One row per reconcile key (not per item - that is MetadataBackfillState).
-    "done" is a durable database fact, not cache state.
     """
 
     key = models.CharField(max_length=100, unique=True)
     strategy_version = models.PositiveIntegerField(default=0)
+    # Set once a sweep finds no remaining candidates. Cleared when the strategy
+    # version changes, which is how a new backfill strategy re-runs.
     completed_at = models.DateTimeField(null=True, blank=True)
     last_run_at = models.DateTimeField(null=True, blank=True)
+    # Doubles as the fallback mutex: a sweep that started recently is assumed to
+    # still be running when the cache lock can't be consulted.
     next_run_after = models.DateTimeField(null=True, blank=True)
     consecutive_no_op_runs = models.PositiveIntegerField(default=0)
+    # Keyset cursor, so each sweep resumes where the last stopped instead of
+    # rescanning the whole table.
     last_cursor_item_id = models.BigIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
