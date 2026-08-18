@@ -10,11 +10,9 @@ import sqlite3
 from collections.abc import Callable, MutableMapping, Sequence
 from typing import Any
 
-ALLOWED_JOURNAL_MODES = frozenset(
-    {"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"},
-)
+ALLOWED_JOURNAL_MODES = frozenset({"DELETE", "TRUNCATE", "PERSIST", "WAL"})
 ALLOWED_SYNCHRONOUS_MODES = frozenset(
-    {"OFF", "NORMAL", "FULL", "EXTRA", "0", "1", "2", "3"},
+    {"NORMAL", "FULL", "EXTRA", "1", "2", "3"},
 )
 
 
@@ -43,7 +41,7 @@ def sqlite_wal_reset_fix_present(version_info: Sequence[int]) -> bool:
 
 
 def normalize_sqlite_journal_mode(value: str) -> str:
-    """Validate and normalize a SQLite journal mode."""
+    """Validate and normalize a crash-recoverable SQLite journal mode."""
     normalized = str(value).strip().upper()
     if normalized not in ALLOWED_JOURNAL_MODES:
         allowed = ", ".join(sorted(ALLOWED_JOURNAL_MODES))
@@ -53,7 +51,7 @@ def normalize_sqlite_journal_mode(value: str) -> str:
 
 
 def normalize_sqlite_synchronous(value: str) -> str:
-    """Validate and normalize a SQLite synchronous mode."""
+    """Validate and normalize a crash-recoverable synchronous mode."""
     normalized = str(value).strip().upper()
     if normalized not in ALLOWED_SYNCHRONOUS_MODES:
         allowed = ", ".join(sorted(ALLOWED_SYNCHRONOUS_MODES))
@@ -80,7 +78,7 @@ def prepare_sqlite_environment(
     config_reader: Callable[..., Any],
     environment: MutableMapping[str, str],
     version_info: Sequence[int] | None = None,
-) -> tuple[str, str, bool] | None:
+) -> tuple[str, str, str, bool] | None:
     """Validate SQLite settings and publish the safe effective values.
 
     This runs before Django settings are loaded. Environment values override a
@@ -101,6 +99,12 @@ def prepare_sqlite_environment(
         version_info,
     )
 
+    # NORMAL is the preferred WAL balance, but SQLite documents a small
+    # corruption risk with NORMAL + rollback journal after a power failure on
+    # older filesystems. FULL keeps the compatibility fallback crash-safe.
+    if fallback_applied and synchronous in {"NORMAL", "1"}:
+        synchronous = "FULL"
+
     environment["SQLITE_JOURNAL_MODE"] = effective
     environment["SQLITE_SYNCHRONOUS"] = synchronous
-    return requested, effective, fallback_applied
+    return requested, effective, synchronous, fallback_applied
