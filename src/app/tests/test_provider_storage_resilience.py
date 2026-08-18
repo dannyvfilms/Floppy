@@ -2,7 +2,7 @@ from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from django.db import models
+from django.db import migrations, models
 from django.test import SimpleTestCase, TestCase
 
 from app import credits
@@ -112,7 +112,7 @@ class PlaceholderMigrationSafetyTests(SimpleTestCase):
         image_alters = {
             operation.model_name: operation.field
             for operation in migration.Migration.operations
-            if isinstance(operation, models.AlterField) and operation.name == "image"
+            if isinstance(operation, migrations.AlterField) and operation.name == "image"
         }
 
         self.assertEqual(set(image_alters), expected_models)
