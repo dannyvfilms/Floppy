@@ -22,16 +22,22 @@ else:
 
 _sqlite_policy = prepare_sqlite_environment(config, os.environ)
 if _sqlite_policy is not None:
-    _requested_journal, _effective_journal, _fallback_applied = _sqlite_policy
+    (
+        _requested_journal,
+        _effective_journal,
+        _effective_synchronous,
+        _fallback_applied,
+    ) = _sqlite_policy
     if _fallback_applied:
         logging.getLogger(__name__).warning(
             "SQLite %s is affected by the WAL-reset corruption bug. "
-            "Floppy requested %s but will use %s journal mode for data safety. "
-            "Upgrade SQLite to 3.51.3 or later, or a fixed 3.44.6/3.50.7 "
-            "backport, to restore WAL mode.",
+            "Floppy requested %s but will use %s journal mode with "
+            "synchronous=%s for data safety. Upgrade SQLite to 3.51.3 or "
+            "later, or a fixed 3.44.6/3.50.7 backport, to restore WAL mode.",
             sqlite3.sqlite_version,
             _requested_journal,
             _effective_journal,
+            _effective_synchronous,
         )
 
 # Ensure Celery application is loaded when Django starts.
