@@ -2,11 +2,29 @@
 
 from __future__ import annotations
 
-import sqlite3
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import sqlite3
 
 # These rows only describe a relationship between parent catalog records. If a
 # required parent is gone, the relationship row has no independent user state.
 _DERIVED_RELATION_TABLES = frozenset({"app_albumartist"})
+
+
+class UnsafeRepairPlanError(ValueError):
+    """Raised when a repair plan cannot be applied automatically."""
+
+
+class UnsupportedRepairRelationshipError(ValueError):
+    """Raised when a plan contains a relationship the executor cannot repair."""
+
+
+class UnsupportedRepairActionError(ValueError):
+    """Raised when a repair group names an action the executor does not support."""
+
+    def __init__(self, action: object):
+        super().__init__(f"unsupported repair action {action!r}")
 
 
 def _quote_identifier(identifier: str) -> str:
@@ -126,7 +144,9 @@ def _broken_reference_where(group: dict) -> str:
     child = _quote_identifier(group["child_column"])
     parent_table = _quote_identifier(group["parent"])
     parent_column = _quote_identifier(group["parent_column"])
-    return (
+    # Identifiers come only from SQLite schema inspection and are quoted above;
+    # no request, report, provider, or user value is interpolated here.
+    return (  # noqa: S608
         f"{child} IS NOT NULL AND NOT EXISTS ("
         f"SELECT 1 FROM main.{parent_table} AS parent "
         f"WHERE parent.{parent_column} = {child})"
@@ -141,7 +161,7 @@ def apply_repair_plan(
 ) -> dict:
     """Apply the plan inside the caller's transaction and return actual counts."""
     if not plan.get("can_repair"):
-        raise ValueError("repair plan is not safe to apply automatically")
+        raise UnsafeRepairPlanError
 
     counts = {
         "references_cleared": 0,
@@ -152,7 +172,7 @@ def apply_repair_plan(
     for group in plan.get("groups", []):
         action = group["action"]
         if action == "manual":
-            raise ValueError("repair plan contains an unsupported relationship")
+            raise UnsupportedRepairRelationshipError
         if action == "remove_row" and not include_required:
             continue
 
@@ -175,6 +195,6 @@ def apply_repair_plan(
             )
             counts["required_rows_removed"] += result.rowcount
         else:
-            raise ValueError(f"unsupported repair action {action!r}")
+            raise UnsupportedRepairActionError(action)
 
     return counts
