@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase, tag
+from django.test import TestCase
 
 from app.models import (
     TV,
@@ -99,7 +99,7 @@ class RepairLocalOnlySeasonsTests(TestCase):
         """The default run reports the planned move but changes nothing."""
         self._add_episode(1)
 
-        def fake_tv_with_seasons(_media_id, season_numbers):
+        def fake_tv_with_seasons(_media_id, season_numbers, _language=None):
             metadata = {
                 "title": "Rent-a-Girlfriend",
                 "image": "",
@@ -129,7 +129,6 @@ class RepairLocalOnlySeasonsTests(TestCase):
             ProviderMetadataStatus.LOCAL_ONLY_MISSING_SEASON.value,
         )
 
-    @tag("network")
     def test_restores_season_when_provider_has_it_again(self):
         """A season the provider now knows about loses its local-only flag."""
         self._add_episode(1)
@@ -156,7 +155,7 @@ class RepairLocalOnlySeasonsTests(TestCase):
         """Episodes spill into the season the provider actually has."""
         self._add_episode(1)
 
-        def fake_tv_with_seasons(_media_id, season_numbers):
+        def fake_tv_with_seasons(_media_id, season_numbers, _language=None):
             metadata = {
                 "title": "Rent-a-Girlfriend",
                 "image": "",
