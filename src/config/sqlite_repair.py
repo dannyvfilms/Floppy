@@ -24,6 +24,7 @@ class UnsupportedRepairActionError(ValueError):
     """Raised when a repair group names an action the executor does not support."""
 
     def __init__(self, action: object):
+        """Describe the unsupported action without exposing provider data."""
         super().__init__(f"unsupported repair action {action!r}")
 
 
@@ -146,8 +147,8 @@ def _broken_reference_where(group: dict) -> str:
     parent_column = _quote_identifier(group["parent_column"])
     # Identifiers come only from SQLite schema inspection and are quoted above;
     # no request, report, provider, or user value is interpolated here.
-    return (  # noqa: S608
-        f"{child} IS NOT NULL AND NOT EXISTS ("
+    return (
+        f"{child} IS NOT NULL AND NOT EXISTS ("  # noqa: S608
         f"SELECT 1 FROM main.{parent_table} AS parent "
         f"WHERE parent.{parent_column} = {child})"
     )
