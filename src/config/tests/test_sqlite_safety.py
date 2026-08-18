@@ -60,6 +60,15 @@ class SQLiteSafetyTests(TestCase):
         with self.assertRaisesRegex(ValueError, "Unsupported SQLITE_JOURNAL_MODE"):
             normalize_sqlite_journal_mode("WAL; VACUUM")
 
+    def test_journal_mode_rejects_modes_without_crash_recovery(self):
+        for value in ("OFF", "MEMORY"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "Unsupported SQLITE_JOURNAL_MODE",
+                ):
+                    normalize_sqlite_journal_mode(value)
+
     def test_synchronous_mode_accepts_names_and_numeric_values(self):
         self.assertEqual(normalize_sqlite_synchronous(" full "), "FULL")
         self.assertEqual(normalize_sqlite_synchronous("2"), "2")
@@ -67,6 +76,15 @@ class SQLiteSafetyTests(TestCase):
     def test_synchronous_mode_rejects_unexpected_sql_grammar(self):
         with self.assertRaisesRegex(ValueError, "Unsupported SQLITE_SYNCHRONOUS"):
             normalize_sqlite_synchronous("NORMAL; VACUUM")
+
+    def test_synchronous_mode_rejects_off(self):
+        for value in ("OFF", "0"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "Unsupported SQLITE_SYNCHRONOUS",
+                ):
+                    normalize_sqlite_synchronous(value)
 
     def test_prepare_environment_publishes_safe_effective_values(self):
         values = {
@@ -85,9 +103,29 @@ class SQLiteSafetyTests(TestCase):
             version_info=(3, 46, 1),
         )
 
-        self.assertEqual(policy, ("WAL", "DELETE", True))
+        self.assertEqual(policy, ("WAL", "DELETE", "FULL", True))
         self.assertEqual(environment["SQLITE_JOURNAL_MODE"], "DELETE")
-        self.assertEqual(environment["SQLITE_SYNCHRONOUS"], "NORMAL")
+        self.assertEqual(environment["SQLITE_SYNCHRONOUS"], "FULL")
+
+    def test_prepare_environment_preserves_stronger_synchronous_mode(self):
+        values = {
+            "DB_HOST": None,
+            "SQLITE_JOURNAL_MODE": "WAL",
+            "SQLITE_SYNCHRONOUS": "EXTRA",
+        }
+        environment = {}
+
+        def config_reader(key, default=None):
+            return values.get(key, default)
+
+        policy = prepare_sqlite_environment(
+            config_reader,
+            environment,
+            version_info=(3, 46, 1),
+        )
+
+        self.assertEqual(policy, ("WAL", "DELETE", "EXTRA", True))
+        self.assertEqual(environment["SQLITE_SYNCHRONOUS"], "EXTRA")
 
     def test_prepare_environment_does_not_touch_postgresql_runtime(self):
         environment = {}
