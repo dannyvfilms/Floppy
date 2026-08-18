@@ -27,6 +27,14 @@ def reopen_previous_acceptance(db_path: str) -> bool:
         return False
 
     incident = _incident_from_report(report)
+    incident.update(
+        {
+            "affected": report.get("affected", []),
+            "other_titles": report.get("affected_other_titles", 0),
+            "other_titles_count": report.get("affected_other_titles_count", 0),
+            "unidentified": report.get("affected_unidentified", 0),
+        },
+    )
     _write_incident_report(
         db_path,
         incident,
