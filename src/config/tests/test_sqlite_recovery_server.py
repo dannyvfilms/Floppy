@@ -167,25 +167,20 @@ class RecoveryPageTests(SimpleTestCase):
             )
             conn.close()
 
-    def test_1_click_quarantine_records_the_choice(self):
+    def test_quarantine_without_code_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_incident(tmp_dir)
             report = self.block_startup(db_path)
             base = self.serve(db_path)
 
-            response = self.post(f"{base}/quarantine")
-            self.assertEqual(response.status, 200)
-            body = response.read().decode()
-            self.assertIn("Floppy has your choice.", body)
-            # The app needs minutes to migrate and start. A timed reload would
-            # land on a connection error and read as a failed repair.
-            self.assertNotIn("http-equiv='refresh'", body)
+            with self.assertRaises(urllib.error.HTTPError) as ctx:
+                self.post(f"{base}/quarantine")
+            self.assertEqual(ctx.exception.code, 403)
+            self.assertFalse(Path(f"{db_path}.integrity.decision").exists())
 
-            decision = json.loads(
-                Path(f"{db_path}.integrity.decision").read_text(),
-            )
-            self.assertEqual(decision["action"], "quarantine")
-            self.assertEqual(decision["fingerprint"], report["fingerprint"])
+            page = recovery.render_page(report, interactive=True)
+            self.assertIn("name='token' required", page)
+            self.assertIn("Approval code", page)
 
     def test_recovery_server_sends_no_cache_headers(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -204,15 +199,22 @@ class RecoveryPageTests(SimpleTestCase):
             report = self.block_startup(db_path)
             base = self.serve(db_path)
 
-            self.post(
+            response = self.post(
                 f"{base}/quarantine",
                 {"token": report["incident_token"]},
-            ).read()
+            )
+            self.assertEqual(response.status, 200)
+            body = response.read().decode()
+            self.assertIn("Floppy has your choice.", body)
+            # The app needs minutes to migrate and start. A timed reload would
+            # land on a connection error and read as a failed repair.
+            self.assertNotIn("http-equiv='refresh'", body)
 
             decision = json.loads(
                 Path(f"{db_path}.integrity.decision").read_text(),
             )
             self.assertEqual(decision["action"], "quarantine")
+            self.assertEqual(decision["fingerprint"], report["fingerprint"])
 
     def test_the_page_is_written_beside_the_database_and_is_readable(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -514,4 +516,3 @@ class RecoveryPageTests(SimpleTestCase):
         report = {"total_conflicts": 2, "can_quarantine": True, "affected": []}
         page = recovery.render_page(report, interactive=True)
         self.assertIsNone(re.search(r"<a\b[^>]*>\s*<button", page))
-
