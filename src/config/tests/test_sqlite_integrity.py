@@ -933,7 +933,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 "python": (
                     "#!/bin/sh\n"
                     'case "$*" in\n'
-                    "  *check_database_integrity*)\n"
+                    "  *check_database_for_startup*)\n"
                     '    echo "[entrypoint] bounded integrity failure" >&2\n'
                     "    exit 1\n"
                     "    ;;\n"
@@ -1040,7 +1040,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             python_wrapper.write_text(
                 "#!/bin/sh\n"
                 'case "$2" in\n'
-                "  *check_database_integrity*)\n"
+                "  *check_database_for_startup*)\n"
                 '    echo "$$" > "$CHECKER_PID_FILE"\n'
                 '    echo "[entrypoint] checker waiting" >&2\n'
                 "    exec /bin/sleep 30\n"
@@ -1274,9 +1274,9 @@ class SqliteIntegrityTests(SimpleTestCase):
         script = ENTRYPOINT.read_text()
         check = (
             'timeout "$integrity_timeout" python -c '
-            "'from config.sqlite_integrity import "
-            "check_database_integrity; import sys; "
-            'check_database_integrity(sys.argv[1])\' "$DB_FILE"'
+            "'from config.sqlite_recovery_policy import "
+            "check_database_for_startup; import sys; "
+            'check_database_for_startup(sys.argv[1])\' "$DB_FILE"'
         )
 
         self.assertIn(check, script)
@@ -1476,5 +1476,3 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(ctx.exception.code, 1)
             self.assertFalse(decision.exists())
             self.assertEqual(self.read_incident_report(db_path)["status"], "corrupt")
-
-
