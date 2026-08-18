@@ -300,7 +300,11 @@ class IntegrationTest(StaticLiveServerTestCase):
             f"Ended: {fixed_date.strftime(datetime_format)}",
         )
 
-        self.page.reload()
+        with self.page.expect_response(
+            lambda response: "fragment=secondary" in response.url,
+        ) as secondary_response:
+            self.page.reload()
+        self.assertEqual(secondary_response.value.status, 200)
         expect(self.page.locator("#episodes-list")).to_be_visible()
         today = timezone.localtime().strftime(datetime_format)
         tracked_button = self.page.locator(
