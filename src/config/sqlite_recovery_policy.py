@@ -6,27 +6,29 @@ import json
 import os
 import secrets
 import sqlite3
+from contextlib import suppress
 from pathlib import Path
 
 from config.sqlite_integrity import (
     _create_verified_backup,
+    _describe_affected,
     _incident_from_report,
     _incident_report_path,
     _inspect_foreign_keys,
     _log,
+    _print_incident,
     _publish_report,
-    _read_decision,
     _read_incident_report,
-    _selected_action,
+    _reconcile_report,
+    _report_corruption,
+    _valid_blocked_token,
     _write_incident_report,
-    check_database_integrity,
 )
 from config.sqlite_repair import apply_repair_plan, build_repair_plan
 
-_SAFE_CHECK_ENV = {
-    "FLOPPY_SQLITE_AUTO_REPAIR": "false",
-    "FLOPPY_SQLITE_CONFLICT_ACTION": "halt",
-}
+_ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
+_AUTO_REPAIR_ENV = "FLOPPY_SQLITE_AUTO_REPAIR"
+_DECISION_SUFFIX = ".integrity.decision"
 
 
 class UnsafeRecoverySchemaError(sqlite3.IntegrityError):
@@ -43,12 +45,17 @@ class RecoveryDidNotConvergeError(sqlite3.IntegrityError):
 
 
 def _auto_repair_enabled() -> bool:
-    return os.environ.get("FLOPPY_SQLITE_AUTO_REPAIR", "true").strip().lower() not in {
+    return os.environ.get(_AUTO_REPAIR_ENV, "true").strip().lower() not in {
         "0",
         "false",
         "no",
         "off",
     }
+
+
+def _decision_path(db_path: str) -> Path:
+    database_path = Path(db_path).resolve()
+    return database_path.with_name(f"{database_path.name}{_DECISION_SUFFIX}")
 
 
 def _publish_policy_report(
@@ -84,20 +91,6 @@ def _publish_policy_report(
         payload["safe_repair"] = prior_safe_repair
     contents = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     _publish_report(_incident_report_path(db_path), contents)
-
-
-def _run_checker_without_legacy_repair(db_path: str) -> None:
-    """Run the existing scanner while disabling its generalized delete path."""
-    previous = {name: os.environ.get(name) for name in _SAFE_CHECK_ENV}
-    try:
-        os.environ.update(_SAFE_CHECK_ENV)
-        check_database_integrity(db_path)
-    finally:
-        for name, value in previous.items():
-            if value is None:
-                os.environ.pop(name, None)
-            else:
-                os.environ[name] = value
 
 
 def reopen_previous_acceptance(db_path: str) -> bool:
@@ -144,6 +137,133 @@ def _require_converged(remaining: dict) -> None:
         raise RecoveryDidNotConvergeError(conflict_count)
 
 
+def _describe_incident(conn: sqlite3.Connection, incident: dict) -> None:
+    """Add bounded human context without making it a recovery prerequisite."""
+    try:
+        incident.update(_describe_affected(conn))
+    except Exception as error:  # noqa: BLE001 - damaged schemas must still get a report
+        _log(f"[entrypoint] Could not name the affected entries: {error}")
+
+
+def _scan_and_publish_block(db_path: str) -> dict | None:
+    """Scan storage and publish the policy's blocked relationship report."""
+    prior_report = _read_incident_report(db_path)
+    conn = sqlite3.connect(db_path, timeout=30.0)
+    try:
+        result = conn.execute("PRAGMA quick_check").fetchone()
+        status = result[0] if result else None
+        if status != "ok":
+            _log(
+                "[entrypoint] Database integrity check failed: "
+                f"quick_check returned {status!r}",
+            )
+            _report_corruption(db_path, f"quick_check returned {status!r}")
+            raise SystemExit(1)
+
+        incident = _inspect_foreign_keys(conn)
+        if not incident["total_conflicts"]:
+            if prior_report:
+                try:
+                    _reconcile_report(db_path, prior_report)
+                except (KeyError, OSError, sqlite3.DatabaseError) as error:
+                    _log(
+                        "[entrypoint] SQLite recovery report could not be finalized; "
+                        f"the database is healthy and startup continues: {error}",
+                    )
+            return None
+
+        _describe_incident(conn, incident)
+        _print_incident(db_path, incident)
+        incident_token = _valid_blocked_token(prior_report, incident)
+        if incident_token is None:
+            incident_token = secrets.token_hex(16)
+        try:
+            report_path = _write_incident_report(
+                db_path,
+                incident,
+                status="blocked",
+                incident_token=incident_token,
+            )
+        except OSError as error:
+            _log(f"[entrypoint] Could not publish SQLite incident report: {error}")
+            raise SystemExit(1) from error
+        _log(f"[entrypoint] Startup is blocked by report {report_path}")
+        return _read_incident_report(db_path)
+    except sqlite3.DatabaseError as error:
+        _log(f"[entrypoint] Database integrity check failed: {error}")
+        raise SystemExit(1) from error
+    finally:
+        conn.close()
+
+
+def _read_policy_decision(db_path: str, report: dict) -> str | None:
+    """Consume one exact fingerprint-and-token decision from the recovery page."""
+    decision_path = _decision_path(db_path)
+    try:
+        descriptor = os.open(
+            decision_path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError:
+        return None
+
+    decision = None
+    try:
+        with os.fdopen(descriptor) as decision_file:
+            descriptor = -1
+            decision = json.load(decision_file)
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+        decision = None
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+        with suppress(OSError):
+            decision_path.unlink()
+
+    if not isinstance(decision, dict):
+        return None
+    if decision.get("action") not in {"accept", "quarantine"}:
+        return None
+    if decision.get("fingerprint") != report.get("fingerprint"):
+        _log("[entrypoint] Recovery choice belongs to a different incident; using halt")
+        return None
+    expected = report.get("incident_token")
+    supplied = decision.get("token")
+    if not (
+        isinstance(expected, str)
+        and expected
+        and isinstance(supplied, str)
+        and secrets.compare_digest(supplied, expected)
+    ):
+        _log("[entrypoint] Recovery choice does not carry the current code; using halt")
+        return None
+    return str(decision["action"])
+
+
+def _selected_policy_action(report: dict) -> str:
+    """Read an incident-scoped headless action from the environment."""
+    configured = os.environ.get(_ACTION_ENV, "halt").strip()
+    if configured in {"", "halt"}:
+        return "halt"
+
+    action, separator, supplied = configured.partition(":")
+    expected = report.get("incident_token")
+    if action == "accept":
+        return "accept"
+    if action != "quarantine" or not separator:
+        _log(f"[entrypoint] Invalid {_ACTION_ENV}; using halt")
+        return "halt"
+    if not (
+        isinstance(expected, str)
+        and expected
+        and supplied
+        and secrets.compare_digest(supplied, expected)
+    ):
+        _log(f"[entrypoint] {_ACTION_ENV} does not carry the current code; using halt")
+        return "halt"
+    return "quarantine"
+
+
 def _apply_plan(
     db_path: str,
     report: dict,
@@ -187,21 +307,20 @@ def _repair_summary(result: dict, backup_path: Path) -> dict:
 
 def _handle_operator_decision(db_path: str, report: dict) -> bool:
     """Apply a one-use decision if one exists."""
-    decision_path = Path(f"{db_path}.integrity.decision")
-    configured = os.environ.get("FLOPPY_SQLITE_CONFLICT_ACTION", "halt").strip()
+    decision_path = _decision_path(db_path)
+    configured = os.environ.get(_ACTION_ENV, "halt").strip()
     if not decision_path.exists() and configured in {"", "halt"}:
         return False
 
+    action = (
+        _read_policy_decision(db_path, report)
+        if decision_path.exists()
+        else _selected_policy_action(report)
+    )
     conn = sqlite3.connect(db_path, timeout=30.0)
     try:
-        conn.execute("BEGIN IMMEDIATE")
         incident = _current_incident(conn, report)
-        token = report.get("incident_token") or ""
-        action = _read_decision(db_path, incident, token) if decision_path.exists() else None
-        if action is None:
-            action = _selected_action(incident, token)
         plan = build_repair_plan(conn, incident)
-        conn.rollback()
     finally:
         conn.close()
 
@@ -266,19 +385,6 @@ def _annotate_blocked_report(
     return plan
 
 
-def _run_and_capture_block(db_path: str) -> dict | None:
-    try:
-        _run_checker_without_legacy_repair(db_path)
-    except SystemExit as error:
-        if error.code != 1:
-            raise
-        report = _read_incident_report(db_path)
-        if not report or report.get("status") != "blocked":
-            raise
-        return report
-    return None
-
-
 def check_database_for_startup(db_path: str) -> None:
     """Repair safe relationship damage or block before migrations."""
     reopened = reopen_previous_acceptance(db_path)
@@ -296,7 +402,7 @@ def check_database_for_startup(db_path: str) -> None:
     ):
         return
 
-    report = _run_and_capture_block(db_path)
+    report = _scan_and_publish_block(db_path)
     if report is None:
         return
 
@@ -340,10 +446,9 @@ def check_database_for_startup(db_path: str) -> None:
         )
         return
 
-    # The safe subset changed the incident fingerprint. Re-scan through the
-    # existing reporting path so the next approval token is tied to the exact
-    # remaining rows rather than the pre-repair incident.
-    refreshed = _run_and_capture_block(db_path)
+    # The safe subset changed the incident fingerprint. Re-scan through this
+    # policy so the next approval code is tied to the exact remaining rows.
+    refreshed = _scan_and_publish_block(db_path)
     if refreshed is None:
         return
     _annotate_blocked_report(
