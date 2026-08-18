@@ -51,6 +51,8 @@ Automatic recovery is disabled when Floppy cannot prove the affected table layou
 
 In those cases Floppy changes nothing and requires a backup restore or manual repair.
 
+A recovery choice is also fail-closed input. The local recovery page writes a one-use decision file beside the database. Startup opens that path without blocking, refuses anything that is not a regular file, requests no-follow behavior where the operating system supports it, removes the decision after the read attempt, and accepts an action only when its fingerprint and approval token match the current incident. A named pipe, device, stale choice, or changed database state therefore cannot become an automatic repair instruction.
+
 Physical SQLite corruption is a separate failure class. A file that fails `PRAGMA quick_check` stays read-only from this relationship-recovery path and must be restored or repaired from a separate copy.
 
 ## Runtime and packaging
