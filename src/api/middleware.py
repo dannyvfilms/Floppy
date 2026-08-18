@@ -9,6 +9,8 @@ from django.template.response import ContentNotRenderedError, TemplateResponse
 logger = logging.getLogger(__name__)
 
 _TRACKED_MEDIA_CONSTRAINT_SUFFIX = "_unique_item_user"
+_TRACKED_MEDIA_UNIQUE_COLUMN_COUNT = 2
+_MEDIA_COLLECTION_PATH_PART_COUNT = 4
 
 
 def _is_sqlite_tracked_media_unique_error(exception):
@@ -19,7 +21,7 @@ def _is_sqlite_tracked_media_unique_error(exception):
         return False
 
     raw_columns = message.split(marker, 1)[1].strip().split(",")
-    if len(raw_columns) != 2:
+    if len(raw_columns) != _TRACKED_MEDIA_UNIQUE_COLUMN_COUNT:
         return False
 
     columns = []
@@ -65,7 +67,10 @@ def _is_media_collection_post(request, path):
     if getattr(request, "method", "").upper() != "POST":
         return False
     parts = path.strip("/").split("/")
-    return len(parts) == 4 and parts[:3] == ["api", "v1", "media"]
+    return (
+        len(parts) == _MEDIA_COLLECTION_PATH_PART_COUNT
+        and parts[:3] == ["api", "v1", "media"]
+    )
 
 
 class ApiJsonErrorMiddleware:
