@@ -69,6 +69,18 @@ class SqliteDataPreservingRecoveryTests(SimpleTestCase):
     def _read_report(db_path):
         return json.loads(Path(f"{db_path}.integrity.json").read_text())
 
+    @staticmethod
+    def _assert_tracking_rows_unchanged(db_path):
+        conn = sqlite3.connect(db_path)
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM app_music").fetchone()[0] == 1
+            assert (
+                conn.execute("SELECT COUNT(*) FROM app_albumtracker").fetchone()[0]
+                == 1
+            )
+        finally:
+            conn.close()
+
     def test_mixed_music_damage_preserves_tracking_until_explicit_repair(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self._create_mixed_music_incident(tmp_dir)
@@ -202,21 +214,82 @@ class SqliteDataPreservingRecoveryTests(SimpleTestCase):
             ):
                 check_database_for_startup(db_path)
 
-            conn = sqlite3.connect(db_path)
-            self.assertEqual(
-                conn.execute("SELECT COUNT(*) FROM app_music").fetchone()[0],
-                1,
-            )
-            self.assertEqual(
-                conn.execute("SELECT COUNT(*) FROM app_albumtracker").fetchone()[0],
-                1,
-            )
-            self.assertGreater(
-                len(conn.execute("PRAGMA foreign_key_check").fetchall()),
-                0,
-            )
-            conn.close()
-
+            self._assert_tracking_rows_unchanged(db_path)
             refreshed = self._read_report(db_path)
             self.assertNotIn("accept", refreshed["actions"])
             self.assertEqual(refreshed["resolution"], "accept-retired")
+
+    def test_bare_headless_quarantine_is_rejected_without_modifying_rows(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self._create_mixed_music_incident(tmp_dir)
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "FLOPPY_SQLITE_AUTO_REPAIR": "false",
+                        "FLOPPY_SQLITE_CONFLICT_ACTION": "halt",
+                    },
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_for_startup(db_path)
+
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "FLOPPY_SQLITE_AUTO_REPAIR": "false",
+                        "FLOPPY_SQLITE_CONFLICT_ACTION": "quarantine",
+                    },
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_for_startup(db_path)
+
+            self._assert_tracking_rows_unchanged(db_path)
+            self.assertTrue(self._read_report(db_path)["incident_token"])
+
+    def test_decision_without_current_code_is_consumed_and_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self._create_mixed_music_incident(tmp_dir)
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "FLOPPY_SQLITE_AUTO_REPAIR": "false",
+                        "FLOPPY_SQLITE_CONFLICT_ACTION": "halt",
+                    },
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_for_startup(db_path)
+
+            report = self._read_report(db_path)
+            decision_path = Path(f"{db_path}.integrity.decision")
+            decision_path.write_text(
+                json.dumps(
+                    {
+                        "action": "quarantine",
+                        "fingerprint": report["fingerprint"],
+                    }
+                )
+            )
+            with (
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "FLOPPY_SQLITE_AUTO_REPAIR": "false",
+                        "FLOPPY_SQLITE_CONFLICT_ACTION": "halt",
+                    },
+                ),
+                self.assertRaises(SystemExit),
+                mock.patch("sys.stderr"),
+            ):
+                check_database_for_startup(db_path)
+
+            self.assertFalse(decision_path.exists())
+            self._assert_tracking_rows_unchanged(db_path)
+            self.assertTrue(self._read_report(db_path)["incident_token"])
