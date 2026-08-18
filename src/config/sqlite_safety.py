@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sqlite3
 from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qs, urlsplit
 
 if TYPE_CHECKING:
     from collections.abc import Callable, MutableMapping, Sequence
@@ -62,6 +63,36 @@ def normalize_sqlite_synchronous(value: str) -> str:
         msg = f"Unsupported SQLITE_SYNCHRONOUS {value!r}. Allowed values: {allowed}."
         raise ValueError(msg)
     return normalized
+
+
+def sqlite_database_is_memory(database_name: object) -> bool:
+    """Return whether a SQLite database name identifies an in-memory database."""
+    name = str(database_name).strip()
+    if name == ":memory:":
+        return True
+    if not name.startswith("file:"):
+        return False
+
+    query = parse_qs(urlsplit(name).query)
+    return any(mode.lower() == "memory" for mode in query.get("mode", ()))
+
+
+def sqlite_journal_mode_matches(
+    requested_mode: str,
+    actual_mode: object,
+    database_name: object,
+) -> bool:
+    """Return whether SQLite applied the requested durable journal policy.
+
+    SQLite always reports MEMORY for a true in-memory database, including the
+    shared-cache URI that Django uses for its default SQLite test database.
+    That is an expected test-runtime property, not a persistent-file mismatch.
+    """
+    requested = normalize_sqlite_journal_mode(requested_mode)
+    actual = str(actual_mode).strip().upper()
+    if actual == requested:
+        return True
+    return actual == "MEMORY" and sqlite_database_is_memory(database_name)
 
 
 def resolve_sqlite_journal_mode(
