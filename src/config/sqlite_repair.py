@@ -142,15 +142,17 @@ def build_repair_plan(conn: sqlite3.Connection, incident: dict) -> dict:
 
 
 def _broken_reference_where(group: dict) -> str:
-    child = _quote_identifier(group["child_column"])
+    child_column = _quote_identifier(group["child_column"])
     parent_table = _quote_identifier(group["parent"])
     parent_column = _quote_identifier(group["parent_column"])
     # Identifiers come only from SQLite schema inspection and are quoted above;
-    # no request, report, provider, or user value is interpolated here.
+    # no request, report, provider, or user value is interpolated here. Qualify
+    # the child column explicitly so self-referential foreign keys cannot resolve
+    # the name against the inner parent alias.
     return (
-        f"{child} IS NOT NULL AND NOT EXISTS ("  # noqa: S608
+        f"child.{child_column} IS NOT NULL AND NOT EXISTS ("  # noqa: S608
         f"SELECT 1 FROM main.{parent_table} AS parent "
-        f"WHERE parent.{parent_column} = {child})"
+        f"WHERE parent.{parent_column} = child.{child_column})"
     )
 
 
@@ -182,17 +184,18 @@ def apply_repair_plan(
         if action == "clear_reference":
             column = _quote_identifier(group["child_column"])
             result = conn.execute(
-                f"UPDATE main.{table} SET {column} = NULL WHERE {where}"  # noqa: S608
+                f"UPDATE main.{table} AS child SET {column} = NULL "  # noqa: S608
+                f"WHERE {where}"
             )
             counts["references_cleared"] += result.rowcount
         elif action == "remove_relationship":
             result = conn.execute(
-                f"DELETE FROM main.{table} WHERE {where}"  # noqa: S608
+                f"DELETE FROM main.{table} AS child WHERE {where}"  # noqa: S608
             )
             counts["relationship_rows_removed"] += result.rowcount
         elif action == "remove_row":
             result = conn.execute(
-                f"DELETE FROM main.{table} WHERE {where}"  # noqa: S608
+                f"DELETE FROM main.{table} AS child WHERE {where}"  # noqa: S608
             )
             counts["required_rows_removed"] += result.rowcount
         else:
