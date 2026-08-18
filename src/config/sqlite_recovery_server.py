@@ -349,7 +349,13 @@ def render_page(
             parts.append(
                 "<div class='card'><h2>Repair the relationships, then start</h2>"
                 f"<p>{explanation}</p>"
+                "<p class='note'>Enter the current approval code from the container "
+                "log. The code is tied to this exact database state and changes if "
+                "Floppy safely repairs part of the incident first.</p>"
                 "<form method='POST' action='/quarantine'>"
+                "<p><label for='recovery-token'>Approval code</label><br>"
+                "<input id='recovery-token' name='token' required autocomplete='off' "
+                "spellcheck='false' inputmode='text'></p>"
                 "<button>Repair relationships and start Floppy</button>"
                 "</form></div>",
             )
@@ -596,13 +602,16 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             supplied = (fields.get("token") or [""])[0].strip()
             expected = report.get("incident_token") or ""
-            if supplied and expected and not secrets.compare_digest(supplied, expected):
+            if not supplied or not expected or not secrets.compare_digest(
+                supplied,
+                expected,
+            ):
                 self._send(
                     403,
                     _document(
-                        "<h1>That code is not correct.</h1><p>The code belongs "
-                        "to an earlier problem. Open this page again to get the "
-                        "current one. No entry was changed.</p>",
+                        "<h1>That code is not correct.</h1><p>Use the current "
+                        "approval code from the container log. The code changes "
+                        "when the database state changes. No entry was changed.</p>",
                     ),
                     "text/html; charset=utf-8",
                 )
