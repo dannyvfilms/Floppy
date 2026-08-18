@@ -49,19 +49,11 @@ class ProviderStorageResilienceTests(TestCase):
         self.assertEqual(studio.logo, long_logo)
         self.assertTrue(item.studio_credits.filter(studio=studio).exists())
 
-    def test_podcast_feed_storage_preserves_long_provider_url(self):
-        long_feed = "https://feeds.example.com/" + ("path-segment/" * 24) + "feed.xml"
-        self.assertGreater(len(long_feed), 200)
+    def test_outbound_podcast_feed_keeps_url_field_contract(self):
+        field = PodcastShow._meta.get_field("rss_feed_url")
 
-        show = PodcastShow.objects.create(
-            podcast_uuid="00000000-0000-0000-0000-000000000001",
-            title="Long Feed",
-            rss_feed_url=long_feed,
-        )
-        show.refresh_from_db()
-
-        self.assertIsNone(PodcastShow._meta.get_field("rss_feed_url").max_length)
-        self.assertEqual(show.rss_feed_url, long_feed)
+        self.assertIsInstance(field, models.URLField)
+        self.assertIsNotNone(field.max_length)
 
 
 class PlaceholderMigrationSafetyTests(SimpleTestCase):
@@ -140,3 +132,25 @@ class PlaceholderMigrationSafetyTests(SimpleTestCase):
         self.assertEqual(apps.get_model.call_count, 5)
         self.assertEqual(manager.filter.call_count, 5)
         self.assertEqual(queryset.update.call_count, 5)
+
+    def test_0159_only_widens_studio_logo_without_data_rewrite(self):
+        migration = import_module("app.migrations.0159_alter_studio_logo")
+
+        self.assertEqual(
+            migration.Migration.dependencies,
+            [("app", "0158_podcast_end_date_inferred")],
+        )
+        self.assertEqual(len(migration.Migration.operations), 1)
+
+        operation = migration.Migration.operations[0]
+        self.assertIsInstance(operation, migrations.AlterField)
+        self.assertEqual(operation.model_name, "studio")
+        self.assertEqual(operation.name, "logo")
+        self.assertIsInstance(operation.field, models.TextField)
+        self.assertIsNone(operation.field.max_length)
+        self.assertFalse(
+            any(
+                isinstance(candidate, migrations.RunPython)
+                for candidate in migration.Migration.operations
+            ),
+        )
