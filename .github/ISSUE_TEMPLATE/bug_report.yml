@@ -1,0 +1,77 @@
+name: Bug report
+description: Create a report to help us improve
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you file this: attach your logs.** Reports without them are much harder to act
+        on — this is almost always the fastest way for us to diagnose issues like webhook or
+        integration bugs.
+  - type: checkboxes
+    id: logs-attached
+    attributes:
+      label: Logs
+      description: >
+        Go to **Settings > Advanced** in Floppy and click **Download Sanitized Logs** (tokens,
+        passwords, and API keys are automatically redacted), then attach the file in the field
+        below. If Floppy will not start and you cannot reach that page, run the startup check
+        instead and paste its output in the field below:
+
+        ```bash
+        # The container runs, but it is unhealthy or idle.
+        docker exec floppy python manage.py floppy_preflight --json
+
+        # The container restarts or has exited.
+        docker compose run --rm floppy python manage.py floppy_preflight --json
+        ```
+      options:
+        - label: I attached sanitized logs or startup check output below, or explained why I can't
+          required: true
+  - type: textarea
+    id: log-output
+    attributes:
+      label: Log file / startup check output
+      description: Drag and drop the downloaded log file here, or paste the startup check output.
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: To Reproduce
+      description: Steps to reproduce the behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: A clear and concise description of what you expected to happen.
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: If applicable, add screenshots to help explain your problem.
+  - type: input
+    id: version
+    attributes:
+      label: Floppy version
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite (default)
+        - PostgreSQL
+    validations:
+      required: true
