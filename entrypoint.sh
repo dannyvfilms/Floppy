@@ -105,6 +105,16 @@ if [ -z "$DB_HOST" ]; then
     # repaired; other conflicts require an incident-scoped operator choice.
     if [ -f "$DB_FILE" ]; then
         while :; do
+            previous_acceptance=0
+            if ! previous_acceptance=$(python -c 'from config.sqlite_recovery_policy import reopen_previous_acceptance; import sys; print("1" if reopen_previous_acceptance(sys.argv[1]) else "0")' "$DB_FILE"); then
+                echo "[entrypoint] Could not reopen the previous SQLite keep-rows decision. Startup stopped before migrations so the database is unchanged." >&2
+                echo "[entrypoint] ${PREFLIGHT_HINT_RUN}" >&2
+                exit 1
+            fi
+            if [ "$previous_acceptance" = "1" ]; then
+                echo "[entrypoint] The previous keep-rows choice allowed one startup attempt. The same relationship problem is still present, so Floppy will ask for a new recovery choice before another attempt." >&2
+            fi
+
             echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
             integrity_status=0
             integrity_pid=
@@ -112,7 +122,15 @@ if [ -z "$DB_HOST" ]; then
             # can never drift apart.
             integrity_timeout=600
             trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
-            timeout "$integrity_timeout" python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
+            if [ "$previous_acceptance" = "1" ]; then
+                # A prior keep-rows choice must never turn into an automatic
+                # deletion on the next start. Re-open recovery with both
+                # automatic repair and persistent environment actions disabled.
+                FLOPPY_SQLITE_AUTO_REPAIR=false FLOPPY_SQLITE_CONFLICT_ACTION=halt \
+                    timeout "$integrity_timeout" python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
+            else
+                timeout "$integrity_timeout" python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
+            fi
             integrity_pid=$!
             wait "$integrity_pid" || integrity_status=$?
             trap - TERM INT
