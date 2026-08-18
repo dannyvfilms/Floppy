@@ -90,9 +90,9 @@ def sqlite_journal_mode_matches(
     """
     requested = normalize_sqlite_journal_mode(requested_mode)
     actual = str(actual_mode).strip().upper()
-    if actual == requested:
-        return True
-    return actual == "MEMORY" and sqlite_database_is_memory(database_name)
+    return actual == requested or (
+        actual == "MEMORY" and sqlite_database_is_memory(database_name)
+    )
 
 
 def resolve_sqlite_journal_mode(
