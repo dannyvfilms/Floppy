@@ -8,7 +8,7 @@ import secrets
 import sqlite3
 import stat
 from contextlib import suppress
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from config.sqlite_integrity import (
     _create_verified_backup,
@@ -27,6 +27,9 @@ from config.sqlite_integrity import (
     _write_incident_report,
 )
 from config.sqlite_repair import apply_repair_plan, build_repair_plan
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
 _AUTO_REPAIR_ENV = "FLOPPY_SQLITE_AUTO_REPAIR"
