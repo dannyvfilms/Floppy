@@ -141,7 +141,9 @@ def _describe_incident(conn: sqlite3.Connection, incident: dict) -> None:
     """Add bounded human context without making it a recovery prerequisite."""
     try:
         incident.update(_describe_affected(conn))
-    except Exception as error:  # noqa: BLE001 - damaged schemas must still get a report
+    except Exception as error:
+        # A damaged schema still needs a bounded incident report. Naming titles
+        # is useful context, but it is not allowed to suppress the recovery path.
         _log(f"[entrypoint] Could not name the affected entries: {error}")
 
 
