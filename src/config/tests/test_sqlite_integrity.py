@@ -208,7 +208,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(ctx.exception.code, 1)
             output = stderr.getvalue()
             self.assertIn("does not carry the current incident token", output)
-            # The operator must be sent to the token, never to the fingerprint.
             report = self.read_incident_report(db_path)
             self.assertIn(f"accept:{report['incident_token']}", output)
             self.assertNotIn(f"accept:{report['fingerprint']}", output)
@@ -333,10 +332,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 live.close()
 
                 if decoy_name:
-                    decoy_path = self.create_orphan_database(
-                        tmp_dir,
-                        db_name=decoy_name,
-                    )
+                    decoy_path = self.create_orphan_database(tmp_dir, db_name=decoy_name)
                     decoy = sqlite3.connect(decoy_path)
                     decoy.execute("CREATE TABLE marker (value TEXT)")
                     decoy.execute("INSERT INTO marker VALUES ('decoy')")
@@ -347,20 +343,14 @@ class SqliteIntegrityTests(SimpleTestCase):
                     check_database_integrity(db_path)
                 token = self.read_incident_report(db_path)["incident_token"]
                 with (
-                    mock.patch.dict(
-                        os.environ,
-                        {_ACTION_ENV: f"quarantine:{token}"},
-                    ),
+                    mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{token}"}),
                     mock.patch("sys.stderr"),
                 ):
                     check_database_integrity(db_path)
 
                 report = self.read_incident_report(db_path)
                 backup = sqlite3.connect(report["backup_path"])
-                self.assertEqual(
-                    backup.execute("SELECT value FROM marker").fetchone()[0],
-                    "live",
-                )
+                self.assertEqual(backup.execute("SELECT value FROM marker").fetchone()[0], "live")
                 self.assertEqual(backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
                 backup.close()
 
@@ -399,9 +389,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 check_database_integrity(db_path)
             old_token = self.read_incident_report(db_path)["incident_token"]
             action = f"quarantine:{old_token}"
-            with mock.patch.dict(os.environ, {_ACTION_ENV: action}), mock.patch(
-                "sys.stderr"
-            ):
+            with mock.patch.dict(os.environ, {_ACTION_ENV: action}), mock.patch("sys.stderr"):
                 check_database_integrity(db_path)
 
             conn = sqlite3.connect(db_path)
@@ -445,10 +433,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertNotIn("quarantine", report["actions"])
 
             with (
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
-                ),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{report['incident_token']}"}),
                 self.assertRaises(SystemExit),
                 mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
             ):
@@ -491,8 +476,6 @@ class SqliteIntegrityTests(SimpleTestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
             conn = sqlite3.connect(db_path)
-            # sqlite_schema.tbl_name keeps the spelling used by CREATE TRIGGER,
-            # but SQLite still fires the trigger for the canonical table name.
             conn.executescript(
                 """
                 CREATE TABLE unrelated (id INTEGER PRIMARY KEY);
@@ -512,10 +495,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertNotIn("quarantine", report["actions"])
 
             with (
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
-                ),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{report['incident_token']}"}),
                 self.assertRaises(SystemExit),
                 mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
             ):
@@ -552,9 +532,7 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             self.assertFalse(report["can_quarantine"])
             self.assertNotIn("quarantine", report["actions"])
-            self.assertTrue(
-                any("shadows hidden row identity" in reason for reason in report["unsafe_reasons"])
-            )
+            self.assertTrue(any("shadows hidden row identity" in reason for reason in report["unsafe_reasons"]))
             conn = sqlite3.connect(db_path)
             self.assertEqual(
                 conn.execute("SELECT rowid, parent_id FROM child ORDER BY parent_id").fetchall(),
@@ -573,10 +551,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             report = self.read_incident_report(db_path)
 
             with (
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
-                ),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{report['incident_token']}"}),
                 self.assertRaises(SystemExit),
                 mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
             ):
@@ -608,14 +583,8 @@ class SqliteIntegrityTests(SimpleTestCase):
                 return real_connect(database, *args, **kwargs)
 
             with (
-                mock.patch(
-                    "config.sqlite_integrity.sqlite3.connect",
-                    side_effect=connect,
-                ),
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
-                ),
+                mock.patch("config.sqlite_integrity.sqlite3.connect", side_effect=connect),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{report['incident_token']}"}),
                 self.assertRaises(SystemExit),
                 mock.patch("sys.stderr"),
             ):
@@ -634,14 +603,8 @@ class SqliteIntegrityTests(SimpleTestCase):
             report = self.read_incident_report(db_path)
 
             with (
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
-                ),
-                mock.patch(
-                    "config.sqlite_integrity.os.link",
-                    side_effect=FileExistsError("collision"),
-                ),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{report['incident_token']}"}),
+                mock.patch("config.sqlite_integrity.os.link", side_effect=FileExistsError("collision")),
                 self.assertRaises(SystemExit),
                 mock.patch("sys.stderr"),
             ):
@@ -655,16 +618,10 @@ class SqliteIntegrityTests(SimpleTestCase):
     def test_verified_backup_survives_call_during_exception_handling(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
-            # Cleanup must key off this call's own outcome. A caller that is
-            # already handling an unrelated exception must still get a backup,
-            # otherwise rows are deleted against a file that was just removed.
             try:
                 json.loads("{")
             except ValueError:
-                backup_path = sqlite_integrity._create_verified_backup(
-                    db_path,
-                    "0" * 64,
-                )
+                backup_path = sqlite_integrity._create_verified_backup(db_path, "0" * 64)
 
             self.assertTrue(backup_path.is_file())
             backup = sqlite3.connect(f"file:{backup_path}?mode=ro", uri=True)
@@ -685,15 +642,8 @@ class SqliteIntegrityTests(SimpleTestCase):
                 return real_write(*args, **kwargs)
 
             with (
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
-                ),
-                mock.patch.object(
-                    sqlite_integrity,
-                    "_write_incident_report",
-                    side_effect=fail_resolved,
-                ),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{report['incident_token']}"}),
+                mock.patch.object(sqlite_integrity, "_write_incident_report", side_effect=fail_resolved),
                 self.assertRaises(SystemExit),
                 mock.patch("sys.stderr"),
             ):
@@ -729,15 +679,8 @@ class SqliteIntegrityTests(SimpleTestCase):
                 return real_fsync_directory(directory)
 
             with (
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{blocked['incident_token']}"},
-                ),
-                mock.patch.object(
-                    sqlite_integrity,
-                    "_fsync_directory",
-                    side_effect=fail_after_resolved_replace,
-                ),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{blocked['incident_token']}"}),
+                mock.patch.object(sqlite_integrity, "_fsync_directory", side_effect=fail_after_resolved_replace),
                 self.assertRaises(SystemExit),
                 mock.patch("sys.stderr"),
             ):
@@ -781,15 +724,8 @@ class SqliteIntegrityTests(SimpleTestCase):
                 return real_fsync_directory(directory)
 
             with (
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{blocked['incident_token']}"},
-                ),
-                mock.patch.object(
-                    sqlite_integrity,
-                    "_fsync_directory",
-                    side_effect=fail_resolved_and_restoration,
-                ),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{blocked['incident_token']}"}),
+                mock.patch.object(sqlite_integrity, "_fsync_directory", side_effect=fail_resolved_and_restoration),
                 self.assertRaises(SystemExit),
                 mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
             ):
@@ -816,15 +752,8 @@ class SqliteIntegrityTests(SimpleTestCase):
                 return real_write(*args, **kwargs)
 
             with (
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
-                ),
-                mock.patch.object(
-                    sqlite_integrity,
-                    "_write_incident_report",
-                    side_effect=fail_resolved,
-                ),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{report['incident_token']}"}),
+                mock.patch.object(sqlite_integrity, "_write_incident_report", side_effect=fail_resolved),
                 self.assertRaises(SystemExit),
                 mock.patch("sys.stderr"),
             ):
@@ -832,14 +761,11 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             prepared = self.read_incident_report(db_path)
             self.assertEqual(prepared["status"], "prepared")
-            # The operator prunes sqlite-recovery/ after reading the report.
             Path(prepared["backup_path"]).unlink()
 
             with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
                 check_database_integrity(db_path)
 
-            # The delete is already committed and the relationships are clean,
-            # so bookkeeping must not wedge an otherwise healthy container.
             self.assertIn("could not be finalized", stderr.getvalue())
             self.assertEqual(self.read_incident_report(db_path)["status"], "prepared")
 
@@ -864,19 +790,13 @@ class SqliteIntegrityTests(SimpleTestCase):
                 check_database_integrity(db_path)
             report = self.read_incident_report(db_path)
             with (
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
-                ),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{report['incident_token']}"}),
                 mock.patch("sys.stderr"),
             ):
                 check_database_integrity(db_path)
 
             conn = sqlite3.connect(db_path)
-            self.assertEqual(
-                conn.execute("SELECT COUNT(*) FROM main.floppy_fk_conflicts").fetchone()[0],
-                0,
-            )
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM main.floppy_fk_conflicts").fetchone()[0], 0)
             conn.close()
 
     def test_wal_backup_is_complete_and_restorable(self):
@@ -903,10 +823,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 check_database_integrity(db_path)
             report = self.read_incident_report(db_path)
             with (
-                mock.patch.dict(
-                    os.environ,
-                    {_ACTION_ENV: f"quarantine:{report['incident_token']}"},
-                ),
+                mock.patch.dict(os.environ, {_ACTION_ENV: f"quarantine:{report['incident_token']}"}),
                 mock.patch("sys.stderr"),
             ):
                 check_database_integrity(db_path)
@@ -933,7 +850,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 "python": (
                     "#!/bin/sh\n"
                     'case "$*" in\n'
-                    "  *check_database_integrity*)\n"
+                    "  *check_database_for_startup*)\n"
                     '    echo "[entrypoint] bounded integrity failure" >&2\n'
                     "    exit 1\n"
                     "    ;;\n"
@@ -947,9 +864,6 @@ class SqliteIntegrityTests(SimpleTestCase):
                 "sleep": (
                     "#!/bin/sh\n"
                     'echo "$$" > "$PARKING_PID_FILE"\n'
-                    # Sleep for the interval the entrypoint asked for. A shorter
-                    # fixed sleep ends, the parking loop starts another one, and
-                    # the pid file is overwritten while the test reads it.
                     'exec /bin/sleep "$@"\n'
                 ),
             }
@@ -988,9 +902,6 @@ class SqliteIntegrityTests(SimpleTestCase):
                     and time.monotonic() < deadline
                 ):
                     time.sleep(0.02)
-                # Two faults leave parking_child_before_term False and they need
-                # opposite fixes: the wait ran out before the pid file appeared,
-                # or the file appeared naming a process that had already exited.
                 waited_seconds = time.monotonic() - started_waiting
                 pid_file_appeared = (tmp_path / "parking.pid").is_file()
                 parked_before_term = process.poll() is None
@@ -1021,7 +932,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             )
             self.assertEqual(process.returncode, 0)
             self.assertEqual(output.count("bounded integrity failure"), 1)
-            # "Parks once" means the outer loop did not run the check again.
             self.assertEqual(output.count("Checking SQLite storage"), 1, output)
             self.assertNotIn("Still checking SQLite integrity", output)
             self.assertIn("SQLite startup is paused", output)
@@ -1040,7 +950,7 @@ class SqliteIntegrityTests(SimpleTestCase):
             python_wrapper.write_text(
                 "#!/bin/sh\n"
                 'case "$2" in\n'
-                "  *check_database_integrity*)\n"
+                "  *check_database_for_startup*)\n"
                 '    echo "$$" > "$CHECKER_PID_FILE"\n'
                 '    echo "[entrypoint] checker waiting" >&2\n'
                 "    exec /bin/sleep 30\n"
@@ -1073,10 +983,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                     text=True,
                 )
                 deadline = time.monotonic() + 5
-                while (
-                    "checker waiting" not in output_path.read_text()
-                    and time.monotonic() < deadline
-                ):
+                while "checker waiting" not in output_path.read_text() and time.monotonic() < deadline:
                     time.sleep(0.02)
                 process.terminate()
                 process.wait(timeout=5)
@@ -1134,10 +1041,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 return real_connect(path, *args, **kwargs)
 
             with (
-                mock.patch(
-                    "config.sqlite_integrity.sqlite3.connect",
-                    side_effect=connect,
-                ),
+                mock.patch("config.sqlite_integrity.sqlite3.connect", side_effect=connect),
                 mock.patch("sys.stderr"),
             ):
                 check_database_integrity(db_path)
@@ -1181,19 +1085,13 @@ class SqliteIntegrityTests(SimpleTestCase):
                 return real_connect(path, *args, **kwargs)
 
             with (
-                mock.patch(
-                    "config.sqlite_integrity.sqlite3.connect",
-                    side_effect=connect,
-                ),
+                mock.patch("config.sqlite_integrity.sqlite3.connect", side_effect=connect),
                 mock.patch("sys.stderr"),
             ):
                 check_database_integrity(db_path)
 
             verify = sqlite3.connect(db_path)
-            self.assertEqual(
-                verify.execute("SELECT COUNT(*) FROM app_albumartist").fetchone()[0],
-                0,
-            )
+            self.assertEqual(verify.execute("SELECT COUNT(*) FROM app_albumartist").fetchone()[0], 0)
             verify.close()
 
     def test_busy_database_reports_lock_action(self):
@@ -1274,13 +1172,12 @@ class SqliteIntegrityTests(SimpleTestCase):
         script = ENTRYPOINT.read_text()
         check = (
             'timeout "$integrity_timeout" python -c '
-            "'from config.sqlite_integrity import "
-            "check_database_integrity; import sys; "
-            'check_database_integrity(sys.argv[1])\' "$DB_FILE"'
+            "'from config.sqlite_recovery_policy import "
+            "check_database_for_startup; import sys; "
+            'check_database_for_startup(sys.argv[1])\' "$DB_FILE"'
         )
 
         self.assertIn(check, script)
-        # The bound and the message it reports must come from one definition.
         self.assertIn("integrity_timeout=600", script)
         self.assertIn('"$DB_FILE" &', script)
         self.assertNotIn("kill -0", script)
@@ -1323,11 +1220,7 @@ class SqliteIntegrityTests(SimpleTestCase):
                 raise sqlite3.DatabaseError(message)
 
             with (
-                mock.patch.object(
-                    sqlite_integrity,
-                    "_describe_affected",
-                    raise_damaged,
-                ),
+                mock.patch.object(sqlite_integrity, "_describe_affected", raise_damaged),
                 self.assertRaises(SystemExit) as ctx,
                 mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
             ):
@@ -1336,7 +1229,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(ctx.exception.code, 1)
             output = stderr.getvalue()
             self.assertIn("Could not name the affected entries", output)
-            # The operator still gets the report and the way out of the incident.
             report = self.read_incident_report(db_path)
             self.assertEqual(report["status"], "blocked")
             self.assertIn(f"accept:{report['incident_token']}", output)
@@ -1420,14 +1312,12 @@ class SqliteIntegrityTests(SimpleTestCase):
             for i in range(15):
                 file_path = recovery_dir / f"db-backup-{i:02d}.sqlite3"
                 file_path.write_text("backup")
-                # Set distinct mtimes
                 os.utime(file_path, (1000 + i * 10, 1000 + i * 10))
 
             sqlite_integrity._prune_recovery_backups(recovery_dir, max_keep=10)
 
             remaining = sorted(p.name for p in recovery_dir.glob("*.sqlite3"))
             self.assertEqual(len(remaining), 10)
-            # The 5 oldest (00 to 04) must have been pruned
             self.assertNotIn("db-backup-00.sqlite3", remaining)
             self.assertNotIn("db-backup-04.sqlite3", remaining)
             self.assertIn("db-backup-14.sqlite3", remaining)
@@ -1476,5 +1366,3 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(ctx.exception.code, 1)
             self.assertFalse(decision.exists())
             self.assertEqual(self.read_incident_report(db_path)["status"], "corrupt")
-
-
