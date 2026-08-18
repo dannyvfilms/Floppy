@@ -101,20 +101,12 @@ if [ -z "$DB_HOST" ]; then
 
     reject_unsafe_managed_directory FLOPPY_DB_PATH "$DB_PARENT"
 
-    # Check storage before migrations. Known disposable album credits are
-    # repaired; other conflicts require an incident-scoped operator choice.
+    # Check storage before migrations. The recovery policy preserves rows when
+    # a broken nullable reference can be cleared, removes only known derived
+    # relationship rows automatically, and requires an incident-scoped operator
+    # choice before a row with a required missing parent can be removed.
     if [ -f "$DB_FILE" ]; then
         while :; do
-            previous_acceptance=0
-            if ! previous_acceptance=$(python -c 'from config.sqlite_recovery_policy import reopen_previous_acceptance; import sys; print("1" if reopen_previous_acceptance(sys.argv[1]) else "0")' "$DB_FILE"); then
-                echo "[entrypoint] Could not reopen the previous SQLite keep-rows decision. Startup stopped before migrations so the database is unchanged." >&2
-                echo "[entrypoint] ${PREFLIGHT_HINT_RUN}" >&2
-                exit 1
-            fi
-            if [ "$previous_acceptance" = "1" ]; then
-                echo "[entrypoint] The previous keep-rows choice allowed one startup attempt. The same relationship problem is still present, so Floppy will ask for a new recovery choice before another attempt." >&2
-            fi
-
             echo "[entrypoint] Checking SQLite storage and relationships for ${DB_FILE}" >&2
             integrity_status=0
             integrity_pid=
@@ -122,15 +114,7 @@ if [ -z "$DB_HOST" ]; then
             # can never drift apart.
             integrity_timeout=600
             trap 'kill "$integrity_pid" 2>/dev/null || :; wait "$integrity_pid" 2>/dev/null || :; exit 0' TERM INT
-            if [ "$previous_acceptance" = "1" ]; then
-                # A prior keep-rows choice must never turn into an automatic
-                # deletion on the next start. Re-open recovery with both
-                # automatic repair and persistent environment actions disabled.
-                FLOPPY_SQLITE_AUTO_REPAIR=false FLOPPY_SQLITE_CONFLICT_ACTION=halt \
-                    timeout "$integrity_timeout" python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
-            else
-                timeout "$integrity_timeout" python -c 'from config.sqlite_integrity import check_database_integrity; import sys; check_database_integrity(sys.argv[1])' "$DB_FILE" &
-            fi
+            timeout "$integrity_timeout" python -c 'from config.sqlite_recovery_policy import check_database_for_startup; import sys; check_database_for_startup(sys.argv[1])' "$DB_FILE" &
             integrity_pid=$!
             wait "$integrity_pid" || integrity_status=$?
             trap - TERM INT
@@ -157,7 +141,7 @@ if [ -z "$DB_HOST" ]; then
             trap 'kill "$parking_pid" 2>/dev/null || :; wait "$parking_pid" 2>/dev/null || :; exit 0' TERM INT
             # Show the recovery page. It writes a copy beside the database, then
             # serves it. If a choice is submitted, the server exits cleanly so
-            # the loop can apply the decision and continue to migrations.
+            # the loop can apply the decision before migrations run.
             if [ -n "$RUNTIME_SERVER_PORT" ]; then
                 python -m config.sqlite_recovery_server "$DB_FILE" "$RUNTIME_SERVER_PORT" &
             else
