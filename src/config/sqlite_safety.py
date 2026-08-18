@@ -7,7 +7,8 @@ rules, including Docker, source installs, and future packaged distributions.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Callable, MutableMapping, Sequence
+from typing import Any
 
 ALLOWED_JOURNAL_MODES = frozenset(
     {"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"},
@@ -73,3 +74,33 @@ def resolve_sqlite_journal_mode(
         return "DELETE", True
 
     return requested, False
+
+
+def prepare_sqlite_environment(
+    config_reader: Callable[..., Any],
+    environment: MutableMapping[str, str],
+    version_info: Sequence[int] | None = None,
+) -> tuple[str, str, bool] | None:
+    """Validate SQLite settings and publish the safe effective values.
+
+    This runs before Django settings are loaded. Environment values override a
+    local .env file in python-decouple, so the effective values are then read by
+    the existing settings code without a second SQLite policy path.
+    """
+    if config_reader("DB_HOST", default=None):
+        return None
+
+    requested = normalize_sqlite_journal_mode(
+        config_reader("SQLITE_JOURNAL_MODE", default="WAL"),
+    )
+    synchronous = normalize_sqlite_synchronous(
+        config_reader("SQLITE_SYNCHRONOUS", default="NORMAL"),
+    )
+    effective, fallback_applied = resolve_sqlite_journal_mode(
+        requested,
+        version_info,
+    )
+
+    environment["SQLITE_JOURNAL_MODE"] = effective
+    environment["SQLITE_SYNCHRONOUS"] = synchronous
+    return requested, effective, fallback_applied
