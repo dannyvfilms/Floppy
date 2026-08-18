@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import sqlite3
+import stat
 from contextlib import suppress
 from pathlib import Path
 
@@ -204,13 +205,17 @@ def _read_policy_decision(db_path: str, report: dict) -> str | None:
     try:
         descriptor = os.open(
             decision_path,
-            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0),
         )
     except OSError:
         return None
 
     decision = None
     try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
         with os.fdopen(descriptor) as decision_file:
             descriptor = -1
             decision = json.load(decision_file)

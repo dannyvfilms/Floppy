@@ -1,5 +1,7 @@
 import json
+import os
 import tempfile
+import unittest
 from pathlib import Path
 
 from django.test import SimpleTestCase
@@ -78,3 +80,23 @@ class SqliteRecoveryPolicyTests(SimpleTestCase):
 
             self.assertFalse(reopened)
             self.assertEqual(report_path.read_text(), before)
+
+    @unittest.skipUnless(
+        hasattr(os, "mkfifo") and hasattr(os, "O_NONBLOCK"),
+        "requires POSIX FIFO support",
+    )
+    def test_non_regular_decision_file_is_rejected_without_blocking(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = str(Path(tmp_dir) / "db.sqlite3")
+            Path(db_path).touch()
+            decision_path = sqlite_recovery_policy._decision_path(db_path)
+            os.mkfifo(decision_path)
+            report = {
+                "fingerprint": "a" * 64,
+                "incident_token": "b" * 32,
+            }
+
+            decision = sqlite_recovery_policy._read_policy_decision(db_path, report)
+
+            self.assertIsNone(decision)
+            self.assertFalse(decision_path.exists())
