@@ -157,7 +157,7 @@ class SQLiteSafetyTests(TestCase):
             with self.subTest(database_name=database_name):
                 self.assertTrue(sqlite_database_is_memory(database_name))
 
-        self.assertFalse(sqlite_database_is_memory("/tmp/floppy.sqlite3"))
+        self.assertFalse(sqlite_database_is_memory("/var/lib/floppy/db.sqlite3"))
         self.assertFalse(sqlite_database_is_memory("file:floppy.sqlite3?mode=rwc"))
 
     def test_memory_journal_is_expected_only_for_in_memory_database(self):
@@ -172,11 +172,15 @@ class SQLiteSafetyTests(TestCase):
             sqlite_journal_mode_matches(
                 "DELETE",
                 "memory",
-                "/tmp/floppy.sqlite3",
+                "/var/lib/floppy/db.sqlite3",
             ),
         )
 
     def test_matching_persistent_journal_mode_is_accepted(self):
         self.assertTrue(
-            sqlite_journal_mode_matches("DELETE", "delete", "/tmp/floppy.sqlite3"),
+            sqlite_journal_mode_matches(
+                "DELETE",
+                "delete",
+                "/var/lib/floppy/db.sqlite3",
+            ),
         )
