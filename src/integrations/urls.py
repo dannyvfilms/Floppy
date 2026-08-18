@@ -183,7 +183,7 @@ urlpatterns = [
     re_path(
         r"^stremio-addon/(?P<token>[^/]+)/catalog/"
         r"(?P<media_type>movie|series)/"
-        r"(?P<catalog_id>[^/]+?)(?:/[^/]*)?\.json$",
+        r"(?P<catalog_id>[^/]+?)(?:/(?P<extra>[^/]*))?\.json$",
         views.stremio_addon_catalog,
         name="stremio_addon_catalog",
     ),
