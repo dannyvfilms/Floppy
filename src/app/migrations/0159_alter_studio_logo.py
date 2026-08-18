@@ -8,6 +8,15 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.AlterField(
+            model_name="podcastshow",
+            name="rss_feed_url",
+            field=models.TextField(
+                blank=True,
+                default="",
+                help_text="RSS feed URL for fetching full episode list",
+            ),
+        ),
+        migrations.AlterField(
             model_name="studio",
             name="logo",
             field=models.TextField(blank=True, default=""),
