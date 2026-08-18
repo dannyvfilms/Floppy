@@ -48,7 +48,7 @@ class SqliteRecoveryPolicyTests(SimpleTestCase):
             self.assertTrue(reopened)
             report = json.loads(Path(f"{db_path}.integrity.json").read_text())
             self.assertEqual(report["status"], "blocked")
-            self.assertEqual(report["resolution"], "accept-expired")
+            self.assertEqual(report["resolution"], "accept-retired")
             self.assertEqual(report["fingerprint"], "a" * 64)
             self.assertEqual(len(report["incident_token"]), 32)
             self.assertIn("accept", report["actions"])
