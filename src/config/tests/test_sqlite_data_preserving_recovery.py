@@ -45,7 +45,6 @@ class SqliteDataPreservingRecoveryTests(SimpleTestCase):
             );
             INSERT INTO app_item VALUES (1, 'Preserve this music entry', NULL);
             INSERT INTO app_artist VALUES (30);
-            INSERT INTO app_music VALUES (1, 10, 20);
             """
         )
         # Use explicit column lists so this fixture stays readable if the table
@@ -141,7 +140,10 @@ class SqliteDataPreservingRecoveryTests(SimpleTestCase):
 
             conn = sqlite3.connect(db_path)
             self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM app_music").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM app_music").fetchone()[0],
+                1,
+            )
             self.assertEqual(
                 conn.execute("SELECT COUNT(*) FROM app_albumtracker").fetchone()[0],
                 0,
@@ -194,12 +196,18 @@ class SqliteDataPreservingRecoveryTests(SimpleTestCase):
                 check_database_for_startup(db_path)
 
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM app_music").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM app_music").fetchone()[0],
+                1,
+            )
             self.assertEqual(
                 conn.execute("SELECT COUNT(*) FROM app_albumtracker").fetchone()[0],
                 1,
             )
-            self.assertGreater(len(conn.execute("PRAGMA foreign_key_check").fetchall()), 0)
+            self.assertGreater(
+                len(conn.execute("PRAGMA foreign_key_check").fetchall()),
+                0,
+            )
             conn.close()
 
             refreshed = self._read_report(db_path)
