@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 
 from config.sqlite_integrity import (
     _incident_from_report,
+    _log,
     _read_incident_report,
     _write_incident_report,
+    check_database_integrity,
 )
+
+_REOPENED_ENV = {
+    "FLOPPY_SQLITE_AUTO_REPAIR": "false",
+    "FLOPPY_SQLITE_CONFLICT_ACTION": "halt",
+}
 
 
 def reopen_previous_acceptance(db_path: str) -> bool:
@@ -43,3 +51,27 @@ def reopen_previous_acceptance(db_path: str) -> bool:
         incident_token=secrets.token_hex(16),
     )
     return True
+
+
+def check_database_for_startup(db_path: str) -> None:
+    """Run the startup integrity check with one-attempt recovery semantics."""
+    if not reopen_previous_acceptance(db_path):
+        check_database_integrity(db_path)
+        return
+
+    _log(
+        "[entrypoint] The previous keep-rows choice allowed one startup attempt. "
+        "The same relationship problem is still present, so Floppy will ask for "
+        "a new recovery choice before another attempt.",
+    )
+
+    previous = {name: os.environ.get(name) for name in _REOPENED_ENV}
+    try:
+        os.environ.update(_REOPENED_ENV)
+        check_database_integrity(db_path)
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
