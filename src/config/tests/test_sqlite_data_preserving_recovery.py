@@ -7,6 +7,7 @@ from unittest import mock
 
 from django.test import SimpleTestCase
 
+from config import sqlite_recovery_server
 from config.sqlite_recovery_policy import check_database_for_startup
 
 
@@ -116,6 +117,12 @@ class SqliteDataPreservingRecoveryTests(SimpleTestCase):
             self.assertEqual(report["safe_repair"]["references_cleared"], 2)
             self.assertEqual(report["safe_repair"]["relationship_rows_removed"], 1)
             self.assertTrue(Path(report["safe_repair"]["backup_path"]).is_file())
+
+            page = sqlite_recovery_server.render_page(report, interactive=True)
+            self.assertNotIn("action='/accept'", page)
+            self.assertIn("broken relationship", page)
+            self.assertIn("One row can have more than one broken relationship", page)
+            self.assertIn("Repair relationships and start Floppy", page)
 
             Path(f"{db_path}.integrity.decision").write_text(
                 json.dumps(
