@@ -37,6 +37,7 @@ class RecoveryDidNotConvergeError(sqlite3.IntegrityError):
     """Raised when required repair leaves one or more foreign-key conflicts."""
 
     def __init__(self, conflict_count: int):
+        """Record how many relationship conflicts remained after repair."""
         message = f"{conflict_count} relationship conflict(s) remain after repair"
         super().__init__(message)
 
