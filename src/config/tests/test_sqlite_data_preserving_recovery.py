@@ -69,14 +69,16 @@ class SqliteDataPreservingRecoveryTests(SimpleTestCase):
     def _read_report(db_path):
         return json.loads(Path(f"{db_path}.integrity.json").read_text())
 
-    @staticmethod
-    def _assert_tracking_rows_unchanged(db_path):
+    def _assert_tracking_rows_unchanged(self, db_path):
         conn = sqlite3.connect(db_path)
         try:
-            assert conn.execute("SELECT COUNT(*) FROM app_music").fetchone()[0] == 1
-            assert (
-                conn.execute("SELECT COUNT(*) FROM app_albumtracker").fetchone()[0]
-                == 1
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM app_music").fetchone()[0],
+                1,
+            )
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM app_albumtracker").fetchone()[0],
+                1,
             )
         finally:
             conn.close()
