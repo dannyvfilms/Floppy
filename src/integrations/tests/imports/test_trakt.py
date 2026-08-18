@@ -600,12 +600,12 @@ class ImportTrakt(TestCase):
         movie_obj = trakt_importer.bulk_media[MediaTypes.MOVIE.value][0]
         self.assertEqual(movie_obj.notes, "Great movie!")
 
-    @patch("app.providers.tmdb.services.api_request")
+    @patch("integrations.imports.trakt.services.get_media_metadata")
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     def test_process_comments_tmdb_401_raises_clean_import_error(
         self,
         mock_make_request,
-        mock_api_request,
+        mock_get_metadata,
     ):
         """A TMDB 401 aborts comment import with a clear error, not a raw crash."""
         comment_entry = {
@@ -620,7 +620,10 @@ class ImportTrakt(TestCase):
 
         response = Response()
         response.status_code = requests.codes.unauthorized
-        mock_api_request.side_effect = requests.exceptions.HTTPError(response=response)
+        mock_get_metadata.side_effect = services.ProviderAPIError(
+            Sources.TMDB.value,
+            requests.exceptions.HTTPError(response=response),
+        )
 
         trakt_importer = TraktImporter("testuser", self.user, "new")
         with self.assertRaises(MediaImportError):

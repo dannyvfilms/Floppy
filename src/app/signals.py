@@ -70,6 +70,8 @@ TRACKED_TASK_NAMES = frozenset(
         "Import from Steam",
         "Import from Xbox",
         "Import from Xbox (Recurring)",
+        "Import from PSN",
+        "Import from PSN (Recurring)",
         "Import from IMDB",
         "Import from Goodreads",
         "Import from GoodReads",

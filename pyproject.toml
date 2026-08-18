@@ -37,6 +37,7 @@ dependencies = [
     "requests-ratelimiter==0.8.0",
     "supervisor==4.3.0",
     "unidecode==1.4.0",
+    "psnawp==2.0.0",
 ]
 
 [dependency-groups]

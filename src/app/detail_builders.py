@@ -804,6 +804,7 @@ _DETAIL_LINK_BRANDS = {
         "fallback_text": "WD",
     },
     "letterboxd": {
+        "logo_src": static("img/letterboxd-logo.png"),
         "chip_classes": "border-emerald-400/18 bg-emerald-500/[0.07]",
         "badge_classes": "border-emerald-400/28 bg-emerald-500/14",
         "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,

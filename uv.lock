@@ -129,11 +129,11 @@ wheels = [
 
 [[package]]
 name = "attrs"
-version = "26.1.0"
+version = "23.1.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/9a/8e/82a0fe20a541c03148528be8cac2408564a6c9a0cc7e9171802bc1d26985/attrs-26.1.0.tar.gz", hash = "sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32", size = 952055, upload-time = "2026-03-19T14:22:25.026Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/97/90/81f95d5f705be17872843536b1868f351805acf6971251ff07c1b8334dbb/attrs-23.1.0.tar.gz", hash = "sha256:6279836d581513a26f1bf235f9acd333bc9115683f14f7e8fae46c98fc50e015", size = 212878, upload-time = "2023-04-16T10:48:18.214Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl", hash = "sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309", size = 67548, upload-time = "2026-03-19T14:22:23.645Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/eb/fcb708c7bf5056045e9e98f62b93bd7467eb718b0202e7698eb11d66416c/attrs-23.1.0-py3-none-any.whl", hash = "sha256:1f28b4522cdc2fb4256ac1a020c78acf9cba2c6b461ccd2c126f3aa8e8335d04", size = 61160, upload-time = "2023-04-16T10:48:16.358Z" },
 ]
 
 [[package]]
@@ -769,6 +769,7 @@ dependencies = [
     { name = "gunicorn" },
     { name = "icalendar" },
     { name = "pillow" },
+    { name = "psnawp" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pyotp" },
     { name = "pysocks" },
@@ -836,6 +837,7 @@ requires-dist = [
     { name = "gunicorn", specifier = "==25.3.0" },
     { name = "icalendar", specifier = "==7.0.3" },
     { name = "pillow", specifier = "==12.3.0" },
+    { name = "psnawp", specifier = "==2.0.0" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = "==3.3.3" },
     { name = "pyotp", specifier = "==2.9.0" },
     { name = "pysocks", specifier = "==1.7.1" },
@@ -1534,6 +1536,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/61/7c/5c0d34aa3024694d6dcb9271cdbdd08c4e47c1c0ad95ec7e7bc74cdea145/propcache-0.5.2-cp312-cp312-win_amd64.whl", hash = "sha256:d9ee8826a7d47863a08ac44e1a5f611a462eefc3a194b492da242128bec75b42", size = 42322, upload-time = "2026-05-08T21:00:32.918Z" },
     { url = "https://files.pythonhosted.org/packages/4d/91/875812f1a3feb20ceba818ef39fbe4d92f1081e04ac815c822496d0d038b/propcache-0.5.2-cp312-cp312-win_arm64.whl", hash = "sha256:2800a4a8ead6b28cccd1ec54b59346f0def7922ee1c7598e8499c733cfbb7c84", size = 38172, upload-time = "2026-05-08T21:00:35.124Z" },
     { url = "https://files.pythonhosted.org/packages/3a/ed/1cdcab6ba3d6ab7feca11fc14f0eeea80755bb53ef4e892079f31b10a25f/propcache-0.5.2-py3-none-any.whl", hash = "sha256:be1ddfcbb376e3de5d2e2db1d58d6d67463e6b4f9f040c000de8e300295465fe", size = 14036, upload-time = "2026-05-08T21:02:10.673Z" },
+]
+
+[[package]]
+name = "psnawp"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "attrs" },
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a7/02/ce59e098566b10be274cb6796392612b5f5220b8717ee845c3bb4646bdd2/psnawp-2.0.0.tar.gz", hash = "sha256:0ceeae64bc168225ed7ce5401868f98f4fb687dd83bf4d8d33f4f56226782bee", size = 35202, upload-time = "2024-06-17T04:32:58.575Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/30/271f675acece2c8e66be452bd4a008d38b72743bd32878ccb5ba7bf21b02/psnawp-2.0.0-py3-none-any.whl", hash = "sha256:bb5f2222d5cde3cc82839fe6a050bdf99f39d74438fd637b828e7e20f216a2a7", size = 45097, upload-time = "2024-06-17T04:32:56.648Z" },
 ]
 
 [[package]]

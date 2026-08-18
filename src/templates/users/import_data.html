@@ -576,6 +576,18 @@
         </button>
 
         <button type="button"
+                @click="openModal('psn')"
+                x-show="sourceSupports(['games'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            {% source_display "psn" %}
+            {% if psn_account and psn_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Sync played games and hours from PlayStation.</p>
+        </button>
+
+        <button type="button"
                 @click="openModal('imdb')"
                 x-show="sourceSupports(['screen'])"
                 x-transition.opacity.duration.150ms
@@ -2514,6 +2526,108 @@
             <p class="text-xs text-[var(--color-text-muted)]">
               Xbox only reports games you have played, not everything you own, and not every
               title reports hours played.
+            </p>
+          {% endif %}
+        </div>
+          </div>
+        </div>
+
+        {# PlayStation #}
+        <div x-show="activeModal === 'psn'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);"
+               @click.outside="closeModal()">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1 rounded-md hover:bg-gray-700/70 bg-[var(--color-surface)]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">{% source_display "psn" %}</div>
+            {% if psn_account and psn_account.is_connected %}
+              <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Connected</span>
+            {% else %}
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+            {% endif %}
+          </div>
+          {% if psn_account %}
+            {# Server-rendered text matches the initial importFrequency so the copy is right before Alpine binds, and survives if it never does. #}
+            <p class="text-sm text-[var(--color-text-muted)]"
+               x-text="importFrequency === 'once' ? 'Sync played games and hours played from your PlayStation account now.' : 'Sync played games and hours played from your PlayStation account on a schedule.'">
+              {% if user.import_frequency == "once" %}
+                Sync played games and hours played from your PlayStation account now.
+              {% else %}
+                Sync played games and hours played from your PlayStation account on a schedule.
+              {% endif %}
+            </p>
+            {% if psn_account.online_id %}
+              <div class="text-sm text-[var(--color-text-muted)]">Online ID: {{ psn_account.online_id }}</div>
+            {% endif %}
+            {% if psn_account.last_sync_at %}
+              <div class="text-sm text-[var(--color-text-muted)]">Last sync: {{ psn_account.last_sync_at|user_datetime_format:user }}</div>
+            {% endif %}
+            {% if psn_account.last_error_message %}
+              <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
+                <strong>Error:</strong> {{ psn_account.last_error_message }}
+              </div>
+            {% endif %}
+            <div class="flex gap-2">
+              <form method="post" action="{% url 'import_psn' %}">
+                {% csrf_token %}
+                <input type="hidden" name="frequency" x-model="importFrequency">
+                <input type="hidden" name="time" x-model="importTime">
+                <input type="hidden" name="mode" x-model="importMode">
+                <button type="submit"
+                        class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                        x-text="importFrequency === 'once' ? 'Sync Now' : 'Schedule Sync'">
+                  {% if user.import_frequency == "once" %}Sync Now{% else %}Schedule Sync{% endif %}
+                </button>
+              </form>
+              <form method="post" action="{% url 'psn_disconnect' %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
+                  Disconnect
+                </button>
+              </form>
+            </div>
+          {% else %}
+            <p class="text-sm text-[var(--color-text-muted)]">
+              PSN has no public API, so Floppy signs in with your NPSSO token. Log in at
+              <a href="https://www.playstation.com"
+                 target="_blank"
+                 rel="noopener"
+                 class="text-indigo-300 hover:text-indigo-200">playstation.com</a>,
+              then open
+              <a href="https://ca.account.sony.com/api/v1/ssocookie"
+                 target="_blank"
+                 rel="noopener"
+                 class="text-indigo-300 hover:text-indigo-200">this page</a>
+              and paste the npsso value it shows. Don't log out of that browser
+              afterwards, or the token stops working.
+            </p>
+            <form method="post" action="{% url 'psn_connect' %}" class="space-y-3">
+              {% csrf_token %}
+              <input type="hidden" name="frequency" x-model="importFrequency">
+              <input type="hidden" name="time" x-model="importTime">
+              <input type="hidden" name="mode" x-model="importMode">
+              <input name="npsso"
+                     placeholder="PSN NPSSO token"
+                     class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                     type="password">
+              <button type="submit"
+                      class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+                Connect PlayStation
+              </button>
+            </form>
+            <p class="text-xs text-[var(--color-text-muted)]">
+              PSN only reports games you have played, not everything you own. The NPSSO
+              token expires after about two months and then has to be pasted again.
             </p>
           {% endif %}
         </div>

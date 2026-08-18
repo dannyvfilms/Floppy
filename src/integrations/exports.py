@@ -7,6 +7,7 @@ from io import StringIO
 from django.apps import apps
 from django.conf import settings
 from django.db.models import Field
+from django.utils import timezone
 
 from app import helpers
 from app.models import (
@@ -16,7 +17,10 @@ from app.models import (
     Item,
     ItemTag,
     MediaTypes,
+    Movie,
+    MoviePlay,
     Sources,
+    Status,
 )
 from lists.models import CustomList
 
@@ -339,6 +343,119 @@ def generate_list_csv(custom_list):
 
     item_tags_map = _build_item_tags_map(custom_list.owner)
     yield from _generate_single_list_rows(custom_list, writer, fields, item_tags_map)
+
+
+LETTERBOXD_HEADER = [
+    "tmdbID",
+    "imdbID",
+    "Title",
+    "Year",
+    "WatchedDate",
+    "Rating",
+    "Rewatch",
+    "Tags",
+    "Review",
+]
+
+
+def generate_letterboxd_rows(user):
+    """Generate a Letterboxd-import-compatible CSV of the user's watched movies.
+
+    Combines two watch representations into one per-item timeline: individual
+    ``MoviePlay`` rows (the play-tracking feature), and legacy/imported
+    completions recorded as a standalone ``Movie`` row with no ``MoviePlay``
+    -- including repeat watches stored as separate ``Movie`` rows sharing the
+    same ``Item`` (see ``test_repeated_completed_plays_remain_separate``).
+    Watches are grouped by underlying ``Item`` rather than ``Movie`` row, so a
+    legacy repeat-watch row still rewatch-flags correctly, and ordered
+    chronologically (undated watches sorted last) to pick the first watch per
+    item. A ``Movie`` with neither a ``MoviePlay`` nor ``Status.COMPLETED`` was
+    never watched and is excluded; a ``Completed`` movie with no watch date
+    still exports with a blank ``WatchedDate`` rather than being dropped.
+    """
+    pseudo_buffer = Echo()
+    writer = csv.writer(pseudo_buffer, quoting=csv.QUOTE_MINIMAL)
+
+    yield writer.writerow(LETTERBOXD_HEADER)
+
+    item_tags_map = _build_item_tags_map(user)
+
+    # (item_id, watched_at, movie) for every discrete watch event, from both
+    # representations. Small enough to hold in memory per user (bounded by
+    # movie count, not episode-scale) so watches can be grouped and ordered
+    # by underlying item before rewatch flags are assigned.
+    events = []
+
+    plays = MoviePlay.objects.filter(
+        movie__user=user,
+        end_date__isnull=False,
+    ).select_related("movie", "movie__item")
+    for play in plays:
+        movie = play.movie
+        if movie.item is None:
+            continue
+        events.append((movie.item_id, play.end_date, movie))
+
+    movie_ids_with_plays = MoviePlay.objects.filter(movie__user=user).values_list(
+        "movie_id",
+        flat=True,
+    ).distinct()
+    fallback_movies = (
+        Movie.objects.filter(user=user, status=Status.COMPLETED.value)
+        .exclude(id__in=movie_ids_with_plays)
+        .select_related("item")
+    )
+    for movie in fallback_movies:
+        if movie.item is None:
+            continue
+        events.append((movie.item_id, movie.end_date, movie))
+
+    events.sort(key=lambda event: (event[0], event[1] is None, event[1]))
+
+    seen_item_ids = set()
+    for item_id, watched_at, movie in events:
+        is_rewatch = item_id in seen_item_ids
+        seen_item_ids.add(item_id)
+        yield writer.writerow(
+            _letterboxd_row(movie, watched_at, is_rewatch, item_tags_map),
+        )
+
+
+def _letterboxd_score_to_rating(score):
+    """Convert a Floppy 0.0-10.0 score to Letterboxd's 0.5-5 star rating."""
+    if score is None:
+        return ""
+    rating = round(float(score) / 2 * 2) / 2
+    if rating <= 0:
+        return ""
+    return rating
+
+
+def _letterboxd_row(movie, watched_at, is_rewatch, item_tags_map):
+    """Build a single Letterboxd CSV row for one watch of a movie."""
+    item = movie.item
+    tmdb_id = item.media_id if item.source == Sources.TMDB.value else ""
+    if item.source == Sources.IMDB.value:
+        imdb_id = item.media_id
+    else:
+        imdb_id = (item.provider_external_ids or {}).get("imdb_id", "")
+    year = item.release_datetime.year if item.release_datetime else ""
+    watched_date = (
+        timezone.localtime(watched_at).date().isoformat() if watched_at else ""
+    )
+    tags = ", ".join(item_tags_map.get(item.id, []))
+
+    return [
+        tmdb_id,
+        imdb_id,
+        item.title,
+        year,
+        watched_date,
+        _letterboxd_score_to_rating(movie.score),
+        "true" if is_rewatch else "",
+        tags,
+        movie.notes or "",
+    ]
 
 
 def _generate_collection_rows(user, writer, fields, media_types, item_tags_map):

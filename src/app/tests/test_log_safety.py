@@ -130,6 +130,14 @@ class LogSafetyTests(SimpleTestCase):
         self.assertNotIn("hunter2", result)
         self.assertIn("size=10", result)
 
+    def test_redact_secrets_strips_npsso_tokens(self):
+        line = "psn login npsso=aBcDeF0123456789 platform=ps5"
+
+        result = redact_secrets(line)
+
+        self.assertNotIn("aBcDeF0123456789", result)
+        self.assertIn("platform=ps5", result)
+
     def test_redact_secrets_strips_quoted_json_values_with_spaces(self):
         result = redact_secrets('{"password": "two words", "size": 10}')
 

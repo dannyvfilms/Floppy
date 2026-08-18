@@ -17,3 +17,14 @@ class GoodreadsTaskRegistrationTests(SimpleTestCase):
 
         for task_name in tasks.LEGACY_GOODREADS_IMPORT_TASK_NAMES:
             self.assertIn(task_name, app.tasks)
+
+
+class PSNTaskRegistrationTests(SimpleTestCase):
+    """Tests for PSN Celery task registration."""
+
+    def test_psn_task_pair_registers_by_name(self):
+        """Workers and beat schedules address the PSN tasks by these names."""
+        self.assertEqual(tasks.import_psn.name, "Import from PSN")
+        self.assertEqual(tasks.import_psn_recurring.name, "Import from PSN (Recurring)")
+        self.assertIn("Import from PSN", app.tasks)
+        self.assertIn("Import from PSN (Recurring)", app.tasks)

@@ -254,6 +254,36 @@
                 <ul class="space-y-1">
                   {% url 'create_entry' as create_entry_url %}
                   {% url 'history' as history_url %}
+                  {% url 'calendar' as calendar_url %}
+                  <li>
+                    <a href="{{ calendar_url }}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == calendar_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:calendar_url %}
+                        {% include "app/icons/calendar.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+
+                      {% else %}
+                        {% include "app/icons/calendar.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>Calendar</span>
+                    </a>
+                  </li>
+
+                  {% url 'collection_list' as collection_list_url %}
+                  <li>
+                    <a href="{{ collection_list_url }}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == collection_list_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:collection_list_url %}
+                        {% include "app/icons/cube.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+
+                      {% else %}
+                        {% include "app/icons/cube.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>Collection</span>
+                    </a>
+                  </li>
+
                   <li>
                     <a href="{{ create_entry_url }}"
                        class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == create_entry_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
@@ -264,7 +294,7 @@
                         {% include "app/icons/circle-plus.svg" with classes="w-5 h-5" %}
 
                       {% endif %}
-                      <span>Create Custom</span>
+                      <span>Custom</span>
                     </a>
                   </li>
 
@@ -273,21 +303,6 @@
                        class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == history_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
                       {% icon 'history' is_active=request.path|str_equals:history_url %}
                       <span>History</span>
-                    </a>
-                  </li>
-
-                  {% url 'statistics' as statistics_url %}
-                  <li>
-                    <a href="{{ statistics_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == statistics_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:statistics_url %}
-                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>Statistics</span>
                     </a>
                   </li>
 
@@ -306,18 +321,18 @@
                     </a>
                   </li>
 
-                  {% url 'calendar' as calendar_url %}
+                  {% url 'statistics' as statistics_url %}
                   <li>
-                    <a href="{{ calendar_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == calendar_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:calendar_url %}
-                        {% include "app/icons/calendar.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+                    <a href="{{ statistics_url }}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == statistics_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:statistics_url %}
+                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
 
                       {% else %}
-                        {% include "app/icons/calendar.svg" with classes="w-5 h-5" %}
+                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5" %}
 
                       {% endif %}
-                      <span>Calendar</span>
+                      <span>Statistics</span>
                     </a>
                   </li>
 

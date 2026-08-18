@@ -1,0 +1,47 @@
+{% load app_tags %}
+{% load user_tags %}
+
+{% if not is_pagination %}
+  <div class="bg-[var(--color-surface)] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll">
+    <table class="w-full bg-[var(--color-surface)] media-table">
+      <thead class="text-left text-[var(--color-text-muted)] text-sm">
+        <tr>
+          <th class="px-2 py-2">Title</th>
+          <th class="px-2 py-2">Type</th>
+          <th class="px-2 py-2">Format</th>
+          <th class="px-2 py-2">Resolution</th>
+          <th class="px-2 py-2">Collected</th>
+        </tr>
+      </thead>
+      <tbody id="collection-table-body">
+{% endif %}
+{% for entry in collection_entries %}
+  <tr class="hover:bg-[var(--color-surface-strong)] transition-colors"
+      {% if forloop.last and collection_entries.has_next %}
+      hx-get="{% url 'collection_list' %}?page={{ collection_entries.next_page_number }}"
+      hx-trigger="revealed threshold:150px once"
+      hx-swap="beforeend"
+      hx-target="#collection-table-body"
+      hx-include="#filter-form"
+      hx-indicator="#collection-loading-indicator"
+      {% endif %}>
+    <td class="px-2 py-3">
+      <a href="{{ entry.item|media_url }}" class="flex items-center gap-3">
+        <img src="{{ entry.item.image|default:IMG_NONE }}"
+             class="w-10 h-14 object-cover bg-[var(--color-surface-alt)] rounded shrink-0"
+             loading="lazy"
+             alt="">
+        <span class="text-[var(--color-text)]">{{ entry.item|display_title:user }}</span>
+      </a>
+    </td>
+    <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.item.media_type|media_type_readable }}</td>
+    <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.media_type|default:"—" }}</td>
+    <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.resolution|default:"—" }}</td>
+    <td class="px-2 py-3 text-sm text-[var(--color-text-muted)]">{{ entry.collected_at|user_date_format:user }}</td>
+  </tr>
+{% endfor %}
+{% if not is_pagination %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}

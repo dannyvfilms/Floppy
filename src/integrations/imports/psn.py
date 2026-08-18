@@ -1,9 +1,14 @@
-"""Xbox importer for played games and hours played.
+"""PlayStation Network importer for played games and hours played.
 
-Xbox Live exposes no purchase library, so "owned" is approximated by every title
-the account has played (see :mod:`integrations.xbox_api`). Hours played come
-from the per-title ``MinutesPlayed`` stat, which not every title publishes -- a
-missing value means unknown and must never overwrite existing progress.
+PSN exposes no clean purchase library, so "owned" is approximated by every
+title the account has played (see :mod:`integrations.psn_api`). Hours played
+come from ``title_stats``' cumulative play duration, which PSN reports for
+every played title.
+
+One game can appear under several title IDs -- the PS4 and PS5 releases, or
+regional variants -- that all resolve to the same IGDB game, so matches are
+aggregated by IGDB ID before anything is written: play durations add up,
+the most recent last-played date wins.
 """
 
 import logging
@@ -12,21 +17,19 @@ from collections import defaultdict
 from datetime import timedelta
 
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 
 import app
 from app.log_safety import exception_summary, redact_secrets
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
-from app.providers.igdb import ExternalGameSource, external_game
-from integrations import import_progress, xbox_api
+from integrations import import_progress, psn_api
 from integrations.imports import helpers, title_matching
 from integrations.imports.helpers import MediaImportError
-from integrations.models import XboxAccount
+from integrations.models import PSNAccount
 
 logger = logging.getLogger(__name__)
 
-IMPORT_NOTE = "Imported from Xbox"
+IMPORT_NOTE = "Imported from PlayStation Network"
 RECENTLY_PLAYED_DAYS = 14
 
 # last_error_message is rendered on the import page and kept until the next
@@ -34,27 +37,36 @@ RECENTLY_PLAYED_DAYS = 14
 # whatever an exception happened to stringify to.
 MAX_ERROR_MESSAGE_LENGTH = 500
 
-# Xbox reports a played library, so only the two library-sync modes mean
+# PSN reports a played library, so only the two library-sync modes mean
 # anything here; "watchlist" and "update_collection" have nothing to act on and
 # would otherwise be silently treated as "new".
 SUPPORTED_MODES = frozenset({"new", "overwrite"})
 
-# 360-era marketplace product GUIDs are this prefix plus the title ID in hex;
-# IGDB indexes them as its Xbox Marketplace external-game source.
-XBOX_MARKETPLACE_GUID_PREFIX = "66acd000-77fe-1000-9115-d802"
-MAX_TITLE_ID = 0xFFFFFFFF
-LEGACY_DEVICES = {"Xbox", "Xbox360"}
-
-# The Xbox store decorates titles in ways IGDB doesn't ("Isonzo (Windows)",
-# "Battlefield 2042 Xbox Series X|S"); stripping these recovers matches.
+# The PlayStation store decorates titles in ways IGDB doesn't
+# ("It Takes Two  PS4™ & PS5™"); stripping these recovers matches. IGDB's
+# PlayStation-store external IDs are numeric store product IDs, not the
+# CUSA/PPSA title IDs PSN reports, so unlike Xbox's 360-era GUIDs there is no
+# exact-ID fallback -- matching is by name only.
 STORE_SUFFIX_RE = re.compile(
     r"\s*(?:"
     r"\([^)]*\)"
-    r"|(?:[" + title_matching.DASHES + r":]\s*|\bfor\s+)(?:xbox|windows|pc)\b.*"
-    r"|xbox\s+(?:series\s+[xs](?:\|[xs])?|one|360)\b.*"
+    r"|(?:[" + title_matching.DASHES + r":]\s*|\bfor\s+|\s)"
+    r"(?:playstation\s*[45]|ps[45])"
+    r"(?:\s*&\s*(?:playstation\s*[45]|ps[45]))*"
     r")\s*$",
     re.IGNORECASE,
 )
+
+# PSN store names use characters IGDB doesn't: single-codepoint Roman numerals
+# ("FINAL FANTASY Ⅻ") and trademark symbols glued between words
+# ("Gran Turismo™SPORT", which must become "Gran Turismo SPORT", not
+# "Gran TurismoSPORT").
+ROMAN_NUMERALS = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
+                  "XI", "XII")
+ROMAN_NUMERAL_NORMALIZATIONS = str.maketrans(
+    {chr(0x2160 + index): numeral for index, numeral in enumerate(ROMAN_NUMERALS)},
+)
+SPACE_BEFORE_PUNCTUATION_RE = re.compile(r"\s+([:,!?])")
 
 
 def _safe_message(message):
@@ -65,45 +77,31 @@ def _safe_message(message):
     return scrubbed
 
 
+def _normalize_name(name):
+    """Replace PSN store characters that never appear in IGDB names."""
+    name = name.translate(ROMAN_NUMERAL_NORMALIZATIONS)
+    name = title_matching.TRADEMARK_RE.sub(" ", name)
+    return SPACE_BEFORE_PUNCTUATION_RE.sub(r"\1", " ".join(name.split()))
+
+
 def _search_names(name):
-    """Yield search candidates for an Xbox store title, most faithful first."""
-    return title_matching.search_names(name, STORE_SUFFIX_RE)
-
-
-def _simplify_title(name):
-    """Strip trademark symbols and Xbox store decorations from a title."""
-    return title_matching.simplify_title(name, STORE_SUFFIX_RE)
-
-
-def _strip_decorations(name):
-    """Strip edition suffixes and publisher brand prefixes from a title."""
-    return title_matching.strip_decorations(name)
-
-
-def _marketplace_guid(title_id):
-    """Return the Xbox 360 marketplace product GUID for a title ID, if valid."""
-    try:
-        numeric = int(str(title_id))
-    except (TypeError, ValueError):
-        return None
-    if not 0 < numeric <= MAX_TITLE_ID:
-        return None
-    return f"{XBOX_MARKETPLACE_GUID_PREFIX}{numeric:08x}"
+    """Yield search candidates for a PSN store title, most faithful first."""
+    return title_matching.search_names(_normalize_name(name), STORE_SUFFIX_RE)
 
 
 def importer(identifier, user, mode):
-    """Import the user's played games from their connected Xbox account."""
-    return XboxImporter(user, mode).import_data()
+    """Import the user's played games from their connected PSN account."""
+    return PSNImporter(user, mode).import_data()
 
 
-class XboxImporter:
-    """Import played games and hours played from Xbox Live via OpenXBL."""
+class PSNImporter:
+    """Import played games and hours played from PlayStation Network."""
 
     def __init__(self, user, mode):
         """Initialize the importer and validate account access."""
         if mode not in SUPPORTED_MODES:
             msg = (
-                f"Unsupported Xbox import mode {mode!r}. "
+                f"Unsupported PSN import mode {mode!r}. "
                 f"Choose one of: {', '.join(sorted(SUPPORTED_MODES))}."
             )
             raise MediaImportError(msg)
@@ -113,17 +111,17 @@ class XboxImporter:
         self.warnings = []
 
         try:
-            self.account = user.xbox_account
-        except XboxAccount.DoesNotExist as error:
-            msg = "Connect Xbox before importing"
+            self.account = user.psn_account
+        except PSNAccount.DoesNotExist as error:
+            msg = "Connect PlayStation Network before importing"
             raise MediaImportError(msg) from error
 
-        if not self.account.api_key:
-            msg = "Connect Xbox before importing"
+        if not self.account.npsso:
+            msg = "Connect PlayStation Network before importing"
             raise MediaImportError(msg)
 
         try:
-            self.api_key = helpers.decrypt_or_raise(self.account.api_key)
+            self.npsso = helpers.decrypt_or_raise(self.account.npsso)
         except MediaImportError as decrypt_error:
             self._mark_broken(str(decrypt_error))
             raise
@@ -141,53 +139,60 @@ class XboxImporter:
         self.first_failure = ""
 
         logger.info(
-            "Initialized Xbox importer for user %s with mode %s",
+            "Initialized PSN importer for user %s with mode %s",
             user.username,
             mode,
         )
 
     def import_data(self):
-        """Import the account's played Xbox titles."""
+        """Import the account's played PSN titles."""
         try:
-            xuid = self._resolve_xuid()
-            titles = xbox_api.get_played_titles(self.api_key, xuid)
-            minutes_by_title = xbox_api.get_minutes_played(
-                self.api_key,
-                xuid,
-                titles.keys(),
-            )
+            titles, skipped = psn_api.get_played_games(self.npsso)
         except MediaImportError as error:
             self._mark_broken(str(error))
             raise
         except Exception as error:
-            # xbox_api translates the failures it knows about; anything else
+            # psn_api translates the failures it knows about; anything else
             # would otherwise leave the account reading as connected while
             # every scheduled run keeps failing. The summary names the
             # exception type only -- the traceback goes to the log.
             logger.exception(
-                "Xbox library fetch failed for user %s",
+                "PSN library fetch failed for user %s",
                 self.user.username,
             )
             msg = (
-                "Xbox import failed while fetching your library "
+                "PSN import failed while fetching your library "
                 f"({exception_summary(error)}). Check the logs for details."
             )
             self._mark_broken(msg)
             raise MediaImportError(msg) from error
 
+        if skipped:
+            # The genre heuristic behind the app filter is best-effort; a
+            # misclassified game must be auditable by the user, not only
+            # visible in the server log.
+            self.warnings.append(
+                f"Skipped {len(skipped)} non-game apps (no genres in the "
+                f"PlayStation store): {', '.join(sorted(skipped))}",
+            )
+
         if not titles:
-            logger.info("No Xbox titles found for user %s", self.user.username)
+            logger.info("No PSN titles found for user %s", self.user.username)
             self._mark_synced()
-            return {}, ""
+            return {}, "\n".join(dict.fromkeys(self.warnings))
 
         total = len(titles)
-        for index, (title_id, title) in enumerate(titles.items(), start=1):
-            import_progress.report(index, total, "Xbox")
-            self._process_title(title_id, title, minutes_by_title.get(title_id))
+        aggregated = {}
+        for index, title in enumerate(titles, start=1):
+            import_progress.report(index, total, "PSN")
+            self._process_title(title, aggregated)
+
+        for media_id, aggregate in aggregated.items():
+            self._store_game(media_id, aggregate)
 
         matched = len(self.bulk_media[MediaTypes.GAME.value]) + len(self.to_update)
         logger.info(
-            "Xbox: %d titles, %d matched, %d lookup failures (%d provider errors)",
+            "PSN: %d titles, %d matched, %d lookup failures (%d provider errors)",
             total,
             matched,
             self.lookup_failures,
@@ -198,13 +203,13 @@ class XboxImporter:
             if self.provider_failures == self.lookup_failures:
                 msg = (
                     f"Could not reach {Sources.IGDB.label}: all "
-                    f"{self.lookup_failures} of {total} Xbox titles failed to "
+                    f"{self.lookup_failures} of {total} PSN titles failed to "
                     f"look up. Check the {Sources.IGDB.label} credentials on "
                     f"this instance."
                 )
             else:
                 msg = (
-                    f"All {self.lookup_failures} of {total} Xbox titles failed "
+                    f"All {self.lookup_failures} of {total} PSN titles failed "
                     f"to import. First error: {self.first_failure}"
                 )
             self._mark_broken(msg)
@@ -215,8 +220,22 @@ class XboxImporter:
         if self.to_update:
             app.models.Game.objects.bulk_update(
                 self.to_update,
-                fields=["progress", "status"],
+                fields=["progress"],
             )
+            # Statuses are written with the Completed/Dropped guard enforced
+            # by the database, not only by the snapshot read at the start of
+            # the run: the IGDB matching phase is long, and a user marking a
+            # game Completed or Dropped mid-sync must not have that clobbered
+            # by a status computed from stale data.
+            protected = {Status.COMPLETED.value, Status.DROPPED.value}
+            pks_by_status = defaultdict(list)
+            for game in self.to_update:
+                if game.status not in protected:
+                    pks_by_status[game.status].append(game.pk)
+            for status_value, pks in pks_by_status.items():
+                app.models.Game.objects.filter(pk__in=pks).exclude(
+                    status__in=protected,
+                ).update(status=status_value)
             logger.info(
                 "Updated %d existing games for user %s",
                 len(self.to_update),
@@ -236,28 +255,11 @@ class XboxImporter:
             for media_type, media_list in self.bulk_media.items()
         }
         logger.info(
-            "Xbox import completed for user %s: %s",
+            "PSN import completed for user %s: %s",
             self.user.username,
             imported_counts,
         )
         return imported_counts, "\n".join(dict.fromkeys(self.warnings))
-
-    def _resolve_xuid(self):
-        """Return the account's XUID, refusing to import without one.
-
-        Every title endpoint is keyed by XUID, and an empty one silently
-        requests a truncated path instead of failing, so it must be caught here.
-        """
-        xuid = str(self.account.xuid or "").strip()
-        if not xuid:
-            xuid = str(xbox_api.get_account(self.api_key)[0] or "").strip()
-        if not xuid:
-            msg = (
-                "OpenXBL returned no XUID for this API key. "
-                "Reconnect your Xbox account."
-            )
-            raise MediaImportError(msg)
-        return xuid
 
     def _mark_synced(self):
         """Record a successful sync on the account row."""
@@ -287,17 +289,18 @@ class XboxImporter:
         if not self.first_failure:
             self.first_failure = detail
 
-    def _process_title(self, title_id, title, minutes):
-        """Process a single Xbox title from the played-titles list."""
-        name = title.get("name") or f"Unknown Game {title_id}"
+    def _process_title(self, title, aggregated):
+        """Match a PSN title to IGDB and fold it into the aggregate."""
+        title_id = title["title_id"]
+        name = title["name"] or f"Unknown Game {title_id}"
 
         try:
-            igdb_game = self._match_with_igdb(title, name)
+            igdb_game = self._match_with_igdb(name)
         except services.ProviderAPIError as e:
             # ProviderAPIError writes its own user-facing message and keeps the
             # response body out of it; scrub it anyway before it is persisted.
             logger.warning(
-                "IGDB lookup failed for Xbox title %s: %s",
+                "IGDB lookup failed for PSN title %s: %s",
                 name,
                 exception_summary(e),
             )
@@ -311,7 +314,7 @@ class XboxImporter:
             # can carry the request URL, the response body, or the credentials
             # sent with it, and the first one seen ends up on the account row.
             logger.exception(
-                "Failed to process Xbox title %s (%s)",
+                "Failed to process PSN title %s (%s)",
                 name,
                 title_id,
             )
@@ -322,7 +325,7 @@ class XboxImporter:
 
         if not igdb_game:
             logger.debug(
-                "Skipping Xbox title %s (titleId: %s) - no IGDB match found",
+                "Skipping PSN title %s (titleId: %s) - no IGDB match found",
                 name,
                 title_id,
             )
@@ -331,30 +334,55 @@ class XboxImporter:
             )
             return
 
-        last_played = self._last_time_played(title)
         media_id = str(igdb_game["media_id"])
+        aggregate = aggregated.setdefault(
+            media_id,
+            {
+                "title": igdb_game["title"],
+                "image": igdb_game["image"],
+                "minutes": 0,
+                "last_played": None,
+            },
+        )
+        aggregate["minutes"] += title["minutes"]
+        last_played = title["last_played"]
+        if last_played and (
+            aggregate["last_played"] is None
+            or last_played > aggregate["last_played"]
+        ):
+            aggregate["last_played"] = last_played
 
+    def _store_game(self, media_id, aggregate):
+        """Create or update the game a set of PSN titles resolved to."""
         if media_id in self.deleted_media[MediaTypes.GAME.value][Sources.IGDB.value]:
-            # Xbox keeps reporting a title forever once it has been launched,
+            # PSN keeps reporting a title forever once it has been launched,
             # so without this every scheduled sync resurrects a game the user
             # deleted here on purpose.
             logger.debug(
-                "Skipping deleted Xbox game: %s (%s) - deleted locally",
-                name,
+                "Skipping deleted PSN game: %s (%s) - deleted locally",
+                aggregate["title"],
                 media_id,
             )
             return
 
+        minutes = aggregate["minutes"]
+        last_played = aggregate["last_played"]
         existing = self.existing_media[MediaTypes.GAME.value][Sources.IGDB.value].get(
             media_id,
         )
 
         if existing:
             if self.mode == "overwrite":
-                # Xbox only reports MinutesPlayed for titles that publish it;
-                # leave progress alone rather than zeroing tracked hours.
-                if minutes is not None:
-                    existing.progress = minutes
+                # PSN's cumulative play duration only ever grows, so an
+                # aggregate below the stored progress never means the user
+                # played less: it means incomplete data -- a sibling title ID
+                # whose IGDB lookup failed this run, or a title whose
+                # playDuration PSN reports as absent (psnawp collapses that
+                # to zero). Mirror the Xbox importer's invariant that unknown
+                # playtime must never overwrite tracked hours: progress is
+                # only ever raised.
+                minutes = max(existing.progress, minutes)
+                existing.progress = minutes
                 if existing.status not in {
                     Status.COMPLETED.value,
                     Status.DROPPED.value,
@@ -363,8 +391,8 @@ class XboxImporter:
                 self.to_update.append(existing)
 
             item = existing.item
-            item.title = igdb_game["title"]
-            item.image = igdb_game["image"]
+            item.title = aggregate["title"]
+            item.image = aggregate["image"]
             self.to_update_meta.append(item)
             return
 
@@ -372,7 +400,7 @@ class XboxImporter:
             media_id=media_id,
             source=Sources.IGDB.value,
             media_type=MediaTypes.GAME.value,
-            defaults={"title": igdb_game["title"], "image": igdb_game["image"]},
+            defaults={"title": aggregate["title"], "image": aggregate["image"]},
         )
         self.bulk_media[MediaTypes.GAME.value].append(
             app.models.Game(
@@ -380,34 +408,24 @@ class XboxImporter:
                 user=self.user,
                 status=self._determine_game_status(minutes, last_played),
                 score=None,
-                progress=minutes or 0,
+                progress=minutes,
                 notes=IMPORT_NOTE,
                 start_date=None,
                 end_date=None,
             ),
         )
 
-    def _last_time_played(self, title):
-        """Return the title's last played datetime, if Xbox reported one."""
-        raw = (title.get("titleHistory") or {}).get("lastTimePlayed")
-        if not raw:
-            return None
-        try:
-            return parse_datetime(raw)
-        except ValueError:
-            return None
-
     def _determine_game_status(self, minutes, last_played):
-        """Determine game status from Xbox playtime and last played date.
+        """Determine game status from PSN playtime and last played date.
 
         Args:
-            minutes (int | None): Total minutes played, or None if unreported
-            last_played (datetime | None): When the title was last launched
+            minutes (int): Total minutes played across all title IDs
+            last_played (datetime | None): When the game was last launched
 
         Returns:
             str: Status value from Status choices
         """
-        # Never launched and no playtime reported.
+        # Never meaningfully launched.
         if not minutes and last_played is None:
             return Status.PLANNING.value
 
@@ -420,21 +438,13 @@ class XboxImporter:
 
         return Status.PAUSED.value
 
-    def _match_with_igdb(self, title, name):
-        """Match an Xbox title to IGDB.
+    def _match_with_igdb(self, name):
+        """Match a PSN title to IGDB by name.
 
-        360-era titles resolve by marketplace GUID first, sidestepping that
-        era's truncated store names ("MCLA: Complete"). Modern titles expose
-        no identifier IGDB indexes (``detail`` is always null, and neither
-        the PFN nor the raw title ID resolves), so they match by name, with
-        the GUID lookup as a last resort.
+        PSN's CUSA/PPSA title IDs have no IGDB counterpart (IGDB's
+        PlayStation-store external IDs are numeric store product IDs), so
+        name search is the only option.
         """
-        is_legacy = bool(LEGACY_DEVICES & set(title.get("devices") or []))
-        if is_legacy:
-            match = self._match_by_marketplace_guid(title, name)
-            if match:
-                return match
-
         # Pin the source: the Item below is written as IGDB either way.
         for candidate in _search_names(name):
             results = services.search(
@@ -448,7 +458,7 @@ class XboxImporter:
 
             match = results[0]
             logger.info(
-                "Matched Xbox title %s with IGDB ID %s by name %r",
+                "Matched PSN title %s with IGDB ID %s by name %r",
                 name,
                 match["media_id"],
                 candidate,
@@ -459,33 +469,4 @@ class XboxImporter:
                 "image": match["image"],
             }
 
-        if not is_legacy:
-            return self._match_by_marketplace_guid(title, name)
         return None
-
-    def _match_by_marketplace_guid(self, title, name):
-        """Match a title via IGDB's Xbox Marketplace external-game source."""
-        guid = _marketplace_guid(title.get("titleId"))
-        if not guid:
-            return None
-
-        igdb_game_id = external_game(guid, ExternalGameSource.XBOX_MARKETPLACE)
-        if not igdb_game_id:
-            return None
-
-        game_details = services.get_media_metadata(
-            MediaTypes.GAME.value,
-            str(igdb_game_id),
-            Sources.IGDB.value,
-        )
-        logger.info(
-            "Matched Xbox title %s with IGDB ID %s via marketplace GUID %s",
-            name,
-            igdb_game_id,
-            guid,
-        )
-        return {
-            "media_id": igdb_game_id,
-            "title": game_details.get("title", name),
-            "image": game_details["image"],
-        }

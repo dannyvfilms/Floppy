@@ -1288,6 +1288,14 @@ def integrations(request):
         ]
 
     jellyfin_account = getattr(user, "jellyfin_account", None)
+    jellyfin_playback_reporting_import = (
+        ImportRun.objects.filter(
+            user=user,
+            source="jellyfin_playback_reporting",
+        )
+        .order_by("-started_at")
+        .first()
+    )
     plex_webhook_shares = list(
         PlexWebhookShare.objects.filter(owner=user)
         .select_related("recipient")
@@ -1327,6 +1335,7 @@ def integrations(request):
             "plex_share_recipients": plex_share_recipients,
             "plex_connected": bool(plex_account and plex_account.plex_token),
             "jellyfin_account": jellyfin_account,
+            "jellyfin_playback_reporting_import": jellyfin_playback_reporting_import,
             "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
         },
     )
@@ -1370,6 +1379,7 @@ def import_data(request):
     sonarr_account = getattr(user, "sonarr_account", None)
     stremio_account = getattr(user, "stremio_account", None)
     xbox_account = getattr(user, "xbox_account", None)
+    psn_account = getattr(user, "psn_account", None)
 
     audiobookshelf_poll_interval = getattr(
         settings, "AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES", 15
@@ -1439,6 +1449,7 @@ def import_data(request):
         "sonarr_account": sonarr_account,
         "stremio_account": stremio_account,
         "xbox_account": xbox_account,
+        "psn_account": psn_account,
         "lastfm_periodic_task": lastfm_periodic_task,
         "lastfm_poll_interval": lastfm_poll_interval,
         "lastfm_history_status_label": lastfm_history_status_label,

@@ -1635,7 +1635,7 @@ class MediaDetailsViewTests(TestCase):
                             "chip_classes": "border-emerald-400/18 bg-emerald-500/[0.07]",
                             "badge_classes": "border-emerald-400/28 bg-emerald-500/14",
                             "accent_classes": "text-[var(--color-text)]",
-                            "logo_src": None,
+                            "logo_src": "/static/img/letterboxd-logo.png",
                             "fallback_text": "LB",
                         },
                         {

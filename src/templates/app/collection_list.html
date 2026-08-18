@@ -1,15 +1,417 @@
 {% extends "base.html" %}
+{% load app_tags %}
+
+{% block title %}
+  Collection - Floppy
+{% endblock title %}
 
 {% block content %}
-<h1>Collection</h1>
-{% if media_type %}
-<p>Filtered by: {{ media_type }}</p>
-{% endif %}
-<ul>
-{% for entry in collection_entries %}
-    <li>{{ entry.item.title }}</li>
-{% empty %}
-    <li>No collection entries</li>
-{% endfor %}
-</ul>
-{% endblock %}
+  <div x-data="{
+    sort: '{{ sort_by }}',
+    direction: '{{ direction }}',
+    layout: '{{ layout }}',
+    renderedLayout: '{{ layout }}',
+    type: '{{ media_type|default:'all' }}',
+    format: '{{ format_filter|default:'all' }}',
+    resolution: '{{ resolution_filter|default:'all' }}',
+    hdr: '{{ hdr_filter|default:'all' }}',
+    rating: '{{ rating_filter|default:'all' }}',
+    query: '{{ search_query|default:''|escapejs }}',
+    searchMode: false,
+    filtersOpen: false,
+    filterView: 'root',
+    typeLabels: {
+      {% for type in media_types %}'{{ type }}': '{{ type|media_type_readable_plural }}',{% endfor %}
+      'all': 'All Types'
+    },
+    sortLabels: {
+      {% for value, label in sort_choices %}'{{ value }}': '{{ label }}',{% endfor %}
+    },
+    ratingLabels: { 'all': 'Any', 'rated': 'Rated', 'not_rated': 'Not Rated' },
+    getTypeLabel() { return this.typeLabels[this.type] || this.type; },
+    activeFilterCount() {
+      return [this.type, this.format, this.resolution, this.hdr, this.rating].filter((v) => v !== 'all').length;
+    },
+    clearFilters() {
+      this.type = 'all'; this.format = 'all'; this.resolution = 'all'; this.hdr = 'all'; this.rating = 'all';
+    },
+    defaultDirection(value) { return value === 'collected_at' ? 'desc' : 'asc'; },
+    setSort(value) {
+      this.direction = (this.sort === value) ? (this.direction === 'asc' ? 'desc' : 'asc') : this.defaultDirection(value);
+      this.sort = value;
+    }
+  }"
+       x-init="
+         $refs.collectionView.addEventListener('htmx:afterSwap', () => { renderedLayout = layout; });
+       ">
+    <form id="filter-form" class="hidden">
+      <input type="hidden" name="sort" x-model="sort">
+      <input type="hidden" name="direction" x-model="direction">
+      <input type="hidden" name="layout" x-model="layout">
+      <input type="hidden" name="type" x-model="type">
+      <input type="hidden" name="format" x-model="format">
+      <input type="hidden" name="resolution" x-model="resolution">
+      <input type="hidden" name="hdr" x-model="hdr">
+      <input type="hidden" name="rating" x-model="rating">
+      <input type="hidden" name="q" x-model="query">
+    </form>
+
+    <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
+      <h1 class="text-3xl font-bold">Collection</h1>
+    </div>
+
+    <div class="flex flex-col gap-3 md:flex-row md:gap-4 mb-6">
+      <div class="flex gap-1 flex-wrap md:flex-nowrap w-full items-center filter-toolbar media-filter-toolbar">
+        <div class="relative filter-control"
+             :class="searchMode ? 'grow min-w-0' : 'shrink-0'"
+             @click.outside="if (searchMode) { searchMode = false; }">
+          <button class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                  x-cloak
+                  x-show="!searchMode"
+                  @click="searchMode = true; $nextTick(() => $refs.collectionSearchInput?.focus())"
+                  type="button"
+                  aria-label="Search your collection">
+            {% include "app/icons/magnifying-glass.svg" with classes="w-5 h-5" %}
+          </button>
+
+          <div class="relative grow min-w-0" x-cloak x-show="searchMode">
+            <input id="collection-search-input"
+                   x-ref="collectionSearchInput"
+                   placeholder="Search your collection..."
+                   class="w-full min-w-0 py-2 pl-10 pr-4 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
+                   type="text"
+                   x-model="query"
+                   @keydown.escape.prevent="searchMode = false; $refs.collectionSearchInput?.blur()"
+                   autocomplete="off"
+                   hx-get="{% url 'collection_list' %}"
+                   hx-trigger="keyup changed delay:300ms, search"
+                   hx-target="#collection-view"
+                   hx-include="#filter-form"
+                   hx-indicator="#collection-loading-indicator">
+            {% include "app/icons/magnifying-glass.svg" with classes="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] w-5 h-5" %}
+          </div>
+        </div>
+
+        <div class="contents" x-cloak x-show="!searchMode">
+          {# Consolidated Filters menu: Type / Format / Resolution / HDR / Rating #}
+          <div class="relative filter-control" x-data="{ }" @click.outside="filtersOpen = false; filterView = 'root'">
+            <button class="flex items-center gap-2 px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                    @click="filtersOpen = !filtersOpen; if (filtersOpen) { filterView = 'root'; }"
+                    type="button">
+              {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
+              <span class="text-sm">Filters<template x-if="activeFilterCount() > 0"><span x-text="' (' + activeFilterCount() + ')'"></span></template></span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="w-4 h-4" aria-hidden="true">
+                <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+              </svg>
+            </button>
+
+            <div class="absolute left-0 mt-2 w-60 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden z-50 border border-gray-700"
+                 x-cloak
+                 x-show="filtersOpen"
+                 x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="transform opacity-0 scale-95"
+                 x-transition:enter-end="transform opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-75"
+                 x-transition:leave-start="transform opacity-100 scale-100"
+                 x-transition:leave-end="transform opacity-0 scale-95">
+
+              {# Root menu #}
+              <div x-show="filterView === 'root'" x-cloak>
+                <button hx-get="{% url 'collection_list' %}"
+                        hx-target="#collection-view"
+                        hx-include="#filter-form"
+                        hx-indicator="#collection-loading-indicator"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="clearFilters(); filtersOpen = false"
+                        type="button">
+                  <span>All</span>
+                  <span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="activeFilterCount() === 0">Active</span>
+                </button>
+                <div class="border-t border-gray-700 my-1"></div>
+                {% if media_types %}
+                  <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="filterView = 'type'"
+                          type="button">
+                    <span class="flex-shrink-0 mr-3">Type</span>
+                    <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="getTypeLabel()"></span>
+                    <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+                  </button>
+                {% endif %}
+                {% if available_formats %}
+                  <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="filterView = 'format'"
+                          type="button">
+                    <span class="flex-shrink-0 mr-3">Format</span>
+                    <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="format === 'all' ? 'Any' : format"></span>
+                    <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+                  </button>
+                {% endif %}
+                {% if available_resolutions %}
+                  <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="filterView = 'resolution'"
+                          type="button">
+                    <span class="flex-shrink-0 mr-3">Resolution</span>
+                    <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="resolution === 'all' ? 'Any' : resolution"></span>
+                    <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+                  </button>
+                {% endif %}
+                {% if available_hdr %}
+                  <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="filterView = 'hdr'"
+                          type="button">
+                    <span class="flex-shrink-0 mr-3">HDR</span>
+                    <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="hdr === 'all' ? 'Any' : hdr"></span>
+                    <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+                  </button>
+                {% endif %}
+                <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="filterView = 'rating'"
+                        type="button">
+                  <span class="flex-shrink-0 mr-3">Rating</span>
+                  <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="ratingLabels[rating]"></span>
+                  <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+                </button>
+              </div>
+
+              {# Type submenu #}
+              <div x-show="filterView === 'type'" x-cloak>
+                <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+                  <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Type</div>
+                </div>
+                <div class="max-h-64 overflow-y-auto">
+                  <button hx-get="{% url 'collection_list' %}"
+                          hx-target="#collection-view"
+                          hx-include="#filter-form"
+                          hx-indicator="#collection-loading-indicator"
+                          class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="type = 'all'; filtersOpen = false; filterView = 'root'"
+                          type="button">
+                    <span>All Types</span>
+                    <span class="ml-auto" x-show="type === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                  </button>
+                  {% for type in media_types %}
+                    <button hx-get="{% url 'collection_list' %}"
+                            hx-target="#collection-view"
+                            hx-include="#filter-form"
+                            hx-indicator="#collection-loading-indicator"
+                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="type = '{{ type }}'; filtersOpen = false; filterView = 'root'"
+                            type="button">
+                      <span>{{ type|media_type_readable_plural }}</span>
+                      <span class="ml-auto" x-show="type === '{{ type }}'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                    </button>
+                  {% endfor %}
+                </div>
+              </div>
+
+              {# Format submenu #}
+              <div x-show="filterView === 'format'" x-cloak>
+                <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+                  <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Format</div>
+                </div>
+                <div class="max-h-64 overflow-y-auto">
+                  <button hx-get="{% url 'collection_list' %}"
+                          hx-target="#collection-view"
+                          hx-include="#filter-form"
+                          hx-indicator="#collection-loading-indicator"
+                          class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="format = 'all'; filtersOpen = false; filterView = 'root'"
+                          type="button">
+                    <span>Any Format</span>
+                    <span class="ml-auto" x-show="format === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                  </button>
+                  {% for value in available_formats %}
+                    <button hx-get="{% url 'collection_list' %}"
+                            hx-target="#collection-view"
+                            hx-include="#filter-form"
+                            hx-indicator="#collection-loading-indicator"
+                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="format = '{{ value }}'; filtersOpen = false; filterView = 'root'"
+                            type="button">
+                      <span>{{ value }}</span>
+                      <span class="ml-auto" x-show="format === '{{ value }}'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                    </button>
+                  {% endfor %}
+                </div>
+              </div>
+
+              {# Resolution submenu #}
+              <div x-show="filterView === 'resolution'" x-cloak>
+                <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+                  <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Resolution</div>
+                </div>
+                <div class="max-h-64 overflow-y-auto">
+                  <button hx-get="{% url 'collection_list' %}"
+                          hx-target="#collection-view"
+                          hx-include="#filter-form"
+                          hx-indicator="#collection-loading-indicator"
+                          class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="resolution = 'all'; filtersOpen = false; filterView = 'root'"
+                          type="button">
+                    <span>Any Resolution</span>
+                    <span class="ml-auto" x-show="resolution === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                  </button>
+                  {% for value in available_resolutions %}
+                    <button hx-get="{% url 'collection_list' %}"
+                            hx-target="#collection-view"
+                            hx-include="#filter-form"
+                            hx-indicator="#collection-loading-indicator"
+                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="resolution = '{{ value }}'; filtersOpen = false; filterView = 'root'"
+                            type="button">
+                      <span>{{ value }}</span>
+                      <span class="ml-auto" x-show="resolution === '{{ value }}'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                    </button>
+                  {% endfor %}
+                </div>
+              </div>
+
+              {# HDR submenu #}
+              <div x-show="filterView === 'hdr'" x-cloak>
+                <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+                  <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">HDR</div>
+                </div>
+                <div class="max-h-64 overflow-y-auto">
+                  <button hx-get="{% url 'collection_list' %}"
+                          hx-target="#collection-view"
+                          hx-include="#filter-form"
+                          hx-indicator="#collection-loading-indicator"
+                          class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="hdr = 'all'; filtersOpen = false; filterView = 'root'"
+                          type="button">
+                    <span>Any HDR</span>
+                    <span class="ml-auto" x-show="hdr === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                  </button>
+                  {% for value in available_hdr %}
+                    <button hx-get="{% url 'collection_list' %}"
+                            hx-target="#collection-view"
+                            hx-include="#filter-form"
+                            hx-indicator="#collection-loading-indicator"
+                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="hdr = '{{ value }}'; filtersOpen = false; filterView = 'root'"
+                            type="button">
+                      <span>{{ value }}</span>
+                      <span class="ml-auto" x-show="hdr === '{{ value }}'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                    </button>
+                  {% endfor %}
+                </div>
+              </div>
+
+              {# Rating submenu #}
+              <div x-show="filterView === 'rating'" x-cloak>
+                <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+                  <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Rating</div>
+                </div>
+                <div class="max-h-64 overflow-y-auto">
+                  <button hx-get="{% url 'collection_list' %}"
+                          hx-target="#collection-view"
+                          hx-include="#filter-form"
+                          hx-indicator="#collection-loading-indicator"
+                          class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="rating = 'all'; filtersOpen = false; filterView = 'root'"
+                          type="button">
+                    <span>Any Rating</span>
+                    <span class="ml-auto" x-show="rating === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                  </button>
+                  <button hx-get="{% url 'collection_list' %}"
+                          hx-target="#collection-view"
+                          hx-include="#filter-form"
+                          hx-indicator="#collection-loading-indicator"
+                          class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="rating = 'rated'; filtersOpen = false; filterView = 'root'"
+                          type="button">
+                    <span>Rated</span>
+                    <span class="ml-auto" x-show="rating === 'rated'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                  </button>
+                  <button hx-get="{% url 'collection_list' %}"
+                          hx-target="#collection-view"
+                          hx-include="#filter-form"
+                          hx-indicator="#collection-loading-indicator"
+                          class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          @click="rating = 'not_rated'; filtersOpen = false; filterView = 'root'"
+                          type="button">
+                    <span>Not Rated</span>
+                    <span class="ml-auto" x-show="rating === 'not_rated'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {# Sort #}
+          <div class="relative filter-control" x-data="{ open: false }" @click.outside="open = false">
+            <button class="flex items-center gap-2 px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                    @click="open = !open"
+                    type="button">
+              <span class="text-sm" x-text="sortLabels[sort] || sort"></span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="w-4 h-4" aria-hidden="true">
+                <path x-show="direction === 'asc'" d="M10 5 L16 15 H4 Z" fill="currentColor"></path>
+                <path x-show="direction !== 'asc'" d="M10 15 L4 5 H16 Z" fill="currentColor"></path>
+              </svg>
+            </button>
+            <div class="absolute right-0 mt-2 py-1 w-48 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden z-50 border border-gray-700"
+                 x-cloak
+                 x-show="open"
+                 x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="transform opacity-0 scale-95"
+                 x-transition:enter-end="transform opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-75"
+                 x-transition:leave-start="transform opacity-100 scale-100"
+                 x-transition:leave-end="transform opacity-0 scale-95">
+              {% for value, label in sort_choices %}
+                <button hx-get="{% url 'collection_list' %}"
+                        hx-target="#collection-view"
+                        hx-include="#filter-form"
+                        hx-indicator="#collection-loading-indicator"
+                        class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                        :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
+                        @click="setSort('{{ value }}'); open = false"
+                        type="button">{{ label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="ml-auto flex items-center gap-2">
+            <div class="flex rounded-md overflow-hidden border border-gray-700 layout-toggle">
+              <button hx-get="{% url 'collection_list' %}"
+                      hx-target="#collection-view"
+                      hx-include="#filter-form"
+                      hx-indicator="#collection-loading-indicator"
+                      class="p-2 cursor-pointer"
+                      :class="layout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
+                      title="Grid View"
+                      @click="layout = 'grid'"
+                      type="button">
+                {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
+              </button>
+              <button hx-get="{% url 'collection_list' %}"
+                      hx-target="#collection-view"
+                      hx-include="#filter-form"
+                      hx-indicator="#collection-loading-indicator"
+                      class="p-2 cursor-pointer"
+                      :class="layout === 'table' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
+                      title="Table View"
+                      @click="layout = 'table'"
+                      type="button">
+                {% include "app/icons/table.svg" with classes="w-5 h-5" %}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="collection-view" x-ref="collectionView" :class="renderedLayout === 'grid' ? 'media-grid' : ''">
+      {% include "app/components/collection_items.html" %}
+    </div>
+
+    <div id="collection-loading-indicator" class="htmx-indicator flex justify-center py-4">
+      <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-500"></div>
+    </div>
+  </div>
+{% endblock content %}

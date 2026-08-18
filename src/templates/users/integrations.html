@@ -341,6 +341,37 @@
               <strong>Error:</strong> {{ jellyfin_account.last_error_message }}
             </div>
           {% endif %}
+          <div class="border-t border-gray-600/50 pt-3 space-y-3">
+            <div>
+              <h4 class="text-sm font-medium">Playback Reporting history</h4>
+              <p class="text-xs text-[var(--color-text-muted)] mt-1">
+                Import a Playback Reporting TSV backup for this Jellyfin user. This is a separate historical import and does not change webhook or watched-state sync behavior.
+              </p>
+            </div>
+            {% if jellyfin_playback_reporting_import %}
+              <p class="text-xs text-[var(--color-text-muted)]">
+                Last import: {{ jellyfin_playback_reporting_import.get_status_display }}
+                ({{ jellyfin_playback_reporting_import.started_at|user_datetime_format:user }}),
+                {{ jellyfin_playback_reporting_import.created_count }} created,
+                {{ jellyfin_playback_reporting_import.skipped_count }} skipped.
+              </p>
+            {% endif %}
+            <form method="post"
+                  action="{% url 'jellyfin_playback_reporting_import' %}"
+                  enctype="multipart/form-data"
+                  class="space-y-2">
+              {% csrf_token %}
+              <input name="playback_reporting_file"
+                     type="file"
+                     accept=".tsv,.txt,text/tab-separated-values,text/plain"
+                     required
+                     class="block w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-indigo-700">
+              <button type="submit"
+                      class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+                Import / reimport history
+              </button>
+            </form>
+          </div>
           <form method="post" action="{% url 'jellyfin_settings' %}" class="space-y-2">
             {% csrf_token %}
             <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">

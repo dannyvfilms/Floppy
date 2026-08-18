@@ -1698,6 +1698,7 @@ class User(AbstractUser):
             "grouvee": ["Import from Grouvee"],
             "steam": ["Import from Steam"],
             "xbox": ["Import from Xbox", "Import from Xbox (Recurring)"],
+            "psn": ["Import from PSN", "Import from PSN (Recurring)"],
             "imdb": ["Import from IMDB"],
             "goodreads": [
                 "Import from Goodreads",
@@ -1706,6 +1707,9 @@ class User(AbstractUser):
             ],
             "mdblist": ["Import from MDBList", "Import MDBList Lists"],
             "plex": ["Import from Plex", "Sync Plex Watchlist"],
+            "jellyfin_playback_reporting": [
+                "Import from Jellyfin Playback Reporting",
+            ],
             "radarr": ["Import from Radarr", "Import from Radarr (Recurring)"],
             "sonarr": ["Import from Sonarr", "Import from Sonarr (Recurring)"],
             "audiobookshelf": [
@@ -1739,6 +1743,7 @@ class User(AbstractUser):
             "pocketcasts": ["Import from Pocket Casts (Recurring)"],
             "gpodder": ["Import from GPodder (Recurring)"],
             "xbox": ["Import from Xbox (Recurring)"],
+            "psn": ["Import from PSN (Recurring)"],
             "stremio": ["Import from Stremio (Recurring)"],
             "lastfm": ["Poll Last.fm for all users"],
             "koito": ["Poll Koito for user"],

@@ -21,12 +21,15 @@ from app.models import (
     Episode,
     Game,
     Item,
+    ItemTag,
     Manga,
     MediaTypes,
     Movie,
+    MoviePlay,
     Season,
     Sources,
     Status,
+    Tag,
 )
 from lists.models import CustomList, CustomListItem
 
@@ -614,3 +617,435 @@ class ExportCSVTest(TestCase):
 
         # The one legitimate episode from setUp, but not the orphaned one.
         self.assertEqual(len(episode_rows), 1)
+
+
+class LetterboxdExportCSVTest(TestCase):
+    """Test exporting watched movies to a Letterboxd-import-ready CSV."""
+
+    @patch("app.providers.services.get_media_metadata", return_value={"max_progress": None})
+    def setUp(self, _mock_get_media_metadata):
+        """Create a superuser and log in."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_superuser(**self.credentials)
+        self.client.login(**self.credentials)
+
+    def _get_rows(self):
+        response = self.client.get(reverse("export_csv_letterboxd"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv")
+        content = b"".join(response.streaming_content).decode("utf-8")
+        return list(csv.DictReader(StringIO(content)))
+
+    def test_basic_watch(self):
+        """A single watch exports title, year, watched date, rating and review."""
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+                release_datetime=datetime(1997, 7, 26, 0, 0, tzinfo=UTC),
+            )
+            movie = Movie.objects.create(
+                item=item,
+                user=self.user,
+                score=9,
+                status=Status.COMPLETED.value,
+                notes="Nice",
+                end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(movie=movie, end_date=movie.end_date)
+
+        rows = self._get_rows()
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["Title"], "Perfect Blue")
+        self.assertEqual(row["Year"], "1997")
+        self.assertEqual(row["tmdbID"], "10494")
+        self.assertEqual(row["WatchedDate"], "2023-06-01")
+        self.assertEqual(row["Rating"], "4.5")
+        self.assertEqual(row["Review"], "Nice")
+        self.assertEqual(row["Rewatch"], "")
+
+    def test_rating_conversion_and_absence(self):
+        """Scores convert to the 0.5-5 scale; missing/zero scores stay blank."""
+        with disable_fetch_releases():
+            item_rated = Item.objects.create(
+                media_id="1",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Rated",
+                image="https://image.url",
+            )
+            movie_rated = Movie.objects.create(
+                item=item_rated,
+                user=self.user,
+                score="6.7",
+                status=Status.COMPLETED.value,
+                end_date=datetime(2023, 1, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(movie=movie_rated, end_date=movie_rated.end_date)
+
+            item_unrated = Item.objects.create(
+                media_id="2",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Unrated",
+                image="https://image.url",
+            )
+            movie_unrated = Movie.objects.create(
+                item=item_unrated,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2023, 1, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(
+                movie=movie_unrated, end_date=movie_unrated.end_date,
+            )
+
+            item_zero = Item.objects.create(
+                media_id="3",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Zero Score",
+                image="https://image.url",
+            )
+            movie_zero = Movie.objects.create(
+                item=item_zero,
+                user=self.user,
+                score=0,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2023, 1, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(movie=movie_zero, end_date=movie_zero.end_date)
+
+        rows = {row["Title"]: row for row in self._get_rows()}
+        # 6.7 / 2 = 3.35 -> rounds to nearest 0.5 -> 3.5
+        self.assertEqual(rows["Rated"]["Rating"], "3.5")
+        self.assertEqual(rows["Unrated"]["Rating"], "")
+        self.assertEqual(rows["Zero Score"]["Rating"], "")
+
+    def test_only_rating_column_present(self):
+        """Only a single rating column is emitted, avoiding Letterboxd's ambiguity rule."""
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            movie = Movie.objects.create(
+                item=item,
+                user=self.user,
+                score=9,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(movie=movie, end_date=movie.end_date)
+
+        response = self.client.get(reverse("export_csv_letterboxd"))
+        content = b"".join(response.streaming_content).decode("utf-8")
+        header = content.splitlines()[0]
+        self.assertIn("Rating", header.split(","))
+        self.assertNotIn("Rating10", header.split(","))
+
+    def test_rewatch_flagging(self):
+        """Only plays after the first for a movie are flagged as a rewatch."""
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            movie = Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2023, 6, 3, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(
+                movie=movie, end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(
+                movie=movie, end_date=datetime(2023, 6, 2, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(
+                movie=movie, end_date=datetime(2023, 6, 3, 0, 0, tzinfo=UTC),
+            )
+
+        rows = sorted(self._get_rows(), key=lambda r: r["WatchedDate"])
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0]["Rewatch"], "")
+        self.assertEqual(rows[1]["Rewatch"], "true")
+        self.assertEqual(rows[2]["Rewatch"], "true")
+
+    def test_tags_included_as_plain_comma_separated_string(self):
+        """Tags are joined as plain text, not the JSON shape used by the full export."""
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            movie = Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(movie=movie, end_date=movie.end_date)
+
+            tag_thriller = Tag.objects.create(user=self.user, name="thriller")
+            tag_anime = Tag.objects.create(user=self.user, name="anime")
+            ItemTag.objects.create(tag=tag_thriller, item=item)
+            ItemTag.objects.create(tag=tag_anime, item=item)
+
+        rows = self._get_rows()
+        self.assertEqual(len(rows), 1)
+        tags = {t.strip() for t in rows[0]["Tags"].split(",")}
+        self.assertEqual(tags, {"thriller", "anime"})
+
+    def test_no_tags_is_empty_string(self):
+        """A movie with no tags exports an empty Tags field."""
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            movie = Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(movie=movie, end_date=movie.end_date)
+
+        rows = self._get_rows()
+        self.assertEqual(rows[0]["Tags"], "")
+
+    def test_movie_play_fallback_for_pre_feature_completions(self):
+        """A completed movie with no MoviePlay rows still exports one row."""
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                score=8,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2020, 1, 1, 0, 0, tzinfo=UTC),
+            )
+            # deliberately no MoviePlay row created
+
+        rows = self._get_rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["WatchedDate"], "2020-01-01")
+        self.assertEqual(rows[0]["Rewatch"], "")
+
+    def test_unwatched_movie_excluded(self):
+        """A movie that was never completed and has no MoviePlay is not exported."""
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.PLANNING.value,
+            )
+
+        rows = self._get_rows()
+        self.assertEqual(rows, [])
+
+    def test_completed_movie_without_watch_date_is_included(self):
+        """A Completed movie with no end_date and no MoviePlay still exports.
+
+        Legacy/imported completions can have Status.COMPLETED with no
+        end_date at all (see
+        app.tests.models.test_media.test_repeated_completed_plays_remain_separate),
+        so status -- not end_date -- is the "was this watched" signal.
+        """
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+            )
+
+        rows = self._get_rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["WatchedDate"], "")
+        self.assertEqual(rows[0]["Rewatch"], "")
+
+    def test_legacy_repeated_completions_grouped_by_item_for_rewatch(self):
+        """Repeat watches stored as separate Movie rows for one Item rewatch-flag correctly.
+
+        Some completions are recorded as multiple standalone Movie rows
+        sharing the same Item rather than MoviePlay entries (see
+        app.tests.models.test_media.test_repeated_completed_plays_remain_separate).
+        Grouping must key off the underlying Item, not the Movie row, or
+        every such row looks like an unrelated first watch.
+        """
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2020, 1, 1, 0, 0, tzinfo=UTC),
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2021, 1, 1, 0, 0, tzinfo=UTC),
+            )
+            # deliberately no MoviePlay rows -- both are legacy standalone rows
+
+        rows = sorted(self._get_rows(), key=lambda r: r["WatchedDate"])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["WatchedDate"], "2020-01-01")
+        self.assertEqual(rows[0]["Rewatch"], "")
+        self.assertEqual(rows[1]["WatchedDate"], "2021-01-01")
+        self.assertEqual(rows[1]["Rewatch"], "true")
+
+    def test_legacy_repeated_completion_without_date_sorts_after_dated_ones(self):
+        """An undated legacy completion never displaces a dated one as 'first'."""
+        with disable_fetch_releases():
+            item = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+            )
+            Movie.objects.create(
+                item=item,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2020, 1, 1, 0, 0, tzinfo=UTC),
+            )
+
+        rows = self._get_rows()
+        self.assertEqual(len(rows), 2)
+        dated = next(r for r in rows if r["WatchedDate"] == "2020-01-01")
+        undated = next(r for r in rows if r["WatchedDate"] == "")
+        self.assertEqual(dated["Rewatch"], "")
+        self.assertEqual(undated["Rewatch"], "true")
+
+    def test_imdb_id_population(self):
+        """tmdbID/imdbID are populated from Item source/media_id/provider_external_ids."""
+        with disable_fetch_releases():
+            item_with_imdb = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="With IMDb",
+                image="https://image.url",
+                provider_external_ids={"imdb_id": "tt0113402"},
+            )
+            movie_with_imdb = Movie.objects.create(
+                item=item_with_imdb,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(
+                movie=movie_with_imdb, end_date=movie_with_imdb.end_date,
+            )
+
+            item_without_imdb = Item.objects.create(
+                media_id="10495",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Without IMDb",
+                image="https://image.url",
+            )
+            movie_without_imdb = Movie.objects.create(
+                item=item_without_imdb,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(
+                movie=movie_without_imdb, end_date=movie_without_imdb.end_date,
+            )
+
+        rows = {row["Title"]: row for row in self._get_rows()}
+        self.assertEqual(rows["With IMDb"]["tmdbID"], "10494")
+        self.assertEqual(rows["With IMDb"]["imdbID"], "tt0113402")
+        self.assertEqual(rows["Without IMDb"]["tmdbID"], "10495")
+        self.assertEqual(rows["Without IMDb"]["imdbID"], "")
+
+    @patch("app.providers.services.get_media_metadata", return_value={"max_progress": None})
+    def test_non_movie_media_types_excluded(self, _mock_get_media_metadata):
+        """Only movies are exported; other media types are excluded."""
+        with disable_fetch_releases():
+            item_movie = Item.objects.create(
+                media_id="10494",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Perfect Blue",
+                image="https://image.url",
+            )
+            movie = Movie.objects.create(
+                item=item_movie,
+                user=self.user,
+                status=Status.COMPLETED.value,
+                end_date=datetime(2023, 6, 1, 0, 0, tzinfo=UTC),
+            )
+            MoviePlay.objects.create(movie=movie, end_date=movie.end_date)
+
+            item_season = Item.objects.create(
+                media_id="1668",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title="Friends",
+                image="https://image.url",
+                season_number=1,
+            )
+            Season.objects.create(
+                item=item_season,
+                user=self.user,
+                status=Status.COMPLETED.value,
+            )
+
+        rows = self._get_rows()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["Title"], "Perfect Blue")

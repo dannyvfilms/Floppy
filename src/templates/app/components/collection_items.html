@@ -1,0 +1,31 @@
+{% load app_tags %}
+
+{% if collection_entries or is_pagination %}
+  {% if layout == 'table' %}
+    {% include "app/components/collection_table_rows.html" %}
+  {% else %}
+    {% include "app/components/collection_grid_rows.html" %}
+  {% endif %}
+{% else %}
+  <div class="flex flex-col items-center justify-center py-16 bg-[var(--color-surface)] rounded-lg">
+    <div class="text-center max-w-md mx-auto p-6">
+      <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+        {% include "app/icons/cube.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
+      </div>
+      <h3 class="text-xl font-semibold mb-2">
+        {% if media_type or search_query or format_filter or resolution_filter or hdr_filter or rating_filter != 'all' %}
+          No matches found
+        {% else %}
+          Your collection is empty
+        {% endif %}
+      </h3>
+      <p class="text-[var(--color-text-muted)]">
+        {% if media_type or search_query or format_filter or resolution_filter or hdr_filter or rating_filter != 'all' %}
+          Try adjusting your filters to see more items.
+        {% else %}
+          Add items to your collection from a movie, show, or episode's track modal.
+        {% endif %}
+      </p>
+    </div>
+  </div>
+{% endif %}

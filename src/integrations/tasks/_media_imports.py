@@ -18,11 +18,13 @@ from integrations.imports import (
     helpers,
     hltb,
     imdb,
+    jellyfin_playback_reporting,
     kitsu,
     mal,
     mdblist,
     plex,
     pocketcasts,
+    psn,
     radarr,
     simkl,
     sonarr,
@@ -283,6 +285,18 @@ def import_xbox_recurring(user_id, mode="new"):
     return import_media(xbox.importer, None, user_id, mode)
 
 
+@shared_task(name="Import from PSN")
+def import_psn(user_id, mode="new"):
+    """Celery task for importing game data from a connected PSN account."""
+    return import_media(psn.importer, None, user_id, mode)
+
+
+@shared_task(name="Import from PSN (Recurring)")
+def import_psn_recurring(user_id, mode="new"):
+    """Recurring import task for PSN."""
+    return import_media(psn.importer, None, user_id, mode)
+
+
 @shared_task(name="Import from IMDB")
 def import_imdb(file, user_id, mode):
     """Celery task for importing media data from IMDB."""
@@ -328,6 +342,17 @@ def import_storygraph(file, user_id, mode):
 def import_plex(library, user_id, mode, username=None):
     """Celery task for importing media data from Plex."""
     return import_media(plex.importer, library, user_id, mode)
+
+
+@shared_task(name="Import from Jellyfin Playback Reporting")
+def import_jellyfin_playback_reporting(file, user_id, mode="new"):
+    """Import a Jellyfin Playback Reporting TSV backup."""
+    return import_media(
+        jellyfin_playback_reporting.importer,
+        _coerce_uploaded_file(file),
+        user_id,
+        mode,
+    )
 
 
 @shared_task(name="Import from Radarr")

@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 from django_celery_beat.models import PeriodicTask
@@ -180,3 +181,28 @@ class JellyfinViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         mock_delay.assert_called_once_with(user_id=self.user.id)
+
+    @patch("integrations.views.tasks.import_jellyfin_playback_reporting.delay")
+    def test_playback_reporting_upload_queues_history_import(self, mock_delay):
+        """A connected user can queue a manual Playback Reporting upload."""
+        JellyfinAccount.objects.create(
+            user=self.user,
+            base_url="https://jellyfin.local:8096",
+            api_key="encrypted",
+            jellyfin_user_id="jf-1",
+        )
+        payload = b"2024-01-01 00:00:00\tjf-1\titem-1\tMovie\tTitle\tDirectPlay\tWeb\tDevice\t120"
+
+        response = self.client.post(
+            reverse("jellyfin_playback_reporting_import"),
+            {
+                "playback_reporting_file": SimpleUploadedFile(
+                    "PlaybackReporting.tsv",
+                    payload,
+                    content_type="text/tab-separated-values",
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        mock_delay.assert_called_once_with(payload, self.user.id, "new")

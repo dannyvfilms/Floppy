@@ -2,6 +2,7 @@ import logging
 import math
 from collections import Counter, defaultdict
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -22,27 +23,167 @@ from integrations.models import CollectionSourceState
 
 logger = logging.getLogger(__name__)
 
+COLLECTION_SORT_CHOICES = [
+    ("collected_at", "Date Collected"),
+    ("title", "Title"),
+    ("release_date", "Release Date"),
+]
+COLLECTION_SORT_FIELDS = {
+    "collected_at": "collected_at",
+    "title": "item__title",
+    "release_date": "item__release_datetime",
+}
+COLLECTION_RATING_CHOICES = {"all", "rated", "not_rated"}
+
+
+def _scored_item_ids(user, item_ids_by_media_type):
+    """Return the ids of items (grouped by media_type) that have a user score."""
+    scored_ids = set()
+    for item_media_type, item_ids in item_ids_by_media_type.items():
+        try:
+            model = apps.get_model("app", item_media_type)
+        except LookupError:
+            continue
+        if item_media_type == MediaTypes.EPISODE.value:
+            filter_kwargs = {"related_season__user": user}
+        else:
+            filter_kwargs = {"user": user}
+        scored_ids.update(
+            model.objects.filter(
+                item_id__in=item_ids,
+                score__isnull=False,
+                **filter_kwargs,
+            ).values_list("item_id", flat=True),
+        )
+    return scored_ids
+
 
 @require_GET
 def collection_list(request, media_type=None):
-    """Display user's collection, optionally filtered by media_type."""
-    collection = helpers.get_user_collection(request.user, media_type)
+    """Display user's collection, filterable by type, format, and rating."""
+    effective_media_type = media_type or request.GET.get("type", "")
+    if effective_media_type == "all":
+        effective_media_type = ""
+
+    search_query = request.GET.get("q", "").strip()
+    sort_by = request.GET.get("sort", "collected_at")
+    if sort_by not in COLLECTION_SORT_FIELDS:
+        sort_by = "collected_at"
+    direction = request.GET.get("direction") or (
+        "desc" if sort_by == "collected_at" else "asc"
+    )
+    if direction not in ("asc", "desc"):
+        direction = "asc"
+    layout = request.GET.get("layout", "grid")
+    if layout not in ("grid", "table"):
+        layout = "grid"
+    format_filter = request.GET.get("format", "")
+    if format_filter == "all":
+        format_filter = ""
+    resolution_filter = request.GET.get("resolution", "")
+    if resolution_filter == "all":
+        resolution_filter = ""
+    hdr_filter = request.GET.get("hdr", "")
+    if hdr_filter == "all":
+        hdr_filter = ""
+    rating_filter = request.GET.get("rating", "all")
+    if rating_filter not in COLLECTION_RATING_CHOICES:
+        rating_filter = "all"
+
+    collection = helpers.get_user_collection(request.user, effective_media_type)
+    if search_query:
+        collection = collection.filter(item__title__icontains=search_query)
+    if format_filter:
+        collection = collection.filter(media_type=format_filter)
+    if resolution_filter:
+        collection = collection.filter(resolution=resolution_filter)
+    if hdr_filter:
+        collection = collection.filter(hdr=hdr_filter)
+
+    if rating_filter != "all":
+        item_ids_by_media_type = defaultdict(list)
+        for item_id, item_media_type in collection.values_list(
+            "item_id",
+            "item__media_type",
+        ).distinct():
+            item_ids_by_media_type[item_media_type].append(item_id)
+        scored_ids = _scored_item_ids(request.user, item_ids_by_media_type)
+        if rating_filter == "rated":
+            collection = collection.filter(item_id__in=scored_ids)
+        else:
+            collection = collection.exclude(item_id__in=scored_ids)
+
+    order_field = COLLECTION_SORT_FIELDS[sort_by]
+    if direction == "desc":
+        order_field = f"-{order_field}"
+    collection = collection.order_by(order_field, "-id")
+
     paginator = Paginator(collection, 20)
-    page_number = request.GET.get("page", 1)
+    page_number = int(request.GET.get("page", 1))
 
     try:
         page_obj = paginator.page(page_number)
     except EmptyPage:
         page_obj = paginator.page(paginator.num_pages)
 
-    return render(
-        request,
-        "app/collection_list.html",
-        {
-            "collection_entries": page_obj,
-            "media_type": media_type,
-        },
+    base_collection = CollectionEntry.objects.filter(user=request.user)
+    available_media_types = set(
+        base_collection.order_by()
+        .values_list("item__media_type", flat=True)
+        .distinct(),
     )
+    media_types = [
+        value for value in MediaTypes.values if value in available_media_types
+    ]
+    available_formats = sorted(
+        value
+        for value in base_collection.exclude(media_type="")
+        .order_by()
+        .values_list("media_type", flat=True)
+        .distinct()
+        if value
+    )
+    available_resolutions = sorted(
+        value
+        for value in base_collection.exclude(resolution="")
+        .order_by()
+        .values_list("resolution", flat=True)
+        .distinct()
+        if value
+    )
+    available_hdr = sorted(
+        value
+        for value in base_collection.exclude(hdr="")
+        .order_by()
+        .values_list("hdr", flat=True)
+        .distinct()
+        if value
+    )
+
+    is_fragment = helpers.is_htmx_fragment(request)
+    context = {
+        "collection_entries": page_obj,
+        "media_type": effective_media_type,
+        "media_types": media_types,
+        "available_formats": available_formats,
+        "available_resolutions": available_resolutions,
+        "available_hdr": available_hdr,
+        "sort_choices": COLLECTION_SORT_CHOICES,
+        "sort_by": sort_by,
+        "direction": direction,
+        "layout": layout,
+        "format_filter": format_filter,
+        "resolution_filter": resolution_filter,
+        "hdr_filter": hdr_filter,
+        "rating_filter": rating_filter,
+        "search_query": search_query,
+        "is_pagination": is_fragment and page_number > 1,
+    }
+
+    if is_fragment:
+        return render(request, "app/components/collection_items.html", context)
+
+    return render(request, "app/collection_list.html", context)
 
 
 def _collection_redirect(request):

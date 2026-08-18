@@ -17,7 +17,7 @@
         <h2 class="text-xl font-semibold">Export Data</h2>
       </div>
       <p class="text-[var(--color-text-muted)] mb-5 text-sm">
-        Export a CSV now, or create a recurring export schedule and download the initial CSV immediately.
+        Export a CSV in Floppy's own backup format now, or create a recurring export schedule and download the initial CSV immediately.
         Scheduled exports are saved to: <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">{{ backup_dir }}</code>
       </p>
 
@@ -168,6 +168,25 @@
           <span x-show="backupFrequency !== 'once'">Export as CSV and Save Schedule</span>
         </button>
       </form>
+    </div>
+
+    {# Export for Other Websites #}
+    <div class="bg-[var(--color-surface)] rounded-lg p-6">
+      <div class="flex items-center mb-4">
+        {% include "app/icons/external-link.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
+        <h2 class="text-xl font-semibold">Export for Other Websites</h2>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-5 text-sm">
+        Unlike the Floppy backup above, these exports are trimmed and reshaped to match what a specific external site expects.
+      </p>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <a href="{% url 'export_csv_letterboxd' %}"
+           class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left flex flex-col gap-2">
+          <div class="flex items-center">{% source_display "letterboxd" %}</div>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Watched movies with ratings and diary dates, ready for Letterboxd's CSV import.</p>
+        </a>
+      </div>
     </div>
 
     {# Active Scheduled Backups #}

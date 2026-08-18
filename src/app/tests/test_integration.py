@@ -301,6 +301,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
 
         self.page.reload()
+        expect(self.page.locator("#episodes-list")).to_be_visible()
         today = timezone.localtime().strftime(datetime_format)
         tracked_button = self.page.locator(
             "button[title='Track Episode'][hx-vals*='instance_id']:visible",
@@ -366,7 +367,7 @@ class IntegrationTest(StaticLiveServerTestCase):
     def test_tv_manual(self):
         """Test the manual creation of a TV show."""
         # Create TV show
-        self.page.get_by_role("link", name="Create Custom").click()
+        self.page.get_by_role("link", name="Custom", exact=True).click()
         self.page.get_by_placeholder("Enter title").click()
         self.page.get_by_placeholder("Enter title").fill("Friends")
         self.page.get_by_placeholder("Enter image URL").click()

@@ -69,6 +69,10 @@ SOURCES_CONFIG = {
         "name": "Xbox",
         "logo": static("img/xbox-logo.svg"),
     },
+    "psn": {
+        "name": "PlayStation",
+        "logo": static("img/playstation-logo.svg"),
+    },
     "goodreads": {
         "name": "Goodreads",
         "logo": static("img/logo-goodreads.svg"),
@@ -112,6 +116,10 @@ SOURCES_CONFIG = {
     "hardcover": {
         "name": "Hardcover",
         "logo": static("img/hardcover-logo.png"),
+    },
+    "letterboxd": {
+        "name": "Letterboxd",
+        "logo": static("img/letterboxd-logo.png"),
     },
     "storygraph": {
         "name": "StoryGraph",
