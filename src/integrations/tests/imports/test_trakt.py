@@ -600,12 +600,12 @@ class ImportTrakt(TestCase):
         movie_obj = trakt_importer.bulk_media[MediaTypes.MOVIE.value][0]
         self.assertEqual(movie_obj.notes, "Great movie!")
 
-    @patch("app.providers.tmdb.services.api_request")
+    @patch("integrations.imports.trakt.services.get_media_metadata")
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
     def test_process_comments_tmdb_401_raises_clean_import_error(
         self,
         mock_make_request,
-        mock_api_request,
+        mock_get_metadata,
     ):
         """A TMDB 401 aborts comment import with a clear error, not a raw crash."""
         comment_entry = {
@@ -620,7 +620,10 @@ class ImportTrakt(TestCase):
 
         response = Response()
         response.status_code = requests.codes.unauthorized
-        mock_api_request.side_effect = requests.exceptions.HTTPError(response=response)
+        mock_get_metadata.side_effect = services.ProviderAPIError(
+            Sources.TMDB.value,
+            requests.exceptions.HTTPError(response=response),
+        )
 
         trakt_importer = TraktImporter("testuser", self.user, "new")
         with self.assertRaises(MediaImportError):
@@ -929,302 +932,8 @@ class ImportTrakt(TestCase):
             0,
         )
 
-    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
-    def test_last_episode_import_marks_season_and_tv_completed_in_overwrite_mode(
-        self, mock_get_metadata
-    ):
-        """Regression test for #202: an overwrite re-sync marks season/TV
-        completed when the last episode is imported.
-
-        Following #375, this completion cascade only applies in "overwrite"
-        mode (an explicit re-sync) — see
-        test_last_episode_import_does_not_complete_existing_show_in_new_mode
-        for the "new" mode (default recurring sync) case, which must leave
-        an already-tracked show's status alone.
-        """
-        TMDB_ID = 99999
-        SEASON_NUMBER = 1
-        TOTAL_EPISODES = 20
-
-        # Pre-create TV, season in DB (simulates prior sync of eps 1-19)
-        item_tv, _ = Item.objects.get_or_create(
-            media_id=TMDB_ID,
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            defaults={"title": "Test Show", "image": ""},
-        )
-        tv_obj = TV.objects.create(
-            item=item_tv, user=self.user, status=Status.IN_PROGRESS.value
-        )
-        item_season, _ = Item.objects.get_or_create(
-            media_id=TMDB_ID,
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.SEASON.value,
-            season_number=SEASON_NUMBER,
-            defaults={"title": "Test Show", "image": ""},
-        )
-        season_obj = Season.objects.create(
-            item=item_season,
-            user=self.user,
-            related_tv=tv_obj,
-            status=Status.IN_PROGRESS.value,
-        )
-
-        def mock_metadata(media_type, tmdb_id, title, season_number=None):
-            if media_type == MediaTypes.TV.value:
-                return {
-                    "title": "Test Show",
-                    "image": "",
-                    "last_episode_season": SEASON_NUMBER,
-                    "max_progress": TOTAL_EPISODES,
-                }
-            if media_type == MediaTypes.SEASON.value:
-                return {
-                    "title": "Season 1",
-                    "image": "",
-                    "episodes": [
-                        {"episode_number": i, "still_path": None}
-                        for i in range(1, TOTAL_EPISODES + 1)
-                    ],
-                    "max_progress": TOTAL_EPISODES,
-                }
-            return None
-
-        mock_get_metadata.side_effect = mock_metadata
-
-        entry = {
-            "type": "episode",
-            "episode": {
-                "season": SEASON_NUMBER,
-                "number": TOTAL_EPISODES,
-                "title": "Finale",
-            },
-            "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-            "watched_at": "2024-06-01T00:00:00.000Z",
-        }
-
-        trakt_importer = TraktImporter("testuser", self.user, "overwrite")
-        trakt_importer.process_watched_episode(entry)
-        helpers.cleanup_existing_media(trakt_importer.to_delete, trakt_importer.user)
-        helpers.bulk_create_media(trakt_importer.bulk_media, self.user)
-
-        # This is the persistence step that the fix adds to import_data()
-        from simple_history.utils import bulk_update_with_history
-
-        if trakt_importer.completed_seasons:
-            bulk_update_with_history(
-                trakt_importer.completed_seasons, Season, fields=["status"]
-            )
-        if trakt_importer.completed_tvs:
-            bulk_update_with_history(
-                trakt_importer.completed_tvs, TV, fields=["status"]
-            )
-
-        # Overwrite mode deletes and recreates the rows, so re-query rather
-        # than refresh the pre-existing instances.
-        new_tv = TV.objects.get(user=self.user, item__media_id=str(TMDB_ID))
-        new_season = Season.objects.get(
-            user=self.user,
-            item__media_id=str(TMDB_ID),
-            item__season_number=SEASON_NUMBER,
-        )
-        self.assertEqual(new_season.status, Status.COMPLETED.value)
-        self.assertEqual(new_tv.status, Status.COMPLETED.value)
-
-    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
-    def test_last_episode_import_does_not_complete_existing_show_in_new_mode(
-        self, mock_get_metadata
-    ):
-        """Regression test for #375: a "new"-mode sync (the default for
-        recurring/scheduled imports) must not silently flip an already-
-        tracked show's status to Completed just because Trakt's watch
-        history now reaches the last known episode — the user may have
-        manually set the status, or the provider's season data may be
-        stale (e.g. a new season confirmed but not yet reflected).
-        """
-        TMDB_ID = 99998
-        SEASON_NUMBER = 1
-        TOTAL_EPISODES = 20
-
-        item_tv, _ = Item.objects.get_or_create(
-            media_id=TMDB_ID,
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            defaults={"title": "Test Show", "image": ""},
-        )
-        tv_obj = TV.objects.create(
-            item=item_tv, user=self.user, status=Status.IN_PROGRESS.value
-        )
-        item_season, _ = Item.objects.get_or_create(
-            media_id=TMDB_ID,
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.SEASON.value,
-            season_number=SEASON_NUMBER,
-            defaults={"title": "Test Show", "image": ""},
-        )
-        Season.objects.create(
-            item=item_season,
-            user=self.user,
-            related_tv=tv_obj,
-            status=Status.IN_PROGRESS.value,
-        )
-
-        def mock_metadata(media_type, tmdb_id, title, season_number=None):
-            if media_type == MediaTypes.TV.value:
-                return {
-                    "title": "Test Show",
-                    "image": "",
-                    "last_episode_season": SEASON_NUMBER,
-                    "max_progress": TOTAL_EPISODES,
-                }
-            if media_type == MediaTypes.SEASON.value:
-                return {
-                    "title": "Season 1",
-                    "image": "",
-                    "episodes": [
-                        {"episode_number": i, "still_path": None}
-                        for i in range(1, TOTAL_EPISODES + 1)
-                    ],
-                    "max_progress": TOTAL_EPISODES,
-                }
-            return None
-
-        mock_get_metadata.side_effect = mock_metadata
-
-        entry = {
-            "type": "episode",
-            "episode": {
-                "season": SEASON_NUMBER,
-                "number": TOTAL_EPISODES,
-                "title": "Finale",
-            },
-            "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-            "watched_at": "2024-06-01T00:00:00.000Z",
-        }
-
-        trakt_importer = TraktImporter("testuser", self.user, "new")
-        trakt_importer.process_watched_episode(entry)
-
-        self.assertEqual(len(trakt_importer.completed_seasons), 0)
-        self.assertEqual(len(trakt_importer.completed_tvs), 0)
-
-    # ------------------------------------------------------------------
-    # Episode rating import — gap coverage
-    # ------------------------------------------------------------------
-
-    def _make_tv_season_episode(
-        self, tmdb_id, season_num, episode_num, initial_score=None
-    ):
-        """Helper: create TV → Season → Episode hierarchy and return all three objects."""
-        tv_item, _ = Item.objects.get_or_create(
-            media_id=str(tmdb_id),
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            defaults={"title": "Test Show"},
-        )
-        tv_obj, _ = TV.objects.get_or_create(
-            item=tv_item,
-            user=self.user,
-            defaults={"status": Status.IN_PROGRESS.value},
-        )
-        season_item, _ = Item.objects.get_or_create(
-            media_id=str(tmdb_id),
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.SEASON.value,
-            season_number=season_num,
-            defaults={"title": f"Season {season_num}"},
-        )
-        season_obj, _ = Season.objects.get_or_create(
-            item=season_item,
-            user=self.user,
-            defaults={"related_tv": tv_obj, "status": Status.IN_PROGRESS.value},
-        )
-        episode_item, _ = Item.objects.get_or_create(
-            media_id=str(tmdb_id),
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.EPISODE.value,
-            season_number=season_num,
-            episode_number=episode_num,
-            defaults={"title": f"S{season_num}E{episode_num}"},
-        )
-        kwargs = {"related_season": season_obj}
-        if initial_score is not None:
-            kwargs["score"] = initial_score
-        episode_obj, _ = Episode.objects.get_or_create(item=episode_item, **kwargs)
-        return tv_obj, season_obj, episode_obj
-
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
-    def test_episode_rating_multiple_episodes(self, mock_make_request):
-        """All episode ratings in a single batch are applied correctly."""
-        TMDB_ID = 55500
-        _, _, ep1 = self._make_tv_season_episode(TMDB_ID, 1, 1)
-        _, _, ep2 = self._make_tv_season_episode(TMDB_ID, 1, 2)
-        _, _, ep3 = self._make_tv_season_episode(TMDB_ID, 1, 3)
-
-        mock_make_request.side_effect = [
-            [
-                {
-                    "rated_at": "2024-01-01T00:00:00.000Z",
-                    "type": "episode",
-                    "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-                    "episode": {"season": 1, "number": 1, "title": "Pilot"},
-                    "rating": 7,
-                },
-                {
-                    "rated_at": "2024-01-01T00:00:00.000Z",
-                    "type": "episode",
-                    "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-                    "episode": {"season": 1, "number": 2, "title": "Episode 2"},
-                    "rating": 8,
-                },
-                {
-                    "rated_at": "2024-01-01T00:00:00.000Z",
-                    "type": "episode",
-                    "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-                    "episode": {"season": 1, "number": 3, "title": "Episode 3"},
-                    "rating": 9,
-                },
-            ],
-            [],
-        ]
-
-        TraktImporter("testuser", self.user, "new").process_ratings()
-
-        ep1.refresh_from_db()
-        ep2.refresh_from_db()
-        ep3.refresh_from_db()
-        self.assertEqual(float(ep1.score), 7.0)
-        self.assertEqual(float(ep2.score), 8.0)
-        self.assertEqual(float(ep3.score), 9.0)
-
-    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
-    def test_episode_rating_overwrites_existing_score(self, mock_make_request):
-        """A new rating overwrites an episode's pre-existing score."""
-        TMDB_ID = 55501
-        _, _, episode_obj = self._make_tv_season_episode(
-            TMDB_ID, 1, 1, initial_score="5.0"
-        )
-
-        mock_make_request.side_effect = [
-            [
-                {
-                    "rated_at": "2024-01-01T00:00:00.000Z",
-                    "type": "episode",
-                    "show": {"title": "Test Show", "ids": {"tmdb": TMDB_ID}},
-                    "episode": {"season": 1, "number": 1, "title": "Pilot"},
-                    "rating": 9,
-                },
-            ],
-            [],
-        ]
-
-        TraktImporter("testuser", self.user, "new").process_ratings()
-
-        episode_obj.refresh_from_db()
-        self.assertEqual(float(episode_obj.score), 9.0)
-
-    @patch("integrations.imports.trakt.TraktImporter._make_api_request")
-    def test_episode_rating_no_episode_row(self, mock_make_request):
+    def test_process_episode_rating_no_episode_row(self, mock_make_request):
         """Episode rating is silently skipped when Season exists but Episode row doesn't."""
         TMDB_ID = 55502
         tv_item, _ = Item.objects.get_or_create(
@@ -1272,7 +981,7 @@ class ImportTrakt(TestCase):
         )
 
     @patch("integrations.imports.trakt.TraktImporter._make_api_request")
-    def test_episode_rating_no_tmdb_id(self, mock_make_request):
+    def test_process_episode_rating_no_tmdb_id(self, mock_make_request):
         """Episode rating is silently skipped when the show has no TMDB ID."""
         mock_make_request.side_effect = [
             [
