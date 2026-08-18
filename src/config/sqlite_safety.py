@@ -7,9 +7,12 @@ rules, including Docker, source installs, and future packaged distributions.
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Callable, MutableMapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, MutableMapping, Sequence
+
+SQLITE_VERSION_PARTS = 3
 ALLOWED_JOURNAL_MODES = frozenset({"DELETE", "TRUNCATE", "PERSIST", "WAL"})
 ALLOWED_SYNCHRONOUS_MODES = frozenset(
     {"NORMAL", "FULL", "EXTRA", "1", "2", "3"},
@@ -18,10 +21,11 @@ ALLOWED_SYNCHRONOUS_MODES = frozenset(
 
 def _version_triplet(version_info: Sequence[int]) -> tuple[int, int, int]:
     """Return a comparable SQLite major/minor/patch tuple."""
-    if len(version_info) < 3:
+    if len(version_info) < SQLITE_VERSION_PARTS:
         msg = "SQLite version must include major, minor, and patch values."
         raise ValueError(msg)
-    return tuple(int(part) for part in version_info[:3])
+    major, minor, patch = version_info[:SQLITE_VERSION_PARTS]
+    return int(major), int(minor), int(patch)
 
 
 def sqlite_wal_reset_fix_present(version_info: Sequence[int]) -> bool:
