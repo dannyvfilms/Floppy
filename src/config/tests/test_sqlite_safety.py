@@ -5,6 +5,8 @@ from config.sqlite_safety import (
     normalize_sqlite_synchronous,
     prepare_sqlite_environment,
     resolve_sqlite_journal_mode,
+    sqlite_database_is_memory,
+    sqlite_journal_mode_matches,
     sqlite_wal_reset_fix_present,
 )
 
@@ -143,3 +145,38 @@ class SQLiteSafetyTests(TestCase):
 
         self.assertIsNone(policy)
         self.assertEqual(environment, {})
+
+    def test_in_memory_database_names_are_detected(self):
+        in_memory_names = (
+            ":memory:",
+            "file:memorydb_default?mode=memory&cache=shared",
+            "file:test-db?cache=shared&mode=memory",
+        )
+
+        for database_name in in_memory_names:
+            with self.subTest(database_name=database_name):
+                self.assertTrue(sqlite_database_is_memory(database_name))
+
+        self.assertFalse(sqlite_database_is_memory("/tmp/floppy.sqlite3"))
+        self.assertFalse(sqlite_database_is_memory("file:floppy.sqlite3?mode=rwc"))
+
+    def test_memory_journal_is_expected_only_for_in_memory_database(self):
+        self.assertTrue(
+            sqlite_journal_mode_matches(
+                "DELETE",
+                "memory",
+                "file:memorydb_default?mode=memory&cache=shared",
+            ),
+        )
+        self.assertFalse(
+            sqlite_journal_mode_matches(
+                "DELETE",
+                "memory",
+                "/tmp/floppy.sqlite3",
+            ),
+        )
+
+    def test_matching_persistent_journal_mode_is_accepted(self):
+        self.assertTrue(
+            sqlite_journal_mode_matches("DELETE", "delete", "/tmp/floppy.sqlite3"),
+        )
