@@ -154,9 +154,7 @@ def _asset_data_uri(name: str) -> str:
 def _masthead() -> str:
     """Show the Floppy mark, so the page reads as part of the app."""
     icon = _asset_data_uri("android-chrome-192x192.png")
-    mark = (
-        f"<img src='{icon}' alt='' width='36' height='36'>" if icon else ""
-    )
+    mark = f"<img src='{icon}' alt='' width='36' height='36'>" if icon else ""
     return f"<header class='masthead'>{mark}<span>Floppy</span></header>"
 
 
@@ -175,9 +173,10 @@ def _backup_card() -> str:
         )
     else:
         action = (
-            "<p class='note'>Floppy writes a copy of the database to the "
+            "<p class='note'>Floppy writes a verified copy of the database to the "
             "<code>sqlite-recovery</code> folder beside <code>db.sqlite3</code> "
-            "before it removes any entry. Copy the file from there.</p>"
+            "before it changes a broken relationship or removes a row. Copy the "
+            "file from there.</p>"
             f"<p class='note'>To download the file from this page instead, set "
             f"<code>{_DOWNLOAD_ENV}=true</code> and start Floppy again. Keep it "
             "off at other times, because this page has no sign-in.</p>"
@@ -224,7 +223,47 @@ def _affected_list(report: dict) -> str:
         )
     if not rows:
         return ""
-    return "<div class='card'><h2>What is affected</h2><ul>" + "".join(rows) + "</ul></div>"
+    return (
+        "<div class='card'><h2>What is affected</h2><ul>"
+        + "".join(rows)
+        + "</ul></div>"
+    )
+
+
+def _repair_plan_card(report: dict) -> str:
+    """Explain safe work already done and any destructive work still required."""
+    plan = report.get("repair_plan") or {}
+    safe_repair = report.get("safe_repair") or {}
+    parts = []
+    cleared = _count(safe_repair.get("references_cleared"))
+    derived = _count(safe_repair.get("relationship_rows_removed"))
+    if cleared or derived:
+        parts.append(
+            "<p>Floppy already preserved the affected tracking rows where it could: "
+            f"it cleared {cleared} broken optional reference(s) and removed "
+            f"{derived} derived relationship row(s). A verified backup was created "
+            "before those changes.</p>"
+        )
+
+    required = _count(plan.get("required_relationships"))
+    if required:
+        parts.append(
+            f"<p>{required} broken required relationship(s) remain. Those child "
+            "rows cannot exist validly without their missing parent. Repairing the "
+            "database removes only those remaining rows from the live database; "
+            "the verified backup keeps their original data.</p>"
+        )
+
+    safe_pending = _count(plan.get("safe_relationships"))
+    if safe_pending:
+        parts.append(
+            f"<p>{safe_pending} relationship(s) can be repaired without deleting "
+            "their user-owned child rows.</p>"
+        )
+
+    if not parts:
+        return ""
+    return "<div class='card'><h2>Repair plan</h2>" + "".join(parts) + "</div>"
 
 
 def render_page(
@@ -257,7 +296,9 @@ def render_page(
             f"<ul>{corruption_reasons}</ul></div>",
             "<div class='card'><h2>Keep a copy of the damaged file</h2>"
             "<p>Keep the damaged file before you replace it. A repair tool can "
-            "still read data from it.</p>" + _backup_card() + "</div>",
+            "still read data from it.</p>"
+            + _backup_card()
+            + "</div>",
             "<div class='card'><h2>How to restore</h2><ol>"
             "<li>Stop Floppy.</li>"
             "<li>Replace <code>db.sqlite3</code> with your known-good backup.</li>"
@@ -267,57 +308,76 @@ def render_page(
         return _document("".join(parts))
 
     total = _count(report.get("total_conflicts"))
-    can_quarantine = bool(report.get("can_quarantine"))
+    actions = report.get("actions") or {}
+    can_accept = "accept" in actions
+    can_repair = bool("quarantine" in actions and report.get("can_quarantine"))
     parts = [
-        "<h1>Your data is safe. Nothing was deleted.</h1>",
-        f"<p>Floppy found {total} entries that point to a record that is no "
-        "longer in the database. Floppy paused so that you can choose what to "
-        "do. No entry was changed.</p>",
+        "<h1>Your data is safe. Floppy paused before migrations.</h1>",
+        f"<p>Floppy found {total} broken relationship(s). One row can have more "
+        "than one broken relationship, so this number is not a count of rows to "
+        "remove. Floppy paused before migrations so recovery cannot silently "
+        "discard user data.</p>",
+        _repair_plan_card(report),
         _affected_list(report),
     ]
 
     if interactive:
-        parts.append(
-            "<div class='card'><h2>Keep the entries, then start</h2>"
-            "<p>Floppy starts and changes no data. The affected entries stay "
-            "hidden until you repair them.</p>"
-            "<form method='POST' action='/accept'>"
-            "<button>Keep everything and start Floppy</button></form></div>",
-        )
-        if can_quarantine:
+        if can_accept:
             parts.append(
-                "<div class='card'><h2>Remove the entries, then start</h2>"
-                "<p>Floppy saves a backup of the database first. Then it "
-                f"removes the {total} entries above and starts. You cannot "
-                "undo this, but the backup keeps the entries.</p>"
+                "<div class='card'><h2>Keep the entries, then start</h2>"
+                "<p>This legacy choice keeps every invalid relationship. Use it "
+                "only when the current recovery policy explicitly allows it.</p>"
+                "<form method='POST' action='/accept'>"
+                "<button>Keep everything and start Floppy</button></form></div>",
+            )
+        if can_repair:
+            required = _count((report.get("repair_plan") or {}).get("required_relationships"))
+            if required:
+                explanation = (
+                    "Floppy creates and verifies a backup first. It preserves "
+                    "nullable tracking rows by clearing only their broken references. "
+                    "Rows whose required parent is still missing must be removed from "
+                    "the live database so SQLite can validate migrations; their original "
+                    "data remains in the backup."
+                )
+            else:
+                explanation = (
+                    "Floppy creates and verifies a backup first, then repairs the "
+                    "broken relationships without removing user-owned rows when the "
+                    "schema permits that."
+                )
+            parts.append(
+                "<div class='card'><h2>Repair the relationships, then start</h2>"
+                f"<p>{explanation}</p>"
                 "<form method='POST' action='/quarantine'>"
-                f"<button>Remove {total} entries and start Floppy</button>"
+                "<button>Repair relationships and start Floppy</button>"
                 "</form></div>",
             )
-        else:
+        elif not can_accept:
             parts.append(
                 "<div class='card'><h2>Repair these entries yourself</h2>"
-                "<p>Floppy cannot remove these entries safely. The container "
-                "log gives the reason.</p></div>",
+                "<p>Floppy cannot prove that an automatic write is safe for this "
+                "schema. Restore a backup or inspect the technical details before "
+                "you change the database.</p></div>",
             )
     else:
         parts.append(
             "<div class='card'><h2>How to choose</h2>"
-            "<p>This is a copy on disk. To choose an action, open Floppy at "
-            f"port {port} while the container runs.</p></div>",
+            "<p>This is a copy on disk. To choose an available action, open Floppy "
+            f"at port {port} while the container runs.</p></div>",
         )
 
     parts.append(
         "<div class='card'><h2>Use a backup instead</h2><ol>"
         "<li>Stop Floppy.</li>"
         "<li>Replace <code>db.sqlite3</code> with your backup.</li>"
-        "<li>Start Floppy.</li></ol>" + _backup_card() + "</div>",
+        "<li>Start Floppy.</li></ol>"
+        + _backup_card()
+        + "</div>",
     )
     parts.append(_help_card())
     public = {
-        key: value
-        for key, value in report.items()
-        if key not in _SECRET_REPORT_KEYS
+        key: value for key, value in report.items() if key not in _SECRET_REPORT_KEYS
     }
     parts.append(
         "<details><summary>Technical details for a bug report</summary>"
@@ -463,7 +523,11 @@ class _Handler(BaseHTTPRequestHandler):
             size = db_file.stat().st_size
             handle = db_file.open("rb")
         except OSError as error:
-            self._send(404, f"could not read database: {error}", "text/plain; charset=utf-8")
+            self._send(
+                404,
+                f"could not read database: {error}",
+                "text/plain; charset=utf-8",
+            )
             return
         with handle:
             self.send_response(200)
@@ -511,6 +575,17 @@ class _Handler(BaseHTTPRequestHandler):
         if action is None or not report:
             self._send(404, "not found", "text/plain; charset=utf-8")
             return
+        if action not in (report.get("actions") or {}):
+            self._send(
+                403,
+                _document(
+                    "<h1>That recovery choice is not available.</h1>"
+                    "<p>Floppy changed nothing. Reload the recovery page and use "
+                    "one of the choices shown for the current database state.</p>"
+                ),
+                "text/html; charset=utf-8",
+            )
+            return
         if not self._is_same_origin():
             self._send(403, "cross-site request", "text/plain; charset=utf-8")
             return
@@ -537,7 +612,7 @@ class _Handler(BaseHTTPRequestHandler):
                     403,
                     _document(
                         "<h1>Cannot automatically repair</h1><p>These entries "
-                        "cannot be removed automatically.</p>",
+                        "cannot be changed automatically.</p>",
                     ),
                     "text/html; charset=utf-8",
                 )
@@ -587,9 +662,5 @@ def serve(db_path: str, port: object | None = None) -> None:
 
 
 if __name__ == "__main__":
-    cli_port = (
-        sys.argv[_PORT_ARG_INDEX]
-        if len(sys.argv) > _PORT_ARG_INDEX
-        else None
-    )
+    cli_port = sys.argv[_PORT_ARG_INDEX] if len(sys.argv) > _PORT_ARG_INDEX else None
     serve(sys.argv[_DB_PATH_ARG_INDEX], cli_port)
