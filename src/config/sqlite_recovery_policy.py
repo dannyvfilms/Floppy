@@ -12,6 +12,7 @@ from pathlib import Path
 
 from config.sqlite_integrity import (
     _create_verified_backup,
+    _decision_path,
     _describe_affected,
     _incident_from_report,
     _incident_report_path,
@@ -29,7 +30,6 @@ from config.sqlite_repair import apply_repair_plan, build_repair_plan
 
 _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
 _AUTO_REPAIR_ENV = "FLOPPY_SQLITE_AUTO_REPAIR"
-_DECISION_SUFFIX = ".integrity.decision"
 
 
 class UnsafeRecoverySchemaError(sqlite3.IntegrityError):
@@ -52,11 +52,6 @@ def _auto_repair_enabled() -> bool:
         "no",
         "off",
     }
-
-
-def _decision_path(db_path: str) -> Path:
-    database_path = Path(db_path).resolve()
-    return database_path.with_name(f"{database_path.name}{_DECISION_SUFFIX}")
 
 
 def _publish_policy_report(
