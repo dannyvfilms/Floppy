@@ -5,7 +5,7 @@ from users.server_port_views import server_port_context
 register = template.Library()
 
 
-@register.inclusion_tag("users/components/server_port_gate.html", takes_context=True)
+@register.inclusion_tag("users/components/server_port.html", takes_context=True)
 def server_port_panel(context):
     """Render server-port status, with mutation controls only for a superuser."""
     request = context.get("request")

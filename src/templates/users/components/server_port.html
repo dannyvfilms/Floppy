@@ -1,15 +1,21 @@
 {% if show_server_port_panel %}
-  <div class="mt-6 bg-[var(--color-surface)] rounded-lg p-6">
+  <section class="mt-6 bg-[var(--color-surface)] rounded-lg p-6"
+           aria-labelledby="server-port-heading">
     <div class="flex items-center mb-2">
       {% include "app/icons/server.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-      <h3 class="text-xl font-semibold">Server port</h3>
+      <h3 id="server-port-heading" class="text-xl font-semibold">Server port</h3>
     </div>
     <p class="text-[var(--color-text-muted)] text-sm mb-6 max-w-4xl">
-      Change the public HTTP port only when another process in the same network namespace already uses port 8000.
-      A normal Docker host-port change does not need this setting.
+      {% if can_manage_server_port %}
+        Change the public HTTP port only when another process in the same network namespace already uses port 8000.
+        A normal Docker host-port change does not need this setting.
+      {% else %}
+        This status is read-only for your account. An instance administrator can change the saved listener.
+      {% endif %}
     </p>
 
-    <div class="grid gap-3 sm:grid-cols-3 mb-6" aria-label="Server port status">
+    <div class="grid gap-3 {% if can_manage_server_port %}sm:grid-cols-3{% else %}sm:grid-cols-2{% endif %} mb-6"
+         aria-label="Server port status">
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-4">
         <p class="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Running listener</p>
         <p class="mt-1 text-lg font-semibold">
@@ -26,40 +32,44 @@
         <p class="mt-1 text-xs text-[var(--color-text-muted)]">
           {% if server_port_status %}
             Source: {{ server_port_status.source }}
-          {% else %}
+          {% elif can_manage_server_port %}
             Correct the active configuration before restart.
+          {% else %}
+            The current configuration cannot be read safely.
           {% endif %}
         </p>
       </div>
 
-      <div class="bg-[var(--color-surface-strong)] rounded-lg p-4">
-        <p class="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Saved fallback</p>
-        <p class="mt-1 text-lg font-semibold">
-          {% if server_port_config_error_source == "saved" %}
-            Unreadable
-          {% elif server_port_config_error_source == "environment" %}
-            Not evaluated
-          {% elif server_port_status and server_port_status.saved_port %}
-            {{ server_port_status.saved_port }}
-          {% else %}
-            {{ default_port }}
-          {% endif %}
-        </p>
-        <p class="mt-1 text-xs text-[var(--color-text-muted)]">
-          {% if server_port_config_error_source == "saved" %}
-            Repair or reset the saved value before it can be used.
-          {% elif server_port_config_error_source == "environment" %}
-            Correct the environment value before evaluating fallbacks.
-          {% elif server_port_status and server_port_status.saved_port %}
-            Stored under the Floppy data directory.
-          {% else %}
-            No saved override. The default is {{ default_port }}.
-          {% endif %}
-        </p>
-      </div>
+      {% if can_manage_server_port %}
+        <div class="bg-[var(--color-surface-strong)] rounded-lg p-4">
+          <p class="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">Saved fallback</p>
+          <p class="mt-1 text-lg font-semibold">
+            {% if server_port_config_error_source == "saved" %}
+              Unreadable
+            {% elif server_port_config_error_source == "environment" %}
+              Not evaluated
+            {% elif server_port_status and server_port_status.saved_port %}
+              {{ server_port_status.saved_port }}
+            {% else %}
+              {{ default_port }}
+            {% endif %}
+          </p>
+          <p class="mt-1 text-xs text-[var(--color-text-muted)]">
+            {% if server_port_config_error_source == "saved" %}
+              Repair or reset the saved value before it can be used.
+            {% elif server_port_config_error_source == "environment" %}
+              Correct the environment value before evaluating fallbacks.
+            {% elif server_port_status and server_port_status.saved_port %}
+              Stored under the Floppy data directory.
+            {% else %}
+              No saved override. The default is {{ default_port }}.
+            {% endif %}
+          </p>
+        </div>
+      {% endif %}
     </div>
 
-    {% if environment_override %}
+    {% if can_manage_server_port and environment_override %}
       <div class="mb-6 rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] p-4" role="status">
         <div class="flex items-start gap-3">
           {% include "app/icons/info.svg" with classes="w-5 h-5 shrink-0 mt-0.5 text-[var(--color-warning-text)]" %}
@@ -79,75 +89,90 @@
         <div class="flex items-start gap-3">
           {% include "app/icons/error.svg" with classes="w-5 h-5 shrink-0 mt-0.5 text-[var(--color-error-text)]" %}
           <div>
-            <h4 class="font-medium text-[var(--color-error-text)]">
-              {% if server_port_config_error_source == "environment" %}
-                Environment server port is invalid
-              {% else %}
-                Saved server port cannot be read
-              {% endif %}
-            </h4>
-            <p class="mt-1 text-sm text-[var(--color-text-muted)]">{{ server_port_config_error }}</p>
-            <p class="mt-2 text-sm text-[var(--color-text-muted)]">
-              {% if server_port_config_error_source == "environment" %}
-                Correct <code>{{ environment_name }}</code> before you restart Floppy.
-              {% else %}
-                Reset the saved value below, or correct the file before you restart Floppy.
-              {% endif %}
-            </p>
+            {% if can_manage_server_port %}
+              <h4 class="font-medium text-[var(--color-error-text)]">
+                {% if server_port_config_error_source == "environment" %}
+                  Environment server port is invalid
+                {% else %}
+                  Saved server port cannot be read
+                {% endif %}
+              </h4>
+              <p class="mt-1 text-sm text-[var(--color-text-muted)]">{{ server_port_config_error }}</p>
+              <p class="mt-2 text-sm text-[var(--color-text-muted)]">
+                {% if server_port_config_error_source == "environment" %}
+                  Correct <code>{{ environment_name }}</code> before you restart Floppy.
+                {% else %}
+                  Reset the saved value below, or correct the file before you restart Floppy.
+                {% endif %}
+              </p>
+            {% else %}
+              <h4 class="font-medium text-[var(--color-error-text)]">Server port configuration needs administrator attention</h4>
+              <p class="mt-1 text-sm text-[var(--color-text-muted)]">
+                Detailed configuration errors and recovery controls are hidden for this account.
+              </p>
+            {% endif %}
           </div>
         </div>
       </div>
     {% endif %}
 
-    <div class="bg-[var(--color-surface-strong)] rounded-lg p-5">
-      <h4 class="text-base font-medium mb-1">Internal listener</h4>
-      <p id="server-port-help" class="text-sm text-[var(--color-text-muted)] mb-4">
-        Use an integer from 1 through 65535. Saving changes the next listener value. It does not restart Floppy.
-      </p>
-
-      <form method="post" action="{% url 'update_server_port' %}" class="space-y-4 max-w-xl">
-        {% csrf_token %}
-        <div>
-          <label for="server-port" class="block text-sm font-medium mb-2">Port</label>
-          <input id="server-port"
-                 name="port"
-                 type="number"
-                 min="1"
-                 max="65535"
-                 step="1"
-                 inputmode="numeric"
-                 aria-describedby="server-port-help server-port-source"
-                 {% if environment_override %}disabled aria-disabled="true"{% endif %}
-                 value="{% if server_port_status %}{{ server_port_status.saved_port|default:server_port_status.effective_port }}{% else %}{{ default_port }}{% endif %}"
-                 class="w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50">
-        </div>
-
-        <p id="server-port-source" class="text-xs text-[var(--color-text-muted)]">
-          Priority: <code>{{ environment_name }}</code>, then the saved value, then {{ default_port }}.
+    {% if can_manage_server_port %}
+      <div class="bg-[var(--color-surface-strong)] rounded-lg p-5">
+        <h4 class="text-base font-medium mb-1">Internal listener</h4>
+        <p id="server-port-help" class="text-sm text-[var(--color-text-muted)] mb-4">
+          Use an integer from 1 through 65535. Saving changes the next listener value. It does not restart Floppy.
         </p>
 
-        <button type="submit"
-                name="action"
-                value="save"
-                {% if environment_override %}disabled{% endif %}
-                style="background-color: var(--color-link); color: var(--color-page-bg)"
-                class="px-4 py-2 rounded-md hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 transition-opacity text-sm">
-          Save port
-        </button>
-      </form>
-
-      {% if show_reset %}
-        <form method="post" action="{% url 'update_server_port' %}" class="mt-3">
+        <form method="post" action="{% url 'update_server_port' %}" class="space-y-4 max-w-xl">
           {% csrf_token %}
+          <div>
+            <label for="server-port" class="block text-sm font-medium mb-2">Port</label>
+            <input id="server-port"
+                   name="port"
+                   type="number"
+                   min="1"
+                   max="65535"
+                   step="1"
+                   inputmode="numeric"
+                   aria-describedby="server-port-help server-port-source"
+                   {% if environment_override %}disabled aria-disabled="true"{% endif %}
+                   value="{% if server_port_status %}{{ server_port_status.saved_port|default:server_port_status.effective_port }}{% else %}{{ default_port }}{% endif %}"
+                   class="w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50">
+          </div>
+
+          <p id="server-port-source" class="text-xs text-[var(--color-text-muted)]">
+            Priority: <code>{{ environment_name }}</code>, then the saved value, then {{ default_port }}.
+          </p>
+
           <button type="submit"
                   name="action"
-                  value="reset"
-                  class="px-4 py-2 border border-[var(--color-surface-border)] rounded-md hover:border-[var(--color-surface-hover)] transition-colors text-sm">
-            Reset saved value
+                  value="save"
+                  {% if environment_override %}disabled{% endif %}
+                  style="background-color: var(--color-link); color: var(--color-page-bg)"
+                  class="px-4 py-2 rounded-md hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 transition-opacity text-sm">
+            Save port
           </button>
         </form>
-      {% endif %}
-    </div>
+
+        {% if show_reset %}
+          <form method="post" action="{% url 'update_server_port' %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit"
+                    name="action"
+                    value="reset"
+                    class="px-4 py-2 border border-[var(--color-surface-border)] rounded-md hover:border-[var(--color-surface-hover)] transition-colors text-sm">
+              Reset saved value
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] p-4" role="status">
+        <p class="text-sm text-[var(--color-text-muted)]">
+          Need to change the internal listener? Ask an instance administrator, or use the documented environment or CLI configuration for the host.
+        </p>
+      </div>
+    {% endif %}
 
     <div class="mt-5 text-sm text-[var(--color-text-muted)] max-w-4xl">
       <h4 class="font-medium text-[var(--color-text)]">Deployment notes</h4>
@@ -158,5 +183,5 @@
         <li>The private application hop remains internal and is not changed by this setting.</li>
       </ul>
     </div>
-  </div>
+  </section>
 {% endif %}
