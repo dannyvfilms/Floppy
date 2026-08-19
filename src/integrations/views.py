@@ -36,8 +36,8 @@ from integrations import (
     koito_api,
     lastfm_api,
     pocketcasts_api,
-    stremio_catalog,
     psn_api,
+    stremio_catalog,
     stremio_queue,
     tasks,
     xbox_api,
@@ -3259,10 +3259,7 @@ def stremio_addon_subtitles(request, token, media_type, media_id):
         media_type not in {"movie", "series"}
         or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
         or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
-        or (
-            media_type == "movie"
-            and ":" in media_id
-        )
+        or (media_type == "movie" and ":" in media_id)
     ):
         logger.info(
             "stremio_queue status=limited reason=invalid_media_id user_id=%s "
