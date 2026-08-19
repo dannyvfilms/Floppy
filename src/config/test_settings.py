@@ -1,7 +1,7 @@
 from django.db.backends.signals import connection_created
 from fakeredis import FakeConnection
 
-from config.test_network import install_test_network_guard
+from config.test_network import install_test_network_guard, test_network_enabled
 
 from .settings import *  # noqa: F403
 
@@ -16,6 +16,18 @@ if USING_SQLITE_DATABASE:  # noqa: F405
 # Ordinary tests must be deterministic and offline. An explicit network-tag run
 # opts out through FLOPPY_TEST_ALLOW_NETWORK before this settings module loads.
 install_test_network_guard()
+
+# AniBridge is a runtime data source, not part of an ordinary test's contract.
+# Use a minimal deterministic snapshot for the mapping cases exercised by the
+# offline suite. Explicit network-tag runs leave this unset and verify the real
+# download path instead.
+ANIBRIDGE_MAPPING_DATA_OVERRIDE = None
+if not test_network_enabled():
+    ANIBRIDGE_MAPPING_DATA_OVERRIDE = {
+        "tvdb_show:74796:s2": {"mal:269": {"1-20": "21-40"}},
+        "tvdb_show:74796:s17": {"mal:53998": {"14-": "1-"}},
+        "anidb:3651:R": {"mal:849": {}},
+    }
 
 CACHES = {
     "default": {
