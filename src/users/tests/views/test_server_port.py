@@ -51,14 +51,37 @@ class AdvancedServerPortTests(TestCase):
         with self.assertRaises(NoReverseMatch):
             reverse("server_settings")
 
-    def test_normal_user_can_open_advanced_without_instance_port_controls(self):
+    def test_normal_user_can_open_advanced_with_read_only_port_status(self):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("advanced"))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Server port")
+        self.assertContains(response, "read-only")
+        self.assertContains(response, "Running listener")
+        self.assertContains(response, "Configured port")
+        self.assertContains(response, "Source: default")
+        self.assertContains(response, "8000")
         self.assertNotContains(response, 'id="server-port"')
-        self.assertNotContains(response, "Running listener")
+        self.assertNotContains(response, reverse("update_server_port"))
+        self.assertNotContains(response, "Save port")
+
+    def test_normal_user_does_not_receive_detailed_configuration_error(self):
+        self.client.force_login(self.user)
+        path = config_path()
+        path.write_text("{not json", encoding="utf-8")
+
+        response = self.client.get(reverse("advanced"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Server port configuration needs administrator attention",
+        )
+        self.assertNotContains(response, str(path))
+        self.assertNotContains(response, "invalid JSON")
+        self.assertNotContains(response, reverse("update_server_port"))
 
     def test_normal_user_cannot_mutate_server_port(self):
         self.client.force_login(self.user)
