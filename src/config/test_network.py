@@ -13,7 +13,7 @@ _GUARD_MARKER = "__floppy_test_network_guard__"
 _ORIGINAL_REQUEST = requests.sessions.Session.request
 
 
-class UnexpectedExternalNetworkAccess(BaseException):
+class UnexpectedExternalNetworkAccessError(BaseException):
     """Raised when a non-network test attempts an external HTTP request."""
 
 
@@ -38,7 +38,7 @@ def _guarded_request(session, method, url, *args, **kwargs):
         return _ORIGINAL_REQUEST(session, method, url, *args, **kwargs)
 
     hostname = urlsplit(str(url)).hostname or "<unknown>"
-    raise UnexpectedExternalNetworkAccess(
+    raise UnexpectedExternalNetworkAccessError(
         "External HTTP is disabled for ordinary tests: "
         f"{str(method).upper()} {hostname}. Mock the provider boundary or mark "
         "the test with the network tag and run scripts/test.sh --network."
