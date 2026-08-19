@@ -23,7 +23,11 @@ When the recovery module is invoked directly without a packaged launcher value, 
 
 The health check reads the runtime file. The recovery server answers its health path with `503` so the recovery page can remain reachable without reporting the application as healthy.
 
-The administrator control lives under **Settings → Advanced → Server port**. Do not add a second Settings destination for this one instance control. Normal users can use Advanced, but they must not see or mutate the instance port.
+The status surface lives under **Settings → Advanced → Server port**. Do not add a second Settings destination for this one instance setting.
+
+All signed-in users can see safe read-only listener status. Only superusers can see or use save/reset controls. The POST endpoint must keep its server-side superuser check even when the template hides the controls.
+
+Do not expose detailed local configuration errors, saved paths, or recovery controls to a non-superuser. Show a generic administrator-attention state instead.
 
 The Advanced panel reads the same persistent setting. It must not claim that a saved value overrides an active `FLOPPY_PORT`.
 
@@ -59,17 +63,20 @@ Do not introduce a Docker-only setting for a behavior that must also work in sou
 
 For changes to **Settings → Advanced → Server port**:
 
-- the control appears only for superusers;
-- Advanced remains available to normal users without the instance control;
+- signed-in users can find the Server port status in Advanced;
+- non-superusers receive read-only running/configured status only;
+- non-superusers do not receive mutation controls, mutation URLs, detailed local errors, or configuration paths;
+- superusers retain the full save/reset control;
+- the POST view independently rejects non-superusers;
 - visible current listener;
 - visible configuration source;
-- visible saved fallback;
-- explicit restart state;
-- environment override shown in text;
+- visible saved fallback for a superuser;
+- explicit restart state for a superuser after a saved change;
+- environment override shown in text for a superuser;
 - normal form controls with labels;
 - keyboard operation without custom interaction code;
 - no timers or automatic focus changes;
-- errors remain next to the setting and include a recovery action;
+- administrator errors remain next to the setting and include a recovery action;
 - host-port and internal-port guidance remain distinct;
 - changing the internal listener warns container users to update the published target before restart.
 
@@ -100,13 +107,15 @@ uv run --project mcp_server pytest mcp_server/tests/test_client.py
 
 Then run the repository quality workflow required by `AGENTS.md` and `CONTRIBUTING.md`.
 
+When the status-panel authorization changes, test both a normal signed-in account and a superuser in a real browser. Capture the resulting Advanced-settings states. Do not mark the UI change ready only from template tests.
+
 When container startup changes, validate the built image with the default listener. A non-default container smoke is also required before claiming packaged non-default behavior is fully verified; do not weaken repository workflow protections to add that check inside an unrelated PR.
 
 A recovery smoke must also confirm that a configured non-default listener remains reachable when SQLite startup is intentionally paused. The container must stay unhealthy during that recovery state.
 
 ## Contract surfaces
 
-This launcher setting is not a REST resource. Do not add it to OpenAPI or JSON-LD unless a supported network API is deliberately introduced later.
+This launcher setting is not a REST resource. Do not add it to OpenAPI, AsyncAPI, or JSON-LD unless a supported network API or event contract is deliberately introduced later.
 
 If a future API is added, define its authorization and restart semantics before exposing it. An API that changes the saved file but looks like a live listener mutation would be misleading.
 
