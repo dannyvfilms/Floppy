@@ -134,14 +134,19 @@ class RepairLocalOnlySeasonsTests(TestCase):
         self._add_episode(1)
         self._add_episode(2)
 
-        with patch(
-            "app.providers.tmdb.tv_with_seasons",
-            return_value={
-                "title": "Rent-a-Girlfriend",
-                "image": "",
-                "related": {"seasons": [{"season_number": 5, "episode_count": 2}]},
-                "season/5": _season_payload(2),
-            },
+        with (
+            patch(
+                "app.providers.tmdb.tv_with_seasons",
+                return_value={
+                    "title": "Rent-a-Girlfriend",
+                    "image": "",
+                    "related": {
+                        "seasons": [{"season_number": 5, "episode_count": 2}]
+                    },
+                    "season/5": _season_payload(2),
+                },
+            ),
+            patch("app.models.tv.TV._start_next_available_season", return_value=False),
         ):
             output = self._run("--media-id", "96316", "--apply")
 
