@@ -1,4 +1,4 @@
-"""Fail fast when an ordinary test reaches the public network."""
+"""Keep ordinary tests offline while modelling a real connection failure."""
 
 from __future__ import annotations
 
@@ -13,17 +13,8 @@ _GUARD_MARKER = "__floppy_test_network_guard__"
 _ORIGINAL_REQUEST = requests.sessions.Session.request
 
 
-class UnexpectedExternalNetworkAccessError(BaseException):
-    """Raised when a non-network test attempts an external HTTP request."""
-
-    def __init__(self, method: object, hostname: str):
-        """Describe the blocked destination without exposing a full request URL."""
-        message = (
-            "External HTTP is disabled for ordinary tests: "
-            f"{str(method).upper()} {hostname}. Mock the provider boundary or mark "
-            "the test with the network tag and run scripts/test.sh --network."
-        )
-        super().__init__(message)
+class UnexpectedExternalNetworkAccessError(requests.ConnectionError):
+    """Report blocked external HTTP as the connection failure production handles."""
 
 
 def test_network_enabled() -> bool:
@@ -47,7 +38,12 @@ def _guarded_request(session, method, url, *args, **kwargs):
         return _ORIGINAL_REQUEST(session, method, url, *args, **kwargs)
 
     hostname = urlsplit(str(url)).hostname or "<unknown>"
-    raise UnexpectedExternalNetworkAccessError(method, hostname)
+    message = (
+        "External HTTP is disabled for ordinary tests: "
+        f"{str(method).upper()} {hostname}. Mock the provider boundary or mark "
+        "the test with the network tag and run scripts/test.sh --network."
+    )
+    raise UnexpectedExternalNetworkAccessError(message)
 
 
 def install_test_network_guard() -> None:
