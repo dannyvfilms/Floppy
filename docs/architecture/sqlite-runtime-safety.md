@@ -16,6 +16,18 @@ SQLite reports the bug as likely present from 3.7.0 through 3.51.2. The fix is i
 
 Source: [SQLite WAL documentation — WAL-reset bug](https://www.sqlite.org/wal.html#the_wal_reset_bug).
 
+## Controlled runtimes use fixed SQLite
+
+The compatibility fallback is not a substitute for updating a runtime that Floppy controls.
+
+- The Docker image uses Alpine 3.24, whose current SQLite package is on a fixed 3.53 release line.
+- Linux CI installs and verifies SQLite 3.53.4 before the application suite runs.
+- CI verifies the SQLite version reported by Python, not only the `sqlite3` command-line tool.
+
+SQLite 3.53.4 is the current pinned CI target. Its official source archive is verified with SQLite's published SHA3-256 before it is compiled. The CI installer lives at `scripts/ci/install-fixed-sqlite.sh`.
+
+The runtime fallback remains required for source installs and future packaged distributions because Floppy cannot safely replace the operating system SQLite library on an operator-owned machine.
+
 ## Floppy behavior
 
 Floppy checks the SQLite library used by Python before Django or Celery opens the database.
@@ -34,11 +46,21 @@ To see the SQLite library used by Python:
 python -c "import sqlite3; print(sqlite3.sqlite_version)"
 ```
 
+## Test-runtime behavior
+
+Django normally creates a shared in-memory SQLite database for tests. SQLite reports `journal_mode=MEMORY` for a true in-memory database even when a persistent database would use WAL or DELETE.
+
+The normal test settings therefore do not run Floppy's persistent-file journal hook against Django's in-memory test database. The SQLite safety unit tests separately prove that MEMORY is accepted only for true in-memory database names and remains a mismatch for persistent file paths.
+
+Ordinary tests are also offline by default. A test that reaches a public HTTP provider fails immediately and must mock the provider boundary or carry the `network` tag. `scripts/test.sh --network` and `scripts/test.sh --full` explicitly opt into external HTTP.
+
 ## Performance
 
-WAL normally gives better write concurrency, so Floppy keeps it on fixed SQLite releases. The rollback journal with `synchronous=FULL` is a temporary safety fallback for affected releases. A write-heavy installation can have more lock contention while the fallback is active.
+WAL normally gives better write concurrency, so Floppy keeps it on fixed SQLite releases. The rollback journal with `synchronous=FULL` is a compatibility fallback for affected releases. A write-heavy installation can have more lock contention while the fallback is active.
 
 Upgrade the SQLite library used by Python to a fixed release to restore WAL automatically. Do not force WAL on an affected runtime to recover performance; that restores the corruption condition.
+
+CI should not benchmark normal SQLite behavior on the rollback fallback. Controlled CI uses a fixed SQLite so concurrency and lock behavior are closer to a supported production runtime.
 
 ## Configuration validation
 
@@ -55,7 +77,7 @@ Floppy accepts these `SQLITE_SYNCHRONOUS` values:
 - `FULL` or `2`
 - `EXTRA` or `3`
 
-`journal_mode=OFF`, `journal_mode=MEMORY`, and `synchronous=OFF` are not accepted because SQLite documents corruption risks after process, operating-system, or power failures. Unexpected values are also rejected before they can become SQLite PRAGMA grammar.
+`journal_mode=OFF`, `journal_mode=MEMORY`, and `synchronous=OFF` are not accepted for persistent Floppy databases because SQLite documents corruption risks after process, operating-system, or power failures. Unexpected values are also rejected before they can become SQLite PRAGMA grammar.
 
 Sources: [SQLite PRAGMA documentation](https://www.sqlite.org/pragma.html#pragma_journal_mode) and [How To Corrupt An SQLite Database File](https://www.sqlite.org/howtocorrupt.html#cfgerr).
 
@@ -63,4 +85,4 @@ Sources: [SQLite PRAGMA documentation](https://www.sqlite.org/pragma.html#pragma
 
 This guard prevents the known WAL-reset condition. It does not replace the startup integrity check, verified backups, or SQLite recovery tools. Those controls remain separate because an existing database can already contain damage from an older run, storage failure, or another cause.
 
-No schema migration is required for this change.
+No schema migration is required for this runtime policy.
