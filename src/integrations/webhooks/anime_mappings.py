@@ -1,5 +1,6 @@
 import contextlib
 
+from django.conf import settings
 from django.core.cache import cache
 
 import app
@@ -16,7 +17,11 @@ DESCRIPTOR_SEASON_PART_INDEX = 3
 
 
 def fetch_mapping_data():
-    """Fetch anime mapping data with caching."""
+    """Fetch anime mapping data with an optional local data override."""
+    mapping_override = getattr(settings, "ANIBRIDGE_MAPPING_DATA_OVERRIDE", None)
+    if mapping_override is not None:
+        return mapping_override
+
     data = cache.get(CACHE_KEY)
     if data is None:
         data = app.providers.services.api_request(
