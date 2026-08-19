@@ -2,24 +2,25 @@
 {% load app_tags %}
 
 <!DOCTYPE html>
-<html lang="en" class="scheme-dark bg-[#212529]">
+<html lang="en"
+      class="{% if user.is_authenticated and user.theme == 'light' %}light{% elif user.is_authenticated and user.theme == 'dark' %}dark{% endif %} bg-[var(--color-page-bg)]">
   <head>
     {# Required meta tags #}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="keywords" content="Yamtrack, Media Tracker">
-    <meta name="description" content="Search and track media on Yamtrack.">
+    <meta name="keywords" content="Floppy, Media Tracker">
+    <meta name="description" content="Search and track media on Floppy.">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-title" content="Yamtrack">
+    <meta name="mobile-web-app-title" content="Floppy">
 
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-title" content="Yamtrack">
+    <meta name="mobile-web-app-title" content="Floppy">
 
     <title>
       {% block title %}
-        Yamtrack
+        Floppy
       {% endblock title %}
     </title>
 
@@ -29,10 +30,22 @@
     <link rel="stylesheet"
           type="text/css"
           href="{% static 'css/main.css' %}{% get_static_file_mtime 'css/main.css' %}">
+    {% djdt_enabled as djdt_is_enabled %}
+    {% if djdt_is_enabled %}
+      <link rel="stylesheet" href="{% static 'debug_toolbar/css/toolbar.css' %}">
+      <script type="module" src="{% static 'debug_toolbar/js/toolbar.js' %}"></script>
+    {% endif %}
 
     <script src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
     <script>
       (function() {
+        function getCookie(name) {
+          const match = document.cookie.match(
+            new RegExp("(?:^|; )" + name + "=([^;]*)"),
+          );
+          return match ? decodeURIComponent(match[1]) : "";
+        }
+
         function initHtmxCacheBusting() {
           if (!window.htmx) {
             return;
@@ -40,9 +53,44 @@
 
           htmx.config.getCacheBusterParam = true;
 
+          // Boosted navigation: never serve history entries from the local
+          // snapshot cache (it would capture Alpine/Select2-mutated DOM);
+          // back/forward instead does a normal full page load.
+          htmx.config.historyCacheSize = 0;
+          htmx.config.refreshOnHistoryMiss = true;
+
+          // Belt-and-braces for HtmxAuthRedirectMiddleware: if a fragment
+          // response is actually a login/signup page (a redirect htmx followed
+          // transparently), navigate to it instead of swapping a whole
+          // document into a fragment slot (#386).
+          document.body.addEventListener("htmx:beforeSwap", function(event) {
+            const xhr = event.detail && event.detail.xhr;
+            if (!xhr) {
+              return;
+            }
+            const body = xhr.responseText || "";
+            if (body.indexOf('name="floppy-page" content="entrance"') === -1) {
+              return;
+            }
+            event.detail.shouldSwap = false;
+            event.detail.isError = false;
+            window.location.assign(xhr.responseURL || "{% url 'account_login' %}");
+          });
+
           document.body.addEventListener("htmx:configRequest", function(event) {
+            // Send CSRF via header rather than relying on a body-encoded
+            // token, so htmx-driven POSTs don't depend on a native form's
+            // hidden input surviving DOM insertion/serialization.
+            event.detail.headers["X-CSRFToken"] = getCookie("csrftoken");
+
             const path = event.detail && event.detail.path ? event.detail.path : "";
-            if (!path.includes("track_modal")) {
+            const needsModalCacheBust = (
+              path.includes("track_modal")
+              || path.includes("collection/modal")
+              || path.includes("collection_modal")
+            );
+
+            if (!needsModalCacheBust) {
               return;
             }
 
@@ -61,12 +109,15 @@
       })();
     </script>
     <script defer src="{% static 'js/libraries/marked-12.0.2.min.js' %}"></script>
-    <script defer src="{% static 'js/markdown-editor.js' %}{% get_static_file_mtime 'js/markdown-editor.js' %}"></script>
+    <script defer
+            src="{% static 'js/markdown-editor.js' %}{% get_static_file_mtime 'js/markdown-editor.js' %}"></script>
     <script defer src="{% static 'js/libraries/alpinejs-3.14.9.min.js' %}"></script>
     <script src="{% static 'js/libraries/lazysizes-5.3.2.min.js' %}" async></script>
     {# ZXing library for barcode decoding #}
-    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest/umd/index.min.js" onload="console.log('ZXing library loaded');"></script>
-    <script src="{% static 'js/barcode-scanner.js' %}{% get_static_file_mtime 'js/barcode-scanner.js' %}" onload="console.log('barcode-scanner.js loaded, barcodeScannerUtils available:', typeof window.barcodeScannerUtils);"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@zxing/library@latest/umd/index.min.js"
+            onload="console.log('ZXing library loaded');"></script>
+    <script src="{% static 'js/barcode-scanner.js' %}{% get_static_file_mtime 'js/barcode-scanner.js' %}"
+            onload="console.log('barcode-scanner.js loaded, barcodeScannerUtils available:', typeof window.barcodeScannerUtils);"></script>
 
     <link rel="apple-touch-icon"
           sizes="180x180"
@@ -86,14 +137,42 @@
     <meta name="msapplication-TileColor" content="#181a1b">
     <meta name="msapplication-config"
           content="{% static "favicon/browserconfig.xml" %}">
-    <meta name="theme-color" content="#181a1b">
+    {% if user.is_authenticated and user.theme == 'light' %}
+      <meta name="theme-color" content="#f8f9fa">
+    {% elif user.is_authenticated and user.theme == 'dark' %}
+      <meta name="theme-color" content="#181a1b">
+    {% else %}
+      <meta name="theme-color"
+            content="#181a1b"
+            media="(prefers-color-scheme: dark)">
+      <meta name="theme-color"
+            content="#f8f9fa"
+            media="(prefers-color-scheme: light)">
+    {% endif %}
 
   </head>
 
-  <body data-mobile-grid="{% if user.is_authenticated %}{{ user.mobile_grid_layout }}{% else %}compact{% endif %}" data-quick-season-mobile="{% if user.is_authenticated %}{{ user.quick_season_update_mobile|yesno:'true,false' }}{% else %}false{% endif %}">
+  <body data-mobile-grid="{% if user.is_authenticated %}{{ user.mobile_grid_layout }}{% else %}compact{% endif %}"
+        data-quick-season-mobile="{% if user.is_authenticated %}{% if user.quick_season_update_mobile == 'season_update' or user.quick_season_update_mobile == 'both' %}true{% else %}false{% endif %}{% else %}false{% endif %}">
+    {% comment %}
+      Navigation progress. Boosted links replace the page with a background
+      request, so the browser shows no spinner and no stop button. Without
+      this bar a slow page looks like a click that did nothing (see #725).
+      hx-preserve keeps these two elements across the swap. A boosted link
+      replaces the whole body, which would otherwise throw away the bar that
+      is reporting the very request doing the replacing.
+    {% endcomment %}
+    <div id="nav-progress" class="nav-progress" aria-hidden="true" hx-preserve="true">
+      <div class="nav-progress-bar"></div>
+    </div>
+    <p id="nav-progress-status"
+       class="nav-progress-status"
+       role="status"
+       aria-live="polite"
+       hx-preserve="true"></p>
     {% block body %}
       {# Main container for the layout #}
-      <div class="flex min-h-screen bg-[#212529] text-gray-100"
+      <div class="flex min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)]"
            x-data="{ isMobileMenuOpen: false }">
 
         {# Mobile menu overlay #}
@@ -103,162 +182,207 @@
 
         {# Sidebar #}
         {% if not public_view|default:False %}
-        <aside class="fixed top-0 left-0 z-40 h-screen w-64 bg-[#1a1d20] transform transition-transform duration-300 ease-in-out border-r border-[#2c3136] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
-               :class="isMobileMenuOpen ? 'translate-x-0' : ''">
-          <div class="h-16 border-b border-[#2c3136] flex items-center px-6">
-            <h1 class="text-2xl font-semibold text-gray-100">Yamtrack</h1>
-          </div>
-          <nav class="p-4 flex-1 overflow-y-auto" style="-webkit-overflow-scrolling: touch;">
-            <ul class="space-y-1 mb-6">
-              <li>
-                <a href="{% url 'home' %}"
-                   class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == "/" %}text-white bg-[#2c3136]{% else %}text-gray-400 hover:text-white hover:bg-[#23272b]{% endif %}">
-                  {% if request.path|str_equals:"/" %}
-                    {% include "app/icons/house.svg" with classes="w-5 h-5 text-indigo-400 " %}
+          <aside class="fixed top-0 left-0 z-40 h-screen w-64 bg-[var(--color-sidebar)] transform transition-transform duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
+                 :class="isMobileMenuOpen ? 'translate-x-0' : ''">
+            <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
+              <h1 class="flex items-center">
+                <img src="{% static 'img/floppy-logo.png' %}"
+                     srcset="{% static 'img/floppy-logo.png' %} 1x,
+                             {% static 'img/floppy-logo@2x.png' %} 2x"
+                     alt="Floppy"
+                     width="158"
+                     height="48"
+                     class="h-9 w-auto">
+              </h1>
+            </div>
+            {# hx-boost: swap the body instead of reloading on sidebar navigation #}
+            <nav class="p-4 flex-1 overflow-y-auto"
+                 hx-boost="true"
+                 style="-webkit-overflow-scrolling: touch">
+              <ul class="space-y-1 mb-6">
+                <li>
+                  <a href="{% url 'home' %}"
+                     class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == "/" %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                    {% if request.path|str_equals:"/" %}
+                      {% include "app/icons/house.svg" with classes="w-5 h-5 text-indigo-400 " %}
+
+                    {% else %}
+                      {% include "app/icons/house.svg" with classes="w-5 h-5" %}
+
+                    {% endif %}
+                    <span>Home</span>
+                  </a>
+                </li>
+
+                {% url 'discover' as discover_url %}
+                <li>
+                  <a href="{{ discover_url }}"
+                     class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == discover_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                    {% if request.path|str_equals:discover_url %}
+                      {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-indigo-400 " %}
+                    {% else %}
+                      {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
+                    {% endif %}
+                    <span>Discover</span>
+                  </a>
+                </li>
+
+                {% get_sidebar_media_types user as sidebar_media_types %}
+                {% for item in sidebar_media_types %}
+                  <li>
+                    <a href="{% url 'medialist' media_type=item.media_type %}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if media_type == item.media_type %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% icon item.media_type is_active=media_type|str_equals:item.media_type %}
+                      <span>{{ item.display_name }}</span>
+                    </a>
+                  </li>
+                {% endfor %}
+              </ul>
+
+              <div class="border-t border-[var(--color-border)] pt-4">
+                <ul class="space-y-1">
+                  {% url 'create_entry' as create_entry_url %}
+                  {% url 'history' as history_url %}
+                  <li>
+                    <a href="{{ create_entry_url }}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == create_entry_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:create_entry_url %}
+                        {% include "app/icons/circle-plus.svg" with classes="w-5 h-5 text-indigo-400 " %}
+
+                      {% else %}
+                        {% include "app/icons/circle-plus.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>Create Custom</span>
+                    </a>
+                  </li>
+
+                  <li>
+                    <a href="{{ history_url }}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == history_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% icon 'history' is_active=request.path|str_equals:history_url %}
+                      <span>History</span>
+                    </a>
+                  </li>
+
+                  {% url 'statistics' as statistics_url %}
+                  <li>
+                    <a href="{{ statistics_url }}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == statistics_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:statistics_url %}
+                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5 text-indigo-400 " %}
+
+                      {% else %}
+                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>Statistics</span>
+                    </a>
+                  </li>
+
+                  {% url 'lists' as lists_url %}
+                  <li>
+                    <a href="{{ lists_url }}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == lists_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:lists_url %}
+                        {% include "app/icons/folder-plus.svg" with classes="w-5 h-5 text-indigo-400 " %}
+
+                      {% else %}
+                        {% include "app/icons/folder-plus.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>Lists</span>
+                    </a>
+                  </li>
+
+                  {% url 'calendar' as calendar_url %}
+                  <li>
+                    <a href="{{ calendar_url }}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == calendar_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:calendar_url %}
+                        {% include "app/icons/calendar.svg" with classes="w-5 h-5 text-indigo-400 " %}
+
+                      {% else %}
+                        {% include "app/icons/calendar.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>Calendar</span>
+                    </a>
+                  </li>
+
+                  {% url 'tag_index' as tag_index_url %}
+                  <li>
+                    <a href="{{ tag_index_url }}"
+                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == tag_index_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:tag_index_url %}
+                        {% include "app/icons/tag.svg" with classes="w-5 h-5 text-indigo-400 " %}
+
+                      {% else %}
+                        {% include "app/icons/tag.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>Tags</span>
+                    </a>
+                  </li>
+                </ul>
+              </div>
+            </nav>
+
+            {% if request.user.is_authenticated and request.user.onboarding_status == "in_progress" %}
+              {% include "users/components/onboarding_banner.html" %}
+            {% endif %}
+
+            <div class="p-4 border-t border-[var(--color-border)] mt-auto">
+              <div class="space-y-2">
+                {% url 'account' as account_url %}
+                {% url 'notifications' as notifications_url %}
+                {% url 'sidebar' as sidebar_url %}
+                {% url 'preferences' as preferences_url %}
+                {% url 'home_screen' as home_screen_url %}
+                {% url 'integrations' as integrations_url %}
+                {% url 'import_data' as import_url %}
+                {% url 'export_data' as export_url %}
+                {% url 'ui_preferences' as ui_preferences_url %}
+                <a href="{{ account_url }}"
+                   hx-boost="true"
+                   class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                  {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url %}
+                    {% include "app/icons/settings.svg" with classes="w-5 h-5 text-indigo-400 " %}
 
                   {% else %}
-                    {% include "app/icons/house.svg" with classes="w-5 h-5" %}
+                    {% include "app/icons/settings.svg" with classes="w-5 h-5" %}
 
                   {% endif %}
-                  <span>Home</span>
+                  <span>Settings</span>
                 </a>
-              </li>
 
-              {% get_sidebar_media_types user as sidebar_media_types %}
-              {% for item in sidebar_media_types %}
-                <li>
-                  <a href="{% url 'medialist' media_type=item.media_type %}"
-                     class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if media_type == item.media_type %}text-white bg-[#2c3136]{% else %}text-gray-400 hover:text-white hover:bg-[#23272b]{% endif %}">
-                    {% icon item.media_type is_active=media_type|str_equals:item.media_type %}
-                    <span>{{ item.display_name }}</span>
-                  </a>
-                </li>
-              {% endfor %}
-            </ul>
+                <form method="post" action="{% url 'account_logout' %}" class="w-full">
+                  {% csrf_token %}
+                  <button type="submit"
+                          class="w-full flex items-center space-x-3 px-4 py-2 rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-hover-dim)] hover:text-[var(--color-text)] transition-colors duration-200 text-sm cursor-pointer">
+                    {% include "app/icons/logout.svg" with classes="w-5 h-5" %}
 
-            <div class="border-t border-[#2c3136] pt-4">
-              <ul class="space-y-1">
-                {% url 'create_entry' as create_entry_url %}
-                {% url 'history' as history_url %}
-                <li>
-                  <a href="{{ create_entry_url }}"
-                     class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == create_entry_url %}text-white bg-[#2c3136]{% else %}text-gray-400 hover:text-white hover:bg-[#23272b]{% endif %}">
-                    {% if request.path|str_equals:create_entry_url %}
-                      {% include "app/icons/circle-plus.svg" with classes="w-5 h-5 text-indigo-400 " %}
-
-                    {% else %}
-                      {% include "app/icons/circle-plus.svg" with classes="w-5 h-5" %}
-
-                    {% endif %}
-                    <span>Create Custom</span>
-                  </a>
-                </li>
-
-                <li>
-                  <a href="{{ history_url }}"
-                     class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == history_url %}text-white bg-[#2c3136]{% else %}text-gray-400 hover:text-white hover:bg-[#23272b]{% endif %}">
-                    {% icon 'history' is_active=request.path|str_equals:history_url %}
-                    <span>History</span>
-                  </a>
-                </li>
-
-                {% url 'statistics' as statistics_url %}
-                <li>
-                  <a href="{{ statistics_url }}"
-                     class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == statistics_url %}text-white bg-[#2c3136]{% else %}text-gray-400 hover:text-white hover:bg-[#23272b]{% endif %}">
-                    {% if request.path|str_equals:statistics_url %}
-                      {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5 text-indigo-400 " %}
-
-                    {% else %}
-                      {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5" %}
-
-                    {% endif %}
-                    <span>Statistics</span>
-                  </a>
-                </li>
-
-                {% url 'lists' as lists_url %}
-                <li>
-                  <a href="{{ lists_url }}"
-                     class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == lists_url %}text-white bg-[#2c3136]{% else %}text-gray-400 hover:text-white hover:bg-[#23272b]{% endif %}">
-                    {% if request.path|str_equals:lists_url %}
-                      {% include "app/icons/folder-plus.svg" with classes="w-5 h-5 text-indigo-400 " %}
-
-                    {% else %}
-                      {% include "app/icons/folder-plus.svg" with classes="w-5 h-5" %}
-
-                    {% endif %}
-                    <span>Lists</span>
-                  </a>
-                </li>
-
-                {% url 'calendar' as calendar_url %}
-                <li>
-                  <a href="{{ calendar_url }}"
-                     class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == calendar_url %}text-white bg-[#2c3136]{% else %}text-gray-400 hover:text-white hover:bg-[#23272b]{% endif %}">
-                    {% if request.path|str_equals:calendar_url %}
-                      {% include "app/icons/calendar.svg" with classes="w-5 h-5 text-indigo-400 " %}
-
-                    {% else %}
-                      {% include "app/icons/calendar.svg" with classes="w-5 h-5" %}
-
-                    {% endif %}
-                    <span>Calendar</span>
-                  </a>
-                </li>
-              </ul>
+                    <span>Logout</span>
+                  </button>
+                </form>
+              </div>
             </div>
-          </nav>
-
-          <div class="p-4 border-t border-[#2c3136] mt-auto">
-            <div class="space-y-2">
-              {% url 'account' as account_url %}
-              {% url 'notifications' as notifications_url %}
-              {% url 'sidebar' as sidebar_url %}
-              {% url 'preferences' as preferences_url %}
-              {% url 'integrations' as integrations_url %}
-              {% url 'import_data' as import_url %}
-              {% url 'export_data' as export_url %}
-              {% url 'ui_preferences' as ui_preferences_url %}
-              <a href="{{ account_url }}"
-                 class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == integrations_url or request.path == import_url or request.path == export_url %}text-white bg-[#2c3136]{% else %}text-gray-400 hover:text-white hover:bg-[#23272b]{% endif %}">
-                {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == integrations_url or request.path == import_url or request.path == export_url %}
-                  {% include "app/icons/settings.svg" with classes="w-5 h-5 text-indigo-400 " %}
-
-                {% else %}
-                  {% include "app/icons/settings.svg" with classes="w-5 h-5" %}
-
-                {% endif %}
-                <span>Settings</span>
-              </a>
-
-              <form method="post" action="{% url 'account_logout' %}" class="w-full">
-                {% csrf_token %}
-                <button type="submit"
-                        class="w-full flex items-center space-x-3 px-4 py-2 rounded-md text-gray-400 hover:bg-[#23272b] hover:text-white transition-colors duration-200 text-sm cursor-pointer">
-                  {% include "app/icons/logout.svg" with classes="w-5 h-5" %}
-
-                  <span>Logout</span>
-                </button>
-              </form>
-            </div>
-          </div>
-        </aside>
+          </aside>
         {% endif %}
 
         {# Main content #}
-        <div class="flex-1 flex flex-col min-h-screen">
+        <div class="flex-1 flex flex-col min-h-screen min-w-0">
           {# Top bar #}
-          <div class="sticky top-0 z-50 bg-[#1a1d20] border-b border-[#2c3136] shadow-md">
+          <div class="sticky top-0 z-50 bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
             <div class="container mx-auto px-4">
-              <div class="flex items-center justify-between lg:justify-center h-16">
+              <div class="flex items-center justify-between lg:justify-center gap-2 h-16 min-w-0">
                 {# Mobile: sidebar toggle button #}
                 {% if not public_view|default:False %}
-                <button @click="isMobileMenuOpen = !isMobileMenuOpen"
-                        class="lg:hidden pe-3 text-gray-400 hover:text-white transition-colors duration-200">
-                  {% include "app/icons/hamburger.svg" with classes="w-6 h-6" %}
+                  <button @click="isMobileMenuOpen = !isMobileMenuOpen"
+                          class="lg:hidden pe-3 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200">
+                    {% include "app/icons/hamburger.svg" with classes="w-6 h-6" %}
 
-                </button>
+                  </button>
                 {% endif %}
 
                 {# Define search type from current media type (if it exists) or last search type #}
@@ -270,99 +394,134 @@
 
                 {# Search bar #}
                 {% if not public_view|default:False %}
-                <div class="relative w-full max-w-2xl">
-                  <form method="get"
-                        action="{% url 'search' %}"
-                        x-data="{ isOpen: false, selectedType: { display: '{{ search_type|media_type_readable_plural }}', value: '{{ search_type }}' }, mediaTypes: {% get_search_media_types user as search_types %}{{ search_types }}, getPlaceholder() { return `Search ${this.selectedType.display.toLowerCase()} in your library or online...` }, barcodeScanning: false, barcodeError: null, barcodePreview: null, explicitSubmitTriggered: false, async handleBarcodeImage(event) { if (!event || !event.target) { console.error('[BARCODE] Invalid event or event.target'); return; } if (event.target.tagName !== 'INPUT' || event.target.type !== 'file') { console.error('[BARCODE] Event not from file input. TagName:', event.target.tagName, 'Type:', event.target.type); return; } if (event.target !== this.$refs.barcodeInput) { console.error('[BARCODE] Event not from barcode input ref'); return; } console.log('handleBarcodeImage called', event); const file = event.target.files?.[0]; if (!file) { console.log('No file selected'); return; } console.log('File selected:', file.name, file.type); this.barcodeScanning = true; this.barcodeError = null; this.barcodePreview = URL.createObjectURL(file); try { console.log('Checking for barcodeScannerUtils:', typeof window.barcodeScannerUtils); if (!window.barcodeScannerUtils) { throw new Error('Barcode scanner utilities not loaded. Please refresh the page.'); } console.log('Starting barcode decode...'); const isbn = await window.barcodeScannerUtils.decodeBarcodeFromFile(file); console.log('Decode result:', isbn); if (isbn) { const barcodeInput = event.target; let form = this.$root; if (!form || form.tagName !== 'FORM' || !form.contains(barcodeInput)) { form = barcodeInput.closest('form'); } if (!form || form.tagName !== 'FORM') { console.error('[FORM] Could not find valid form element'); return; } const searchInput = form.querySelector('input[name=q]'); const formContainsBarcodeInput = form.contains(barcodeInput); if (!searchInput || !formContainsBarcodeInput) { console.error('[FORM] Form validation failed - missing search input or barcode input not in form. Search input:', searchInput, 'Form contains barcode input:', formContainsBarcodeInput); return; } console.log('[FORM] ISBN received, form element:', form, 'tagName:', form.tagName); console.log('[FORM] Search input found:', searchInput); searchInput.value = isbn; console.log('[FORM] Set input value to:', isbn, 'Current value:', searchInput.value); this.explicitSubmitTriggered = true; console.log('[FORM] Submitting form...'); form.submit(); console.log('[FORM] Form submit called'); } else { this.barcodeError = 'Could not read barcode from image. Please try again or enter ISBN manually.'; } } catch (error) { console.error('Barcode scan error:', error); this.barcodeError = 'Error scanning barcode: ' + (error.message || 'Please try again.'); } finally { this.barcodeScanning = false; } }, clearBarcodeError() { this.barcodeError = null; this.barcodePreview = null; if (this.$refs.barcodeInput) { this.$refs.barcodeInput.value = ''; } }, handleFormSubmit(event) { if (event.currentTarget !== this.$el) { return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (this.explicitSubmitTriggered) { this.explicitSubmitTriggered = false; return true; } if (event.submitter && event.submitter === this.$refs.searchButton) { return true; } if (!event.submitter) { const searchInput = this.$el.querySelector('input[name=q]'); if (searchInput && document.activeElement === searchInput) { return true; } } console.log('[FORM] Form submission prevented - not from search button or Enter key in search input'); event.preventDefault(); event.stopPropagation(); return false; }, init() { console.log('Search form Alpine.js initialized'); this.explicitSubmitTriggered = false; } }"
-                        @submit="handleFormSubmit($event)">
-                    <div class="flex">
-                      <div class="relative grow">
-                        {# Search input #}
-                        <input type="search"
-                               name="q"
-                               value="{{ request.GET.q }}"
-                               :placeholder="getPlaceholder()"
-                               class="w-full py-2 pl-10 pr-4 text-sm text-gray-300 bg-[#272c31] rounded-l-md focus:outline-none focus:ring-2 focus:ring-[#4a9eff] focus:ring-inset placeholder-gray-500"
-                               :class="selectedType.value === 'book' ? 'pr-10' : ''">
-                        <button type="submit"
-                                x-ref="searchButton"
-                                class="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors duration-200 focus:outline-none cursor-pointer">
-                          {% include "app/icons/magnifying-glass.svg" with classes="w-5 h-5" %}
+                  <div class="relative grow min-w-0 max-w-2xl">
+                    <form method="get"
+                          action="{% url 'search' %}"
+                          x-data="{ isOpen: false, selectedType: { display: '{{ search_type|media_type_readable_plural }}', value: '{{ search_type }}' }, mediaTypes: {% get_search_media_types user as search_types %}{{ search_types }}, getPlaceholder() { return `Search ${this.selectedType.display.toLowerCase()} in your library or online...` }, barcodeScanning: false, barcodeError: null, barcodePreview: null, explicitSubmitTriggered: false, async handleBarcodeImage(event) { if (!event || !event.target) { console.error('[BARCODE] Invalid event or event.target'); return; } if (event.target.tagName !== 'INPUT' || event.target.type !== 'file') { console.error('[BARCODE] Event not from file input. TagName:', event.target.tagName, 'Type:', event.target.type); return; } if (event.target !== this.$refs.barcodeInput) { console.error('[BARCODE] Event not from barcode input ref'); return; } console.log('handleBarcodeImage called', event); const file = event.target.files?.[0]; if (!file) { console.log('No file selected'); return; } console.log('File selected:', file.name, file.type); this.barcodeScanning = true; this.barcodeError = null; this.barcodePreview = URL.createObjectURL(file); try { console.log('Checking for barcodeScannerUtils:', typeof window.barcodeScannerUtils); if (!window.barcodeScannerUtils) { throw new Error('Barcode scanner utilities not loaded. Please refresh the page.'); } console.log('Starting barcode decode...'); const isbn = await window.barcodeScannerUtils.decodeBarcodeFromFile(file); console.log('Decode result:', isbn); if (isbn) { const barcodeInput = event.target; let form = this.$root; if (!form || form.tagName !== 'FORM' || !form.contains(barcodeInput)) { form = barcodeInput.closest('form'); } if (!form || form.tagName !== 'FORM') { console.error('[FORM] Could not find valid form element'); return; } const searchInput = form.querySelector('input[name=q]'); const formContainsBarcodeInput = form.contains(barcodeInput); if (!searchInput || !formContainsBarcodeInput) { console.error('[FORM] Form validation failed - missing search input or barcode input not in form. Search input:', searchInput, 'Form contains barcode input:', formContainsBarcodeInput); return; } console.log('[FORM] ISBN received, form element:', form, 'tagName:', form.tagName); console.log('[FORM] Search input found:', searchInput); searchInput.value = isbn; console.log('[FORM] Set input value to:', isbn, 'Current value:', searchInput.value); this.explicitSubmitTriggered = true; console.log('[FORM] Submitting form...'); form.submit(); console.log('[FORM] Form submit called'); } else { this.barcodeError = 'Could not read barcode from image. Please try again or enter ISBN manually.'; } } catch (error) { console.error('Barcode scan error:', error); this.barcodeError = 'Error scanning barcode: ' + (error.message || 'Please try again.'); } finally { this.barcodeScanning = false; } }, clearBarcodeError() { this.barcodeError = null; this.barcodePreview = null; if (this.$refs.barcodeInput) { this.$refs.barcodeInput.value = ''; } }, handleFormSubmit(event) { if (event.currentTarget !== this.$el) { return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (this.explicitSubmitTriggered) { this.explicitSubmitTriggered = false; return true; } if (event.submitter && event.submitter === this.$refs.searchButton) { return true; } if (!event.submitter) { const searchInput = this.$el.querySelector('input[name=q]'); if (searchInput && document.activeElement === searchInput) { return true; } } console.log('[FORM] Form submission prevented - not from search button or Enter key in search input'); event.preventDefault(); event.stopPropagation(); return false; }, init() { console.log('Search form Alpine.js initialized'); this.explicitSubmitTriggered = false; } }"
+                          @submit="handleFormSubmit($event)"
+                          @click.away="document.getElementById('search-suggestions').innerHTML = ''">
+                      <div class="flex">
+                        <div class="relative grow">
+                          {# Search input #}
+                          <input type="search"
+                                 id="global-search"
+                                 name="q"
+                                 value="{{ request.GET.q }}"
+                                 :placeholder="getPlaceholder()"
+                                 autocomplete="off"
+                                 role="combobox"
+                                 aria-autocomplete="list"
+                                 aria-expanded="false"
+                                 aria-controls="search-suggestions"
+                                 hx-get="{% url 'search_suggestions' %}"
+                                 hx-trigger="keyup changed delay:250ms, search"
+                                 hx-target="#search-suggestions"
+                                 hx-swap="innerHTML"
+                                 hx-include="[name='media_type']"
+                                 class="w-full py-2 pl-10 pr-4 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-l-md focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-inset placeholder-gray-500"
+                                 :class="selectedType.value === 'book' ? 'pr-10' : ''">
+                          <button type="submit"
+                                  x-ref="searchButton"
+                                  class="absolute left-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none cursor-pointer">
+                            {% include "app/icons/magnifying-glass.svg" with classes="w-5 h-5" %}
 
-                        </button>
-                        {# Camera button (only visible for books) #}
+                          </button>
+                          {# Camera button (only visible for books) #}
+                          <button type="button"
+                                  x-show="selectedType.value === 'book'"
+                                  @click="$refs.barcodeInput?.click()"
+                                  x-bind:disabled="barcodeScanning"
+                                  class="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title="Scan barcode">
+                            <span x-show="barcodeScanning" class="block">
+                              <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+                            </span>
+                            <span x-show="!barcodeScanning" class="block">{% include "app/icons/camera.svg" with classes="w-5 h-5" %}</span>
+                          </button>
+                          {# Hidden file input for barcode scanning #}
+                          <input type="file"
+                                 accept="image/*"
+                                 x-ref="barcodeInput"
+                                 class="hidden"
+                                 @change="handleBarcodeImage($event)">
+                          {# Saved-library autocomplete suggestions (HTMX-swapped) #}
+                          <div id="search-suggestions"></div>
+                        </div>
+
+                        <input type="hidden" name="media_type" :value="selectedType.value">
+
+                        {# Media type dropdown #}
                         <button type="button"
-                                x-show="selectedType.value === 'book'"
-                                @click="$refs.barcodeInput?.click()"
-                                x-bind:disabled="barcodeScanning"
-                                class="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors duration-200 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Scan barcode">
-                          <span x-show="barcodeScanning" class="block">
-                            <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
-                          </span>
-                          <span x-show="!barcodeScanning" class="block">
-                            {% include "app/icons/camera.svg" with classes="w-5 h-5" %}
-                          </span>
+                                @click="isOpen = !isOpen"
+                                @click.away="isOpen = false"
+                                class="flex items-center justify-between shrink-0 px-3 sm:px-4 py-2 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-r-md focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-inset hover:bg-[var(--color-surface)] transition-colors duration-200 cursor-pointer">
+                          <span class="whitespace-nowrap" x-text="selectedType.display"></span>
+                          {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 ml-2" %}
+
                         </button>
-                        {# Hidden file input for barcode scanning #}
-                        <input type="file"
-                               accept="image/*"
-                               x-ref="barcodeInput"
-                               class="hidden"
-                               @change="handleBarcodeImage($event)">
+                        <ul x-cloak
+                            x-show="isOpen"
+                            @keydown.escape.window="isOpen = false"
+                            x-transition:enter="transition ease-out duration-100"
+                            x-transition:enter-start="transform opacity-0 scale-95"
+                            x-transition:enter-end="transform opacity-100 scale-100"
+                            x-transition:leave="transition ease-in duration-75"
+                            x-transition:leave-start="transform opacity-100 scale-100"
+                            x-transition:leave-end="transform opacity-0 scale-95"
+                            class="absolute z-50 py-1 mt-12 overflow-auto text-sm text-[var(--color-text-secondary)] bg-[var(--color-surface)] rounded-md shadow-lg right-0 w-32">
+                          <template x-for="type in mediaTypes" :key="type.value">
+                            <li @click="selectedType = type; isOpen = false"
+                                class="px-4 py-2 cursor-pointer hover:bg-[var(--color-surface-muted)] transition duration-150 ease-in-out"
+                                x-text="type.display"></li>
+                          </template>
+                        </ul>
                       </div>
 
-                      <input type="hidden" name="media_type" :value="selectedType.value">
-
-                      {# Media type dropdown #}
-                      <button type="button"
-                              @click="isOpen = !isOpen"
-                              @click.away="isOpen = false"
-                              class="flex items-center justify-between shrink-0 px-3 sm:px-4 py-2 text-sm text-gray-300 bg-[#272c31] rounded-r-md focus:outline-none focus:ring-2 focus:ring-[#4a9eff] focus:ring-inset hover:bg-[#2a2e33] transition-colors duration-200 cursor-pointer">
-                        <span class="whitespace-nowrap" x-text="selectedType.display"></span>
-                        {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 ml-2" %}
-
-                      </button>
-                      <ul x-cloak
-                          x-show="isOpen"
-                          @keydown.escape.window="isOpen = false"
-                          x-transition:enter="transition ease-out duration-100"
-                          x-transition:enter-start="transform opacity-0 scale-95"
-                          x-transition:enter-end="transform opacity-100 scale-100"
-                          x-transition:leave="transition ease-in duration-75"
-                          x-transition:leave-start="transform opacity-100 scale-100"
-                          x-transition:leave-end="transform opacity-0 scale-95"
-                          class="absolute z-50 py-1 mt-12 overflow-auto text-sm text-gray-300 bg-[#2a2e33] rounded-md shadow-lg right-0 w-32">
-                        <template x-for="type in mediaTypes" :key="type.value">
-                          <li @click="selectedType = type; isOpen = false"
-                              class="px-4 py-2 cursor-pointer hover:bg-[#343a40] transition duration-150 ease-in-out"
-                              x-text="type.display"></li>
-                        </template>
-                      </ul>
-                    </div>
-                    
-                    {# Barcode scanner error feedback #}
-                    <div x-show="barcodeError"
-                       x-cloak
-                       x-transition
-                       class="absolute z-50 mt-2 w-full max-w-2xl">
-                      <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-info">
-                        {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0" %}
-                        <p class="text-sm font-medium flex-1" x-text="barcodeError"></p>
-                        <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
-                                @click="clearBarcodeError()">
-                          {% include "app/icons/x.svg" with classes="w-4 h-4" %}
-                        </button>
+                      {# Barcode scanner error feedback #}
+                      <div x-show="barcodeError"
+                           x-cloak
+                           x-transition
+                           class="absolute z-50 mt-2 w-full max-w-2xl">
+                        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info">
+                          {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0" %}
+                          <p class="text-sm font-medium flex-1" x-text="barcodeError"></p>
+                          <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                                  @click="clearBarcodeError()">
+                            {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </form>
-                </div>
+                    </form>
+                  </div>
+                {% endif %}
+
+                {# Mobile: theme toggle as a flex item so it can't overlap the search/media-type controls #}
+                {% if user.is_authenticated %}
+                  <button type="button"
+                          onclick="floppyToggleTheme()"
+                          class="lg:hidden shrink-0 p-2 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] transition-colors duration-200 cursor-pointer"
+                          title="Toggle theme"
+                          aria-label="Toggle theme">
+                    {% include "app/icons/sun.svg" with classes="w-5 h-5 theme-toggle-icon-sun" %}
+                    {% include "app/icons/moon.svg" with classes="w-5 h-5 theme-toggle-icon-moon" %}
+                  </button>
                 {% endif %}
               </div>
             </div>
+
+            {% if user.is_authenticated %}
+              <button type="button"
+                      onclick="floppyToggleTheme()"
+                      class="hidden lg:block absolute right-4 top-1/2 -translate-y-1/2 shrink-0 p-2 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] transition-colors duration-200 cursor-pointer"
+                      title="Toggle theme"
+                      aria-label="Toggle theme">
+                {% include "app/icons/sun.svg" with classes="w-5 h-5 theme-toggle-icon-sun" %}
+                {% include "app/icons/moon.svg" with classes="w-5 h-5 theme-toggle-icon-moon" %}
+              </button>
+            {% endif %}
           </div>
 
-          <main class="flex-1 relative bg-[#212529]">
+          <main class="flex-1 relative bg-[var(--color-page-bg)]">
             <div class="container mx-auto px-4 py-6 mt-4 sm:px-8 sm:py-12 sm:mt-6">
               {% block content %}
               {% endblock content %}
@@ -377,7 +536,7 @@
         <div class="w-full max-w-xl px-4 space-y-2 pointer-events-auto">
           {% for message in messages %}
             {# djlint:off #}
-            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-{{ message.tags }} opacity-0"
+            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-{{ message.tags }} opacity-0"
               x-data="{ 
                   init() { 
                     // Start entrance animation after a tiny delay
@@ -413,8 +572,46 @@
       </div>
     {% endif %}
 
+    <div id="htmx-toast-outlet"
+         class="fixed top-24 right-0 left-0 lg:left-64 z-50 flex justify-center pointer-events-none"
+         aria-live="polite"
+         aria-atomic="true">
+      <div class="w-full max-w-xl px-4 space-y-2 pointer-events-auto"></div>
+    </div>
+
     {% block js %}
     {% endblock js %}
+
+    {% if user.is_authenticated %}
+      <script>
+      function floppyToggleTheme() {
+        function getCsrfCookie() {
+          const match = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
+          return match ? decodeURIComponent(match[1]) : "";
+        }
+
+        const html = document.documentElement;
+        const systemPrefersLight = window.matchMedia("(prefers-color-scheme: light)").matches;
+        const currentlyLight = html.classList.contains("light")
+          || (!html.classList.contains("dark") && systemPrefersLight);
+        const next = currentlyLight ? "dark" : "light";
+
+        html.classList.remove("light", "dark");
+        html.classList.add(next);
+
+        fetch("{% url 'preferences' %}", {
+          method: "POST",
+          headers: {
+            "X-CSRFToken": getCsrfCookie(),
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: "theme=" + next,
+        }).catch(function (error) {
+          console.warn("Failed to persist theme preference", error);
+        });
+      }
+      </script>
+    {% endif %}
 
     <script>
       function initDjangoSelect2(root) {
@@ -423,55 +620,129 @@
         $root.find('.django-select2').not('.select2-hidden-accessible').djangoSelect2();
       }
 
-      document.addEventListener('DOMContentLoaded', () => initDjangoSelect2(document));
-      document.body.addEventListener('htmx:afterSwap', () => initDjangoSelect2(document));
-      document.body.addEventListener('htmx:afterSettle', () => initDjangoSelect2(document));
+      // Bind once: these scripts are re-evaluated on boosted (hx-boost) navigation.
+      if (!window.__floppySelect2Bound) {
+        window.__floppySelect2Bound = true;
+        document.addEventListener('DOMContentLoaded', () => initDjangoSelect2(document));
+        document.body.addEventListener('htmx:afterSwap', () => initDjangoSelect2(document));
+        document.body.addEventListener('htmx:afterSettle', () => initDjangoSelect2(document));
+      }
     </script>
 
     <script>
-      // Media card hover - slide body up to reveal expanded title + year
-      function initMediaCardHover() {
-        document.querySelectorAll('.search-result-card').forEach(card => {
-          if (card.dataset.hoverInit) return;
-          card.dataset.hoverInit = 'true';
-
-          const title = card.querySelector('.media-card-title, .search-result-title');
-          const year = card.querySelector('.media-card-year');
-          const body = card.querySelector('.media-card-body');
-          if (!title || !body) return;
-
-          // Measure expanded state: temporarily expand title to 3 lines and show year
-          title.style.webkitLineClamp = '3';
-          let yearHeight = 0;
-          if (year) {
-            year.style.display = 'block';
-            year.style.opacity = '1';
-            yearHeight = year.offsetHeight;
-          }
-
-          // Force reflow to get accurate measurements
-          const expandedTitleHeight = title.scrollHeight;
-          const initialTitleHeight = title.offsetHeight;
-
-          // Reset
-          title.style.webkitLineClamp = '';
-          if (year) {
-            year.style.display = '';
-            year.style.opacity = '';
-          }
-
-          // Calculate extra height: additional title lines + year
-          const extraTitleHeight = Math.max(0, expandedTitleHeight - initialTitleHeight);
-          const extraHeight = extraTitleHeight + yearHeight;
-
-          card.style.setProperty('--year-height', extraHeight + 'px');
+      // Bind once: flashes the progress +/- button that was actually pressed,
+      // since the htmx swap replaces the whole control (both buttons + value).
+      if (!window.__progressFlashBound) {
+        window.__progressFlashBound = true;
+        document.body.addEventListener('htmx:beforeRequest', (evt) => {
+          const btn = evt.detail.elt;
+          if (!btn.classList || !btn.classList.contains('progress-adjust-btn')) return;
+          const isIncrease = (btn.getAttribute('hx-vals') || '').includes('increase');
+          evt.detail.target.dataset.lastOperation = isIncrease ? 'increase' : 'decrease';
+        });
+        document.body.addEventListener('htmx:afterSettle', (evt) => {
+          const target = evt.detail.target;
+          if (!target.classList || !target.classList.contains('media-card-progress')) return;
+          const op = target.dataset.lastOperation;
+          if (!op) return;
+          const selector = op === 'increase' ? '[hx-vals*="increase"]' : '[hx-vals*="decrease"]';
+          const btn = target.querySelector(selector);
+          if (!btn) return;
+          btn.classList.add('progress-btn-flash');
+          setTimeout(() => btn.classList.remove('progress-btn-flash'), 600);
         });
       }
+    </script>
 
-      // Init on load and after HTMX swaps
-      document.addEventListener('DOMContentLoaded', initMediaCardHover);
-      document.body.addEventListener('htmx:afterSwap', initMediaCardHover);
-      document.body.addEventListener('htmx:afterSettle', initMediaCardHover);
+    <script>
+      // Navigation progress for boosted links.
+      //
+      // Bind once. These handlers sit on the body, which stays in place
+      // across a boosted swap, so a second copy would run twice.
+      if (!window.__floppyNavProgressBound) {
+        window.__floppyNavProgressBound = true;
+
+        // Wait this long before the bar appears. A fast page then causes no
+        // flash of movement, which keeps the interface calm.
+        const SHOW_DELAY_MS = 120;
+        // Keep the finished bar on screen long enough to be seen.
+        const HIDE_DELAY_MS = 180;
+
+        let activeRequest = null;
+        let showTimer = null;
+        let hideTimer = null;
+
+        const root = () => document.getElementById("nav-progress");
+        const status = () => document.getElementById("nav-progress-status");
+
+        function isBoosted(evt) {
+          const detail = evt.detail || {};
+          return Boolean(
+            detail.boosted
+              || (detail.requestConfig && detail.requestConfig.boosted),
+          );
+        }
+
+        function show() {
+          const element = root();
+          if (!element) return;
+          clearTimeout(hideTimer);
+          element.classList.remove("is-complete");
+          element.classList.add("is-active");
+          const live = status();
+          if (live) live.textContent = "Loading page";
+        }
+
+        function hide() {
+          const element = root();
+          if (!element) return;
+          element.classList.add("is-complete");
+          const live = status();
+          if (live) live.textContent = "";
+          hideTimer = setTimeout(() => {
+            element.classList.remove("is-active", "is-complete");
+          }, HIDE_DELAY_MS);
+        }
+
+        document.body.addEventListener("htmx:beforeRequest", (evt) => {
+          if (!isBoosted(evt)) return;
+
+          // Latest navigation wins. A user who clicks three links while the
+          // first is still loading must land on the third, and the two
+          // abandoned requests must stop.
+          if (activeRequest && activeRequest !== evt.detail.xhr) {
+            try {
+              activeRequest.abort();
+            } catch (error) {
+              /* already settled */
+            }
+          }
+          activeRequest = evt.detail.xhr;
+
+          clearTimeout(showTimer);
+          showTimer = setTimeout(show, SHOW_DELAY_MS);
+        });
+
+        function settle(evt) {
+          if (!isBoosted(evt)) return;
+          // Ignore a request that a newer navigation replaced; the newer one
+          // owns the bar now.
+          if (activeRequest && evt.detail.xhr && evt.detail.xhr !== activeRequest) {
+            return;
+          }
+          activeRequest = null;
+          clearTimeout(showTimer);
+          const element = root();
+          if (element && element.classList.contains("is-active")) {
+            hide();
+          }
+        }
+
+        document.body.addEventListener("htmx:afterRequest", settle);
+        document.body.addEventListener("htmx:responseError", settle);
+        document.body.addEventListener("htmx:sendError", settle);
+        document.body.addEventListener("htmx:timeout", settle);
+      }
     </script>
 
     <script>
@@ -489,5 +760,9 @@
       }
     </script>
     <script src="{% static 'js/mediaStatusDateHandler.js' %}{% get_static_file_mtime 'js/mediaStatusDateHandler.js' %}"></script>
+    <script src="{% static 'js/dateTimePicker.js' %}{% get_static_file_mtime 'js/dateTimePicker.js' %}"></script>
+    <script src="{% static 'js/episodeBulkTrackForm.js' %}{% get_static_file_mtime 'js/episodeBulkTrackForm.js' %}"></script>
+    <script src="{% static 'js/searchShortcut.js' %}{% get_static_file_mtime 'js/searchShortcut.js' %}"></script>
+    <script src="{% static 'js/searchAutocomplete.js' %}{% get_static_file_mtime 'js/searchAutocomplete.js' %}"></script>
   </body>
 </html>

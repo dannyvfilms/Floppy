@@ -1,0 +1,21 @@
+{% load user_tags %}
+<form method="post"
+      action="{% url current_source.connect_url_name %}"
+      enctype="multipart/form-data"
+      x-data="{ uploading: false }"
+      @submit="uploading = true"
+      class="w-full max-w-xs">
+  {% csrf_token %}
+  <input type="hidden" name="mode" value="{{ current_source.recommended_import_mode }}">
+  <input type="hidden" name="next" value="{% url 'onboarding_service_setup' %}">
+  <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
+         :class="uploading ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer'">
+    <input type="file"
+           name="{{ current_source.upload_field_name }}"
+           accept="{{ current_source.upload_accept }}"
+           class="hidden"
+           :disabled="uploading"
+           @change="uploading = true; $el.form.submit()">
+    <span x-text="uploading ? 'Uploading…' : 'Select File'"></span>
+  </label>
+</form>

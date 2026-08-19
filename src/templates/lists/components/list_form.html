@@ -1,9 +1,42 @@
 {% load widget_tweaks %}
+{% load app_tags %}
 
 {# djlint:off #}
 <div x-show="showModal" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-  <div @click.outside="showModal = false" class="bg-[#2a2f35] p-6 rounded-lg w-152 max-h-[90vh] overflow-y-auto"
-    x-data="{ isPublic: {{ form.instance.is_public|yesno:'true,false' }} }">
+  <div @click.outside="showModal = false" class="bg-[var(--color-surface)] p-6 rounded-lg w-152 max-h-[90vh] overflow-y-auto"
+    x-data="{
+      isPublic: {{ form.instance.is_public|yesno:'true,false' }},
+      isSmart: {{ form.instance.is_smart|yesno:'true,false' }} || (typeof listMode !== 'undefined' && listMode === 'smart'),
+      slugValue: '{{ form.public_slug.value|default_if_none:''|escapejs }}',
+      listId: '{{ form.instance.id|default_if_none:'' }}',
+      listUrlTemplate: '{{ list_url_template|escapejs }}',
+      previewSlug() {
+        return (this.slugValue || '')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]+/g, '-')
+          .replace(/-{2,}/g, '-')
+          .replace(/^-+|-+$/g, '');
+      },
+      listUrlPrefix() {
+        return this.listUrlTemplate.replace('__LIST_REFERENCE__', '');
+      },
+      currentReference() {
+        const previewSlug = this.previewSlug();
+        if (this.isPublic && previewSlug) {
+          return previewSlug;
+        }
+        return this.listId || '';
+      },
+      currentListUrl() {
+        const reference = this.currentReference();
+        if (!reference) {
+          return '';
+        }
+        return this.listUrlTemplate.replace('__LIST_REFERENCE__', reference);
+      }
+    }"
+    x-init="if (typeof listMode !== 'undefined' && listMode === 'smart') { isSmart = true; }">
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-2xl font-bold">
         {% if form.instance.pk %}
@@ -12,66 +45,125 @@
           Create New List
         {% endif %}
       </h2>
-      <button @click="showModal = false" class="text-gray-400 hover:text-white transition-colors cursor-pointer">
+      <button @click="showModal = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
         {% include "app/icons/x.svg" with classes="w-6 h-6" %}
       </button>
     </div>
     <form class="space-y-6" method="post">
       {% csrf_token %}
-      <input type="hidden" name="list_id" value="{{ custom_list.id }}">
+      <input type="hidden" name="list_id" value="{{ form.instance.id|default:'' }}">
+      <input type="hidden"
+             name="smart_create_flow"
+             :value="(typeof listMode !== 'undefined' && listMode === 'smart') ? '1' : ''">
+
       {% for field in form %}
         <div>
           {% if field.name == 'is_public' %}
-            <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md">
+            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
               <div class="flex-1">
-                <div class="flex items-center text-gray-200 mb-1">
+                <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                   {% include "app/icons/globe.svg" with classes="w-5 h-5 mr-2" %}
                   <span class="text-sm font-medium">{{ field.label }}</span>
                 </div>
-                <p class="text-xs text-gray-400 ml-7">{{ field.help_text }}</p>
+                <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
               </div>
               <label class="relative inline-flex items-center cursor-pointer ml-4">
                 <input class="sr-only peer" type="checkbox" name="{{ field.name }}" x-model="isPublic" {% if form.instance.is_public %}checked{% endif %}>
                 <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
               </label>
             </div>
-          {% elif field.name == 'allow_recommendations' %}
-            <div class="flex items-center justify-between p-3 bg-[#39404b] rounded-md" :class="{ 'opacity-50': !isPublic }">
+          {% elif field.name == 'is_smart' %}
+            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
               <div class="flex-1">
-                <div class="flex items-center text-gray-200 mb-1">
+                <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
+                  {% include "app/icons/horizontal-sliders.svg" with classes="w-5 h-5 mr-2" %}
+                  <span class="text-sm font-medium">{{ field.label }}</span>
+                </div>
+                <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer ml-4">
+                <input class="sr-only peer" type="checkbox" name="{{ field.name }}" x-model="isSmart" :checked="listMode === 'smart'">
+                <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+            </div>
+          {% elif field.name == 'allow_recommendations' %}
+            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" :class="{ 'opacity-50': !isPublic }">
+              <div class="flex-1">
+                <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                   {% include "app/icons/bell.svg" with classes="w-5 h-5 mr-2" %}
                   <span class="text-sm font-medium">{{ field.label }}</span>
                 </div>
-                <p class="text-xs text-gray-400 ml-7">{{ field.help_text }}</p>
+                <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
               </div>
               <label class="relative inline-flex items-center ml-4" :class="isPublic ? 'cursor-pointer' : 'cursor-not-allowed'">
                 <input class="sr-only peer" type="checkbox" name="{{ field.name }}" :disabled="!isPublic" {% if form.instance.allow_recommendations %}checked{% endif %}>
                 <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
               </label>
             </div>
+          {% elif field.name == 'public_slug' %}
+            <div class="p-3 bg-[var(--color-surface-strong)] rounded-md space-y-3">
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <label for="{{ field.id_for_label }}" class="flex items-center text-[var(--color-text-secondary)] text-sm font-medium">
+                  {% include "app/icons/link.svg" with classes="w-5 h-5 mr-2 text-[var(--color-text-secondary)]" %}
+                  <span>{{ field.label }}</span>
+                </label>
+                <p class="text-xs text-[var(--color-text-muted)] break-all sm:text-right" x-show="currentListUrl()" x-cloak>
+                  Current URL:
+                  <a class="underline hover:text-[var(--color-text)] transition-colors"
+                     :href="currentListUrl()"
+                     x-text="currentListUrl()"></a>
+                </p>
+                <p class="text-xs text-[var(--color-text-muted)] sm:text-right" x-show="!currentListUrl()" x-cloak>
+                  Save the list to generate its URL.
+                </p>
+              </div>
+
+              <div x-show="isPublic" x-cloak class="space-y-2">
+                <div class="flex flex-col sm:flex-row rounded-md overflow-hidden border border-gray-600 bg-[var(--color-panel)]">
+                  <span class="px-3 py-2 text-xs sm:text-sm text-[var(--color-text-muted)] border-b sm:border-b-0 sm:border-r border-gray-600 break-all"
+                        x-text="listUrlPrefix()"></span>
+                  {{ field|attr:"x-model:slugValue"|attr:"autocapitalize:none"|attr:"spellcheck:false"|attr:"aria-label:Custom URL"|add_class:"flex-1 min-w-0 px-3 py-2 bg-[var(--color-panel)] text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset" }}
+                </div>
+                <p class="text-xs text-[var(--color-text-muted)]">{{ field.help_text }} Leave blank to keep the numeric URL.</p>
+                {% if field.errors %}
+                  <p class="text-sm text-red-400">{{ field.errors|join:", " }}</p>
+                {% endif %}
+              </div>
+
+              <p x-show="!isPublic" x-cloak class="text-xs text-[var(--color-text-muted)]">
+                Make this list public to customize the share URL.
+              </p>
+            </div>
           {% elif field.name == 'collaborators' or field.name == 'tags' %}
-            <label class="block text text-sm font-medium mb-2 text-gray-300">{{ field.label }}</label>
+            <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ field.label }}</label>
             {{ field }}
+          {% elif field.name|slice:':6' == 'smart_' %}
           {% else %}
-            <label class="block text text-sm font-medium mb-2 text-gray-300">{{ field.label }}</label>
-            {{ field|add_class:"w-full p-2 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none" }}
+            <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ field.label }}</label>
+            {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
           {% endif %}
         </div>
       {% endfor %}
 
       {% if form.instance.pk %}
-        <div class="flex flex-row-reverse justify-between mt-6">
-          <button type="submit" formaction="{% url 'list_edit' %}?next={{ request.path }}"
-            class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
-            Save
-          </button>
-          {% if request.user == custom_list.owner %}
-            <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
-              class="px-4 py-2 rounded-md transition duration-300 bg-red-700 text-white hover:bg-red-800 cursor-pointer">Delete</button>
-          {% else %}
-            <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
-              class="px-4 py-2 rounded-md transition duration-300 bg-gray-600 text-gray-300 cursor-not-allowed" disabled>Delete</button>
-          {% endif %}
+        <div class="flex flex-wrap items-center justify-between gap-3 mt-6">
+          <a href="{% url 'list_activity' custom_list.id %}"
+             class="px-4 py-2 bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
+            Activity History
+          </a>
+          <div class="flex flex-row-reverse gap-2">
+            <button type="submit" formaction="{% url 'list_edit' %}?next={{ request.path }}"
+              class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
+              Save
+            </button>
+            {% if request.user == custom_list.owner %}
+              <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
+                class="px-4 py-2 rounded-md transition duration-300 bg-red-700 text-white hover:bg-red-800 cursor-pointer">Delete</button>
+            {% else %}
+              <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
+                class="px-4 py-2 rounded-md transition duration-300 bg-gray-600 text-[var(--color-text-secondary)] cursor-not-allowed" disabled>Delete</button>
+            {% endif %}
+          </div>
         </div>
       {% else %}
         <div class="flex justify-end pt-4">

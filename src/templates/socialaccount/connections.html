@@ -35,7 +35,7 @@
                 {% endsetvar %}
 
                 <div class="flex items-center p-4 rounded-md border cursor-pointer"
-                     :class="selectedAccount === '{{ account.account.pk }}' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-700 bg-[#39404b]'"
+                     :class="selectedAccount === '{{ account.account.pk }}' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-700 bg-[var(--color-surface-strong)]'"
                      x-on:click="selectedAccount = '{{ account.account.pk }}'; document.getElementById('{{ radio_id }}').checked = true;">
                   <input type="radio"
                          id="{{ radio_id }}"
@@ -48,7 +48,7 @@
                     {% include "app/icons/key.svg" with classes="w-5 h-5 mr-3 text-purple-400" %}
                     <div>
                       <p class="font-medium">{{ account }}</p>
-                      <p class="text-sm text-gray-400">{{ account.get_brand.name }}</p>
+                      <p class="text-sm text-[var(--color-text-muted)]">{{ account.get_brand.name }}</p>
                     </div>
                   </div>
                 </div>
@@ -79,7 +79,7 @@
   {% if socialaccount_providers %}
     <div class="relative flex items-center justify-center mt-6">
       <div class="border-t border-gray-600 grow"></div>
-      <span class="mx-4 text-sm text-gray-400">Add a Third-Party Account</span>
+      <span class="mx-4 text-sm text-[var(--color-text-muted)]">Add a Third-Party Account</span>
       <div class="border-t border-gray-600 grow"></div>
     </div>
 

@@ -1,26 +1,47 @@
-"""Django settings for Yamtrack project."""
+"""Django settings for Floppy project."""
 
+import contextlib
 import hashlib
 import json
 import os
+import secrets
+import stat
 import subprocess
+import sys
+import tempfile
 import warnings
 import zoneinfo
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from celery.schedules import crontab
+from debug_toolbar.settings import PANELS_DEFAULTS
 from decouple import (
-    Config,
     Csv,
-    RepositorySecret,
     Undefined,
     UndefinedValueError,
     config,
     undefined,
 )
 from django.core.cache import CacheKeyWarning
+from django.core.exceptions import ImproperlyConfigured
 from django.db.backends.signals import connection_created
+
+from config.runtime_profile import (
+    PROFILE as RESOURCE_PROFILE,
+)
+from config.runtime_profile import (
+    by_tier,
+    gunicorn_threads,
+    web_concurrency,
+)
+
+# How much machine we're on. Every tier-scaled default below reads from this
+# single detection rather than repeating its own heuristic; see
+# config/runtime_profile.py for what is probed and why (issue #521).
+RESOURCE_TIER = RESOURCE_PROFILE.tier
+RUNTIME_GUNICORN_THREADS = gunicorn_threads()
+RUNTIME_WEB_CONCURRENCY = web_concurrency()
 
 BASE_URL = config("BASE_URL", default=None)
 if BASE_URL:
@@ -30,6 +51,15 @@ REDIS_PREFIX = config("REDIS_PREFIX", default=None)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+_data_dir_override = config("FLOPPY_DATA_DIR", default=None)
+FLOPPY_DATA_DIR = Path(_data_dir_override) if _data_dir_override else BASE_DIR / "db"
+_database_path_override = config("FLOPPY_DB_PATH", default=None)
+FLOPPY_DB_PATH = (
+    Path(_database_path_override)
+    if _database_path_override
+    else FLOPPY_DATA_DIR / "db.sqlite3"
+)
+DOCKER_SECRETS_DIR = Path("/run/secrets")
 
 
 def secret(key, default=undefined, **kwargs):
@@ -49,44 +79,133 @@ def secret(key, default=undefined, **kwargs):
         return default
 
     path = Path(file)
+    if not path.is_absolute():
+        path = DOCKER_SECRETS_DIR / path
+
     try:
-        if path.is_absolute():
-            secret_value = Config(RepositorySecret(path.parent))(
-                path.stem,
-                default,
-                **kwargs,
-            )
-        else:
-            secret_value = Config(RepositorySecret())(file, default, **kwargs)
-    except (
-        FileNotFoundError,
-        IsADirectoryError,
-        UndefinedValueError,
-    ) as err:
+        secret_value = path.read_text(encoding="utf-8").strip()
+    except (FileNotFoundError, IsADirectoryError, OSError, UnicodeDecodeError) as err:
         msg = f"File from {key} not found. Please check the path and filename."
         raise UndefinedValueError(msg) from err
-    else:
-        if isinstance(secret_value, str):
-            return secret_value.strip()
-        return secret_value
+
+    return secret_value
+
+
+def _read_docker_secret(path):
+    secret_fd = os.open(
+        path,
+        os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+    )
+    try:
+        if not stat.S_ISREG(os.fstat(secret_fd).st_mode):
+            raise OSError(path)
+        os.fchmod(secret_fd, 0o600)
+        with os.fdopen(secret_fd, "r", encoding="utf-8") as secret_file:
+            secret_fd = None
+            value = secret_file.read().strip()
+        if not value:
+            raise OSError(path)
+        return value
+    finally:
+        if secret_fd is not None:
+            os.close(secret_fd)
+
+
+def _load_or_create_docker_secret(path):
+    temp_fd = None
+    temp_path = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            return _read_docker_secret(path), False
+        except FileNotFoundError:
+            pass
+
+        value = secrets.token_urlsafe(50)
+        temp_fd, temp_path = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            dir=path.parent,
+        )
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as secret_file:
+            temp_fd = None
+            secret_file.write(value)
+            secret_file.flush()
+            os.fsync(secret_file.fileno())
+
+        try:
+            os.link(temp_path, path, follow_symlinks=False)
+        except FileExistsError:
+            return _read_docker_secret(path), False
+        else:
+            return value, True
+    except (OSError, UnicodeError) as err:
+        msg = (
+            f"Cannot create or read the generated secret key at {path}. "
+            "Make FLOPPY_DATA_DIR writable or set SECRET."
+        )
+        raise ImproperlyConfigured(msg) from err
+    finally:
+        if temp_fd is not None:
+            os.close(temp_fd)
+        if temp_path is not None:
+            Path(temp_path).unlink(missing_ok=True)
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/stable/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config(
-    "SECRET",
-    default=secret("SECRET_FILE", default="ifx7bdUWo5EwC2NQNihjRjOrW00Cdv5Y"),
-)
+SECRET_KEY = config("SECRET", default=None)
+if not SECRET_KEY:
+    SECRET_KEY = secret("SECRET_FILE")
+
+# secret() returns the `undefined` sentinel (truthy) when the env var is absent;
+# normalize it so the check below works correctly.
+if isinstance(SECRET_KEY, Undefined):
+    SECRET_KEY = None
+
+if not SECRET_KEY:
+    if Path("/.dockerenv").exists():
+        # Docker container: auto-generate and persist to the db volume so the
+        # key survives container restarts without user intervention.
+        _secret_file = FLOPPY_DATA_DIR / "secret_key"
+        SECRET_KEY, secret_created = _load_or_create_docker_secret(_secret_file)
+        if secret_created:
+            warnings.warn(
+                "SECRET env var is not set. A random key has been generated and "
+                f"saved to {_secret_file}. For production, set SECRET explicitly "
+                "in your docker-compose.yml environment section.",
+                stacklevel=2,
+            )
+    else:
+        msg = (
+            "SECRET env var is not set. To fix, run:\n\n"
+            '  python -c "'
+            "import secrets; print('SECRET=' + secrets.token_urlsafe(50))"
+            '" >> .env\n'
+        )
+        raise ImproperlyConfigured(msg)
 
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config("DEBUG", default=True, cast=bool)
+DEBUG = config("DEBUG", default=False, cast=bool)
+ENABLE_DEBUG_TOOLBAR = DEBUG and config(
+    "ENABLE_DEBUG_TOOLBAR",
+    default=True,
+    cast=bool,
+)
+DEBUG_TOOLBAR_INCLUDE_TEMPLATES_PANEL = config(
+    "DEBUG_TOOLBAR_INCLUDE_TEMPLATES_PANEL",
+    default=False,
+    cast=bool,
+)
 
 INTERNAL_IPS = ["127.0.0.1"]
 
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="*", cast=Csv())
+# Docker users access via unpredictable LAN IPs, so keep the permissive
+# default there. Local dev gets a strict default.
+_allowed_hosts_default = "*" if Path("/.dockerenv").exists() else "localhost,127.0.0.1"
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default=_allowed_hosts_default, cast=Csv())
 
 if ALLOWED_HOSTS != ["*"]:
     if "localhost" not in ALLOWED_HOSTS:
@@ -96,6 +215,7 @@ if ALLOWED_HOSTS != ["*"]:
 
 
 CSRF_TRUSTED_ORIGINS = config("CSRF", default="", cast=Csv())
+CSRF_FAILURE_VIEW = "app.error_views.csrf_failure"
 
 URLS = config("URLS", default="", cast=Csv())
 
@@ -108,7 +228,19 @@ if BASE_URL:
     # send cookies with all requests under the base URL prefix
     CSRF_COOKIE_PATH = BASE_URL
 
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED = config("USE_X_FORWARDED", default=False, cast=bool)
+
+SECURE_PROXY_SSL_HEADER = (
+    ("HTTP_X_FORWARDED_PROTO", "https")
+    if (config("USE_X_FORWARDED_PROTO", default=USE_X_FORWARDED, cast=bool))
+    else None
+)
+USE_X_FORWARDED_HOST = config(
+    "USE_X_FORWARDED_HOST", default=USE_X_FORWARDED, cast=bool
+)
+USE_X_FORWARDED_PORT = config(
+    "USE_X_FORWARDED_PORT", default=USE_X_FORWARDED, cast=bool
+)
 
 # Application definition
 
@@ -124,7 +256,6 @@ INSTALLED_APPS = [
     "integrations",
     "lists",
     "users",
-    "debug_toolbar",
     "django_celery_beat",
     "django_celery_results",
     "django_select2",
@@ -141,23 +272,73 @@ INSTALLED_APPS = [
     "allauth.account",
     "allauth.socialaccount",
     "django.contrib.humanize",
+    "rest_framework",
+    "api",
+    "drf_spectacular",
 ]
 
+REST_FRAMEWORK = {
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "api.authentication.BearerAuthentication",
+        "api.authentication.APIKeyAuthentication",
+    ],
+    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+if ENABLE_DEBUG_TOOLBAR:
+    INSTALLED_APPS.append("debug_toolbar")
+
+# Slow-request instrumentation: log requests exceeding either threshold.
+PERF_LOG_ENABLED = config("PERF_LOG_ENABLED", default=True, cast=bool)
+PERF_LOG_SLOW_REQUEST_MS = config("PERF_LOG_SLOW_REQUEST_MS", default=500, cast=int)
+PERF_LOG_QUERY_COUNT_THRESHOLD = config(
+    "PERF_LOG_QUERY_COUNT_THRESHOLD",
+    default=75,
+    cast=int,
+)
+
 MIDDLEWARE = [
-    "debug_toolbar.middleware.DebugToolbarMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # Keep rendered HTML out of the browser's heuristic cache so template fixes
+    # actually reach iOS Safari and the installed PWA (#442)
+    "app.middleware.NoStoreHtmlMiddleware",
+    "app.middleware.RequestPerformanceLoggingMiddleware",
     "app.middleware.DatabaseRetryMiddleware",
+    "app.middleware.SessionInterruptedMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "app.middleware.DiscoverWarmupMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
+    # Answer htmx requests with HX-Redirect instead of a followable 302 to the
+    # login page, which htmx would otherwise swap into a fragment slot (#386)
+    "app.middleware.HtmxAuthRedirectMiddleware",
     "simple_history.middleware.HistoryRequestMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "app.middleware.ProviderAPIErrorMiddleware",
+    "app.middleware.ErrorCaptureMiddleware",
+    # Convert HTML error responses for API requests into JSON responses
+    "api.middleware.ApiJsonErrorMiddleware",
 ]
+
+if ENABLE_DEBUG_TOOLBAR:
+    MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
+
+# YAMTRACK_* env names stay readable as a fallback for pre-rename deployments.
+FLOPPY_AUTO_LOGIN_USERNAME = config(
+    "FLOPPY_AUTO_LOGIN_USERNAME",
+    default=config("YAMTRACK_AUTO_LOGIN_USERNAME", default=None),
+)
+if FLOPPY_AUTO_LOGIN_USERNAME:
+    _index = MIDDLEWARE.index("django.contrib.auth.middleware.AuthenticationMiddleware")
+    MIDDLEWARE.insert(_index + 1, "app.middleware.AutoLoginMiddleware")
 
 ROOT_URLCONF = "config.urls"
 
@@ -191,13 +372,24 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/stable/ref/settings/#databases
 
-# create db folder if it doesn't exist
-Path(BASE_DIR / "db").mkdir(parents=True, exist_ok=True)
+DB_HOST = config("DB_HOST", default=None)
+USING_SQLITE_DATABASE = not bool(DB_HOST)
 
-if config("DB_HOST", default=None):
-    DB_POOL_ENABLED = config("DB_POOL_ENABLED", default=False, cast=bool)
-    DB_POOL_MIN = config("DB_POOL_MIN", default=0, cast=int)
-    DB_POOL_MAX = config("DB_POOL_MAX", default=2, cast=int)
+if DB_HOST:
+    DB_POOL_ENABLED = config("DB_POOL_ENABLED", default=True, cast=bool)
+    DB_POOL_MIN = config("DB_POOL_MIN", default=2, cast=int)
+    # Derived from the same thread count gunicorn uses rather than hardcoded,
+    # so the invariant holds automatically when the tier (or the user) changes
+    # GUNICORN_THREADS. It must be >= the thread count so a worker's pool never
+    # runs out of slots for its own concurrent request threads; +1 for headroom
+    # (e.g. the /health/ probe hitting the pool at the same time). A too-small
+    # pool causes psycopg_pool.PoolTimeout once concurrent requests in a worker
+    # exceed the pool size (issue #341).
+    DB_POOL_MAX = config(
+        "DB_POOL_MAX",
+        default=max(RUNTIME_GUNICORN_THREADS + 1, DB_POOL_MIN + 1),
+        cast=int,
+    )
     DB_POOL_TIMEOUT = config("DB_POOL_TIMEOUT", default=30, cast=int)
     db_options = {}
     if DB_POOL_ENABLED:
@@ -210,12 +402,13 @@ if config("DB_HOST", default=None):
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "HOST": config("DB_HOST"),
+            "HOST": DB_HOST,
             "NAME": config("DB_NAME", default=secret("DB_NAME_FILE")),
             "USER": config("DB_USER", default=secret("DB_USER_FILE")),
             "PASSWORD": config("DB_PASSWORD", default=secret("DB_PASSWORD_FILE")),
             "PORT": config("DB_PORT"),
             "OPTIONS": db_options,
+            "CONN_HEALTH_CHECKS": True,
         },
     }
 
@@ -228,6 +421,7 @@ if config("DB_HOST", default=None):
         DATABASES["default"]["OPTIONS"]["sslcertmode"] = sslcertmode
 
 else:
+    FLOPPY_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     SQLITE_BUSY_TIMEOUT_SECONDS = config(
         "SQLITE_BUSY_TIMEOUT_SECONDS",
         default=30,
@@ -239,7 +433,7 @@ else:
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db" / "db.sqlite3",
+            "NAME": FLOPPY_DB_PATH,
             "OPTIONS": {
                 "timeout": SQLITE_BUSY_TIMEOUT_SECONDS,
             },
@@ -255,26 +449,39 @@ else:
         try:
             cursor = connection.cursor()
             cursor.execute(f"PRAGMA journal_mode={SQLITE_JOURNAL_MODE}")
+            actual_journal_mode = cursor.fetchone()[0]
             cursor.execute(f"PRAGMA synchronous={SQLITE_SYNCHRONOUS}")
             cursor.execute(
                 f"PRAGMA busy_timeout={int(SQLITE_BUSY_TIMEOUT_SECONDS * 1000)}",
             )
-        except Exception as error:
+            if actual_journal_mode.lower() != SQLITE_JOURNAL_MODE.lower():
+                # A connection stuck on a different journal mode than its
+                # siblings (e.g. WAL requested but filesystem doesn't support
+                # it - common on network mounts) is a known SQLite corruption
+                # trigger, so this must be loud rather than a routine warning.
+                import logging
+
+                logging.getLogger(__name__).error(
+                    "SQLite journal_mode mismatch: requested %s but got %s. "
+                    "Mixed journal modes across connections to the same "
+                    "database file can cause corruption - this often means "
+                    "the database directory is on a network filesystem "
+                    "(NFS/SMB/CIFS) that doesn't support WAL locking.",
+                    SQLITE_JOURNAL_MODE,
+                    actual_journal_mode,
+                )
+        except Exception:
             # Log but don't raise - allow connection to proceed even if PRAGMA fails
             # This prevents disk I/O errors during connection setup from blocking all requests
             import logging
+
             logger = logging.getLogger(__name__)
-            logger.warning(
-                "Failed to configure SQLite connection PRAGMA settings: %s",
-                error,
-            )
+            logger.exception("Failed to configure SQLite connection PRAGMA settings")
         finally:
             if cursor:
-                try:
+                # Closing a cursor is best-effort; a failure here is not useful.
+                with contextlib.suppress(Exception):
                     cursor.close()
-                except Exception:
-                    # Ignore errors when closing cursor
-                    pass
 
     connection_created.connect(configure_sqlite_connection)
 
@@ -282,29 +489,86 @@ else:
 # https://docs.djangoproject.com/en/stable/topics/cache/
 CACHE_TIMEOUT = 86400  # 24 hours
 REDIS_URL = config("REDIS_URL", default="redis://localhost:6379")
+REDIS_CACHE_URL = config("REDIS_CACHE_URL", default=None) or REDIS_URL
+REDIS_ADMIN_URL = config("REDIS_ADMIN_URL", default=None) or REDIS_CACHE_URL
+# Byte count or a redis.conf-style size ("256mb"). Unset means "derive one from
+# the host"; 0 means "never touch the operator's Redis". See app/redis_tuning.py.
+FLOPPY_REDIS_MAXMEMORY = config(
+    "FLOPPY_REDIS_MAXMEMORY",
+    default=config("YAMTRACK_REDIS_MAXMEMORY", default=None),
+)
 KEY_PREFIX = f"{REDIS_PREFIX}" if REDIS_PREFIX else ""
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": REDIS_URL,
+        "LOCATION": REDIS_CACHE_URL,
         "TIMEOUT": CACHE_TIMEOUT,
         "VERSION": 14,
         "KEY_PREFIX": KEY_PREFIX,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            # A cache is allowed to be unavailable. Without this, a slow or full
+            # Redis raised out of every one of ~460 cache.get calls and took
+            # page loads, webhooks and background tasks down with it (#521).
+            # Callers that use the cache for control flow rather than caching
+            # must distinguish "unavailable" from "miss" - see app/cache_safety.py.
+            "IGNORE_EXCEPTIONS": config(
+                "REDIS_IGNORE_EXCEPTIONS",
+                default=True,
+                cast=bool,
+            ),
+            # A half-dead Redis (TCP accepts, never replies) must raise
+            # promptly instead of blocking worker threads forever (#341).
+            "SOCKET_CONNECT_TIMEOUT": config(
+                "REDIS_SOCKET_CONNECT_TIMEOUT",
+                default=5,
+                cast=int,
+            ),
+            # Every thread that touches the cache blocks for this long when Redis
+            # stops answering, so the whole web tier stalls for
+            # threads x timeout. Shorter on hosts that can least afford it.
+            "SOCKET_TIMEOUT": config(
+                "REDIS_SOCKET_TIMEOUT",
+                default=by_tier(4, 5, 10),
+                cast=int,
+            ),
+            "CONNECTION_POOL_KWARGS": {
+                # django-redis leaves this at redis-py's 2**31 default, so a
+                # stalled Redis grows sockets and file descriptors without
+                # bound while threads pile up waiting on it.
+                "max_connections": config(
+                    "REDIS_MAX_CONNECTIONS",
+                    default=by_tier(12, 20, 32),
+                    cast=int,
+                ),
+                "retry_on_timeout": True,
+                "health_check_interval": 30,
+            },
         },
     },
 }
+
+# IGNORE_EXCEPTIONS swallows the traceback; without this a Redis outage is
+# invisible in the logs, which is the opposite of what we want while
+# diagnosing one. This is a global setting, not a per-cache OPTION.
+DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS = True
 
 # not using Memcached, ignore CacheKeyWarning
 # https://docs.djangoproject.com/en/stable/topics/cache/#cache-key-warnings
 warnings.simplefilter("ignore", CacheKeyWarning)
 
 # Sessions
-# Use Redis cache backend for sessions to avoid database dependency
-# This improves resilience to disk I/O errors
-SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+# Read through Redis for speed, but persist to the database too. The pure cache
+# backend silently treats any Redis error - a restart, an eviction, a socket
+# timeout - as "no session", logging the user out with no log line (#386).
+SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 SESSION_CACHE_ALIAS = "default"
+
+# Deliberately NOT setting SESSION_SAVE_EVERY_REQUEST: it would slide the
+# expiry on activity, but at the cost of a session UPDATE on every request.
+# On SQLite that is write-lock pressure on the hot path - the same class of
+# fragility this section exists to fix. Session lifetime therefore stays fixed
+# from login, per the user's session_duration preference.
 
 
 # Password validation
@@ -318,6 +582,13 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Logging
 # https://docs.djangoproject.com/en/stable/topics/logging/
+
+# Recent logs are also kept on disk (in addition to stdout) so the app can
+# offer a sanitized log download from Settings > Advanced (#510).
+LOG_DIR = config("LOG_DIR", default=str(BASE_DIR / "logs"))
+Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
+LOG_FILE = str(Path(LOG_DIR) / "floppy.log")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -346,8 +617,16 @@ LOGGING = {
             "formatter": "verbose",
             "level": "DEBUG" if DEBUG else "INFO",
         },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOG_FILE,
+            "maxBytes": 5 * 1024 * 1024,
+            "backupCount": 3,
+            "formatter": "verbose",
+            "level": "DEBUG" if DEBUG else "INFO",
+        },
     },
-    "root": {"handlers": ["console"], "level": "DEBUG" if DEBUG else "INFO"},
+    "root": {"handlers": ["console", "file"], "level": "DEBUG" if DEBUG else "INFO"},
 }
 
 # Internationalization
@@ -385,30 +664,96 @@ LOGIN_REDIRECT_URL = "home"
 
 AUTH_USER_MODEL = "users.User"
 
-# Yamtrack settings
+# Floppy settings
 
 # For CSV imports
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10 MB
 
+# A Trakt data export is ~170 loose .json files if uploaded unzipped.
+DATA_UPLOAD_MAX_NUMBER_FILES = 300
 
-def _get_commit_hash():
-    """Return the current commit hash from env or the local git metadata."""
-    env_commit = (
-        config("COMMIT_SHA", default=None)
-        or config("GIT_COMMIT", default=None)
-        or config("GITHUB_SHA", default=None)
-    )
 
-    if env_commit and env_commit.lower() not in {"unknown", "none"}:
-        return env_commit.strip()
+def _clean_metadata_value(value):
+    """Normalize version metadata values from the environment."""
+    if value is None:
+        return None
 
+    cleaned = str(value).strip()
+    if not cleaned or cleaned.lower() in {"unknown", "none"}:
+        return None
+    return cleaned
+
+
+def _find_git_dir(start_dir=BASE_DIR):
+    """Search upward from start_dir for a git directory or gitdir file."""
+    start_path = Path(start_dir).resolve()
+
+    for candidate in (start_path, *start_path.parents):
+        dot_git = candidate / ".git"
+        if dot_git.is_dir():
+            return dot_git
+
+        if not dot_git.is_file():
+            continue
+
+        try:
+            dot_git_contents = dot_git.read_text().strip()
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        if not dot_git_contents.startswith("gitdir:"):
+            continue
+
+        _, git_dir_path = dot_git_contents.split(":", 1)
+        git_dir = (candidate / git_dir_path.strip()).resolve()
+        if git_dir.exists():
+            return git_dir
+
+    return None
+
+
+def _read_git_ref(git_dir, ref_path):
+    """Read a git ref from loose refs or packed-refs."""
+    ref_file = git_dir / ref_path
     try:
-        git_rev = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=BASE_DIR,
+        ref_value = ref_file.read_text().strip()
+    except (FileNotFoundError, OSError, UnicodeDecodeError):
+        ref_value = None
+
+    if ref_value:
+        return ref_value
+
+    packed_refs = git_dir / "packed-refs"
+    try:
+        packed_ref_lines = packed_refs.read_text().splitlines()
+    except (FileNotFoundError, OSError, UnicodeDecodeError):
+        return None
+
+    for raw_line in packed_ref_lines:
+        line = raw_line.strip()
+        if not line or line.startswith(("#", "^")):
+            continue
+
+        try:
+            sha, name = line.split(" ", 1)
+        except ValueError:
+            continue
+
+        if name == ref_path:
+            return sha
+
+    return None
+
+
+def _get_local_commit_hash(base_dir=BASE_DIR):
+    """Return the current commit hash from the local git checkout if available."""
+    git_rev_parse_command = ["git", "rev-parse", "HEAD"]
+    try:
+        git_rev = subprocess.run(  # noqa: S603  # static argv, no shell, no user input
+            git_rev_parse_command,
+            cwd=base_dir,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
         ).stdout.strip()
         if git_rev:
@@ -416,38 +761,93 @@ def _get_commit_hash():
     except (OSError, subprocess.SubprocessError):
         pass
 
-    git_dir = BASE_DIR / ".git"
+    git_dir = _find_git_dir(base_dir)
+    if git_dir is None:
+        return None
+
     head_file = git_dir / "HEAD"
     try:
         head_contents = head_file.read_text().strip()
     except (FileNotFoundError, OSError, UnicodeDecodeError):
         return None
 
-    if head_contents.startswith("gitdir:"):
-        _, git_dir_path = head_contents.split(":", 1)
-        git_dir = (BASE_DIR / git_dir_path.strip()).resolve()
-        head_file = git_dir / "HEAD"
-        try:
-            head_contents = head_file.read_text().strip()
-        except (FileNotFoundError, OSError, UnicodeDecodeError):
-            return None
-
     if head_contents.startswith("ref:"):
-        _, ref_path = head_contents.split(" ", 1)
-        ref_file = git_dir / ref_path
-        try:
-            return ref_file.read_text().strip()
-        except (FileNotFoundError, OSError, UnicodeDecodeError):
-            return None
+        _, ref_path = head_contents.split(":", 1)
+        return _read_git_ref(git_dir, ref_path.strip())
 
     return head_contents or None
 
 
-VERSION_RAW = config("VERSION", default=None)
-COMMIT_SHA = _get_commit_hash()
+def _get_env_commit_hash():
+    """Return the build/deployment commit hash from the environment."""
+    return _clean_metadata_value(
+        config("COMMIT_SHA", default=None)
+        or config("GIT_COMMIT", default=None)
+        or config("GITHUB_SHA", default=None),
+    )
+
+
+def _get_local_version(base_dir=BASE_DIR, commit_sha=None):
+    """Return a version string from the local git checkout if available."""
+    git_describe_command = ["git", "describe", "--tags", "--always", "--dirty"]
+    try:
+        git_describe = subprocess.run(  # noqa: S603  # static argv, no shell, no user input
+            git_describe_command,
+            cwd=base_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if git_describe:
+            return git_describe
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    local_commit = commit_sha or _get_local_commit_hash(base_dir)
+    if local_commit:
+        return local_commit[:7]
+    return None
+
+
+def _select_commit_hash(local_commit_sha, env_commit_sha):
+    """Prefer runtime checkout metadata over build metadata."""
+    return local_commit_sha or env_commit_sha
+
+
+def _select_version(local_version, local_commit_sha, env_version, env_commit_sha):
+    """Pick the most accurate version string available for the running code."""
+    if local_version:
+        return local_version
+
+    if env_version and (not local_commit_sha or local_commit_sha == env_commit_sha):
+        return env_version
+
+    if local_commit_sha:
+        return local_commit_sha[:7]
+
+    if env_version:
+        return env_version
+
+    if env_commit_sha:
+        return env_commit_sha[:7]
+
+    return "dev"
+
+
+ENV_VERSION_RAW = _clean_metadata_value(config("VERSION", default=None))
+ENV_COMMIT_SHA = _get_env_commit_hash()
+LOCAL_COMMIT_SHA = _get_local_commit_hash()
+LOCAL_VERSION = _get_local_version(commit_sha=LOCAL_COMMIT_SHA)
+
+COMMIT_SHA = _select_commit_hash(LOCAL_COMMIT_SHA, ENV_COMMIT_SHA)
 COMMIT_SHA_SHORT = COMMIT_SHA[:7] if COMMIT_SHA else None
 
-VERSION = VERSION_RAW or COMMIT_SHA_SHORT or "dev"
+VERSION = _select_version(
+    LOCAL_VERSION,
+    LOCAL_COMMIT_SHA,
+    ENV_VERSION_RAW,
+    ENV_COMMIT_SHA,
+)
 
 
 def _parse_repo_owner(value):
@@ -459,11 +859,29 @@ def _parse_repo_owner(value):
     parsed = urlparse(value)
     repo_path = parsed.path if parsed.netloc else value
     repo_path = repo_path.strip("/")
-    if repo_path.endswith(".git"):
-        repo_path = repo_path[:-4]
+    repo_path = repo_path.removesuffix(".git")
     if not repo_path:
         return None
     return repo_path.split("/", 1)[0]
+
+
+def _parse_repo_slug(value):
+    if not value:
+        return None
+    value = value.strip()
+    if value.startswith("git@") and ":" in value:
+        value = value.split(":", 1)[1]
+    parsed = urlparse(value)
+    repo_path = parsed.path if parsed.netloc else value
+    repo_path = repo_path.strip("/")
+    repo_path = repo_path.removesuffix(".git")
+    if "/" not in repo_path:
+        return None
+    owner, repo = repo_path.split("/", 1)
+    if not owner or not repo:
+        return None
+    return f"{owner}/{repo}"
+
 
 def _read_fork_owner_file():
     file_paths = []
@@ -471,7 +889,8 @@ def _read_fork_owner_file():
     if configured_path:
         file_paths.append(Path(configured_path))
     file_paths.append(BASE_DIR / ".fork_owner")
-    file_paths.append(Path("/etc/yamtrack/fork_owner"))
+    file_paths.append(Path("/etc/floppy/fork_owner"))
+    file_paths.append(Path("/etc/yamtrack/fork_owner"))  # pre-rename images
 
     for path in file_paths:
         try:
@@ -484,7 +903,9 @@ def _read_fork_owner_file():
 
 
 def _get_fork_owner():
-    owner = config("FORK_OWNER_NAME", default=None) or config("GITHUB_REPOSITORY_OWNER", default=None)
+    owner = config("FORK_OWNER_NAME", default=None) or config(
+        "GITHUB_REPOSITORY_OWNER", default=None
+    )
     if owner:
         return owner.strip()
 
@@ -498,11 +919,10 @@ def _get_fork_owner():
 
     try:
         git_remote = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
+            ["git", "config", "--get", "remote.origin.url"],  # noqa: S607  # relative path is deliberate; the image resolves it via PATH
             cwd=BASE_DIR,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
         ).stdout.strip()
         return _parse_repo_owner(git_remote)
@@ -510,18 +930,66 @@ def _get_fork_owner():
         return None
 
 
+def _get_fork_repository():
+    for value in (
+        config("FORK_REPOSITORY", default=None),
+        config("GITHUB_REPOSITORY", default=None),
+    ):
+        repository = _parse_repo_slug(value)
+        if repository:
+            return repository
+
+    file_owner = _read_fork_owner_file()
+    repository = _parse_repo_slug(file_owner)
+    if repository:
+        return repository
+
+    try:
+        git_remote = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],  # noqa: S607  # relative path is deliberate; the image resolves it via PATH
+            cwd=BASE_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        return _parse_repo_slug(git_remote)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 FORK_OWNER_NAME = _get_fork_owner()
 FORK_OWNER_URL = config("FORK_OWNER_URL", default=None)
-if FORK_OWNER_NAME and not FORK_OWNER_URL:
-    FORK_OWNER_URL = f"https://github.com/{FORK_OWNER_NAME}"
+if not FORK_OWNER_URL:
+    fork_repository = _get_fork_repository()
+    if fork_repository:
+        FORK_OWNER_URL = f"https://github.com/{fork_repository}"
+    elif FORK_OWNER_NAME:
+        FORK_OWNER_URL = f"https://github.com/{FORK_OWNER_NAME}"
 
 ADMIN_ENABLED = config("ADMIN_ENABLED", default=False, cast=bool)
 
 TRACK_TIME = config("TRACK_TIME", default=True, cast=bool)
 
+BACKUP_DIR = config("BACKUP_DIR", default=str(BASE_DIR / "backups"))
+
 # Runtime population settings
-RUNTIME_POPULATION_DISABLED = config("RUNTIME_POPULATION_DISABLED", default=False, cast=bool)
-RUNTIME_POPULATION_ON_STARTUP = config("RUNTIME_POPULATION_ON_STARTUP", default=False, cast=bool)
+RUNTIME_POPULATION_DISABLED = config(
+    "RUNTIME_POPULATION_DISABLED", default=False, cast=bool
+)
+RUNTIME_POPULATION_ON_STARTUP = config(
+    "RUNTIME_POPULATION_ON_STARTUP", default=False, cast=bool
+)
+_DISCOVER_WARMUP_ON_STARTUP = config(
+    "DISCOVER_WARMUP_ON_STARTUP",
+    default=None,
+)
+if _DISCOVER_WARMUP_ON_STARTUP is None:
+    DISCOVER_WARMUP_ON_STARTUP = False if USING_SQLITE_DATABASE else not DEBUG
+else:
+    DISCOVER_WARMUP_ON_STARTUP = config(
+        "DISCOVER_WARMUP_ON_STARTUP",
+        cast=bool,
+    )
 
 TZ = zoneinfo.ZoneInfo(TIME_ZONE)
 
@@ -539,6 +1007,26 @@ TMDB_API = config(
 )
 TMDB_NSFW = config("TMDB_NSFW", default=False, cast=bool)
 TMDB_LANG = config("TMDB_LANG", default="en")
+
+SEERR_GLOBAL_WEBHOOK_SECRET = config(
+    "SEERR_GLOBAL_WEBHOOK_SECRET",
+    default=secret("SEERR_GLOBAL_WEBHOOK_SECRET_FILE", ""),
+)
+
+TVDB_API_KEY = config(
+    "TVDB_API_KEY",
+    default=secret(
+        "TVDB_API_KEY_FILE",
+        "",
+    ),
+)
+TVDB_PIN = config(
+    "TVDB_PIN",
+    default=secret(
+        "TVDB_PIN_FILE",
+        "",
+    ),
+)
 
 MAL_API = config(
     "MAL_API",
@@ -589,13 +1077,13 @@ HARDCOVER_API = config(
     default=secret(
         "HARDCOVER_API_FILE",
         "Bearer eyJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJIYXJkY292ZXIiLCJ2ZXJzaW9uIjoiOCIsImp0"
-        "aSI6ImJhNGNjZmUwLTgwZmQtNGI3NC1hZDdhLTlkNDM5ZTA5YWMzOSIsImFwcGxpY2F0aW9uSWQi"
-        "OjIsInN1YiI6IjM0OTUxIiwiYXVkIjoiMSIsImlkIjoiMzQ5NTEiLCJsb2dnZWRJbiI6dHJ1ZSwi"
-        "aWF0IjoxNzQ2OTc3ODc3LCJleHAiOjE3Nzg1MTM4NzcsImh0dHBzOi8vaGFzdXJhLmlvL2p3dC9j"
+        "aSI6IjcyYTc1ZmU3LTBlY2EtNDYzZC04Njc4LThlMTVhMjM4MzY0OCIsImFwcGxpY2F0aW9uSWQi"
+        "OjIsInN1YiI6IjczODAxIiwiYXVkIjoiMSIsImlkIjoiNzM4MDEiLCJsb2dnZWRJbiI6dHJ1ZSwi"
+        "aWF0IjoxNzc4NjI3MzIwLCJleHAiOjE4MTAxNjMzMjAsImh0dHBzOi8vaGFzdXJhLmlvL2p3dC9j"
         "bGFpbXMiOnsieC1oYXN1cmEtYWxsb3dlZC1yb2xlcyI6WyJ1c2VyIl0sIngtaGFzdXJhLWRlZmF1"
         "bHQtcm9sZSI6InVzZXIiLCJ4LWhhc3VyYS1yb2xlIjoidXNlciIsIlgtaGFzdXJhLXVzZXItaWQi"
-        "OiIzNDk1MSJ9LCJ1c2VyIjp7ImlkIjozNDk1MX19.edcEqLAeO3uH5xxBTFDKtyWwi-B-WfXX_yi"
-        "LFdOAJ3c",
+        "OiI3MzgwMSJ9LCJ1c2VyIjp7ImlkIjo3MzgwMX19.3b6v1FJ24VTrKtmxMiIUO4o5LR2HGhw6zn"
+        "PlDwL5Df4",
     ),
 )
 
@@ -611,7 +1099,7 @@ TRAKT_API = config(
     "TRAKT_API",
     default=secret(
         "TRAKT_API_FILE",
-        "b4d9702b11cfaddf5e863001f68ce9d4394b678926e8a3f64d47bf69a55dd0fe",
+        "",
     ),
 )
 
@@ -659,9 +1147,9 @@ PLEX_CLIENT_IDENTIFIER = config(
     "PLEX_CLIENT_IDENTIFIER",
     default=DEFAULT_PLEX_CLIENT_IDENTIFIER,
 )
-PLEX_PRODUCT = config("PLEX_PRODUCT", default="Yamtrack")
-PLEX_DEVICE = config("PLEX_DEVICE", default="Yamtrack Importer")
-PLEX_PLATFORM = config("PLEX_PLATFORM", default="Yamtrack")
+PLEX_PRODUCT = config("PLEX_PRODUCT", default="Floppy")
+PLEX_DEVICE = config("PLEX_DEVICE", default="Floppy Importer")
+PLEX_PLATFORM = config("PLEX_PLATFORM", default="Floppy")
 PLEX_PLATFORM_VERSION = config("PLEX_PLATFORM_VERSION", default=VERSION)
 PLEX_SSL_VERIFY = config("PLEX_SSL_VERIFY", default=False, cast=bool)
 PLEX_SECTIONS_TTL_HOURS = config("PLEX_SECTIONS_TTL_HOURS", default=24, cast=int)
@@ -669,7 +1157,16 @@ PLEX_HISTORY_PAGE_SIZE = config("PLEX_HISTORY_PAGE_SIZE", default=200, cast=int)
 PLEX_HISTORY_MAX_ITEMS = config("PLEX_HISTORY_MAX_ITEMS", default=0, cast=int)
 
 LASTFM_API_KEY = config("LASTFM_API_KEY", default="")
-LASTFM_POLL_INTERVAL_MINUTES = config("LASTFM_POLL_INTERVAL_MINUTES", default=15, cast=int)
+LASTFM_POLL_INTERVAL_MINUTES = config(
+    "LASTFM_POLL_INTERVAL_MINUTES", default=15, cast=int
+)
+LASTFM_HISTORY_PAGES_PER_TASK = config(
+    "LASTFM_HISTORY_PAGES_PER_TASK", default=5, cast=int
+)
+
+AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES = config(
+    "AUDIOBOOKSHELF_POLL_INTERVAL_MINUTES", default=15, cast=int
+)
 
 TESTING = False
 
@@ -678,6 +1175,23 @@ HEALTHCHECK_CELERY_PING_TIMEOUT = config(
     default=1,
     cast=int,
 )
+
+# The container healthcheck polls /health/ constantly; the celery broadcast
+# ping always waits its full timeout (~1s), pinning a gunicorn thread per
+# probe. The probe uses this fast subset; /health/full/ runs every check.
+#
+# Redis is deliberately NOT a liveness signal. With IGNORE_EXCEPTIONS the app
+# serves correctly from Postgres through a Redis outage, so reporting unhealthy
+# would get a working container restarted by whatever watches the healthcheck -
+# turning graceful degradation into a restart loop (#521). Cache and Redis
+# checks remain on /health/full/, which is where you look to diagnose one.
+HEALTH_CHECK = {
+    "SUBSETS": {
+        "liveness": [
+            "DatabaseHeartBeatCheck",
+        ],
+    },
+}
 
 # Third party settings
 
@@ -688,6 +1202,14 @@ DEBUG_TOOLBAR_CONFIG = {
     ),
     "ROOT_TAG_EXTRA_ATTRS": "hx-preserve",
 }
+DEBUG_TOOLBAR_PANELS = [
+    panel
+    for panel in PANELS_DEFAULTS
+    if (
+        DEBUG_TOOLBAR_INCLUDE_TEMPLATES_PANEL
+        or panel != "debug_toolbar.panels.templates.TemplatesPanel"
+    )
+]
 
 SELECT2_CACHE_BACKEND = "default"
 SELECT2_JS = [
@@ -702,25 +1224,103 @@ SELECT2_THEME = "tailwindcss-4"
 
 # Celery settings
 
-CELERY_BROKER_URL = REDIS_URL
+CELERY_BROKER_URL = config("CELERY_BROKER_URL", default=None) or REDIS_URL
 CELERY_TIMEZONE = TIME_ZONE
 
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    # Let interactive refreshes jump ahead of maintenance batches in Redis.
+    "queue_order_strategy": "priority",
+    "priority_steps": list(range(10)),
+    "sep": ":",
+    # A task not acked within this window is redelivered, so it must exceed the
+    # longest a task can legitimately run or work silently runs twice. Tracks
+    # CELERY_TASK_TIME_LIMIT below, with headroom.
+    "visibility_timeout": by_tier(3600, 3600, 60 * 60 * 6 + 1800),
+    # The broker connection is a long-lived BRPOP, so it needs a far longer
+    # socket timeout than the cache's - and keepalives, or a NAT/firewall idle
+    # timeout silently blackholes it and the worker stops receiving tasks.
+    "socket_timeout": 30,
+    "socket_connect_timeout": 10,
+    "socket_keepalive": True,
+    "retry_on_timeout": True,
+    "health_check_interval": 30,
+}
 if REDIS_PREFIX:
-    CELERY_BROKER_TRANSPORT_OPTIONS = {
-        "global_keyprefix": f"{REDIS_PREFIX}",
-        "queue_prefix": f"{REDIS_PREFIX}",
-    }
+    CELERY_BROKER_TRANSPORT_OPTIONS.update(
+        {
+            "global_keyprefix": f"{REDIS_PREFIX}",
+            "queue_prefix": f"{REDIS_PREFIX}",
+        },
+    )
+
+# Broker resilience: none of this was configured, so a Redis blip at the wrong
+# moment killed a worker outright instead of being retried (#521).
+CELERY_BROKER_POOL_LIMIT = config(
+    "CELERY_BROKER_POOL_LIMIT",
+    default=by_tier(4, 6, 10),
+    cast=int,
+)
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# Retry forever rather than exit: the container restarts into the same
+# situation, so giving up only turns a slow Redis into a crash loop.
+CELERY_BROKER_CONNECTION_MAX_RETRIES = 0
+CELERY_REDIS_RETRY_ON_TIMEOUT = True
 
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False
-CELERY_WORKER_CONCURRENCY = 1
-CELERY_WORKER_MAX_TASKS_PER_CHILD = 1
-CELERY_BEAT_SYNC_EVERY = 1
+CELERY_WORKER_CONCURRENCY = config("CELERY_WORKER_CONCURRENCY", default=1, cast=int)
+CELERY_WORKER_PREFETCH_MULTIPLIER = config(
+    "CELERY_WORKER_PREFETCH_MULTIPLIER",
+    default=1,
+    cast=int,
+)
+# Recycling a worker child is the only thing that returns leaked/fragmented
+# memory to the OS, so smaller hosts recycle sooner (issue #521).
+CELERY_WORKER_MAX_TASKS_PER_CHILD = config(
+    "CELERY_WORKER_MAX_TASKS_PER_CHILD",
+    default=by_tier(15, 25, 50),
+    cast=int,
+)
+# A hard RSS ceiling per child: Celery retires the child after the task that
+# crosses it finishes. Unset on standard hosts, where a large import legitimately
+# needs the headroom and there is memory to spare.
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = config(
+    "CELERY_WORKER_MAX_MEMORY_PER_CHILD",
+    default=by_tier(180 * 1024, 250 * 1024, 0),
+    cast=int,
+)
+if not CELERY_WORKER_MAX_MEMORY_PER_CHILD:
+    CELERY_WORKER_MAX_MEMORY_PER_CHILD = None
+CELERY_BEAT_SYNC_EVERY = 10
 
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 60 * 60 * 6  # 6 hours
+# A wedged task holds its worker for the whole limit, and with concurrency 1
+# that is the entire queue. Six hours is survivable on a host with spare
+# workers; on a constrained one it is an outage, so bound it much sooner and
+# give tasks a SoftTimeLimitExceeded they can clean up after.
+CELERY_TASK_TIME_LIMIT = config(
+    "CELERY_TASK_TIME_LIMIT",
+    default=by_tier(60 * 30, 60 * 30, 60 * 60 * 6),
+    cast=int,
+)
+CELERY_TASK_SOFT_TIME_LIMIT = config(
+    "CELERY_TASK_SOFT_TIME_LIMIT",
+    default=by_tier(60 * 15, 60 * 15, 0),
+    cast=int,
+)
+if not CELERY_TASK_SOFT_TIME_LIMIT:
+    CELERY_TASK_SOFT_TIME_LIMIT = None
+# Redis priorities are inverted relative to AMQP: kombu publishes priority N to
+# the key "<queue>:N" (priority 0 uses the bare "<queue>"), and the worker BRPOPs
+# those keys in ascending order, so it drains "celery" first and "celery:9" last.
+# Lower number == higher priority. Keep these ordered accordingly; assigning 9 to
+# interactive work strands it behind every background batch.
+CELERY_TASK_PRIORITY_INTERACTIVE = 0
+CELERY_TASK_PRIORITY_FOLLOWUP = 3
+CELERY_TASK_DEFAULT_PRIORITY = 5
+CELERY_TASK_PRIORITY_BACKGROUND = 9
 
 CELERY_RESULT_EXTENDED = True
-CELERY_RESULT_BACKEND = "django-db"
+CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=None) or REDIS_URL
 CELERY_CACHE_BACKEND = "default"
 CELERY_RESULT_EXPIRES = 60 * 60 * 24 * 7  # 7 days
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
@@ -728,7 +1328,63 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-serializer
 CELERY_TASK_SERIALIZER = "pickle"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-accept_content
-CELERY_ACCEPT_CONTENT = ["application/json", "application/x-python-serialize", "application/x-pickle"]
+CELERY_ACCEPT_CONTENT = [
+    "application/json",
+    "application/x-python-serialize",
+    "application/x-pickle",
+]
+CELERY_TASK_ROUTES = {
+    "app.tasks.populate_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "app.tasks.reconcile_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Backfill item metadata": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Ensure genre backfill reconcile": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Nightly metadata quality backfill": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Refresh IMDB game credits from datasets": {
+        "priority": CELERY_TASK_PRIORITY_BACKGROUND
+    },
+    "Warm Discover API Cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Warm Discover Startup Tabs": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Repair History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Refresh Discover Profiles": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    "Refresh Discover Profile For User": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    # Long-running scheduled tasks — low priority so beat-catch-up bursts don't
+    # starve other celery-queue work.
+    "Reload calendar": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    # Discover cache rebuilds go to the dedicated discover worker so a post-restart
+    # burst of O(users x tabs) tasks never starves imports or background work.
+    "Refresh Discover Tab Cache": {"queue": "discover"},
+    # User-triggered cache rebuilds go to the dedicated interactive worker so they
+    # are never blocked behind long-running background tasks.
+    "app.tasks.refresh_statistics_cache_task": {"queue": "interactive"},
+    # History cache rebuilds now bound their inline work (see
+    # refresh_history_cache in history_cache_reader.py), but they're kept off the
+    # interactive queue as defense-in-depth so an unanticipated slow rebuild can
+    # never block Plex webhook scrobbles, which share that single-concurrency
+    # worker.
+    "app.tasks.refresh_history_cache_task": {"queue": "celery"},
+    # Webhook scrobbles must land right after a play finishes, so they run on the
+    # interactive worker at top priority — never behind imports or backfills.
+    "Process media server webhook": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
+    # Fill-in artwork resolution for the home-page playback card; keeps the
+    # HTTP request path free of provider calls.
+    "Resolve live playback image": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
+    # Recurring imports are time-sensitive (every 2 h) — bump above generic
+    # background tasks so a backlog of low-priority work doesn't delay them.
+    "Import from Radarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from Sonarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from Audiobookshelf (Recurring)": {
+        "priority": CELERY_TASK_PRIORITY_FOLLOWUP,
+    },
+    "Import from Pocket Casts (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from GPodder (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+}
 
 
 DAILY_DIGEST_HOUR = config(
@@ -736,6 +1392,84 @@ DAILY_DIGEST_HOUR = config(
     default=8,
     cast=int,
 )
+
+# Background maintenance sizing. These used to be literals in the beat schedule
+# below; a constrained host cannot absorb the same sweep as a NAS with 16 GB, and
+# several of the old values were tuned to converge a one-time migration quickly
+# rather than to be run forever (issue #521, #512).
+#
+# The reconcile cadence is 30 minutes rather than the previous 5 because a
+# reconcile now records durable completion state and backs off, so frequent
+# polling buys nothing - see app/reconcile_state.py.
+RECONCILE_INTERVAL_SECONDS = config(
+    "RECONCILE_INTERVAL_SECONDS",
+    default=by_tier(60 * 120, 60 * 60, 60 * 30),
+    cast=int,
+)
+RECONCILE_BATCH_SIZE = config(
+    "RECONCILE_BATCH_SIZE",
+    default=by_tier(200, 300, 500),
+    cast=int,
+)
+WATCH_PROVIDERS_RECONCILE_BATCH_SIZE = RECONCILE_BATCH_SIZE
+GENRE_RECONCILE_BATCH_SIZE = RECONCILE_BATCH_SIZE
+# Chunks of 50 items enqueued per reconcile pass, bounding in-flight work.
+RECONCILE_MAX_CHUNKS_PER_RUN = config(
+    "RECONCILE_MAX_CHUNKS_PER_RUN",
+    default=by_tier(4, 8, 20),
+    cast=int,
+)
+# Cap on how many users one cache-warming sweep may touch, mirroring the
+# existing STARTUP_WARMUP_TASK_LIMIT in app/tasks_discover.py.
+WARMUP_USER_LIMIT = config(
+    "WARMUP_USER_LIMIT",
+    default=by_tier(10, 20, 50),
+    cast=int,
+)
+METADATA_BACKFILL_SCALE = by_tier(0.25, 0.5, 1.0)
+# The nightly calendar reload queues a metadata backfill rather than running one
+# inline at up to 5000 items, which used to hold a worker while filling the cache
+# with thousands of provider payloads.
+CALENDAR_RELOAD_BACKFILL_BATCH_SIZE = config(
+    "CALENDAR_RELOAD_BACKFILL_BATCH_SIZE",
+    default=by_tier(250, 500, 1000),
+    cast=int,
+)
+# fetch_releases walks every tracked item, one provider call at a time. As a
+# single task that holds a worker for the whole walk -- 16.6 minutes on a
+# 1444-item library -- so process the work in bounded slices and re-queue the
+# remainder between them. Smaller hosts free the worker more often, at the cost
+# of more task round-trips; 0 disables chunking and restores the single pass.
+CALENDAR_RELOAD_CHUNK_SIZE = config(
+    "CALENDAR_RELOAD_CHUNK_SIZE",
+    default=by_tier(50, 100, 200),
+    cast=int,
+)
+# Provider responses are not cached, so every selected item costs a live network
+# call. Skip items whose calendar was checked within this window; the daily beat
+# reload still refreshes everything, while the extra import-triggered and manual
+# reloads in between stop re-walking unchanged items. Items that TMDB's change
+# feed reports as changed bypass this gate. Not tier-derived: how stale a release
+# date may be is a correctness question, not a sizing one. 0 disables it.
+CALENDAR_ITEM_STALE_AFTER_HOURS = config(
+    "CALENDAR_ITEM_STALE_AFTER_HOURS",
+    default=12,
+    cast=int,
+)
+# Cap on TMDB /changes pagination. total_pages there can run into the hundreds,
+# and the loop had no limit at all.
+TMDB_CHANGES_MAX_PAGES = config(
+    "TMDB_CHANGES_MAX_PAGES",
+    default=by_tier(5, 10, 20),
+    cast=int,
+)
+
+
+def _scaled(value: int) -> int:
+    """Scale a batch size to the host, never below 1."""
+    return max(1, int(value * METADATA_BACKFILL_SCALE))
+
+
 CELERY_BEAT_SCHEDULE = {
     "reload_calendar": {
         "task": "Reload calendar",
@@ -749,7 +1483,93 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Send daily digest",
         "schedule": crontab(hour=DAILY_DIGEST_HOUR, minute=0),
     },
+    "send_premiere_digest": {
+        "task": "Send premiere digest",
+        "schedule": crontab(day_of_week="mon", hour=DAILY_DIGEST_HOUR, minute=0),
+    },
+    "backfill_item_metadata": {
+        "task": "Backfill item metadata",
+        "schedule": crontab(hour=3, minute=0),  # every day at 3 AM
+        "kwargs": {
+            "batch_size": _scaled(1000),
+            "game_length_batch_size": _scaled(200),
+        },  # A nightly bulk pass plus a bounded HLTB enrichment sweep.
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "backfill_item_metadata_incremental": {
+        "task": "Backfill item metadata",
+        # Gradual convergence between the nightly passes. Stretched on smaller
+        # hosts, where a sweep every 15 minutes never leaves the CPU idle.
+        "schedule": by_tier(
+            crontab(minute=0),
+            crontab(minute="*/30"),
+            crontab(minute="*/15"),
+        ),
+        "kwargs": {
+            "batch_size": _scaled(150),
+            "game_length_batch_size": _scaled(25),
+        },
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "nightly_metadata_quality_backfill": {
+        "task": "Nightly metadata quality backfill",
+        "schedule": crontab(hour=3, minute=30),  # every day at 3:30 AM
+        "kwargs": {
+            "genre_batch_size": _scaled(1500),
+            "runtime_batch_size": _scaled(500),
+            "episode_season_batch_size": _scaled(300),
+            "credits_batch_size": _scaled(2500),
+            "credits_scan_multiplier": 20,
+            "trakt_popularity_batch_size": _scaled(300),
+        },
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    # Both reconcilers gate on durable completion state and back off once they
+    # find nothing (app/reconcile_state.py), so this is a cheap liveness poll
+    # rather than the every-5-minutes whole-library scan it used to be.
+    "ensure_genre_backfill_reconcile": {
+        "task": "Ensure genre backfill reconcile",
+        "schedule": RECONCILE_INTERVAL_SECONDS,
+        "kwargs": {
+            "batch_size": GENRE_RECONCILE_BATCH_SIZE,
+        },
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "ensure_provider_backfill_reconcile": {
+        "task": "Ensure watch provider backfill reconcile",
+        "schedule": RECONCILE_INTERVAL_SECONDS,
+        "kwargs": {
+            "batch_size": WATCH_PROVIDERS_RECONCILE_BATCH_SIZE,
+        },
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "warm_discover_api_cache": {
+        "task": "Warm Discover API Cache",
+        "schedule": by_tier(60 * 60 * 6, 60 * 60 * 3, 60 * 60),
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "warm_history_day_cache_coverage": {
+        "task": "Warm History Day Cache Coverage",
+        "schedule": by_tier(60 * 60 * 12, 60 * 60 * 6, 60 * 60 * 2),
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "refresh_discover_profiles": {
+        "task": "Refresh Discover Profiles",
+        "schedule": crontab(hour=4, minute=0),  # every day at 4 AM
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
+    "migrate_tv_shows_to_preferred_provider": {
+        "task": "Migrate TV shows to preferred metadata provider",
+        "schedule": crontab(hour=3, minute=45),  # every day at 3:45 AM
+        "kwargs": {"batch_size": _scaled(200)},
+        "options": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    },
 }
+
+IS_PROD = not any(cmd in sys.argv for cmd in ("runserver", "test"))
+if IS_PROD:
+    ALLAUTH_TRUSTED_CLIENT_IP_HEADER = "X-Real-IP"
+
 # Allauth settings
 if CSRF_TRUSTED_ORIGINS:
     # Check if all origins start with http:// or https://
@@ -784,6 +1604,9 @@ ACCOUNT_FORMS = {
     "login": "users.forms.CustomLoginForm",
     "signup": "users.forms.CustomSignupForm",
 }
+SOCIALACCOUNT_FORMS = {
+    "signup": "users.forms.CustomSocialSignupForm",
+}
 
 if BASE_URL:
     # Join base only if relative URL
@@ -817,11 +1640,13 @@ if not REGISTRATION:
 
 REDIRECT_LOGIN_TO_SSO = config("REDIRECT_LOGIN_TO_SSO", default=False, cast=bool)
 
+DEMO_ACCOUNT_ENABLED = config("DEMO_ACCOUNT_ENABLED", default=True, cast=bool)
+
 # Configure LoginRequiredMiddleware to exclude static files
 LOGIN_REQUIRED_EXEMPT = [
     r"^/static/.*$",
     r"^/favicon\.ico$",
     r"^/health/.*$",
-    r"^/list/\d+/rss/?$",  # Public list RSS feeds
-    r"^/list/\d+/json/?$",  # Public list JSON exports
+    r"^/list/[^/]+/rss/?$",  # Public list RSS feeds
+    r"^/list/[^/]+/json/?$",  # Public list JSON exports
 ]

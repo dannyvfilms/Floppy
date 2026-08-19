@@ -4,40 +4,286 @@
 {% load static %}
 
 {% block title %}
-  Advanced - Yamtrack
+  Advanced - Floppy
 {% endblock title %}
 
 {% block settings_content %}
 
   <div class="space-y-6">
-    <div class="bg-[#2a2f35] rounded-lg p-6">
+    <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-5">
         {% include "app/icons/vertical-sliders.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
         <h2 class="text-xl font-semibold">Advanced</h2>
       </div>
 
-      <div class="bg-[#39404b] p-5 rounded-lg mb-6">
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
+           x-data="{
+             confirmOpen: false,
+             pending: null,
+             openConfirm(key) { this.pending = key; this.confirmOpen = true; },
+             closeConfirm() { this.confirmOpen = false; this.pending = null; },
+           }">
         <div class="flex items-center mb-3">
           {% include "app/icons/trashcan.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
-          <h3 class="text-base font-medium">Clear Search Cache</h3>
+          <h3 class="text-base font-medium">Cache Management</h3>
         </div>
-        <p class="text-gray-400 mb-4 text-sm">
-          Yamtrack stores your search results in a cache to speed up performance and reduce API calls.
-          <br>
-          Normally, these cached results expire automatically after 24 hours.
-          If your search results appear outdated, you can clear the cache manually.
-          <br>
-          Your next search may be slightly slower as fresh data is retrieved.
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          Floppy caches computed pages (History, Statistics, Discover) and provider search
+          results so they load fast. If one looks stale or wrong, clearing it forces a
+          rebuild from your actual data — nothing about your library, watch history,
+          ratings, or lists is touched by any of these.
         </p>
-        <div class="flex space-x-3">
-          <form method="post" action="{% url 'clear_search_cache' %}">
-            {% csrf_token %}
-            <button type="submit"
-                    class="flex items-center px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm cursor-pointer">
-              {% include "app/icons/trashcan.svg" with classes="w-4 h-4 mr-2" %}
-              Clear Search Cache
-            </button>
-          </form>
+
+        <div class="grid gap-3 sm:grid-cols-2">
+          <button type="button"
+                  @click="openConfirm('search')"
+                  class="flex items-start justify-between gap-3 px-4 py-3 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm cursor-pointer text-left">
+            <span>
+              <span class="block font-medium">Search Cache</span>
+              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">Provider search results — shared instance-wide</span>
+            </span>
+            {% include "app/icons/trashcan.svg" with classes="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-text-muted)]" %}
+          </button>
+
+          <button type="button"
+                  @click="openConfirm('history')"
+                  class="flex items-start justify-between gap-3 px-4 py-3 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm cursor-pointer text-left">
+            <span>
+              <span class="block font-medium">History Cache</span>
+              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">Your cached History page — just you</span>
+            </span>
+            {% include "app/icons/trashcan.svg" with classes="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-text-muted)]" %}
+          </button>
+
+          <button type="button"
+                  @click="openConfirm('statistics')"
+                  class="flex items-start justify-between gap-3 px-4 py-3 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm cursor-pointer text-left">
+            <span>
+              <span class="block font-medium">Statistics Cache</span>
+              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">Your cached Statistics page — just you</span>
+            </span>
+            {% include "app/icons/trashcan.svg" with classes="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-text-muted)]" %}
+          </button>
+
+          <button type="button"
+                  @click="openConfirm('discover')"
+                  class="flex items-start justify-between gap-3 px-4 py-3 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm cursor-pointer text-left">
+            <span>
+              <span class="block font-medium">Discover Cache</span>
+              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">Your recommendation rows &amp; taste profile — just you</span>
+            </span>
+            {% include "app/icons/trashcan.svg" with classes="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-text-muted)]" %}
+          </button>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-gray-700">
+          <button type="button"
+                  @click="openConfirm('all')"
+                  class="flex items-center px-4 py-2 bg-red-600/10 border border-red-600/40 text-red-300 rounded-md hover:bg-red-600/20 transition-colors text-sm cursor-pointer">
+            {% include "app/icons/warning.svg" with classes="w-4 h-4 mr-2" %}
+            Clear All Caches
+          </button>
+        </div>
+
+        {# Real forms, submitted programmatically once the overlay is confirmed #}
+        <form id="clear-search-cache-form" method="post" action="{% url 'clear_search_cache' %}" class="hidden">{% csrf_token %}</form>
+        <form id="clear-history-cache-form" method="post" action="{% url 'clear_history_cache' %}" class="hidden">{% csrf_token %}</form>
+        <form id="clear-statistics-cache-form" method="post" action="{% url 'clear_statistics_cache' %}" class="hidden">{% csrf_token %}</form>
+        <form id="clear-discover-cache-form" method="post" action="{% url 'clear_discover_cache' %}" class="hidden">{% csrf_token %}</form>
+        <form id="clear-all-caches-form" method="post" action="{% url 'clear_all_caches' %}" class="hidden">{% csrf_token %}</form>
+
+        <template x-teleport="body">
+          <div x-show="confirmOpen"
+               x-cloak
+               @keydown.escape.window="closeConfirm()"
+               class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div class="w-full max-w-md bg-[var(--color-surface)] rounded-lg shadow-xl"
+                 @click.outside="closeConfirm()">
+              <template x-if="pending === 'search'">
+                <div class="p-6">
+                  <div class="flex items-center gap-2 mb-3">
+                    {% include "app/icons/warning.svg" with classes="w-5 h-5 text-amber-400 shrink-0" %}
+                    <h3 class="text-lg font-semibold">Clear Search Cache?</h3>
+                  </div>
+                  <p class="text-sm text-[var(--color-text-secondary)] mb-3">
+                    This is the one shared cache here — clearing it affects
+                    <strong>every user</strong> on this Floppy instance, not just you.
+                  </p>
+                  <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1 mb-5">
+                    <li>No data is lost — this only affects search/lookup results, not your library.</li>
+                    <li>The next search anyone makes will be a bit slower while it re-fetches from TMDB, TVDB, and the other providers.</li>
+                  </ul>
+                  <div class="flex justify-end gap-2">
+                    <button type="button"
+                            @click="closeConfirm()"
+                            class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">Cancel</button>
+                    <button type="button"
+                            @click="document.getElementById('clear-search-cache-form').submit()"
+                            class="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 cursor-pointer">Clear Search Cache</button>
+                  </div>
+                </div>
+              </template>
+
+              <template x-if="pending === 'history'">
+                <div class="p-6">
+                  <div class="flex items-center gap-2 mb-3">
+                    {% include "app/icons/warning.svg" with classes="w-5 h-5 text-amber-400 shrink-0" %}
+                    <h3 class="text-lg font-semibold">Clear History Cache?</h3>
+                  </div>
+                  <p class="text-sm text-[var(--color-text-secondary)] mb-3">
+                    Only affects your own account.
+                  </p>
+                  <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1 mb-5">
+                    <li>Your watch history itself is not touched — this only clears the cached, day-by-day rendering of it.</li>
+                    <li>The History page will rebuild itself the next time you open it, which may take a moment the first time.</li>
+                  </ul>
+                  <div class="flex justify-end gap-2">
+                    <button type="button"
+                            @click="closeConfirm()"
+                            class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">Cancel</button>
+                    <button type="button"
+                            @click="document.getElementById('clear-history-cache-form').submit()"
+                            class="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 cursor-pointer">Clear History Cache</button>
+                  </div>
+                </div>
+              </template>
+
+              <template x-if="pending === 'statistics'">
+                <div class="p-6">
+                  <div class="flex items-center gap-2 mb-3">
+                    {% include "app/icons/warning.svg" with classes="w-5 h-5 text-amber-400 shrink-0" %}
+                    <h3 class="text-lg font-semibold">Clear Statistics Cache?</h3>
+                  </div>
+                  <p class="text-sm text-[var(--color-text-secondary)] mb-3">
+                    Only affects your own account.
+                  </p>
+                  <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1 mb-5">
+                    <li>No underlying data is touched — only the cached charts/totals.</li>
+                    <li>Unlike History, Statistics rebuilds in the background rather than on your next page load — expect placeholder
+                      <code class="px-1 py-0.5 bg-black/20 rounded">--</code> values for a bit until that finishes.</li>
+                  </ul>
+                  <div class="flex justify-end gap-2">
+                    <button type="button"
+                            @click="closeConfirm()"
+                            class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">Cancel</button>
+                    <button type="button"
+                            @click="document.getElementById('clear-statistics-cache-form').submit()"
+                            class="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 cursor-pointer">Clear Statistics Cache</button>
+                  </div>
+                </div>
+              </template>
+
+              <template x-if="pending === 'discover'">
+                <div class="p-6">
+                  <div class="flex items-center gap-2 mb-3">
+                    {% include "app/icons/warning.svg" with classes="w-5 h-5 text-amber-400 shrink-0" %}
+                    <h3 class="text-lg font-semibold">Clear Discover Cache?</h3>
+                  </div>
+                  <p class="text-sm text-[var(--color-text-secondary)] mb-3">
+                    Only affects your own account.
+                  </p>
+                  <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1 mb-5">
+                    <li>Your recommendation rows and taste profile get recomputed from scratch — rows may look different or take a moment to repopulate.</li>
+                    <li>Shared provider data other users' Discover pages also draw on is not affected.</li>
+                  </ul>
+                  <div class="flex justify-end gap-2">
+                    <button type="button"
+                            @click="closeConfirm()"
+                            class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">Cancel</button>
+                    <button type="button"
+                            @click="document.getElementById('clear-discover-cache-form').submit()"
+                            class="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 cursor-pointer">Clear Discover Cache</button>
+                  </div>
+                </div>
+              </template>
+
+              <template x-if="pending === 'all'">
+                <div class="p-6">
+                  <div class="flex items-center gap-2 mb-3">
+                    {% include "app/icons/warning.svg" with classes="w-6 h-6 text-red-400 shrink-0" %}
+                    <h3 class="text-lg font-semibold text-red-300">Clear All Caches?</h3>
+                  </div>
+                  <p class="text-sm text-[var(--color-text-secondary)] mb-3 font-medium">
+                    This runs all four clears above at once: Search (instance-wide) plus your
+                    History, Statistics, and Discover caches.
+                  </p>
+                  <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1.5 mb-5">
+                    <li>Search results go stale for <strong>every user</strong> on this instance until re-fetched.</li>
+                    <li>Your History and Discover pages will look empty for a moment and rebuild as you browse them.</li>
+                    <li>Your Statistics page will show placeholder
+                      <code class="px-1 py-0.5 bg-black/20 rounded">--</code> values until a background task
+                      finishes rebuilding it — this is the slowest of the four to recover.</li>
+                    <li>No watch history, ratings, lists, or tracked media is deleted by any of this — only cached, computed views of it.</li>
+                  </ul>
+                  <div class="flex justify-end gap-2">
+                    <button type="button"
+                            @click="closeConfirm()"
+                            class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">Cancel</button>
+                    <button type="button"
+                            @click="document.getElementById('clear-all-caches-form').submit()"
+                            class="px-4 py-2 text-sm rounded-md bg-red-700 text-white hover:bg-red-800 font-medium cursor-pointer">Clear All Caches</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center">
+            {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+            <h3 class="text-base font-medium">TMDB Proxy</h3>
+          </div>
+          {% if tmdb_proxy_configured %}
+            <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Configured</span>
+          {% else %}
+            <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Not configured</span>
+          {% endif %}
+        </div>
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          If TMDB is blocked from this server, route TMDB requests through a proxy (HTTP or SOCKS5).
+          <br>
+          Leave blank and save to remove it.
+        </p>
+        <form method="post" action="{% url 'update_tmdb_proxy' %}" class="space-y-3">
+          {% csrf_token %}
+          <input type="text"
+                 name="tmdb_proxy_url"
+                 class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                 placeholder="socks5://user:pass@host:port">
+          <button type="submit"
+                  class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+            Save
+          </button>
+        </form>
+      </div>
+
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mt-6">
+        <div class="flex items-center mb-3">
+          {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+          <h3 class="text-base font-medium">Logs &amp; Bug Reports</h3>
+        </div>
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          Download recent application logs with tokens, passwords, and API keys automatically
+          redacted — safe to attach to a bug report.
+          <br>
+          If this Floppy instance is shared with other users, the logs may still include their
+          activity, just not their secrets.
+        </p>
+        <div class="flex flex-wrap gap-3">
+          <a href="{% url 'export_logs' %}"
+             class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm">
+            {% include "app/icons/vertical-sliders.svg" with classes="w-4 h-4 mr-2" %}
+            Download Sanitized Logs
+          </a>
+          <a href="https://github.com/dannyvfilms/Floppy/issues/new?title={{ bug_report_title|urlencode }}&body={{ bug_report_body|urlencode }}"
+             target="_blank"
+             rel="noopener noreferrer"
+             class="flex items-center px-4 py-2 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm">
+            File a Bug Report
+          </a>
         </div>
       </div>
     </div>

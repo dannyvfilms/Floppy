@@ -2,14 +2,14 @@
 {% load app_tags %}
 
 {% block title %}
-  Create - Yamtrack
+  Create - Floppy
 {% endblock title %}
 
 {% block content %}
   <div class="mx-auto max-w-4xl">
     <div class="mb-8">
       <h1 class="text-3xl font-bold mb-2">Create Custom Entry</h1>
-      <p class="text-gray-400">Add a custom media entry to your collection if it's not available in the database.</p>
+      <p class="text-[var(--color-text-muted)]">Add a custom media entry to your collection if it's not available in the database.</p>
     </div>
     {# djlint:off #}
     <form method="post" class="space-y-6" x-data="{
@@ -104,15 +104,15 @@
     {% csrf_token %}
     <input type="hidden" name="media_type" :value="mediaType">
 
-    <div class="bg-[#2a2f35] rounded-lg p-6">
+    <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="grid gap-6">
         <div x-cloak>
-          <label class="block text-sm font-medium mb-2 text-gray-300">Media Type</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Media Type</label>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {% for media_type in media_types %}
               <button type="button"
                       @click="mediaType = '{{ media_type }}'"
-                      :class="mediaType === '{{ media_type }}' ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-gray-600 text-gray-300 hover:bg-[#39404b]'"
+                      :class="mediaType === '{{ media_type }}' ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-gray-600 text-gray-300 hover:bg-[var(--color-surface-strong)]'"
                       class="flex items-center gap-2 p-3 rounded-md border transition-colors cursor-pointer">
                 {% icon media_type is_active=False %}
                 <span class="text-sm font-medium">{{ media_type|media_type_readable }}</span>
@@ -123,8 +123,8 @@
 
         <!-- Title field (TV, Movie, Anime, Manga, Game, Book) -->
         <div x-show="showField('title')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">Title</label>
-          <input class="w-full p-2 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Title</label>
+          <input class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                  placeholder="Enter title"
                  name="title"
                  type="text"
@@ -133,11 +133,11 @@
 
         <!-- Parent TV Show field (Season) -->
         <div x-show="showField('parentShow')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">Parent TV Show</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Parent TV Show</label>
           <div class="relative">
             <div class="relative">
               <input id="parent-tv-input"
-                     class="w-full p-2 pl-9 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
+                     class="w-full p-2 pl-9 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                      placeholder="Search for a TV show..."
                      name="q"
                      type="text"
@@ -147,7 +147,7 @@
                      hx-target="#parent-tv-results">
               <!-- Hidden input to store the selected TV ID -->
               <input id="parent-tv-id" name="parent_tv" type="hidden">
-              {% include "app/icons/magnifying-glass.svg" with classes="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" %}
+              {% include "app/icons/magnifying-glass.svg" with classes="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)]" %}
             </div>
             <div id="parent-tv-results"></div>
           </div>
@@ -155,11 +155,11 @@
 
         <!-- Season Number field (Season) -->
         <div x-show="showField('seasonNumber')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">Season Number</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Season Number</label>
           <div class="relative">
             <input min="1"
                    max="999"
-                   class="w-full p-2 pr-12 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] [appearance:textfield] [&amp;::-webkit-outer-spin-button]:appearance-none [&amp;::-webkit-inner-spin-button]:appearance-none"
+                   class="w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&amp;::-webkit-outer-spin-button]:appearance-none [&amp;::-webkit-inner-spin-button]:appearance-none"
                    name="season_number"
                    type="number"
                    value="1">
@@ -180,11 +180,11 @@
 
         <!-- Parent Season field (Episode) -->
         <div x-show="showField('parentSeason')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">Parent Season</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Parent Season</label>
           <div class="relative">
             <div class="relative">
               <input id="parent-season-input"
-                     class="w-full p-2 pl-9 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
+                     class="w-full p-2 pl-9 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                      placeholder="Search for a season..."
                      name="q"
                      type="text"
@@ -194,7 +194,7 @@
                      hx-target="#parent-season-results">
               <!-- Hidden input to store the selected Season ID -->
               <input id="parent-season-id" name="parent_season" type="hidden">
-              {% include "app/icons/magnifying-glass.svg" with classes="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" %}
+              {% include "app/icons/magnifying-glass.svg" with classes="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)]" %}
             </div>
             <div id="parent-season-results"></div>
           </div>
@@ -202,11 +202,11 @@
 
         <!-- Episode Number field (Episode) -->
         <div x-show="showField('episodeNumber')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">Episode Number</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Episode Number</label>
           <div class="relative">
             <input min="1"
                    max="999"
-                   class="w-full p-2 pr-12 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] [appearance:textfield] [&amp;::-webkit-outer-spin-button]:appearance-none [&amp;::-webkit-inner-spin-button]:appearance-none"
+                   class="w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&amp;::-webkit-outer-spin-button]:appearance-none [&amp;::-webkit-inner-spin-button]:appearance-none"
                    name="episode_number"
                    type="number"
                    value="1">
@@ -227,10 +227,10 @@
 
         <!-- Image URL field (All types) -->
         <div x-show="showField('image')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">Image URL</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Image URL</label>
           <div class="flex gap-4">
             <div class="flex-1">
-              <input class="w-full p-2 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
+              <input class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                      name="image"
                      placeholder="Enter image URL"
                      type="url"
@@ -238,7 +238,7 @@
                      x-on:input="updateImagePreview($event.target)">
             </div>
             <div id="image-preview"
-                 class="w-20 h-20 rounded-md overflow-hidden bg-[#39404b] border border-gray-600 flex items-center justify-center">
+                 class="w-20 h-20 rounded-md overflow-hidden bg-[var(--color-surface-strong)] border border-gray-600 flex items-center justify-center">
               {% include "app/icons/image.svg" with classes="w-8 h-8 text-gray-500" %}
             </div>
             <!-- Hidden error icon template -->
@@ -248,11 +248,11 @@
 
         <!-- Score field (TV, Movie, Anime, Manga, Game, Book, Season) -->
         <div x-show="showField('score')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">Score</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Score</label>
           <div class="relative">
             <input min="0"
                    max="{{ user|rating_scale_max }}"
-                   class="w-full p-2 pr-12 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] [appearance:textfield] [&amp;::-webkit-outer-spin-button]:appearance-none [&amp;::-webkit-inner-spin-button]:appearance-none"
+                   class="w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&amp;::-webkit-outer-spin-button]:appearance-none [&amp;::-webkit-inner-spin-button]:appearance-none"
                    name="score"
                    type="number"
                    placeholder="0-{{ user|rating_scale_max }}">
@@ -273,14 +273,14 @@
 
         <!-- Progress field (Movie, Anime, Manga, Game, Book) -->
         <div x-show="showField('progress')">
-          <label class="block text-sm font-medium mb-2 text-gray-300"
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
                  x-text="getProgressLabel()">Progress</label>
 
           <div class="relative">
-            <input class="w-full p-2 pr-12 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
+            <input class="w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                    name="progress"
                    x-bind:type="mediaType === 'game' ? 'text' : 'number'"
-                   x-bind:placeholder="mediaType === 'game' ? 'hh:mm' : ''"
+                   x-bind:placeholder="mediaType === 'game' ? 'hh:mm or 111 minutes' : ''"
                    x-bind:min="mediaType !== 'game' ? 0 : null"
                    x-bind:max="mediaType !== 'game' ? 99999 : null"
                    x-bind:class="{'[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none': mediaType !== 'game'}"
@@ -304,9 +304,9 @@
 
         <!-- Status field (TV, Movie, Anime, Manga, Game, Book, Season) -->
         <div x-show="showField('status')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">Status</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Status</label>
           <div class="relative">
-            <select class="w-full p-2 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
+            <select class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                     name="status">
               {% for status in Status.values %}<option value="{{ status }}">{{ status }}</option>{% endfor %}
             </select>
@@ -318,8 +318,8 @@
 
         <!-- Start Date field (Movie, Anime, Manga, Game, Book) -->
         <div x-show="showField('startDate')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">Start Date</label>
-          <input class="w-full p-2 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Start Date</label>
+          <input class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                  name="start_date"
                  type="date"
                  value="">
@@ -327,8 +327,8 @@
 
         <!-- End Date field (Episode, Movie, Anime, Manga, Game, Book) -->
         <div x-show="showField('endDate')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">End Date</label>
-          <input class="w-full p-2 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">End Date</label>
+          <input class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                  name="end_date"
                  type="date"
                  value="">
@@ -336,8 +336,8 @@
 
         <!-- Notes field (TV, Movie, Anime, Manga, Game, Book, Season) -->
         <div x-show="showField('notes')">
-          <label class="block text-sm font-medium mb-2 text-gray-300">Notes</label>
-          <textarea class="w-full p-2 bg-[#39404b] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Notes</label>
+          <textarea class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                     rows="4"
                     name="notes"
                     placeholder="Add any notes or comments..."></textarea>

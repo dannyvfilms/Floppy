@@ -4,8 +4,171 @@
   --breakpoint-xs: 30rem;
 }
 
+:root {
+  --color-surface: #2a2f35;
+  --color-surface-strong: #39404b;
+  --color-surface-hover: #454d5a;
+  --color-panel: #272c31;
+  --color-accent: #4a9eff;
+  --color-surface-alt: #3e454d;
+  --color-surface-muted: #343a40;
+  --color-surface-dim: #262a2f;
+  --color-border: #2c3136;
+  --color-hover-dim: #23272b;
+  --color-page-bg: #212529;
+  --color-surface-border: #454d59;
+  --color-sidebar: #1a1d20;
+  --color-text: #f3f4f6;
+  --color-text-secondary: #d1d5db;
+  --color-text-muted: #9ca3af;
+  --color-warning-text: #fde68a;
+  --color-info-text: #c7d2fe;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) {
+    --color-surface: #ffffff;
+    --color-surface-strong: #f1f3f5;
+    --color-surface-hover: #e9ecef;
+    --color-panel: #f8f9fa;
+    --color-accent: #2f80ed;
+    --color-surface-alt: #f8f9fa;
+    --color-surface-muted: #e9ecef;
+    --color-surface-dim: #dee2e6;
+    --color-border: #dee2e6;
+    --color-hover-dim: #f1f3f5;
+    --color-page-bg: #f8f9fa;
+    --color-surface-border: #ced4da;
+    --color-sidebar: #f1f3f5;
+    --color-text: #1f2937;
+    --color-text-secondary: #374151;
+    --color-text-muted: #4b5563;
+    --color-warning-text: #92400e;
+    --color-info-text: #3730a3;
+    color-scheme: light;
+  }
+}
+
+html.light {
+  --color-surface: #ffffff;
+  --color-surface-strong: #f1f3f5;
+  --color-surface-hover: #e9ecef;
+  --color-panel: #f8f9fa;
+  --color-accent: #2f80ed;
+  --color-surface-alt: #f8f9fa;
+  --color-surface-muted: #e9ecef;
+  --color-surface-dim: #dee2e6;
+  --color-border: #dee2e6;
+  --color-hover-dim: #f1f3f5;
+  --color-page-bg: #f8f9fa;
+  --color-surface-border: #ced4da;
+  --color-sidebar: #f1f3f5;
+  --color-text: #1f2937;
+  --color-text-secondary: #374151;
+  --color-text-muted: #4b5563;
+  --color-warning-text: #92400e;
+  --color-info-text: #3730a3;
+  color-scheme: light;
+}
+
+html.dark {
+  --color-warning-text: #fde68a;
+  --color-info-text: #c7d2fe;
+  color-scheme: dark;
+}
+
+/* Theme toggle icon swap: mirrors the dark/light/system resolution used for
+   the --color-* tokens above, so the button's icon matches the active theme
+   without needing JS to compute it. */
+.theme-toggle-icon-sun {
+  display: none;
+}
+
+html.light .theme-toggle-icon-sun {
+  display: block;
+}
+
+html.light .theme-toggle-icon-moon {
+  display: none;
+}
+
+@media (prefers-color-scheme: light) {
+  html:not(.dark):not(.light) .theme-toggle-icon-sun {
+    display: block;
+  }
+
+  html:not(.dark):not(.light) .theme-toggle-icon-moon {
+    display: none;
+  }
+}
+
 [x-cloak] {
   display: none !important;
+}
+
+/* Navigation progress for boosted links.
+   The bar sits on the top edge of the viewport so it reads as one piece of
+   the page frame rather than as content. It is decorative: the matching
+   status paragraph is what assistive technology announces. */
+.nav-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.nav-progress.is-active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.nav-progress-bar {
+  height: 100%;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  background-color: var(--color-accent);
+  /* Approach the end without reaching it. The bar must not promise a
+     completion time that the server has not given us. */
+  transition: transform 8s cubic-bezier(0.1, 0.85, 0.3, 1);
+}
+
+.nav-progress.is-active .nav-progress-bar {
+  transform: scaleX(0.9);
+}
+
+.nav-progress.is-complete .nav-progress-bar {
+  transform: scaleX(1);
+  transition: transform 120ms ease-out;
+}
+
+/* Movement is the signal here, so remove it when the reader asks for less
+   motion and hold a steady bar instead. */
+@media (prefers-reduced-motion: reduce) {
+  .nav-progress-bar,
+  .nav-progress.is-complete .nav-progress-bar {
+    transition: none;
+    transform: scaleX(1);
+  }
+}
+
+/* Announced, not shown. */
+.nav-progress-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 .htmx-indicator {
@@ -17,6 +180,15 @@
   display: block;
 }
 
+.progress-adjust-btn.htmx-request .progress-btn-icon {
+  visibility: hidden;
+}
+
+.progress-adjust-btn.progress-btn-flash {
+  transition: none;
+  background-color: rgba(129, 140, 248, 0.55);
+}
+
 .lazyload,
 .lazyloading {
   object-fit: none;
@@ -26,8 +198,177 @@
   object-fit: cover;
 }
 
+.series-graph-trigger:hover .series-graph-tooltip,
+.series-graph-trigger:focus-within .series-graph-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+.series-graph-trigger:hover .series-graph-score-chip,
+.series-graph-trigger:focus-within .series-graph-score-chip {
+  filter: brightness(1.08);
+}
+
 .clip-half {
   clip-path: inset(0 50% 0 0);
+}
+
+/* Preferences page layout */
+.preferences-page {
+  min-width: 0;
+}
+
+.preferences-section-icon {
+  color: #818cf8;
+}
+
+.preferences-section {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  scroll-margin-top: 1.5rem;
+  background: var(--color-surface);
+  border-radius: 0.5rem;
+}
+
+.preferences-section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0.15rem 0 1rem;
+}
+
+.preferences-section-icon {
+  display: grid;
+  flex: 0 0 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 0.375rem;
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.preferences-section-header h3 {
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.preferences-section-header p {
+  margin-top: 0.25rem;
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+}
+
+.preferences-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.preferences-grid > div {
+  min-width: 0;
+  margin: 0;
+  padding: 0.8rem;
+  background: var(--color-surface-strong);
+  border-radius: 0.375rem;
+}
+
+.preferences-grid > div > div:first-child {
+  min-width: 0;
+}
+
+.preferences-grid > div label,
+.preferences-grid > div > div:first-child label {
+  line-height: 1.35;
+}
+
+.preferences-grid > div .relative > button,
+.preferences-section > .p-4 > button {
+  min-height: 2.25rem;
+}
+
+.preferences-display-grid > div:nth-child(1) { grid-area: theme; }
+.preferences-display-grid > div:nth-child(2) { grid-area: date; }
+.preferences-display-grid > div:nth-child(3) { grid-area: time; }
+.preferences-display-grid > div:nth-child(4) { grid-area: mobile; }
+.preferences-display-grid > div:nth-child(5) { grid-area: subtitle; }
+.preferences-display-grid > div:nth-child(6) { grid-area: progress; }
+.preferences-display-grid > div:nth-child(7) { grid-area: title; }
+.preferences-display-grid > div:nth-child(8) { grid-area: talent; }
+
+.preferences-actions {
+  position: sticky;
+  bottom: 1rem;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  margin-top: 1rem;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  border: 1px solid var(--color-surface-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(0.75rem);
+}
+
+.preferences-actions-title {
+  color: var(--color-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.preferences-actions-copy {
+  margin-top: 0.15rem;
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+}
+
+@media (min-width: 48rem) {
+  .preferences-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preferences-display-grid {
+    grid-template-areas:
+      "theme mobile"
+      "date time"
+      "title talent"
+      "subtitle subtitle"
+      "progress progress";
+  }
+
+  .preferences-metadata-grid > div:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+
+  .preferences-metadata-grid > div:nth-child(3) > .grid {
+    gap: 0.75rem;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .preferences-display-grid {
+    grid-template-areas: none;
+  }
+
+  .preferences-display-grid > div {
+    grid-area: auto !important;
+  }
+
+  .preferences-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .preferences-actions > div:last-child,
+  .preferences-actions button {
+    width: 100%;
+  }
+
+  .preferences-actions > div:last-child {
+    justify-content: flex-end;
+  }
 }
 
 /* Modal max height with padding from viewport */
@@ -35,67 +376,100 @@
   max-height: calc(100vh - 4rem);
 }
 
-/* Game/Boardgame stats cards: 3x2 grid on mobile, flex-wrap on desktop */
-.stats-card-grid {
+/* Custom date/time picker: trigger + popover/sheet */
+.date-picker-trigger {
+  min-width: 0;
+}
+
+.date-picker-popover {
+  z-index: 60;
+}
+
+@media (max-width: 39.99rem) {
+  .date-picker-popover {
+    inset-inline: 0.75rem;
+    bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - 1.5rem - env(safe-area-inset-bottom, 0px));
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    scroll-padding-block: 1rem;
+  }
+}
+
+.date-picker-calendar-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: calc(var(--spacing) * 2);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.125rem;
 }
 
-/* Mobile order (3x2 grid) - only apply on mobile */
-@media (max-width: 47.999rem) {
-  .stats-card-grid>[data-mobile-order="1"] {
-    order: 1; /* Source Score - row 1, col 1 */
-  }
-  .stats-card-grid>[data-mobile-order="2"] {
-    order: 2; /* First Played - row 1, col 2 */
-  }
-  .stats-card-grid>[data-mobile-order="3"] {
-    order: 3; /* Total Hours - row 1, col 3 */
-  }
-  .stats-card-grid>[data-mobile-order="4"] {
-    order: 4; /* Your Score - row 2, col 1 */
-  }
-  .stats-card-grid>[data-mobile-order="5"] {
-    order: 5; /* Last Played - row 2, col 2 */
-  }
-  .stats-card-grid>[data-mobile-order="6"] {
-    order: 6; /* Avg Time - row 2, col 3 */
-  }
+.date-picker-day-cell {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
 }
 
-@media (min-width: 48rem) {
-  .stats-card-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: calc(var(--spacing) * 4);
-  }
-
-  .stats-card-grid>* {
-    width: 120px;
-  }
-
-  /* Desktop order (grouped: scores, dates, time stats) */
-  .stats-card-grid>[data-desktop-order="1"] {
-    order: 1; /* Source Score */
-  }
-  .stats-card-grid>[data-desktop-order="2"] {
-    order: 2; /* Your Score - group with Source Score */
-  }
-  .stats-card-grid>[data-desktop-order="3"] {
-    order: 3; /* First Played */
-  }
-  .stats-card-grid>[data-desktop-order="4"] {
-    order: 4; /* Last Played - group with First Played */
-  }
-  .stats-card-grid>[data-desktop-order="5"] {
-    order: 5; /* Total Hours */
-  }
-  .stats-card-grid>[data-desktop-order="6"] {
-    order: 6; /* Avg Time - group with Total Hours */
-  }
+.date-picker-common-times-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
+.date-picker-common-time-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2.25rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid #4b5563;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+/* Matches the trigger style used for the Date/Time Format selects on the
+   Preferences page, so time inputs look consistent across the app. Native
+   <select> chrome (height, arrow) varies a lot between browsers (Safari in
+   particular), so appearance is fully reset and a custom arrow is drawn. */
+.date-picker-time-select {
+  flex: 1;
+  min-width: 0;
+  height: 2.25rem;
+  padding: 0 1.75rem 0 0.75rem;
+  background-color: var(--color-panel);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1rem 1rem;
+  border: 1px solid #4b5563;
+  border-radius: 0.375rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+  text-align-last: center;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.date-picker-time-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #6366f1;
+  border-color: transparent;
+}
+
+.date-picker-common-time-button:hover {
+  background-color: var(--color-surface-muted);
+}
+
+@media (min-width: 40rem) {
+  .date-picker-day-cell {
+    min-width: 2rem;
+    min-height: 2rem;
+  }
+}
 
 .media-grid {
   @apply grid gap-4;
@@ -116,6 +490,24 @@
 @media (min-width: 30rem) {
   .media-grid-square {
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)) !important;
+  }
+}
+
+.detail-media-grid {
+  display: grid;
+  gap: calc(var(--spacing) * 4);
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+/* Mobile default: active playback card spans all columns on very small screens */
+[data-active-playback-card] {
+  grid-column: span 3 !important;
+}
+
+/* Desktop: active playback card spans 2 columns by default */
+@media (min-width: 769px) {
+  [data-active-playback-card] {
+    grid-column: span 2 !important;
   }
 }
 
@@ -154,8 +546,10 @@
   bottom: 0;
   left: 0;
   right: 0;
-  /* Extend gradient to 200% of content height to reach higher into card */
-  height: 200%;
+  /* Extend gradient a fixed distance above the content so square (1:1)
+     and 2:3 cards darken the same amount; a percentage of body height
+     covered far more of the shorter square cards on hover. */
+  height: calc(100% + 3rem);
   pointer-events: none;
   z-index: -1;
   background-image: linear-gradient(to bottom,
@@ -224,6 +618,30 @@
   /* Gap between list items - replaces Tailwind space-y-3 */
 }
 
+/*
+ * Compact variant of .statistics-card-scroll for text-only rows with no
+ * thumbnail/icon (e.g. Taste Signals genre/decade rows). Those rows are
+ * ~20px tall (text-sm line height), so 275px would show far more than 5
+ * before scrolling — this is tuned for that row height instead: 5 * 20px
+ * + 4 * 12px gaps = 148px exactly, matching Studio Footprint's unscrolled
+ * 5-row height (space-y-3, no cap) so the two cards line up.
+ */
+.statistics-card-scroll-compact {
+  max-height: 148px;
+}
+
+.statistics-card-scroll-compact> :not([hidden])~ :not([hidden]) {
+  margin-top: 12px;
+}
+
+.search-result-card,
+.search-result-card-square {
+  transition-duration: 150ms;
+  /* One title line: text-sm (0.875rem) at Tailwind's 1.4286 ratio. The
+     mobile block overrides this to match its text-xs font override. */
+  --card-title-line: 1.25rem;
+}
+
 .search-result-card {
   position: relative;
   display: flex;
@@ -258,17 +676,57 @@
   aspect-ratio: unset !important;
 }
 
+.search-result-card .media-card-title-row {
+  overflow: clip;
+  align-items: flex-start;
+  max-height: var(--card-title-line);
+  transition: max-height 0.2s ease;
+}
+
+.search-result-card:hover .media-card-title-row {
+  max-height: calc(3 * var(--card-title-line));
+}
+
 .search-result-card .media-card-title,
 .search-result-card .search-result-title {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.search-result-card:hover .media-card-title,
-.search-result-card:hover .search-result-title {
   -webkit-line-clamp: 3;
   line-clamp: 3;
+  line-height: var(--card-title-line);
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.search-result-card .media-card-title[title] {
+  color: transparent;
+}
+
+.search-result-card .media-card-title[title]::before {
+  content: attr(title);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.search-result-card:hover .media-card-title[title] {
+  color: #fff;
+}
+
+.search-result-card:hover .media-card-title[title]:hover {
+  color: var(--color-indigo-400, #818cf8);
+}
+
+.search-result-card:hover .media-card-title[title]::before {
+  opacity: 0;
 }
 
 .search-result-card .media-card-body {
@@ -277,29 +735,25 @@
   left: 0;
   right: 0;
   z-index: 10;
-  transform: translateY(var(--year-height, 1.25rem));
-  transition: transform 0.2s ease;
 }
 
 .search-result-card .media-card-year {
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
   opacity: 0;
-  transition: opacity 0.1s ease;
-}
-
-.search-result-card:hover .media-card-body {
-  transform: translateY(0);
+  transition: max-height 0.2s ease, margin-top 0.2s ease, opacity 0.2s ease;
 }
 
 .search-result-card:hover .media-card-year {
+  max-height: 2lh;
+  margin-top: 0.25rem;
   opacity: 1;
-  transition: opacity 0.2s ease;
-}
-
-.search-result-card.media-card-subtitle-always .media-card-body {
-  transform: translateY(0);
 }
 
 .search-result-card.media-card-subtitle-always .media-card-year {
+  max-height: none;
+  margin-top: 0.25rem;
   opacity: 1;
 }
 
@@ -339,17 +793,57 @@
   aspect-ratio: unset !important;
 }
 
+.search-result-card-square .media-card-title-row {
+  overflow: clip;
+  align-items: flex-start;
+  max-height: var(--card-title-line);
+  transition: max-height 0.2s ease;
+}
+
+.search-result-card-square:hover .media-card-title-row {
+  max-height: calc(3 * var(--card-title-line));
+}
+
 .search-result-card-square .media-card-title,
 .search-result-card-square .search-result-title {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-
-.search-result-card-square:hover .media-card-title,
-.search-result-card-square:hover .search-result-title {
   -webkit-line-clamp: 3;
   line-clamp: 3;
+  line-height: var(--card-title-line);
+  position: relative;
+  transition: color 0.2s ease;
+}
+
+.search-result-card-square .media-card-title[title] {
+  color: transparent;
+}
+
+.search-result-card-square .media-card-title[title]::before {
+  content: attr(title);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.search-result-card-square:hover .media-card-title[title] {
+  color: #fff;
+}
+
+.search-result-card-square:hover .media-card-title[title]:hover {
+  color: var(--color-indigo-400, #818cf8);
+}
+
+.search-result-card-square:hover .media-card-title[title]::before {
+  opacity: 0;
 }
 
 .search-result-card-square .media-card-body {
@@ -358,34 +852,65 @@
   left: 0;
   right: 0;
   z-index: 10;
-  transform: translateY(var(--year-height, 1.25rem));
-  transition: transform 0.2s ease;
 }
 
 .search-result-card-square .media-card-year {
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
   opacity: 0;
-  transition: opacity 0.1s ease;
-}
-
-.search-result-card-square:hover .media-card-body {
-  transform: translateY(0);
+  transition: max-height 0.2s ease, margin-top 0.2s ease, opacity 0.2s ease;
 }
 
 .search-result-card-square:hover .media-card-year {
+  max-height: 2lh;
+  margin-top: 0.25rem;
   opacity: 1;
-  transition: opacity 0.2s ease;
-}
-
-.search-result-card-square.media-card-subtitle-always .media-card-body {
-  transform: translateY(0);
 }
 
 .search-result-card-square.media-card-subtitle-always .media-card-year {
+  max-height: none;
+  margin-top: 0.25rem;
   opacity: 1;
+}
+
+@supports (interpolate-size: allow-keywords) {
+  .search-result-card .media-card-year,
+  .search-result-card-square .media-card-year {
+    interpolate-size: allow-keywords;
+  }
+
+  .search-result-card:hover .media-card-year,
+  .search-result-card-square:hover .media-card-year {
+    max-height: max-content;
+  }
 }
 
 .stat-scroll-safe.stat-tooltip-safe {
   overflow: visible;
+}
+
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+.home-row-scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  /* Keep hover rings inside the scrollport so card borders are not clipped. */
+  margin-left: -0.25rem;
+  margin-top: -0.25rem;
+  padding-left: 0.25rem;
+  padding-top: 0.25rem;
+}
+
+.home-row-scrollbar-hidden::-webkit-scrollbar {
+  display: none;
 }
 
 @media (max-width: 768px) {
@@ -403,11 +928,20 @@
     justify-content: flex-start;
   }
 
+  .media-card-body>.media-card-title-row {
+    align-items: flex-start;
+  }
+
   .media-card-title {
     padding-top: 0;
     font-weight: 600;
     font-size: var(--text-xs);
     text-align: left !important;
+  }
+
+  .search-result-card,
+  .search-result-card-square {
+    --card-title-line: 1rem;
   }
 
   .media-card-body>*+* {
@@ -442,7 +976,7 @@
 
   /* When quick season buttons are enabled, restore card styling */
   [data-quick-season-mobile="true"] .media-card {
-    background-color: var(--color-gray-800, #2a2f35) !important;
+    background-color: var(--color-surface) !important;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
   }
 
@@ -459,13 +993,42 @@
     gap: calc(var(--spacing) * 3);
   }
 
+  .detail-media-grid {
+    gap: calc(var(--spacing) * 3);
+  }
+
   /* Mobile grid layout preference */
   [data-mobile-grid="comfortable"] .media-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
+  [data-mobile-grid="comfortable"] .detail-media-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  [data-mobile-grid="comfortable"] .home-row-card {
+    width: calc((100% - calc(var(--spacing) * 4)) / 2) !important;
+  }
+
   [data-mobile-grid="compact"] .media-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  [data-mobile-grid="compact"] .detail-media-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  [data-mobile-grid="compact"] .home-row-card {
+    width: calc((100% - calc(var(--spacing) * 8)) / 3) !important;
+  }
+
+  /* Active playback card spanning */
+  [data-mobile-grid="comfortable"] [data-active-playback-card] {
+    grid-column: span 2 !important;
+  }
+
+  [data-mobile-grid="compact"] [data-active-playback-card] {
+    grid-column: span 3 !important;
   }
 
   [data-mobile-grid="compact"] .media-card-progress .progress-unit {
@@ -540,6 +1103,10 @@
   }
 
   .media-grid .p-3 {
+    padding: calc(var(--spacing) * 2);
+  }
+
+  .detail-media-grid .p-3 {
     padding: calc(var(--spacing) * 2);
   }
 
@@ -625,13 +1192,8 @@
     display: none;
   }
 
-  .media-filter-toolbar .layout-toggle {
-    margin-left: 0 !important;
-    justify-self: end;
-  }
-
-  .filter-toolbar .layout-toggle {
-    justify-self: end;
+  .media-settings-menu-desktop {
+    display: none !important;
   }
 
   .lists-filter-toolbar {
@@ -646,6 +1208,49 @@
 
   .lists-filter-toolbar .filter-control:last-child>button {
     padding-right: 0 !important;
+  }
+
+  .list-detail-filter-toolbar {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: visible;
+    overflow-y: visible;
+    column-gap: calc(var(--spacing) * 1);
+    row-gap: 0;
+    align-items: center;
+  }
+
+  .list-detail-filter-toolbar>* {
+    flex: 0 0 auto;
+  }
+
+  .list-detail-filter-toolbar .filter-control {
+    width: auto;
+    min-width: fit-content;
+    flex: 0 0 auto;
+  }
+
+  .list-detail-filter-toolbar .filter-control>button {
+    width: auto;
+    white-space: nowrap;
+    padding-inline: calc(var(--spacing) * 2) !important;
+  }
+
+  .list-detail-filter-toolbar .filter-control>button span {
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    max-width: none;
+  }
+
+  .list-detail-filter-toolbar .ml-auto {
+    margin-left: auto !important;
+  }
+
+  .list-detail-filter-toolbar .layout-toggle {
+    margin-left: 0 !important;
+    justify-self: auto;
+    flex: 0 0 auto;
   }
 
   .mobile-tight-section {
@@ -677,6 +1282,10 @@
     display: inline-flex;
     align-items: center;
   }
+
+  .media-settings-menu-mobile {
+    display: none !important;
+  }
 }
 
 .select2-container--tailwindcss-4 {
@@ -685,7 +1294,7 @@
 
 /* Dropdown */
 .select2-container--tailwindcss-4.select2-container--open .select2-dropdown {
-  @apply w-full mt-1 overflow-auto rounded-md text-base bg-[#39404b] border-gray-600 border focus-within:border-indigo-500 focus-within:ring focus-within:ring-indigo-200/50;
+  @apply w-full mt-1 overflow-auto rounded-md text-base bg-[var(--color-surface-strong)] border-gray-600 border focus-within:border-indigo-500 focus-within:ring focus-within:ring-indigo-200/50;
 }
 
 .select2-container--tailwindcss-4 .select2-results__message {
@@ -694,12 +1303,12 @@
 
 /* Hover state */
 .select2-container--tailwindcss-4 .select2-results__option--highlighted {
-  @apply text-white bg-[#454d5a];
+  @apply text-white bg-[var(--color-surface-hover)];
 }
 
 /* Multiple selection */
 .select2-container--tailwindcss-4 .select2-selection--multiple {
-  @apply rounded-md text-base sm:text-sm/6 bg-[#39404b] p-1.5 cursor-default text-white border border-white/10;
+  @apply rounded-md text-base sm:text-sm/6 bg-[var(--color-surface-strong)] p-1.5 cursor-default text-white border border-white/10;
 }
 
 /* Multiple selection list */
@@ -709,7 +1318,7 @@
 
 /* Multiple selection choices */
 .select2-container--tailwindcss-4 .select2-selection--multiple .select2-selection__choice {
-  @apply flex flex-row-reverse items-center gap-1 bg-[#454d5a] text-gray-200 pl-2 pr-1 py-1 rounded-md text-sm border border-indigo-500/20;
+  @apply flex flex-row-reverse items-center gap-1 bg-[var(--color-surface-hover)] text-gray-200 pl-2 pr-1 py-1 rounded-md text-sm border border-indigo-500/20;
 }
 
 /* Remove button */
@@ -728,65 +1337,37 @@
 
 /* Focus styles for keyboard navigation */
 .select2-container--tailwindcss-4.select2-container--focus .select2-selection--multiple {
-  @apply outline-none ring-2 ring-[#4a9eff] appearance-none;
+  @apply outline-none ring-2 ring-[var(--color-accent)] appearance-none;
 }
 
 #chartjs-tooltip {
   opacity: 0;
   position: absolute;
-  background: rgba(0, 0, 0, 0.85);
-  color: white;
-  border-radius: 8px;
-  padding: 12px 16px;
-  font-size: 14px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-surface-border);
+  color: var(--color-text);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
   pointer-events: none;
   z-index: 100;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   transition: opacity 0.2s ease;
   min-width: 180px;
-}
-
-#chartjs-tooltip table {
-  margin: 0;
-  border-spacing: 0;
-  border-collapse: collapse;
-  width: 100%;
-}
-
-#chartjs-tooltip table th {
-  text-align: center;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-  font-size: 16px;
-  font-weight: bold;
-}
-
-#chartjs-tooltip table td {
-  padding: 6px 4px;
-  white-space: nowrap;
-}
-
-#chartjs-tooltip table tr.total-row {
-  border-top: 1px solid rgba(255, 255, 255, 0.3);
-  font-weight: bold;
-  margin-top: 6px;
-}
-
-#chartjs-tooltip table tr.total-row td {
-  padding-top: 10px;
 }
 
 #chartjs-pie-tooltip {
   opacity: 0;
   position: absolute;
-  background: rgba(0, 0, 0, 0.85);
-  color: white;
+  background: var(--color-panel);
+  border: 1px solid var(--color-surface-border);
+  color: var(--color-text);
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 12px;
   pointer-events: none;
   z-index: 100;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   transition: opacity 0.2s ease;
   min-width: 140px;
   text-align: center;
@@ -794,10 +1375,10 @@
 
 #chartjs-pie-tooltip .pie-label {
   font-size: 14px;
-  font-weight: bold;
+  font-weight: 600;
   margin-bottom: 4px;
   padding-bottom: 4px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 #chartjs-pie-tooltip .pie-value {

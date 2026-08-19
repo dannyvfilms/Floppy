@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.utils import timezone
 
 from app.models import (
@@ -22,6 +22,7 @@ app_mock_path = (
 )
 
 
+@tag("network")
 class ImportIMDB(TestCase):
     """Test importing media from IMDB CSV."""
 
@@ -137,5 +138,3 @@ class ImportIMDB(TestCase):
         self.assertEqual(imported_counts.get(MediaTypes.MOVIE.value, 0), 5)
 
         self.assertIn("They were matched to the same TMDB ID 155", warnings)
-
-

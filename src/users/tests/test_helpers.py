@@ -3,8 +3,11 @@ import zoneinfo
 from datetime import datetime
 from unittest.mock import Mock, patch
 
+from celery import states
+from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
-from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 
 from users import helpers
 
@@ -75,6 +78,36 @@ class HelpersTest(TestCase):
         self.assertEqual(processed_task.summary, "Summary text only")
         self.assertIsNone(processed_task.errors)
 
+    def test_process_task_result_success_with_structured_list_payload(self):
+        """Structured list payloads should not crash import history rendering."""
+        task = Mock()
+        task.status = "SUCCESS"
+        task.result = json.dumps(["child-task-id", None])
+        task.traceback = None
+
+        processed_task = helpers.process_task_result(task)
+
+        self.assertEqual(processed_task.summary, "Queued follow-up import task.")
+        self.assertIsNone(processed_task.errors)
+
+    def test_process_task_result_success_with_structured_dict_payload(self):
+        """Structured dict payloads should be summarized for the UI."""
+        task = Mock()
+        task.status = "SUCCESS"
+        task.result = json.dumps(
+            {
+                "processed": 2,
+                "errors": 1,
+                "total_accounts": 3,
+            },
+        )
+        task.traceback = None
+
+        processed_task = helpers.process_task_result(task)
+
+        self.assertEqual(processed_task.summary, "Processed 2 of 3 account(s).")
+        self.assertEqual(processed_task.errors, "1 account(s) reported errors.")
+
     def test_process_task_result_started(self):
         """Test processing a task that's currently running."""
         task = Mock()
@@ -101,6 +134,35 @@ class HelpersTest(TestCase):
             "This task has been queued and is waiting to run.",
         )
         self.assertIsNone(processed_task.errors)
+
+    def test_process_task_result_revoked(self):
+        """A cancelled import reads as cancelled instead of crashing the panel."""
+        task = Mock()
+        task.status = "REVOKED"
+        task.result = None
+        task.traceback = None
+
+        processed_task = helpers.process_task_result(task)
+
+        self.assertEqual(
+            processed_task.summary,
+            "This task was cancelled before it finished.",
+        )
+        self.assertIsNone(processed_task.errors)
+
+    def test_process_task_result_every_celery_state_has_a_summary(self):
+        """The activity panel reads summary and errors for whatever state it finds."""
+        for status in states.ALL_STATES | {"SOME_CUSTOM_STATE"}:
+            with self.subTest(status=status):
+                task = Mock()
+                task.status = status
+                task.result = None
+                task.traceback = None
+
+                processed_task = helpers.process_task_result(task)
+
+                self.assertTrue(processed_task.summary)
+                self.assertIsInstance(processed_task.summary, str)
 
     @patch("django.utils.timezone.now")
     def test_get_next_run_info_daily(self, mock_now):
@@ -211,6 +273,101 @@ class HelpersTest(TestCase):
         """Test getting next run info for task without crontab."""
         periodic_task = Mock()
         periodic_task.crontab = None
+        periodic_task.interval = None
 
         next_run_info = helpers.get_next_run_info(periodic_task)
         self.assertIsNone(next_run_info)
+
+    @patch("django.utils.timezone.now")
+    def test_get_next_run_info_interval_watchlist(self, mock_now):
+        """Test getting next run info for interval-based watchlist sync."""
+        current_time = datetime(2025, 2, 6, 12, 0, tzinfo=zoneinfo.ZoneInfo("UTC"))
+        mock_now.return_value = current_time
+
+        interval = IntervalSchedule.objects.create(
+            every=15,
+            period=IntervalSchedule.MINUTES,
+        )
+        periodic_task = PeriodicTask.objects.create(
+            name="Sync Plex Watchlist for test (every 15 minutes)",
+            task="Sync Plex Watchlist",
+            interval=interval,
+            kwargs='{"user_id": 1, "mode": "watchlist"}',
+            start_time=current_time,
+        )
+
+        next_run_info = helpers.get_next_run_info(periodic_task)
+
+        expected_next_run = datetime(
+            2025, 2, 6, 12, 15, tzinfo=zoneinfo.ZoneInfo("UTC")
+        )
+        self.assertEqual(next_run_info["next_run"], expected_next_run)
+        self.assertEqual(next_run_info["frequency"], "Every 15 minutes")
+        self.assertEqual(next_run_info["mode"], "Watchlist Sync")
+
+    @patch("django.utils.timezone.now")
+    def test_get_next_run_info_interval_rolls_forward_from_past_run(self, mock_now):
+        """Test interval next-run calculation stays in the future."""
+        current_time = datetime(2025, 2, 6, 12, 44, tzinfo=zoneinfo.ZoneInfo("UTC"))
+        mock_now.return_value = current_time
+
+        interval = IntervalSchedule.objects.create(
+            every=15,
+            period=IntervalSchedule.MINUTES,
+        )
+        periodic_task = PeriodicTask.objects.create(
+            name="Sync Plex Watchlist for test (every 15 minutes)",
+            task="Sync Plex Watchlist",
+            interval=interval,
+            kwargs='{"user_id": 1, "mode": "watchlist"}',
+            start_time=datetime(2025, 2, 6, 11, 0, tzinfo=zoneinfo.ZoneInfo("UTC")),
+            last_run_at=datetime(2025, 2, 6, 12, 0, tzinfo=zoneinfo.ZoneInfo("UTC")),
+        )
+
+        next_run_info = helpers.get_next_run_info(periodic_task)
+
+        expected_next_run = datetime(
+            2025, 2, 6, 12, 45, tzinfo=zoneinfo.ZoneInfo("UTC")
+        )
+        self.assertEqual(next_run_info["next_run"], expected_next_run)
+
+
+class IsFirstRunTests(TestCase):
+    """Test the is_first_run first-run detection helper."""
+
+    def setUp(self):
+        """Clear the cached flag so each test starts from a clean slate."""
+        cache.delete(helpers.IS_FIRST_RUN_CACHE_KEY)
+
+    def tearDown(self):
+        """Avoid leaking the cached flag into unrelated tests."""
+        cache.delete(helpers.IS_FIRST_RUN_CACHE_KEY)
+
+    def test_true_on_empty_database(self):
+        """Test an instance with no users at all is a first run."""
+        self.assertTrue(helpers.is_first_run())
+
+    def test_true_with_only_demo_user(self):
+        """Test the demo account alone still counts as a first run."""
+        get_user_model().objects.create_user(
+            username="demo",
+            password="demodemo",
+            is_demo=True,
+        )
+
+        self.assertTrue(helpers.is_first_run())
+
+    def test_false_once_a_real_user_exists(self):
+        """Test creating a real account ends the first-run state."""
+        get_user_model().objects.create_user(username="realuser", password="12345")
+
+        self.assertFalse(helpers.is_first_run())
+
+    def test_result_is_cached(self):
+        """Test the flag is cached rather than recomputed every call."""
+        self.assertTrue(helpers.is_first_run())
+
+        get_user_model().objects.create_user(username="realuser", password="12345")
+
+        # Still True: the earlier cached value has not expired yet.
+        self.assertTrue(helpers.is_first_run())

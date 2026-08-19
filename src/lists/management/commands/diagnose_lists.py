@@ -1,7 +1,7 @@
 """Management command to diagnose broken lists."""
 
-from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
+from django.core.management.base import BaseCommand
 
 from lists.models import CustomList
 
@@ -9,9 +9,12 @@ User = get_user_model()
 
 
 class Command(BaseCommand):
+    """Command."""
+
     help = "Diagnose broken or invalid lists"
 
     def handle(self, *args, **options):
+        """Diagnose broken or invalid lists."""
         self.stdout.write("Checking for broken lists...\n")
 
         # Check all lists
@@ -52,13 +55,17 @@ class Command(BaseCommand):
                 list_issues.append(f"Direct get error: {e}")
 
             if list_issues:
-                issues.append({
-                    "list": custom_list,
-                    "issues": list_issues,
-                })
+                issues.append(
+                    {
+                        "list": custom_list,
+                        "issues": list_issues,
+                    }
+                )
 
         if issues:
-            self.stdout.write(self.style.ERROR(f"\nFound {len(issues)} lists with issues:\n"))
+            self.stdout.write(
+                self.style.ERROR(f"\nFound {len(issues)} lists with issues:\n")
+            )
             for issue in issues:
                 custom_list = issue["list"]
                 self.stdout.write(
@@ -76,18 +83,24 @@ class Command(BaseCommand):
         self.stdout.write("Checking for list ID 4 specifically:\n")
         try:
             list_4 = CustomList.objects.get(id=4)
-            self.stdout.write(f"List 4 EXISTS:")
+            self.stdout.write("List 4 EXISTS:")
             self.stdout.write(f"  Name: {list_4.name}")
-            self.stdout.write(f"  Owner: {list_4.owner.username if list_4.owner else 'MISSING'}")
+            self.stdout.write(
+                f"  Owner: {list_4.owner.username if list_4.owner else 'MISSING'}"
+            )
             self.stdout.write(f"  Source: {list_4.source}")
             self.stdout.write(f"  Visibility: {list_4.visibility}")
-            
+
             # Check if it's accessible via get_user_lists
             if list_4.owner:
                 user_lists = CustomList.objects.get_user_lists(list_4.owner)
                 if list_4 in user_lists:
-                    self.stdout.write(self.style.SUCCESS("  ✓ Accessible via get_user_lists"))
+                    self.stdout.write(
+                        self.style.SUCCESS("  ✓ Accessible via get_user_lists")
+                    )
                 else:
-                    self.stdout.write(self.style.ERROR("  ✗ NOT accessible via get_user_lists"))
+                    self.stdout.write(
+                        self.style.ERROR("  ✗ NOT accessible via get_user_lists")
+                    )
         except CustomList.DoesNotExist:
             self.stdout.write(self.style.ERROR("List 4 does NOT exist in database"))

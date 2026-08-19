@@ -37,13 +37,25 @@ SOURCES_CONFIG = {
         "name": "SIMKL",
         "logo": static("img/simkl-logo.png"),
     },
+    # Source key stays "yamtrack": it is persisted on import records and the
+    # CSV format is shared with upstream Yamtrack.
     "yamtrack": {
-        "name": "YamTrack",
+        "name": "Floppy",
         "logo": static("favicon/apple-touch-icon.png"),
+    },
+    # Display-only entry: same "yamtrack" import backend/CSV format as above,
+    # shown as a separate source tile for users importing a Yamtrack export.
+    "yamtrack_native": {
+        "name": "Yamtrack",
+        "logo": static("img/yamtrack-logo.png"),
     },
     "hltb": {
         "name": "HowLongToBeat",
         "logo": static("img/hltb-logo.png"),
+    },
+    "grouvee": {
+        "name": "Grouvee",
+        "logo": static("img/grouvee_logo.png"),
     },
     "imdb": {
         "name": "IMDB",
@@ -53,27 +65,74 @@ SOURCES_CONFIG = {
         "name": "Steam",
         "logo": static("img/steam-logo.ico"),
     },
+    "xbox": {
+        "name": "Xbox",
+        "logo": static("img/xbox-logo.svg"),
+    },
     "goodreads": {
-        "name": "GoodReads",
+        "name": "Goodreads",
         "logo": static("img/logo-goodreads.svg"),
+    },
+    "mdblist": {
+        "name": "MDBList",
+        "logo": static("img/mdblist-logo.png"),
     },
     "plex": {
         "name": "Plex",
         "logo": static("img/plex-logo.svg"),
     },
+    "audiobookshelf": {
+        "name": "Audiobookshelf",
+        "logo": static("img/audiobookshelf-logo.svg"),
+    },
+    "storyteller": {
+        "name": "Storyteller",
+        "logo": static("img/storyteller-logo.svg"),
+    },
+    "stremio": {
+        "name": "Stremio",
+        "logo": static("img/stremio-logo.svg"),
+    },
     "pocketcasts": {
         "name": "Pocket Casts",
         "logo": static("img/pocketcasts-logo.svg"),
+    },
+    "gpodder": {
+        "name": "GPodder",
+        "logo": static("favicon/apple-touch-icon.png"),
     },
     "lastfm": {
         "name": "Last.fm",
         "logo": static("img/lastfm-logo.png"),
     },
+    "koito": {
+        "name": "Koito",
+        "logo": static("img/koito-logo.svg"),
+    },
     "hardcover": {
         "name": "Hardcover",
         "logo": static("img/hardcover-logo.png"),
     },
+    "storygraph": {
+        "name": "StoryGraph",
+        "logo": static("img/storygraph-logo.svg"),
+    },
+    "radarr": {
+        "name": "Radarr",
+        "logo": static("img/plex-logo.svg"),
+    },
+    "sonarr": {
+        "name": "Sonarr",
+        "logo": static("img/plex-logo.svg"),
+    },
 }
+
+
+@register.filter
+def source_name(slug):
+    """Return a source's display name (e.g. "plex" -> "Plex") for plain-text use."""
+    info = SOURCES_CONFIG.get(slug)
+    return info["name"] if info else slug
 
 
 @register.simple_tag
@@ -110,6 +169,17 @@ def date_format_display(format_value):
 
 
 @register.filter
+def theme_display(theme_value):
+    """Display the human-readable name for theme values."""
+    theme_display_map = {
+        "system": "System default",
+        "dark": "Dark",
+        "light": "Light",
+    }
+    return theme_display_map.get(theme_value, theme_value)
+
+
+@register.filter
 def time_format_display(format_value):
     """Display the human-readable name for time format values."""
     format_display_map = {
@@ -123,6 +193,15 @@ def time_format_display(format_value):
 
 
 @register.filter
+def user_uses_12_hour_format(user):
+    """Return whether the user's time format preference is 12-hour."""
+    return getattr(user, "time_format", None) in (
+        TimeFormatChoices.H_MM_AMPM,
+        TimeFormatChoices.HH_MM_AMPM,
+    )
+
+
+@register.filter
 def user_date_format(date, user):
     """Format a date according to user's date format preference."""
     if not date or not user:
@@ -133,7 +212,7 @@ def user_date_format(date, user):
         if isinstance(date, str):
             try:
                 # Try to parse the date string
-                date_obj = datetime.strptime(date, "%Y-%m-%d")
+                date_obj = datetime.strptime(date, "%Y-%m-%d")  # noqa: DTZ007  # date-only value; no timezone applies
                 date = timezone.make_aware(date_obj, timezone.get_current_timezone())
             except (ValueError, TypeError):
                 # If parsing fails, return the original string
@@ -160,6 +239,8 @@ def user_date_format(date, user):
             return local_dt.strftime("%d.%m.%Y")
         if user.date_format == DateFormatChoices.YYYY_MM_DD:
             return f"{local_dt.year}/{local_dt.month:02d}/{local_dt.day:02d}"
+        if user.date_format == DateFormatChoices.LONG_EU:
+            return f"{local_dt.day} {local_dt.strftime('%b')}, {local_dt.year}"
         # Default to system format
         return formats.date_format(local_dt, "DATE_FORMAT")
 
@@ -203,15 +284,22 @@ def _parse_datetime_string(datetime_obj):
     if isinstance(datetime_obj, str):
         try:
             # Try to parse common datetime formats
-            for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M", "%H:%M:%S", "%H:%M"]:
+            for fmt in [
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d %H:%M:%S.%f",
+                "%Y-%m-%d %H:%M",
+                "%H:%M:%S",
+                "%H:%M",
+            ]:
                 try:
-                    return datetime.strptime(datetime_obj, fmt)
+                    return datetime.strptime(datetime_obj, fmt)  # noqa: DTZ007  # date-only value; no timezone applies
                 except ValueError:
                     continue
             # If we can't parse the string, return it as-is
-            return datetime_obj
         except (ValueError, TypeError):
             # If parsing fails, return the original string
+            return datetime_obj
+        else:
             return datetime_obj
     return datetime_obj
 
@@ -249,7 +337,6 @@ def user_datetime_format(datetime_obj, user):
 
         date_part = user_date_format(datetime_obj, user)
         time_part = user_time_format(datetime_obj, user)
-        return f"{date_part} {time_part}"
     except (ValueError, TypeError, AttributeError):
         # Fallback to default format if there's an error
         try:
@@ -257,3 +344,5 @@ def user_datetime_format(datetime_obj, user):
         except (ValueError, TypeError, AttributeError):
             # If all else fails, return the original value as a string
             return str(datetime_obj)
+    else:
+        return f"{date_part} {time_part}"

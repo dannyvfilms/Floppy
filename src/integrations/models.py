@@ -5,6 +5,16 @@ from django.db import models
 from django.utils import timezone
 
 
+class LastFMHistoryImportStatus(models.TextChoices):
+    """History import states for Last.fm backfills."""
+
+    IDLE = "idle", "Idle"
+    QUEUED = "queued", "Queued"
+    RUNNING = "running", "Running"
+    FAILED = "failed", "Failed"
+    COMPLETED = "completed", "Completed"
+
+
 class PlexAccount(models.Model):
     """Store Plex authentication and cached library data for a user."""
 
@@ -20,6 +30,17 @@ class PlexAccount(models.Model):
     machine_identifier = models.CharField(max_length=255, blank=True, null=True)
     sections = models.JSONField(default=list, blank=True)
     sections_refreshed_at = models.DateTimeField(blank=True, null=True)
+    watchlist_sync_enabled = models.BooleanField(
+        default=False,
+        help_text="Whether recurring Plex watchlist sync is enabled",
+    )
+    watchlist_last_synced_at = models.DateTimeField(blank=True, null=True)
+    watchlist_last_error = models.TextField(
+        blank=True,
+        default="",
+        help_text="Last Plex watchlist sync error",
+    )
+    watchlist_last_error_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -37,6 +58,53 @@ class PlexAccount(models.Model):
     def is_connected(self):
         """Return True when we have a token stored."""
         return bool(self.plex_token)
+
+
+class PlexWatchlistSyncItem(models.Model):
+    """Persist the last-known Plex watchlist state for a user/item pair."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="plex_watchlist_sync_items",
+    )
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="plex_watchlist_sync_items",
+    )
+    source_username = models.CharField(max_length=255, blank=True, default="")
+    source_account_id = models.CharField(max_length=255, blank=True, default="")
+    plex_rating_key = models.CharField(max_length=50, blank=True, default="")
+    plex_guid = models.CharField(max_length=255, blank=True, default="")
+    tmdb_id = models.CharField(max_length=32, blank=True, default="")
+    tvdb_id = models.CharField(max_length=32, blank=True, default="")
+    imdb_id = models.CharField(max_length=32, blank=True, default="")
+    created_by_sync = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    removed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Plex watchlist sync item"
+        verbose_name_plural = "Plex watchlist sync items"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "item", "source_username"],
+                name="integrations_plexwatchlistsyncitem_unique_user_item_source",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "is_active"]),
+            models.Index(fields=["user", "source_username"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"PlexWatchlistSyncItem({self.user.username}, {self.item_id})"
 
 
 class PocketCastsAccount(models.Model):
@@ -89,7 +157,7 @@ class PocketCastsAccount(models.Model):
     @property
     def is_connected(self):
         """Return True when we have a valid connection.
-        
+
         A connection is valid if:
         - We have email AND password (can always re-login), OR
         - We have an access token (and it's not expired, or we have refresh token to renew it)
@@ -118,12 +186,8 @@ class PocketCastsAccount(models.Model):
         if not self.is_token_expired:
             return True
 
-        # If token is expired but we have a refresh token, we can still refresh
-        if self.refresh_token:
-            return True
-
-        # Token is expired and no refresh token - not connected
-        return False
+        # An expired token is still usable while a refresh token exists.
+        return bool(self.refresh_token)
 
     @property
     def is_token_expired(self):
@@ -131,6 +195,113 @@ class PocketCastsAccount(models.Model):
         if not self.token_expires_at:
             return False
         return timezone.now() >= self.token_expires_at
+
+
+class GPodderAccount(models.Model):
+    """Store GPodder connection settings and sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="gpodder_account",
+    )
+    server_url = models.TextField(
+        help_text="Encrypted GPodder-compatible server URL",
+    )
+    username = models.TextField(
+        help_text="Encrypted username for HTTP Basic authentication",
+    )
+    password = models.TextField(
+        help_text="Encrypted password or app password for HTTP Basic authentication",
+    )
+    device_id = models.CharField(
+        max_length=255,
+        help_text="Floppy-managed GPodder device identifier",
+    )
+    device_filter = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Optional upstream device filter for imported actions",
+    )
+    episode_actions_since = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Last successfully imported GPodder episode actions cursor",
+    )
+    subscription_since = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Reserved for future incremental subscription sync",
+    )
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "GPodder account"
+        verbose_name_plural = "GPodder accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"GPodderAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return (
+            bool(self.server_url and self.username and self.password)
+            and not self.connection_broken
+        )
+
+
+class AudiobookshelfAccount(models.Model):
+    """Store Audiobookshelf connection settings and sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="audiobookshelf_account",
+    )
+    base_url = models.URLField(help_text="Audiobookshelf server URL")
+    api_token = models.TextField(help_text="Encrypted Audiobookshelf API token")
+    sync_finished = models.BooleanField(
+        default=True,
+        help_text="Import finished items as completed entries",
+    )
+    create_missing = models.BooleanField(
+        default=True,
+        help_text="Create Floppy items when ABS items cannot be matched",
+    )
+    last_sync_ms = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Last imported Audiobookshelf progress timestamp (milliseconds)",
+    )
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Audiobookshelf account"
+        verbose_name_plural = "Audiobookshelf accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"AudiobookshelfAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.base_url and self.api_token) and not self.connection_broken
 
 
 class LastFMAccount(models.Model):
@@ -166,6 +337,29 @@ class LastFMAccount(models.Model):
         help_text="Human-readable error message",
     )
     last_failed_at = models.DateTimeField(null=True, blank=True)
+    history_import_status = models.CharField(
+        max_length=20,
+        choices=LastFMHistoryImportStatus.choices,
+        default=LastFMHistoryImportStatus.IDLE,
+        help_text="Current Last.fm history import state",
+    )
+    history_import_cutoff_uts = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Upper timestamp bound for the current history import",
+    )
+    history_import_next_page = models.PositiveIntegerField(
+        default=1,
+        help_text="Next Last.fm history page to import",
+    )
+    history_import_total_pages = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Total page count reported by Last.fm for the current history import",
+    )
+    history_import_started_at = models.DateTimeField(null=True, blank=True)
+    history_import_completed_at = models.DateTimeField(null=True, blank=True)
+    history_import_last_error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -183,6 +377,425 @@ class LastFMAccount(models.Model):
     def is_connected(self):
         """Return True when we have a valid connection."""
         return bool(self.lastfm_username) and not self.connection_broken
+
+    @property
+    def history_import_is_active(self):
+        """Return True when a history backfill is queued or running."""
+        return self.history_import_status in {
+            LastFMHistoryImportStatus.QUEUED,
+            LastFMHistoryImportStatus.RUNNING,
+        }
+
+    @property
+    def history_import_can_start(self):
+        """Return True when the user can start or rerun a history backfill."""
+        return self.history_import_status in {
+            LastFMHistoryImportStatus.IDLE,
+            LastFMHistoryImportStatus.FAILED,
+            LastFMHistoryImportStatus.COMPLETED,
+        }
+
+    def reset_history_import(self, cutoff_uts: int):
+        """Prepare state for a fresh history backfill."""
+        self.history_import_status = LastFMHistoryImportStatus.QUEUED
+        self.history_import_cutoff_uts = cutoff_uts
+        self.history_import_next_page = 1
+        self.history_import_total_pages = None
+        self.history_import_started_at = None
+        self.history_import_completed_at = None
+        self.history_import_last_error_message = ""
+
+
+class KoitoAccount(models.Model):
+    """Store Koito connection settings and sync state for a user.
+
+    Receive-only: Floppy polls Koito for listens and never submits back to it.
+    Reuses LastFMHistoryImportStatus for the backfill state machine since the
+    states are identical.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="koito_account",
+    )
+    base_url = models.URLField(help_text="Koito server URL")
+    api_key = models.TextField(help_text="Encrypted Koito API key")
+    last_fetch_timestamp_uts = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Unix timestamp (seconds) of last successful poll",
+    )
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(
+        default=False,
+        help_text="True if connection is broken (invalid key or persistent errors)",
+    )
+    failure_count = models.IntegerField(
+        default=0,
+        help_text="Number of consecutive failures",
+    )
+    last_error_message = models.TextField(blank=True, default="")
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    history_import_status = models.CharField(
+        max_length=20,
+        choices=LastFMHistoryImportStatus.choices,
+        default=LastFMHistoryImportStatus.IDLE,
+        help_text="Current Koito history import state",
+    )
+    history_import_started_at = models.DateTimeField(null=True, blank=True)
+    history_import_completed_at = models.DateTimeField(null=True, blank=True)
+    history_import_last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Koito account"
+        verbose_name_plural = "Koito accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"KoitoAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+    @property
+    def history_import_is_active(self):
+        """Return True when a history backfill is queued or running."""
+        return self.history_import_status in {
+            LastFMHistoryImportStatus.QUEUED,
+            LastFMHistoryImportStatus.RUNNING,
+        }
+
+    @property
+    def history_import_can_start(self):
+        """Return True when the user can start or rerun a history backfill."""
+        return self.history_import_status in {
+            LastFMHistoryImportStatus.IDLE,
+            LastFMHistoryImportStatus.FAILED,
+            LastFMHistoryImportStatus.COMPLETED,
+        }
+
+    def reset_history_import(self):
+        """Prepare state for a fresh history backfill."""
+        self.history_import_status = LastFMHistoryImportStatus.QUEUED
+        self.history_import_started_at = None
+        self.history_import_completed_at = None
+        self.history_import_last_error_message = ""
+
+
+class RadarrAccount(models.Model):
+    """Store Radarr connection settings and sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="radarr_account",
+    )
+    base_url = models.URLField(help_text="Radarr server URL")
+    api_key = models.TextField(help_text="Encrypted Radarr API key")
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Radarr account"
+        verbose_name_plural = "Radarr accounts"
+
+    @property
+    def __str__(self):
+        """Return a readable label for this radarr account."""
+        return f"{self.user}"
+
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+
+class SonarrAccount(models.Model):
+    """Store Sonarr connection settings and sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sonarr_account",
+    )
+    base_url = models.URLField(help_text="Sonarr server URL")
+    api_key = models.TextField(help_text="Encrypted Sonarr API key")
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Sonarr account"
+        verbose_name_plural = "Sonarr accounts"
+
+    @property
+    def __str__(self):
+        """Return a readable label for this sonarr account."""
+        return f"{self.user}"
+
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+
+class MDBListAccount(models.Model):
+    """Store MDBList connection settings and sync state for a user."""
+
+    SYNC_FREQUENCY_CHOICES = [
+        ("6h", "Every 6 hours"),
+        ("12h", "Every 12 hours"),
+        ("24h", "Every 24 hours"),
+        ("weekly", "Weekly"),
+    ]
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="mdblist_account",
+    )
+    api_key = models.TextField(help_text="Encrypted MDBList API key")
+    sync_frequency = models.CharField(
+        max_length=10,
+        choices=SYNC_FREQUENCY_CHOICES,
+        default="24h",
+    )
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "MDBList account"
+        verbose_name_plural = "MDBList accounts"
+
+    @property
+    def __str__(self):
+        """Return a readable label for this m d b list account."""
+        return f"{self.user}"
+
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.api_key) and not self.connection_broken
+
+
+class JellyfinAccount(models.Model):
+    """Store Jellyfin connection settings and push-sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="jellyfin_account",
+    )
+    base_url = models.URLField(help_text="Jellyfin server URL")
+    api_key = models.TextField(help_text="Encrypted Jellyfin API key")
+    jellyfin_user_id = models.CharField(max_length=255, blank=True, default="")
+    jellyfin_username = models.CharField(max_length=255, blank=True, default="")
+    push_watched_enabled = models.BooleanField(
+        default=True,
+        help_text="Push Floppy 'watched' status to Jellyfin",
+    )
+    push_unwatched_enabled = models.BooleanField(
+        default=False,
+        help_text="Push Floppy 'unwatched' status to Jellyfin",
+    )
+    scheduled_push_enabled = models.BooleanField(
+        default=False,
+        help_text="Push watched state to Jellyfin on a recurring schedule",
+    )
+    instant_push_enabled = models.BooleanField(
+        default=False,
+        help_text="Push watched state to Jellyfin right after a webhook event",
+    )
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Jellyfin account"
+        verbose_name_plural = "Jellyfin accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"JellyfinAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+
+class CollectionSourceState(models.Model):
+    """Track source-specific collection metadata freshness for each user+item."""
+
+    SOURCE_CHOICES = [
+        ("plex", "Plex"),
+        ("radarr", "Radarr"),
+        ("sonarr", "Sonarr"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="collection_source_states",
+    )
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="source_states",
+    )
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES)
+    quality_label = models.CharField(max_length=80, blank=True, default="")
+    last_source_updated_at = models.DateTimeField(null=True, blank=True)
+    last_synced_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "item", "source"],
+                name="integrations_collectionsourcestate_unique_user_item_source",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "source"]),
+            models.Index(fields=["user", "item"]),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this collection source state."""
+        return f"{self.user}"
+
+
+class StorytellerAccount(models.Model):
+    """Store Storyteller connection settings and sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="storyteller_account",
+    )
+    server_url = models.URLField(help_text="Storyteller server URL")
+    auth_token = models.TextField(
+        blank=True,
+        default="",
+        help_text="Encrypted Storyteller access token",
+    )
+    finished_threshold = models.FloatField(
+        default=0.95,
+        help_text="Reading progress fraction (0-1) at which a book is marked read",
+    )
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Storyteller account"
+        verbose_name_plural = "Storyteller accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"StorytellerAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.server_url and self.auth_token) and not self.connection_broken
+
+
+class StremioAccount(models.Model):
+    """Store Stremio API credentials and sync state for a user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="stremio_account",
+    )
+    auth_key = models.TextField(help_text="Encrypted Stremio auth key")
+    email = models.TextField(
+        blank=True,
+        default="",
+        help_text="Encrypted Stremio account email (display only)",
+    )
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Stremio account"
+        verbose_name_plural = "Stremio accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"StremioAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.auth_key) and not self.connection_broken
+
+
+class XboxAccount(models.Model):
+    """Store OpenXBL credentials and sync state for a user's Xbox account."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="xbox_account",
+    )
+    api_key = models.TextField(help_text="Encrypted OpenXBL API key")
+    xuid = models.CharField(max_length=32, blank=True, default="")
+    gamertag = models.CharField(max_length=64, blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Xbox account"
+        verbose_name_plural = "Xbox accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"XboxAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return True when the account appears connected."""
+        return bool(self.api_key) and not self.connection_broken
 
 
 class TraktAccount(models.Model):
@@ -220,3 +833,56 @@ class TraktAccount(models.Model):
     def is_configured(self):
         """Return True when client credentials are stored."""
         return bool(self.client_id and self.client_secret)
+
+
+class ImportRun(models.Model):
+    """Track a single import run's provenance and progress.
+
+    `source` identifies the importer (e.g. "trakt", "lastfm", "koito") and
+    is intentionally separate from `app.models.choices.Sources`, which
+    tags metadata *provider* (e.g. "tmdb") and can't distinguish which
+    importer created a row.
+    """
+
+    class Status(models.TextChoices):
+        """Lifecycle states for an import run."""
+
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="import_runs",
+    )
+    source = models.CharField(max_length=32)
+    task_id = models.CharField(max_length=255, null=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status,
+        default=Status.RUNNING,
+    )
+    created_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    remaining_estimate = models.PositiveIntegerField(null=True, blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    cancel_requested = models.BooleanField(default=False)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "import run"
+        verbose_name_plural = "import runs"
+        indexes = [
+            models.Index(fields=["user", "-started_at"]),
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"ImportRun({self.source}, {self.user.username}, {self.status})"

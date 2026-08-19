@@ -1,21 +1,40 @@
+from http import HTTPStatus
+
 import requests
 from django.conf import settings
 from django.core.cache import cache
-from django.db import models
-from django.db.models import Prefetch, Q
+from django.db import models, transaction
+from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, Subquery
+from django.urls import reverse
 
 from app.models import Item, MediaTypes, Sources
 from app.providers import services
+from lists import smart_rules
+
+# IGDB artwork_type values used to classify fetched artwork images.
+IGDB_ARTWORK_TYPE_HERO = 7
+IGDB_ARTWORK_TYPE_TOP_BANNER = 4
+
+# Acceptable image aspect ratio range for list artwork: from 3:2 (1.5) up to
+# 16:9 (1.777..., allowing a small rounding margin up to 1.778).
+MIN_ARTWORK_ASPECT_RATIO = 1.5
+MAX_ARTWORK_ASPECT_RATIO = 1.778
 
 
 class CustomListManager(models.Manager):
     """Manager for custom lists."""
 
-    def get_user_lists(self, user):
+    def get_user_lists(self, user, search=""):
         """Return the custom lists that the user owns or collaborates on."""
+        queryset = self.filter(Q(owner=user) | Q(collaborators=user))
+
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | Q(description__icontains=search),
+            )
+
         return (
-            self.filter(Q(owner=user) | Q(collaborators=user))
-            .select_related("owner")
+            queryset.select_related("owner")
             .prefetch_related(
                 "collaborators",
                 Prefetch(
@@ -28,6 +47,19 @@ class CustomListManager(models.Manager):
                 ),
             )
             .distinct()
+        )
+
+    def get_user_lists_with_stats(self, user, search=""):
+        """Return user lists annotated with items_count and latest_update."""
+        return self.get_user_lists(user, search=search).annotate(
+            items_count=Count("items", distinct=True),
+            latest_update=Subquery(
+                CustomListItem.objects.filter(
+                    custom_list=OuterRef("pk"),
+                )
+                .order_by("-date_added")
+                .values("date_added")[:1],
+            ),
         )
 
     def get_user_lists_with_item(self, user, item):
@@ -47,14 +79,31 @@ class CustomListManager(models.Manager):
             .order_by("name")
         )
 
-    def get_public_list(self, list_id):
-        """Return a public list by ID."""
-        return (
-            self.filter(id=list_id, visibility="public")
+    def get_by_reference(self, list_reference):
+        """Return a list by numeric ID or a public custom slug."""
+        reference = str(list_reference or "").strip()
+        if not reference:
+            return None
+
+        queryset = self.select_related("owner").prefetch_related("collaborators")
+        if reference.isdigit():
+            return queryset.filter(id=int(reference)).first()
+        return queryset.filter(public_slug=reference, visibility="public").first()
+
+    def get_public_list(self, list_reference):
+        """Return a public list by numeric ID or custom slug."""
+        reference = str(list_reference or "").strip()
+        if not reference:
+            return None
+
+        queryset = (
+            self.filter(visibility="public")
             .select_related("owner")
             .prefetch_related("collaborators")
-            .first()
         )
+        if reference.isdigit():
+            return queryset.filter(id=int(reference)).first()
+        return queryset.filter(public_slug=reference).first()
 
 
 class CustomList(models.Model):
@@ -63,6 +112,7 @@ class CustomList(models.Model):
     SOURCE_CHOICES = [
         ("local", "Local"),
         ("trakt", "Trakt"),
+        ("mdblist", "MDBList"),
     ]
 
     VISIBILITY_CHOICES = [
@@ -94,6 +144,7 @@ class CustomList(models.Model):
         choices=VISIBILITY_CHOICES,
         default="private",
     )
+    public_slug = models.SlugField(max_length=255, blank=True, default="")
     allow_recommendations = models.BooleanField(
         default=False,
         help_text="Allow anyone to recommend items to add to this list (only for public lists)",
@@ -104,6 +155,22 @@ class CustomList(models.Model):
         default="local",
     )
     source_id = models.CharField(max_length=100, blank=True, default="")
+    is_smart = models.BooleanField(default=False)
+    smart_media_types = models.JSONField(
+        blank=True,
+        default=list,
+        help_text="Media types included in this smart list.",
+    )
+    smart_excluded_media_types = models.JSONField(
+        blank=True,
+        default=list,
+        help_text="Media types excluded from this smart list.",
+    )
+    smart_filters = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="Saved filter criteria for smart lists.",
+    )
 
     objects = CustomListManager()
 
@@ -111,10 +178,21 @@ class CustomList(models.Model):
         """Meta options for the model."""
 
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["public_slug"],
+                condition=~Q(public_slug=""),
+                name="lists_customlist_public_slug_unique",
+            ),
+        ]
 
     def __str__(self):
         """Return the name of the custom list."""
         return self.name
+
+    def get_absolute_url(self):
+        """Return the preferred detail URL for this list."""
+        return reverse("list_detail", args=[self.public_reference])
 
     def user_can_view(self, user):
         """Check if the user can view the list."""
@@ -138,31 +216,118 @@ class CustomList(models.Model):
             return False
         return self.owner == user
 
+    def get_list_item(self, list_item_id, *, include_item=False):
+        """Return a list item by list-scoped id for this custom list."""
+        queryset = CustomListItem.objects.filter(custom_list=self)
+        if include_item:
+            queryset = queryset.select_related("item")
+        return queryset.get(list_item_id=list_item_id)
+
+    def get_list_item_by_media(
+        self,
+        media_id,
+        source,
+        media_type,
+        season_number=None,
+        episode_number=None,
+    ):
+        """Return a list item for this custom list matched by media identifiers."""
+        filters = {
+            "custom_list": self,
+            "item__media_id": media_id,
+            "item__source": source,
+            "item__media_type": media_type,
+        }
+
+        if season_number is not None:
+            filters["item__season_number"] = season_number
+
+        if episode_number is not None:
+            filters["item__episode_number"] = episode_number
+
+        return CustomListItem.objects.select_related("item").get(**filters)
+
     @property
     def is_public(self):
         """Return whether the list is public."""
         return self.visibility == "public"
 
+    @property
+    def public_reference(self):
+        """Return the shareable list reference."""
+        if self.is_public and self.public_slug:
+            return self.public_slug
+        return str(self.id)
+
     def can_recommend(self):
         """Check if recommendations are allowed for this list."""
         return self.visibility == "public" and self.allow_recommendations
 
+    def get_smart_items_queryset(self):
+        """Build a queryset of items that match this smart list definition."""
+        if not self.is_smart:
+            return Item.objects.none()
+        normalized_rules = smart_rules.normalize_list_rules(self)
+
+        matched_item_ids = smart_rules.collect_matching_item_ids(
+            self.owner, normalized_rules
+        )
+        return Item.objects.filter(id__in=matched_item_ids)
+
+    def sync_smart_items(self):
+        """Synchronize list membership for smart lists."""
+        if not self.is_smart:
+            return
+
+        target_item_ids = set(
+            self.get_smart_items_queryset().values_list("id", flat=True)
+        )
+        existing_item_ids = set(
+            CustomListItem.objects.filter(custom_list=self).values_list(
+                "item_id", flat=True
+            ),
+        )
+
+        to_remove = existing_item_ids - target_item_ids
+        to_add = target_item_ids - existing_item_ids
+
+        if to_remove:
+            CustomListItem.objects.filter(
+                custom_list=self, item_id__in=to_remove
+            ).delete()
+        if to_add:
+            CustomListItem.objects.bulk_create(
+                [
+                    CustomListItem(
+                        custom_list=self, item_id=item_id, added_by=self.owner
+                    )
+                    for item_id in to_add
+                ],
+            )
+
     @property
     def image(self):
         """Return the image of the first item in the list.
-        
+
         For TMDB movies and TV shows, prefer horizontal backdrop image
         over the 2:3 poster for better display in list cards.
         For IGDB games, prefer widescreen screenshots or artworks over cover art.
         """
-        first_item = self.items.first()
+        first_item = None
+        prefetched_list_items = getattr(self, "_prefetched_objects_cache", {}).get(
+            "customlistitem_set",
+        )
+        if prefetched_list_items:
+            first_item = prefetched_list_items[0].item
+        if first_item is None:
+            first_item = self.items.first()
         if not first_item:
             return settings.IMG_NONE
-        
+
         # For TMDB movies and TV shows, try to get backdrop image
-        if (
-            first_item.source == Sources.TMDB.value
-            and first_item.media_type in (MediaTypes.MOVIE.value, MediaTypes.TV.value)
+        if first_item.source == Sources.TMDB.value and first_item.media_type in (
+            MediaTypes.MOVIE.value,
+            MediaTypes.TV.value,
         ):
             try:
                 backdrop_url = self._get_tmdb_backdrop(
@@ -171,10 +336,10 @@ class CustomList(models.Model):
                 )
                 if backdrop_url and backdrop_url != settings.IMG_NONE:
                     return backdrop_url
-            except Exception:
+            except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
                 # If anything fails, fall back to regular poster
                 pass
-        
+
         # For IGDB games, try to get widescreen artwork or screenshot
         if (
             first_item.source == Sources.IGDB.value
@@ -182,6 +347,7 @@ class CustomList(models.Model):
         ):
             try:
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.debug(
                     "Attempting to get IGDB backdrop for list cover: game_id=%s, item_id=%s",
@@ -195,13 +361,13 @@ class CustomList(models.Model):
                         backdrop_url,
                     )
                     return backdrop_url
-                else:
-                    logger.debug(
-                        "No IGDB backdrop found, falling back to cover art for game %s",
-                        first_item.media_id,
-                    )
+                logger.debug(
+                    "No IGDB backdrop found, falling back to cover art for game %s",
+                    first_item.media_id,
+                )
             except Exception as exc:
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     "Error getting IGDB backdrop for list cover: %s",
@@ -209,29 +375,28 @@ class CustomList(models.Model):
                     exc_info=True,
                 )
                 # If anything fails, fall back to regular cover
-                pass
-        
+
         # Fall back to regular poster image
         return first_item.image
-    
+
     def _get_tmdb_backdrop(self, media_type, media_id):
         """Get backdrop image URL from TMDB for movies and TV shows.
-        
+
         Uses caching to avoid repeated API calls for the same item.
         """
         cache_key = f"tmdb_backdrop_{media_type}_{media_id}"
         cached_backdrop = cache.get(cache_key)
         if cached_backdrop is not None:
             return cached_backdrop
-        
+
         try:
             from app.providers import tmdb
-            
+
             if media_type == MediaTypes.MOVIE.value:
                 url = f"{tmdb.base_url}/movie/{media_id}"
             else:
                 url = f"{tmdb.base_url}/tv/{media_id}"
-            
+
             params = tmdb.base_params.copy()
             response = services.api_request(
                 Sources.TMDB.value,
@@ -239,32 +404,33 @@ class CustomList(models.Model):
                 url,
                 params=params,
             )
-            
+
             backdrop_path = response.get("backdrop_path")
             if backdrop_path:
                 backdrop_url = f"https://image.tmdb.org/t/p/w1280{backdrop_path}"
                 # Cache for 7 days (same as TMDB metadata cache)
                 cache.set(cache_key, backdrop_url, 60 * 60 * 24 * 7)
                 return backdrop_url
-        except Exception:
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
             pass
-        
+
         # Cache the absence of backdrop to avoid repeated failed calls
         cache.set(cache_key, settings.IMG_NONE, 60 * 60 * 24)
         return settings.IMG_NONE
-    
+
     def _get_igdb_backdrop(self, media_id):
         """Get widescreen backdrop image URL from IGDB for games.
-        
+
         Prefers artworks (promotional images, typically widescreen) over screenshots.
         Uses caching to avoid repeated API calls for the same item.
-        
+
         First tries to extract from the raw API response used by igdb.game(),
         then falls back to a lightweight API call if needed.
         """
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         cache_key = f"igdb_backdrop_{media_id}"
         cached_backdrop = cache.get(cache_key)
         if cached_backdrop is not None:
@@ -281,15 +447,18 @@ class CustomList(models.Model):
                     cached_backdrop,
                 )
             return cached_backdrop
-        
+
         # Try to get artworks/screenshots from a fresh API call
         # We make our own call because igdb.game() caches processed data, not raw response
         try:
-            from app.providers import igdb, services
             import requests
-            
-            logger.debug("IGDB backdrop cache miss for game_id=%s, making API request", media_id)
-            
+
+            from app.providers import igdb, services
+
+            logger.debug(
+                "IGDB backdrop cache miss for game_id=%s, making API request", media_id
+            )
+
             # Make a lightweight request to get artwork image_ids and screenshot image_ids
             # We request both artworks.image_id (to get image_ids) and artworks (to get artwork IDs for fetching image_type)
             # Note: IGDB API doesn't support artworks.image_type as nested field,
@@ -305,13 +474,13 @@ class CustomList(models.Model):
                 "Client-ID": settings.IGDB_ID,
                 "Authorization": f"Bearer {access_token}",
             }
-            
+
             logger.debug(
                 "Making IGDB API request for game %s: url=%s, fields=artworks,screenshots",
                 media_id,
                 url,
             )
-            
+
             try:
                 response = services.api_request(
                     Sources.IGDB.value,
@@ -323,9 +492,13 @@ class CustomList(models.Model):
             except requests.exceptions.HTTPError as error:
                 # Handle token refresh like igdb.game() does
                 from app.providers.igdb import handle_error
+
                 error_resp = handle_error(error)
                 if error_resp and error_resp.get("retry"):
-                    logger.debug("Retrying IGDB API request with new access token for game %s", media_id)
+                    logger.debug(
+                        "Retrying IGDB API request with new access token for game %s",
+                        media_id,
+                    )
                     headers["Authorization"] = f"Bearer {igdb.get_access_token()}"
                     response = services.api_request(
                         Sources.IGDB.value,
@@ -336,27 +509,34 @@ class CustomList(models.Model):
                     )
                 else:
                     raise
-            
-            logger.debug("IGDB API response for game %s: type=%s, length=%s", media_id, type(response), len(response) if response else 0)
-            
+
+            logger.debug(
+                "IGDB API response for game %s: type=%s, length=%s",
+                media_id,
+                type(response),
+                len(response) if response else 0,
+            )
+
             if response and len(response) > 0:
                 game_response = response[0]
                 logger.debug(
                     "IGDB game response for %s - keys: %s",
                     media_id,
-                    list(game_response.keys()) if isinstance(game_response, dict) else None,
+                    list(game_response.keys())
+                    if isinstance(game_response, dict)
+                    else None,
                 )
-                
+
                 # Get artwork and screenshot data
                 # When requesting artworks.image_id, IGDB returns a list of dicts with image_id
                 # When requesting just artworks, IGDB returns a list of artwork IDs
                 artworks_raw = game_response.get("artworks") or []
                 screenshots_raw = game_response.get("screenshots") or []
-                
+
                 # Extract artwork IDs and image_ids
                 artwork_ids = []  # Artwork record IDs for fetching details to get image_type
                 artwork_image_ids = []  # Direct image_ids from nested field
-                
+
                 # Process artworks - check if we got nested data or just IDs
                 if artworks_raw:
                     if isinstance(artworks_raw[0], dict):
@@ -371,50 +551,73 @@ class CustomList(models.Model):
                     else:
                         # Just a list of artwork IDs (from artworks request)
                         artwork_ids = artworks_raw
-                
+
                 # Extract screenshot image_ids
                 screenshot_ids = []
                 if screenshots_raw:
                     if isinstance(screenshots_raw[0], dict):
-                        screenshot_ids = [s.get("image_id") for s in screenshots_raw if s.get("image_id")]
+                        screenshot_ids = [
+                            s.get("image_id")
+                            for s in screenshots_raw
+                            if s.get("image_id")
+                        ]
                     else:
                         screenshot_ids = screenshots_raw
-                
-                logger.debug("IGDB artwork data for game %s: raw_count=%s, artwork_ids=%s, artwork_image_ids=%s", 
-                           media_id, len(artworks_raw), artwork_ids, artwork_image_ids)
-                logger.debug("IGDB screenshot IDs for game %s: count=%s, data=%s", media_id, len(screenshot_ids), screenshot_ids)
-                
+
+                logger.debug(
+                    "IGDB artwork data for game %s: raw_count=%s, artwork_ids=%s, artwork_image_ids=%s",
+                    media_id,
+                    len(artworks_raw),
+                    artwork_ids,
+                    artwork_image_ids,
+                )
+                logger.debug(
+                    "IGDB screenshot IDs for game %s: count=%s, data=%s",
+                    media_id,
+                    len(screenshot_ids),
+                    screenshot_ids,
+                )
+
                 # Fetch artwork details to get image_type (to identify Key Art)
                 # Key Art is identified by image_type=4 in the artworks endpoint
                 key_arts = []
                 other_artworks = []
-                
+
                 # Fetch artwork details to get image_type (to identify Key Art)
                 # Even if we have image_ids, we still need image_type to prioritize Key Art
                 if artwork_ids:
                     # Fetch artwork details with image_type
                     # IGDB API uses "in" operator for multiple IDs: where id = (1,2,3);
                     artworks_url = "https://api.igdb.com/v4/artworks"
-                    
+
                     # Process artworks in batches to avoid query length issues
                     batch_size = 50
                     all_artwork_details = []
-                    
-                    logger.debug("Fetching artwork details for game %s: %s artworks", media_id, len(artwork_ids))
-                    
+
+                    logger.debug(
+                        "Fetching artwork details for game %s: %s artworks",
+                        media_id,
+                        len(artwork_ids),
+                    )
+
                     try:
                         for i in range(0, len(artwork_ids), batch_size):
-                            batch_ids = artwork_ids[i:i + batch_size]
-                            artwork_id_list = ','.join(str(aid) for aid in batch_ids)
+                            batch_ids = artwork_ids[i : i + batch_size]
+                            artwork_id_list = ",".join(str(aid) for aid in batch_ids)
                             # IGDB artwork types: 0=Other, 1=Box Art, 2=Screenshot, 3=Clear Logo, 4=Top Banner, 5=Marquee, 6=Steam Grid, 7=Hero, 8=Logo, 9=Icon
                             # Key Art is typically artwork_type=4 (Top Banner) or artwork_type=7 (Hero)
                             artworks_data = (
                                 f"fields image_id,artwork_type;"
                                 f"where id = ({artwork_id_list});"
                             )
-                            
-                            logger.debug("Fetching artwork details batch %s-%s for game %s", i+1, min(i+batch_size, len(artwork_ids)), media_id)
-                            
+
+                            logger.debug(
+                                "Fetching artwork details batch %s-%s for game %s",
+                                i + 1,
+                                min(i + batch_size, len(artwork_ids)),
+                                media_id,
+                            )
+
                             try:
                                 artworks_response = services.api_request(
                                     Sources.IGDB.value,
@@ -434,7 +637,7 @@ class CustomList(models.Model):
                                         media_id,
                                         error_json,
                                     )
-                                except:
+                                except Exception:
                                     logger.warning(
                                         "IGDB artworks API error for game %s batch: %s",
                                         media_id,
@@ -442,16 +645,22 @@ class CustomList(models.Model):
                                     )
                                 # Continue with other batches even if one fails
                                 continue
-                        
+
                         if all_artwork_details:
                             # Log all artwork types to help identify which is Key Art
                             artwork_types_found = {}
                             for artwork in all_artwork_details:
                                 artwork_type = artwork.get("artwork_type")
                                 if artwork_type is not None:
-                                    artwork_types_found[artwork_type] = artwork_types_found.get(artwork_type, 0) + 1
-                            logger.debug("Artwork types found for game %s: %s", media_id, artwork_types_found)
-                            
+                                    artwork_types_found[artwork_type] = (
+                                        artwork_types_found.get(artwork_type, 0) + 1
+                                    )
+                            logger.debug(
+                                "Artwork types found for game %s: %s",
+                                media_id,
+                                artwork_types_found,
+                            )
+
                             for artwork in all_artwork_details:
                                 image_id = artwork.get("image_id")
                                 artwork_type = artwork.get("artwork_type")
@@ -460,24 +669,53 @@ class CustomList(models.Model):
                                     # Based on user feedback, artwork_type=4 might be Concept Art, not Key Art
                                     # Need to identify the correct type for Key Art - possibly type 7 (Hero) or a different value
                                     # For now, let's try type 7 (Hero) as Key Art, and if that doesn't work, we'll need to check the actual values
-                                    if artwork_type == 7:  # Hero - trying this as Key Art
+                                    if (
+                                        artwork_type == IGDB_ARTWORK_TYPE_HERO
+                                    ):  # Hero - trying this as Key Art
                                         key_arts.append(image_id)
-                                        logger.debug("Identified Key Art (Hero) for game %s: image_id=%s, artwork_type=%s", media_id, image_id, artwork_type)
-                                    elif artwork_type == 4:  # Top Banner - might be Concept Art based on user feedback
+                                        logger.debug(
+                                            "Identified Key Art (Hero) for game %s: image_id=%s, artwork_type=%s",
+                                            media_id,
+                                            image_id,
+                                            artwork_type,
+                                        )
+                                    elif (
+                                        artwork_type == IGDB_ARTWORK_TYPE_TOP_BANNER
+                                    ):  # Top Banner - might be Concept Art based on user feedback
                                         # Skip type 4 for now since user says it's showing Concept Art
                                         other_artworks.append(image_id)
-                                        logger.debug("Skipping Top Banner (might be Concept Art) for game %s: image_id=%s, artwork_type=%s", media_id, image_id, artwork_type)
+                                        logger.debug(
+                                            "Skipping Top Banner (might be Concept Art) for game %s: image_id=%s, artwork_type=%s",
+                                            media_id,
+                                            image_id,
+                                            artwork_type,
+                                        )
                                     else:
                                         other_artworks.append(image_id)
-                                        logger.debug("Other artwork for game %s: image_id=%s, artwork_type=%s", media_id, image_id, artwork_type)
-                            
-                            logger.debug("Separated artworks for game %s: Key Arts=%s, Other artworks=%s", media_id, len(key_arts), len(other_artworks))
+                                        logger.debug(
+                                            "Other artwork for game %s: image_id=%s, artwork_type=%s",
+                                            media_id,
+                                            image_id,
+                                            artwork_type,
+                                        )
+
+                            logger.debug(
+                                "Separated artworks for game %s: Key Arts=%s, Other artworks=%s",
+                                media_id,
+                                len(key_arts),
+                                len(other_artworks),
+                            )
                         else:
-                            logger.warning("No artwork details returned for game %s", media_id)
+                            logger.warning(
+                                "No artwork details returned for game %s", media_id
+                            )
                             # Fallback to using all artwork image_ids
                             if artwork_image_ids:
                                 other_artworks = artwork_image_ids
-                                logger.debug("Using artwork image_ids as fallback (no artwork details returned) for game %s", media_id)
+                                logger.debug(
+                                    "Using artwork image_ids as fallback (no artwork details returned) for game %s",
+                                    media_id,
+                                )
                     except Exception as exc:
                         logger.warning(
                             "Failed to fetch artwork details for game %s: %s. Will try all artworks without filtering by type.",
@@ -489,20 +727,31 @@ class CustomList(models.Model):
                         # use them without type filtering (will still filter by aspect ratio)
                         if artwork_image_ids:
                             other_artworks = artwork_image_ids
-                            logger.debug("Using artwork image_ids as fallback (artwork details fetch failed) for game %s", media_id)
+                            logger.debug(
+                                "Using artwork image_ids as fallback (artwork details fetch failed) for game %s",
+                                media_id,
+                            )
                         else:
                             # No image_ids available, skip artworks
-                            logger.debug("Skipping artworks for game %s due to failed artwork details fetch", media_id)
+                            logger.debug(
+                                "Skipping artworks for game %s due to failed artwork details fetch",
+                                media_id,
+                            )
                 elif artwork_image_ids:
                     # We have image_ids but no artwork IDs to fetch details
                     # This shouldn't happen if we requested both, but handle it gracefully
                     other_artworks = artwork_image_ids
-                    logger.debug("Using artwork image_ids directly (no artwork IDs to fetch details) for game %s", media_id)
-                
+                    logger.debug(
+                        "Using artwork image_ids directly (no artwork IDs to fetch details) for game %s",
+                        media_id,
+                    )
+
                 # Process artworks with priority: Key Art first (no aspect ratio check), then filter other artworks by aspect ratio
                 # First priority: Try Key Art (use directly without aspect ratio check)
                 if key_arts:
-                    logger.debug("Trying %s Key Art images for game %s", len(key_arts), media_id)
+                    logger.debug(
+                        "Trying %s Key Art images for game %s", len(key_arts), media_id
+                    )
                     # Use first Key Art image directly - Key Art is designed to be widescreen
                     key_art_id = key_arts[0]
                     backdrop_url = (
@@ -516,12 +765,18 @@ class CustomList(models.Model):
                     )
                     cache.set(cache_key, backdrop_url, 60 * 60 * 24 * 7)
                     return backdrop_url
-                
+
                 # Second priority: Try other artworks, filtering by aspect ratio
                 if other_artworks:
-                    logger.debug("Trying %s other artwork images for game %s", len(other_artworks), media_id)
+                    logger.debug(
+                        "Trying %s other artwork images for game %s",
+                        len(other_artworks),
+                        media_id,
+                    )
                     for artwork_id in other_artworks:
-                        backdrop_url = self._check_igdb_image_aspect_ratio(artwork_id, media_id, "artwork")
+                        backdrop_url = self._check_igdb_image_aspect_ratio(
+                            artwork_id, media_id, "artwork"
+                        )
                         if backdrop_url:
                             # backdrop_url from _check_igdb_image_aspect_ratio is already the full URL
                             logger.info(
@@ -531,12 +786,20 @@ class CustomList(models.Model):
                             )
                             cache.set(cache_key, backdrop_url, 60 * 60 * 24 * 7)
                             return backdrop_url
-                        else:
-                            logger.debug("Artwork image_id=%s failed aspect ratio check for game %s", artwork_id, media_id)
-                
+                        logger.debug(
+                            "Artwork image_id=%s failed aspect ratio check for game %s",
+                            artwork_id,
+                            media_id,
+                        )
+
                 if key_arts or other_artworks:
-                    logger.debug("No suitable artworks found (after aspect ratio filtering) for game %s. Key Arts tried: %s, Other artworks tried: %s", media_id, len(key_arts), len(other_artworks))
-                
+                    logger.debug(
+                        "No suitable artworks found (after aspect ratio filtering) for game %s. Key Arts tried: %s, Other artworks tried: %s",
+                        media_id,
+                        len(key_arts),
+                        len(other_artworks),
+                    )
+
                 # Third priority: Fall back to screenshots only if no suitable artworks found
                 if screenshot_ids and len(screenshot_ids) > 0:
                     # Handle both list of dicts and list of image_ids
@@ -546,7 +809,7 @@ class CustomList(models.Model):
                     else:
                         # If screenshots is a list of image_ids directly
                         screenshot_image_id = screenshot_ids[0]
-                    
+
                     if screenshot_image_id:
                         # Use screenshot_big_2x size for widescreen background (high quality)
                         # Screenshots don't need aspect ratio filtering per user requirements
@@ -562,15 +825,19 @@ class CustomList(models.Model):
                         # Cache for 7 days
                         cache.set(cache_key, backdrop_url, 60 * 60 * 24 * 7)
                         return backdrop_url
-                    else:
-                        logger.debug("First screenshot in list has no image_id for game %s", media_id)
+                    logger.debug(
+                        "First screenshot in list has no image_id for game %s",
+                        media_id,
+                    )
                 else:
                     logger.debug("No screenshots found for game %s", media_id)
-                
+
                 logger.warning(
                     "No artworks or screenshots found for IGDB game %s. Response keys: %s",
                     media_id,
-                    list(game_response.keys()) if isinstance(game_response, dict) else None,
+                    list(game_response.keys())
+                    if isinstance(game_response, dict)
+                    else None,
                 )
             else:
                 logger.warning("Empty response from IGDB API for game %s", media_id)
@@ -581,54 +848,56 @@ class CustomList(models.Model):
                 exc,
                 exc_info=True,
             )
-        
+
         # Cache the absence of backdrop to avoid repeated failed calls
         logger.debug("Caching IMG_NONE for game %s (no backdrop found)", media_id)
         cache.set(cache_key, settings.IMG_NONE, 60 * 60 * 24)
         return settings.IMG_NONE
-    
+
     def _check_igdb_image_aspect_ratio(self, image_id, media_id, image_type_label):
         """Check if an IGDB image has a suitable aspect ratio for list covers.
-        
+
         Prefers 16:9 or closer to 3:2 (aspect ratio between 1.5 and 1.777).
         Skips images wider than 16:9 (aspect ratio > 1.777).
-        
+
         Returns the backdrop URL if suitable, None otherwise.
         """
         import logging
-        import requests
-        from PIL import Image
         from io import BytesIO
-        
+
+        from PIL import Image
+
         logger = logging.getLogger(__name__)
-        
+
         try:
             # Fetch a small version of the image to check dimensions
             # For artworks, use t_cover_big_2x; for screenshots, use t_thumb
             # But since we don't know the type here, try t_cover_big_2x first (works for artworks)
             # If that fails, we'll catch the exception and return None
             image_url = f"https://images.igdb.com/igdb/image/upload/t_cover_big_2x/{image_id}.jpg"
-            
+
             logger.debug(
                 "Checking aspect ratio for %s image_id=%s: fetching %s",
                 image_type_label,
                 image_id,
                 image_url,
             )
-            
+
             # Fetch image with timeout
             response = requests.get(image_url, timeout=5, stream=True)
-            if response.status_code == 404:
+            if response.status_code == HTTPStatus.NOT_FOUND:
                 # Try t_thumb as fallback (for screenshots)
-                image_url = f"https://images.igdb.com/igdb/image/upload/t_thumb/{image_id}.jpg"
+                image_url = (
+                    f"https://images.igdb.com/igdb/image/upload/t_thumb/{image_id}.jpg"
+                )
                 response = requests.get(image_url, timeout=5, stream=True)
             response.raise_for_status()
-            
+
             # Read image and check dimensions
             img_data = BytesIO(response.content)
             img = Image.open(img_data)
             width, height = img.size
-            
+
             if width == 0 or height == 0:
                 logger.debug(
                     "Invalid image dimensions for %s image_id=%s: %sx%s",
@@ -638,7 +907,7 @@ class CustomList(models.Model):
                     height,
                 )
                 return None
-            
+
             aspect_ratio = width / height
             logger.debug(
                 "Image dimensions for %s image_id=%s: %sx%s, aspect_ratio=%.3f",
@@ -648,12 +917,12 @@ class CustomList(models.Model):
                 height,
                 aspect_ratio,
             )
-            
+
             # Prefer 16:9 (1.777...) or closer to 3:2 (1.5)
             # Skip if wider than 16:9 (aspect_ratio > 1.778, allowing small rounding)
             # Accept if between 1.5 and 1.778 (inclusive)
             # 16:9 = 1.777777..., so we allow up to 1.778 to account for rounding
-            if aspect_ratio > 1.778:
+            if aspect_ratio > MAX_ARTWORK_ASPECT_RATIO:
                 logger.debug(
                     "Skipping %s image_id=%s: aspect ratio %.3f is wider than 16:9",
                     image_type_label,
@@ -661,8 +930,8 @@ class CustomList(models.Model):
                     aspect_ratio,
                 )
                 return None
-            
-            if aspect_ratio < 1.5:
+
+            if aspect_ratio < MIN_ARTWORK_ASPECT_RATIO:
                 logger.debug(
                     "Skipping %s image_id=%s: aspect ratio %.3f is narrower than 3:2",
                     image_type_label,
@@ -670,7 +939,7 @@ class CustomList(models.Model):
                     aspect_ratio,
                 )
                 return None
-            
+
             # Aspect ratio is suitable (between 1.5 and 1.777)
             # Use screenshot_big_2x for artworks (widescreen, high quality)
             # This size exists for both artworks and screenshots
@@ -684,8 +953,7 @@ class CustomList(models.Model):
                 image_id,
                 aspect_ratio,
             )
-            return backdrop_url
-            
+
         except Exception as exc:
             logger.debug(
                 "Failed to check aspect ratio for %s image_id=%s: %s",
@@ -695,10 +963,112 @@ class CustomList(models.Model):
             )
             # If we can't check aspect ratio, skip this image
             return None
+        else:
+            return backdrop_url
 
 
 class CustomListItemManager(models.Manager):
     """Manager for custom list items."""
+
+    def lock_custom_lists(self, custom_list_ids):
+        """Serialize position changes for the supplied lists in stable order."""
+        list_ids = sorted(
+            {
+                custom_list_id
+                for custom_list_id in custom_list_ids
+                if custom_list_id is not None
+            },
+        )
+        if not list_ids:
+            return
+
+        # Every position-changing path locks the parent row before reading or
+        # writing positions. Stable ordering also prevents bulk operations on
+        # overlapping list sets from deadlocking each other.
+        list(
+            CustomList.objects.select_for_update()
+            .filter(id__in=list_ids)
+            .order_by("id")
+            .values_list("id", flat=True),
+        )
+
+    def get_user_item_lists(self, user, item):
+        """Return list membership for a single item for a user."""
+        if item is None:
+            return []
+
+        return self.get_user_item_lists_map(user, [item.id]).get(item.id, [])
+
+    def get_user_item_lists_map(self, user, item_ids):
+        """Return a dictionary mapping item ids to their list memberships for a user."""
+        if user is None:
+            return {}
+
+        item_ids = [item_id for item_id in item_ids if item_id is not None]
+        if not item_ids:
+            return {}
+
+        list_items = (
+            self.filter(item_id__in=item_ids)
+            .filter(
+                Q(custom_list__owner=user) | Q(custom_list__collaborators=user),
+            )
+            .order_by("item_id", "custom_list_id", "list_item_id")
+            .distinct()
+        )
+
+        lists_by_item_id = {}
+        for list_item in list_items:
+            item_id = list_item.item_id
+            if item_id not in lists_by_item_id:
+                lists_by_item_id[item_id] = []
+
+            lists_by_item_id[item_id].append(
+                {
+                    "list_id": list_item.custom_list_id,
+                    "list_item_id": list_item.list_item_id,
+                },
+            )
+
+        return lists_by_item_id
+
+    def get_next_list_item_id(self, custom_list_id):
+        """Return the next sequential id for an item within a custom list."""
+        current_max = (
+            self.filter(custom_list_id=custom_list_id)
+            .aggregate(max_id=Max("list_item_id"))
+            .get("max_id")
+        )
+        return 0 if current_max is None else current_max + 1
+
+    def bulk_create(self, objs, **kwargs):
+        """Assign per-list sequential IDs before creating items in bulk."""
+        # FORK: materialize first — fork callers (e.g. lists/imports/mdblist.py)
+        # pass generators, which the id-assignment loop below would exhaust
+        # before super().bulk_create() ever saw them.
+        objs = list(objs)
+        if not objs:
+            return super().bulk_create(objs, **kwargs)
+
+        pending_per_list = {}
+        for obj in objs:
+            if obj.list_item_id is not None:
+                continue
+
+            custom_list_id = obj.custom_list_id
+            if custom_list_id not in pending_per_list:
+                pending_per_list[custom_list_id] = []
+            pending_per_list[custom_list_id].append(obj)
+
+        with transaction.atomic():
+            self.lock_custom_lists(obj.custom_list_id for obj in objs)
+            if pending_per_list:
+                for custom_list_id, group in pending_per_list.items():
+                    base_id = self.get_next_list_item_id(custom_list_id)
+                    for index, obj in enumerate(group):
+                        obj.list_item_id = base_id + index
+
+            return super().bulk_create(objs, **kwargs)
 
     def get_last_added_date(self, custom_list):
         """Return the last time an item was added to a specific list."""
@@ -713,6 +1083,7 @@ class CustomListItem(models.Model):
 
     item = models.ForeignKey(Item, on_delete=models.CASCADE)
     custom_list = models.ForeignKey(CustomList, on_delete=models.CASCADE)
+    list_item_id = models.PositiveIntegerField(null=True, blank=True)
     added_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -733,11 +1104,62 @@ class CustomListItem(models.Model):
                 fields=["item", "custom_list"],
                 name="%(app_label)s_customlistitem_unique_item_list",
             ),
+            models.UniqueConstraint(
+                fields=["custom_list", "list_item_id"],
+                name="%(app_label)s_customlistitem_unique_list_item_id",
+            ),
         ]
 
     def __str__(self):
         """Return the name of the list item."""
         return self.item.title
+
+    def save(self, *args, **kwargs):
+        """Save the list item assigning a sequential list-scoped id on create."""
+        with transaction.atomic():
+            CustomListItem.objects.lock_custom_lists([self.custom_list_id])
+            if self._state.adding and self.list_item_id is None:
+                self.list_item_id = CustomListItem.objects.get_next_list_item_id(
+                    self.custom_list_id,
+                )
+
+            return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Delete item and renumber following list items to close numbering gaps."""
+        custom_list_id = self.custom_list_id
+
+        with transaction.atomic():
+            CustomListItem.objects.lock_custom_lists([custom_list_id])
+            # The instance may have been loaded before another transaction
+            # renumbered this list. Refresh the position only after acquiring
+            # the list lock so gap-closing never uses a stale snapshot.
+            removed_list_item_id = (
+                CustomListItem.objects.filter(pk=self.pk)
+                .values_list("list_item_id", flat=True)
+                .first()
+            )
+            result = super().delete(*args, **kwargs)
+
+            if removed_list_item_id is not None:
+                following_items = CustomListItem.objects.filter(
+                    custom_list_id=custom_list_id,
+                    list_item_id__gt=removed_list_item_id,
+                )
+                max_list_item_id = following_items.aggregate(
+                    max_id=Max("list_item_id"),
+                )["max_id"]
+                if max_list_item_id is not None:
+                    # Move rows out of the occupied range before closing the gap.
+                    # This keeps the immediate unique constraint valid on every
+                    # supported database, including PostgreSQL and SQLite.
+                    shift = max_list_item_id + 1
+                    following_items.update(list_item_id=F("list_item_id") + shift)
+                    following_items.update(
+                        list_item_id=F("list_item_id") - (shift + 1),
+                    )
+
+        return result
 
 
 class ListRecommendation(models.Model):

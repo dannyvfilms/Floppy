@@ -1,0 +1,38 @@
+{% load user_tags %}
+{% load app_tags %}
+{% comment %}
+Reusable media-type multi-select grid with drag-to-reorder.
+Used by Settings > Sidebar and by the setup wizard's "choose what to
+track" step. Expects `media_types` (ordered list of MediaTypes values)
+and `user` in context; renders into a form that also submits
+`sidebar_media_type_order` and `media_types_checkboxes`. Optional
+`grid_cols_class` overrides the column count for a narrower container
+(e.g. the wizard passes "md:grid-cols-2").
+{% endcomment %}
+<input type="hidden" name="sidebar_media_type_order" value="{{ media_types|join:',' }}" data-sidebar-order-input>
+<div class="grid gap-3 {{ grid_cols_class|default:"md:grid-cols-3" }}" data-sidebar-order-list>
+  {% for media_type in media_types %}
+    <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md" data-sidebar-media-type="{{ media_type }}">
+      <div class="flex items-center text-[var(--color-text-muted)]">
+        <button type="button"
+                class="sidebar-drag-handle cursor-grab touch-none mr-2 text-gray-500 hover:text-[var(--color-text-secondary)]"
+                aria-label="Reorder {{ media_type|media_type_readable_plural }}">
+          {% include "app/icons/drag-handle.svg" with classes="w-4 h-4" %}
+        </button>
+        {% icon media_type is_active=False %}
+        <span class="text-[var(--color-text-secondary)] text-sm ml-2">{{ media_type|media_type_readable_plural }}</span>
+      </div>
+      <label class="relative inline-flex items-center cursor-pointer">
+        {% with enabled_field=media_type|add:"_enabled" %}
+          <input class="sr-only peer"
+                 type="checkbox"
+                 name="media_types_checkboxes"
+                 value="{{ media_type }}"
+                 {% if user|get_attr:enabled_field %}checked{% endif %}>
+        {% endwith %}
+        <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+        </div>
+      </label>
+    </div>
+  {% endfor %}
+</div>

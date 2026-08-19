@@ -1,18 +1,18 @@
 {% load app_tags %}
 
-<h4 class="text-sm font-medium text-gray-300 mb-2">Currently Excluded:</h4>
+<h4 class="text-sm font-medium text-[var(--color-text-secondary)] mb-2">Currently Excluded:</h4>
 <div class="space-y-2">
   {% if excluded_items %}
     {% for item in excluded_items %}
-      <div class="flex items-center justify-between p-2 bg-[#39404b] rounded-md">
+      <div class="flex items-center justify-between p-2 bg-[var(--color-surface-strong)] rounded-md">
         <div class="flex items-center">
           <img alt="{{ item }}"
                class="w-8 h-10 object-cover rounded mr-2"
                src="{{ item.image }}">
 
           <div class="flex flex-col justify-center">
-            <span class="text-sm text-gray-300">{{ item }}</span>
-            <p class="text-xs text-gray-400">{{ item.media_type|media_type_readable }}</p>
+            <span class="text-sm text-[var(--color-text-secondary)]">{{ item }}</span>
+            <p class="text-xs text-[var(--color-text-muted)]">{{ item.media_type|media_type_readable }}</p>
           </div>
         </div>
         <button type="button"
@@ -26,7 +26,7 @@
     {% endfor %}
   {% else %}
     <div class="space-y-2">
-      <p class="text-xs text-gray-400 text-center py-2 bg-[#39404b] rounded-md">No media items excluded yet</p>
+      <p class="text-xs text-[var(--color-text-muted)] text-center py-2 bg-[var(--color-surface-strong)] rounded-md">No media items excluded yet</p>
     </div>
   {% endif %}
 </div>

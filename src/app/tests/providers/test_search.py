@@ -1,14 +1,17 @@
 from pathlib import Path
+from unittest.mock import patch
 
-from django.test import TestCase
+from django.core.cache import cache
+from django.test import TestCase, tag
 
-from app.models import MediaTypes
+from app.models import MediaTypes, Sources
 from app.providers import (
     hardcover,
     igdb,
     mal,
     mangaupdates,
     openlibrary,
+    services,
     tmdb,
 )
 
@@ -18,6 +21,11 @@ mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 class Search(TestCase):
     """Test the external API calls for media search."""
 
+    def setUp(self):
+        """Clear the cache so search tests do not share IGDB responses."""
+        cache.clear()
+
+    @tag("network")
     def test_anime(self):
         """Test the search method for anime.
 
@@ -30,12 +38,14 @@ class Search(TestCase):
         for anime in response["results"]:
             self.assertTrue(all(key in anime for key in required_keys))
 
+    @tag("network")
     def test_anime_not_found(self):
         """Test the search method for anime with no results."""
         response = mal.search(MediaTypes.ANIME.value, "q", 1)
 
         self.assertEqual(response["results"], [])
 
+    @tag("network")
     def test_mangaupdates(self):
         """Test the search method for manga.
 
@@ -47,12 +57,14 @@ class Search(TestCase):
         for manga in response["results"]:
             self.assertTrue(all(key in manga for key in required_keys))
 
+    @tag("network")
     def test_manga_not_found(self):
         """Test the search method for manga with no results."""
         response = mangaupdates.search("", 1)
 
         self.assertEqual(response["results"], [])
 
+    @tag("network")
     def test_tv(self):
         """Test the search method for TV shows.
 
@@ -64,6 +76,7 @@ class Search(TestCase):
         for tv in response["results"]:
             self.assertTrue(all(key in tv for key in required_keys))
 
+    @tag("network")
     def test_games(self):
         """Test the search method for games.
 
@@ -75,6 +88,82 @@ class Search(TestCase):
         for game in response["results"]:
             self.assertTrue(all(key in game for key in required_keys))
 
+    @patch("app.providers.igdb.get_access_token", return_value="token")
+    @patch("app.providers.igdb.services.api_request")
+    def test_games_retry_with_tokenized_fallback(
+        self,
+        mock_api_request,
+        mock_get_access_token,
+    ):
+        """Punctuation-free queries should fall back to tokenized IGDB matching."""
+        mock_api_request.side_effect = [
+            [
+                {"name": "SearchResults", "result": []},
+                {"name": "TotalCount", "count": 0},
+            ],
+            [
+                {
+                    "name": "SearchResults",
+                    "result": [
+                        {
+                            "id": 123456,
+                            "name": "Shakedown: Hawaii",
+                        },
+                    ],
+                },
+                {"name": "TotalCount", "count": 1},
+            ],
+        ]
+
+        response = igdb.search("Shakedown Hawaii", 1)
+
+        self.assertEqual(response["total_results"], 1)
+        self.assertEqual(len(response["results"]), 1)
+        self.assertEqual(response["results"][0]["title"], "Shakedown: Hawaii")
+        self.assertEqual(mock_api_request.call_count, 2)
+
+        first_request = mock_api_request.call_args_list[0].kwargs["data"]
+        second_request = mock_api_request.call_args_list[1].kwargs["data"]
+
+        self.assertIn('name ~ *"Shakedown Hawaii"*', first_request)
+        self.assertIn('name ~ *"Shakedown"*', second_request)
+        self.assertIn('name ~ *"Hawaii"*', second_request)
+        mock_get_access_token.assert_called_once()
+
+    @patch("app.providers.igdb.get_access_token", return_value="token")
+    @patch("app.providers.igdb.services.api_request")
+    def test_games_exact_punctuated_query_stays_on_primary_path(
+        self,
+        mock_api_request,
+        mock_get_access_token,
+    ):
+        """Exact IGDB titles should still resolve without needing the fallback."""
+        mock_api_request.return_value = [
+            {
+                "name": "SearchResults",
+                "result": [
+                    {
+                        "id": 123456,
+                        "name": "Shakedown: Hawaii",
+                    },
+                ],
+            },
+            {"name": "TotalCount", "count": 1},
+        ]
+
+        response = igdb.search("Shakedown: Hawaii", 1)
+
+        self.assertEqual(response["total_results"], 1)
+        self.assertEqual(len(response["results"]), 1)
+        self.assertEqual(response["results"][0]["title"], "Shakedown: Hawaii")
+        self.assertEqual(mock_api_request.call_count, 1)
+        self.assertIn(
+            'name ~ *"Shakedown: Hawaii"*',
+            mock_api_request.call_args.kwargs["data"],
+        )
+        mock_get_access_token.assert_called_once()
+
+    @tag("network")
     def test_books(self):
         """Test the search method for books.
 
@@ -86,6 +175,7 @@ class Search(TestCase):
         for book in response["results"]:
             self.assertTrue(all(key in book for key in required_keys))
 
+    @tag("network")
     def test_comics(self):
         """Test the search method for comics.
 
@@ -97,6 +187,7 @@ class Search(TestCase):
         for comic in response["results"]:
             self.assertTrue(all(key in comic for key in required_keys))
 
+    @tag("network")
     def test_hardcover(self):
         """Test the search method for books from Hardcover.
 
@@ -110,9 +201,295 @@ class Search(TestCase):
         for book in response["results"]:
             self.assertTrue(all(key in book for key in required_keys))
 
+    @tag("network")
     def test_hardcover_not_found(self):
         """Test the search method for books from Hardcover with no results."""
         response = hardcover.search("xjkqzptmvnsieurytowahdbfglc", 1)
         self.assertEqual(response["results"], [])
 
+    @patch("app.providers.hardcover.services.api_request")
+    def test_hardcover_title_query_is_capped(self, mock_api_request):
+        """Test the long title is capped before search."""
+        query = (
+            "The Short Story of Architecture: A Pocket Guide to Key Styles, "
+            "Buildings, Elements & Materials (Architectural History Introduction, "
+            "A Guide to Architecture)"
+        )
+        capped_query = "The Short Story of Architecture: A Pocket Guide to"
+        cache.delete(
+            f"search_{Sources.HARDCOVER.value}_{MediaTypes.BOOK.value}_"
+            f"{capped_query}_1",
+        )
+        mock_api_request.return_value = {
+            "data": {
+                "search": {
+                    "results": {
+                        "hits": [
+                            {
+                                "document": {
+                                    "id": "123",
+                                    "title": "The Short Story of Architecture",
+                                    "image": {"url": "https://example.com/cover.jpg"},
+                                },
+                            },
+                        ],
+                        "found": 1,
+                    },
+                },
+            },
+        }
 
+        response = hardcover.search(query, 1)
+        required_keys = {"media_id", "media_type", "title", "image"}
+
+        self.assertEqual(len(query), 156)
+        self.assertEqual(hardcover.cap_search_query(query), capped_query)
+        _, kwargs = mock_api_request.call_args
+        self.assertEqual(kwargs["params"]["variables"]["query"], capped_query)
+        self.assertTrue(len(response["results"]) > 0)
+
+        for book in response["results"]:
+            self.assertTrue(all(key in book for key in required_keys))
+
+    def test_hardcover_title_query_cap_stops_at_word_boundary(self):
+        """Test the long title cap does not split words."""
+        query = "one two three four five six seven eight nine ten eleven twelve"
+
+        self.assertEqual(
+            hardcover.cap_search_query(query),
+            "one two three four five six seven eight nine ten",
+        )
+
+    @patch("app.providers.hardcover.services.api_request")
+    def test_hardcover_search_prefixes_bearer_for_raw_tokens(self, mock_api_request):
+        """Hardcover should accept raw tokens from env vars."""
+        mock_api_request.return_value = {
+            "data": {"search": {"results": {"hits": [], "found": 0}}},
+        }
+
+        with patch.object(hardcover.settings, "HARDCOVER_API", "raw-hardcover-token"):
+            hardcover.search("Born a crime", 1)
+
+        self.assertEqual(
+            mock_api_request.call_args.kwargs["headers"]["Authorization"],
+            "Bearer raw-hardcover-token",
+        )
+
+
+class SearchById(TestCase):
+    """Test direct ID lookup via services.search_by_id and services.search."""
+
+    def _make_metadata(self, media_type, source, media_id="238", title="Test Title"):
+        return {
+            "media_id": media_id,
+            "source": source,
+            "media_type": media_type,
+            "title": title,
+            "original_title": title,
+            "localized_title": title,
+            "image": "http://example.com/img.jpg",
+            "max_progress": 1,
+            "synopsis": "",
+            "genres": [],
+            "score": None,
+            "score_count": None,
+            "details": {},
+            "related": {},
+        }
+
+    @patch("app.providers.tmdb.movie")
+    def test_movie_by_tmdb_id(self, mock_movie):
+        """search_by_id returns a single movie when query is a TMDB numeric ID."""
+        mock_movie.return_value = self._make_metadata(
+            MediaTypes.MOVIE.value, Sources.TMDB.value, "238", "The Godfather"
+        )
+        result = services.search_by_id(MediaTypes.MOVIE.value, "238")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["total_results"], 1)
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["results"][0]["media_id"], "238")
+        self.assertEqual(result["results"][0]["title"], "The Godfather")
+        mock_movie.assert_called_once_with(238)
+
+    @patch("app.providers.tmdb.tv")
+    def test_tv_by_tmdb_id(self, mock_tv):
+        """search_by_id returns a single TV show when query is a TMDB numeric ID."""
+        mock_tv.return_value = self._make_metadata(
+            MediaTypes.TV.value, Sources.TMDB.value, "1396", "Breaking Bad"
+        )
+        result = services.search_by_id(MediaTypes.TV.value, "1396")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["total_results"], 1)
+        self.assertEqual(result["results"][0]["media_id"], "1396")
+        mock_tv.assert_called_once_with(1396)
+
+    @patch("app.providers.tmdb.tv")
+    def test_season_type_uses_tv_lookup(self, mock_tv):
+        """search_by_id for season media type looks up the parent TV show."""
+        mock_tv.return_value = self._make_metadata(
+            MediaTypes.TV.value, Sources.TMDB.value, "1396", "Breaking Bad"
+        )
+        result = services.search_by_id(MediaTypes.SEASON.value, "1396")
+        self.assertIsNotNone(result)
+        mock_tv.assert_called_once_with(1396)
+
+    @patch("app.providers.mal.anime")
+    def test_anime_by_mal_id(self, mock_anime):
+        """search_by_id returns a single anime when query is a MAL numeric ID."""
+        mock_anime.return_value = self._make_metadata(
+            MediaTypes.ANIME.value, Sources.MAL.value, "1", "Cowboy Bebop"
+        )
+        result = services.search_by_id(MediaTypes.ANIME.value, "1")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["results"][0]["media_id"], "1")
+        mock_anime.assert_called_once_with(1)
+
+    @patch("app.providers.igdb.game")
+    def test_game_by_igdb_id(self, mock_game):
+        """search_by_id returns a single game when query is an IGDB numeric ID."""
+        mock_game.return_value = self._make_metadata(
+            MediaTypes.GAME.value, Sources.IGDB.value, "119", "Minecraft"
+        )
+        result = services.search_by_id(MediaTypes.GAME.value, "119")
+        self.assertIsNotNone(result)
+        self.assertEqual(result["results"][0]["title"], "Minecraft")
+        mock_game.assert_called_once_with(119)
+
+    @patch("app.providers.openlibrary.book")
+    def test_book_by_openlibrary_id(self, mock_book):
+        """search_by_id returns a single book when query is an OL ID."""
+        mock_book.return_value = self._make_metadata(
+            MediaTypes.BOOK.value, Sources.OPENLIBRARY.value, "OL7353617M", "Some Book"
+        )
+        result = services.search_by_id(
+            MediaTypes.BOOK.value, "OL7353617M", Sources.OPENLIBRARY.value
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result["results"][0]["media_id"], "OL7353617M")
+        mock_book.assert_called_once_with("OL7353617M")
+
+    @patch("app.providers.hardcover.book")
+    def test_book_by_hardcover_numeric_id(self, mock_book):
+        """search_by_id returns a single book when query is a Hardcover numeric ID."""
+        mock_book.return_value = self._make_metadata(
+            MediaTypes.BOOK.value, Sources.HARDCOVER.value, "42", "Dune"
+        )
+        result = services.search_by_id(
+            MediaTypes.BOOK.value, "42", Sources.HARDCOVER.value
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result["results"][0]["title"], "Dune")
+        mock_book.assert_called_once_with(42)
+
+    def test_non_id_title_query_returns_none(self):
+        """search_by_id returns None for a plain-text (non-ID) query."""
+        result = services.search_by_id(MediaTypes.MOVIE.value, "The Godfather")
+        self.assertIsNone(result)
+
+    def test_ol_id_without_correct_media_type_returns_none(self):
+        """An OL-format query for a non-book media type returns None."""
+        result = services.search_by_id(MediaTypes.ANIME.value, "OL7353617M")
+        self.assertIsNone(result)
+
+    def test_numeric_id_with_provider_error_falls_back_to_none(self):
+        """search_by_id returns None when the provider raises an exception."""
+        with patch("app.providers.tmdb.movie", side_effect=Exception("API error")):
+            result = services.search_by_id(MediaTypes.MOVIE.value, "99999999")
+        self.assertIsNone(result)
+
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tmdb.movie")
+    def test_search_uses_id_lookup_on_page_1(self, mock_movie, mock_tmdb_search):
+        """services.search() includes the ID-lookup result on page 1 for a numeric query."""
+        mock_movie.return_value = self._make_metadata(
+            MediaTypes.MOVIE.value, Sources.TMDB.value, "238", "The Godfather"
+        )
+        mock_tmdb_search.return_value = {
+            "page": 1,
+            "total_results": 0,
+            "total_pages": 1,
+            "results": [],
+        }
+        result = services.search(MediaTypes.MOVIE.value, "238", 1, Sources.TMDB.value)
+        self.assertEqual(result["total_results"], 1)
+        self.assertEqual(result["results"][0]["media_id"], "238")
+
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tmdb.tv")
+    def test_search_merges_id_lookup_with_numeric_title_match(
+        self, mock_tv, mock_tmdb_search
+    ):
+        """A numeric title match isn't hidden behind an unrelated numeric ID.
+
+        Regression test: searching "1883" used to return only TMDB tv/1883
+        ("Dog the Bounty Hunter"), completely hiding the real show "1883"
+        (TMDB id 118357) that a text search for the same query would find.
+        """
+        mock_tv.return_value = self._make_metadata(
+            MediaTypes.TV.value, Sources.TMDB.value, "1883", "Dog the Bounty Hunter"
+        )
+        mock_tmdb_search.return_value = {
+            "page": 1,
+            "total_results": 1,
+            "total_pages": 1,
+            "results": [
+                {
+                    "media_id": "118357",
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "title": "1883",
+                    "original_title": "1883",
+                    "localized_title": "1883",
+                    "image": "http://example.com/img.jpg",
+                }
+            ],
+        }
+        result = services.search(MediaTypes.TV.value, "1883", 1, Sources.TMDB.value)
+
+        self.assertEqual(result["total_results"], 2)
+        media_ids = [item["media_id"] for item in result["results"]]
+        self.assertEqual(media_ids, ["1883", "118357"])
+
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tmdb.movie")
+    def test_search_id_lookup_does_not_duplicate_text_search_match(
+        self, mock_movie, mock_tmdb_search
+    ):
+        """If the ID match is also returned by the text search, it isn't duplicated."""
+        mock_movie.return_value = self._make_metadata(
+            MediaTypes.MOVIE.value, Sources.TMDB.value, "238", "The Godfather"
+        )
+        mock_tmdb_search.return_value = {
+            "page": 1,
+            "total_results": 1,
+            "total_pages": 1,
+            "results": [
+                {
+                    "media_id": "238",
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "title": "The Godfather",
+                    "original_title": "The Godfather",
+                    "localized_title": "The Godfather",
+                    "image": "http://example.com/img.jpg",
+                }
+            ],
+        }
+        result = services.search(MediaTypes.MOVIE.value, "238", 1, Sources.TMDB.value)
+
+        self.assertEqual(result["total_results"], 1)
+        self.assertEqual(len(result["results"]), 1)
+
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tmdb.movie")
+    def test_search_skips_id_lookup_on_page_2(self, mock_movie, mock_tmdb_search):
+        """services.search() skips ID lookup and uses text search on page 2."""
+        mock_tmdb_search.return_value = {
+            "page": 2,
+            "total_results": 0,
+            "total_pages": 1,
+            "results": [],
+        }
+        services.search(MediaTypes.MOVIE.value, "238", 2, Sources.TMDB.value)
+        mock_movie.assert_not_called()
+        mock_tmdb_search.assert_called_once()

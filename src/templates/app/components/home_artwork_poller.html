@@ -1,0 +1,20 @@
+{% comment %}
+  Single shared poller for music/podcast home-row artwork. One request
+  refreshes every row still missing covers (rows swap in out-of-band).
+  Renders inert (no hx-trigger) once no rows need polling, which stops
+  the client-side poll automatically.
+
+  Context:
+    poll_row_ids — row ids that still need artwork polling
+    initial      — set on the first (page) render to fire an early poll
+{% endcomment %}
+{% if poll_row_ids %}
+<div id="home-artwork-poller"
+     {% if oob %}hx-swap-oob="outerHTML"{% endif %}
+     hx-get="{% url 'home_rows_artwork_refresh' %}?ids={% for rid in poll_row_ids %}{{ rid }}{% if not forloop.last %},{% endif %}{% endfor %}"
+     hx-trigger="{% if initial %}load delay:1s, {% endif %}every 30s"
+     hx-sync="this:abort"
+     hx-swap="outerHTML"></div>
+{% else %}
+<div id="home-artwork-poller" {% if oob %}hx-swap-oob="outerHTML"{% endif %}></div>
+{% endif %}

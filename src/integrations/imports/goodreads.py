@@ -9,6 +9,7 @@ from django.utils import timezone
 import app
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -55,30 +56,54 @@ class GoodReadsImporter:
     def import_data(self):
         """Import all GoodReads data from the CSV file."""
         try:
-            decoded_file = self.file.read().decode("utf-8").splitlines()
+            raw_file = self.file.read()
+            try:
+                decoded_file = raw_file.decode("utf-8-sig").splitlines()
+            except UnicodeDecodeError:
+                decoded_file = raw_file.decode("latin-1").splitlines()
         except UnicodeDecodeError as e:
             msg = "Invalid file format. Please upload a CSV file."
             raise MediaImportError(msg) from e
 
-        reader = DictReader(decoded_file)
+        rows = list(DictReader(decoded_file))
+        total = len(rows)
 
-        for row in reader:
+        for i, row in enumerate(rows, start=1):
+            import_progress.report(i, total, "Goodreads")
             try:
                 self._process_row(row)
-            except services.ProviderAPIError:
-                error_msg = f"Error processing entry with ID {row['media_id']} "
+            except services.ProviderAPIError as error:
+                row_description = self._row_description(row)
+                logger.warning(
+                    "Error processing Goodreads entry: %s - %s",
+                    row_description,
+                    error,
+                )
+                error_msg = f"Error processing entry: {row_description} - {error}"
                 self.warnings.append(error_msg)
                 continue
             except Exception as error:
                 error_msg = f"Error processing entry: {row}"
                 raise MediaImportUnexpectedError(error_msg) from error
 
-        logger.debug("processed %s", self.bulk_media)
+        logger.debug(
+            "Prepared Goodreads import batches: %s",
+            {
+                media_type: len(media_list)
+                for media_type, media_list in self.bulk_media.items()
+            },
+        )
 
         helpers.cleanup_existing_media(self.to_delete, self.user)
         helpers.bulk_create_media(self.bulk_media, self.user)
 
-        logger.debug("processed %s", self.bulk_media)
+        logger.debug(
+            "Created Goodreads import batches: %s",
+            {
+                media_type: len(media_list)
+                for media_type, media_list in self.bulk_media.items()
+            },
+        )
 
         imported_counts = {
             media_type: len(media_list)
@@ -87,6 +112,19 @@ class GoodReadsImporter:
 
         deduplicated_messages = "\n".join(dict.fromkeys(self.warnings))
         return imported_counts, deduplicated_messages
+
+    def _row_description(self, row):
+        """Return a useful label for warnings without assuming Floppy fields."""
+        title = row.get("Title")
+        book_id = row.get("Book Id")
+
+        if title and book_id:
+            return f"{title} (Goodreads ID {book_id})"
+        if title:
+            return title
+        if book_id:
+            return f"Goodreads ID {book_id}"
+        return str(row)
 
     def _process_row(self, row):
         """Process a single row from the CSV file."""
@@ -100,7 +138,7 @@ class GoodReadsImporter:
             )
             return
 
-        logger.debug("Found book %s", book)
+        logger.debug("Resolved Goodreads book metadata from search")
 
         media_id = book["media_id"]
 
@@ -122,9 +160,10 @@ class GoodReadsImporter:
 
     def _search_book(self, row, source):
         """Search for book and return result if found."""
+        isbn13 = (row.get("ISBN13") or "").strip()
         results = services.search(
             MediaTypes.BOOK.value,
-            row["ISBN13"],
+            isbn13,
             1,
             source.value,
         ).get(
@@ -134,9 +173,13 @@ class GoodReadsImporter:
         if results:
             return results[0]
 
+        title = (row.get("Title") or "").strip()
+        if not title:
+            return None
+
         results = services.search(
             MediaTypes.BOOK.value,
-            row["Title"],
+            title,
             1,
             source.value,
         ).get(
@@ -168,7 +211,8 @@ class GoodReadsImporter:
             "to-read": Status.PLANNING,
         }
 
-        return status_mapping[row["Exclusive Shelf"]].value
+        shelf = (row.get("Exclusive Shelf") or "").strip().lower()
+        return status_mapping.get(shelf, Status.PLANNING).value
 
     def _parse_goodreads_date(self, date_str):
         """Parse GoodReads date string (YYYY/MM/DD) into datetime object."""
@@ -186,10 +230,10 @@ class GoodReadsImporter:
         """Create media instance with all parameters."""
         model = apps.get_model(app_label="app", model_name=MediaTypes.BOOK.value)
         book_status = self._determine_status(row)
+        page_count = (row.get("Number of Pages") or "").strip()
         book_progress = (
-            int(row["Number of Pages"])
-            if book_status is Status.COMPLETED.value
-            and row["Number of Pages"].isnumeric()
+            int(page_count)
+            if book_status == Status.COMPLETED.value and page_count.isnumeric()
             else 0
         )
 
@@ -199,16 +243,19 @@ class GoodReadsImporter:
 
         # filter out None dates
         dates = [date_created, date_rated]
-        most_recent_date = max(date for date in dates if date)
+        most_recent_date = max((date for date in dates if date), default=None)
+
+        rating = (row.get("My Rating") or "").strip()
+        notes = (row.get("Private Notes") or "").strip()
 
         instance = model(
             item=item,
             user=self.user,
-            score=None if row["My Rating"] == "0" else int(row["My Rating"]) * 2,
+            score=None if rating in {"", "0"} else float(rating) * 2,
             progress=book_progress,
             status=book_status,
             end_date=date_rated,
-            notes=row["Private Notes"],
+            notes=notes,
         )
         instance._history_date = most_recent_date or timezone.now()
 

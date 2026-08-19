@@ -1,0 +1,50 @@
+{% extends "users/onboarding/_layout.html" %}
+{% load user_tags %}
+
+{% block step_title %}You're all set{% endblock step_title %}
+
+{% block step_explanation %}
+  <p>
+    Your connected services are queued to import. This can take a few
+    minutes depending on how much history they have.
+  </p>
+  <p>You can check progress and history anytime from Settings &gt; Import.</p>
+{% endblock step_explanation %}
+
+{% block step_options %}
+  {% if connected_sources %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+      {% for item in connected_sources %}
+        <div class="flex items-center gap-3 p-3 bg-[var(--color-surface-strong)] rounded-lg">
+          {% source_display item.source.slug %}
+          {% with run=item.run %}
+            <span class="ml-auto px-2 py-1 rounded text-xs font-medium whitespace-nowrap
+              {% if not run %}text-gray-400 bg-gray-400/10
+              {% elif run.status == "completed" %}text-green-400 bg-green-400/10
+              {% elif run.status == "running" %}text-blue-400 bg-blue-400/10
+              {% elif run.status == "failed" %}text-red-400 bg-red-400/10
+              {% else %}text-gray-400 bg-gray-400/10{% endif %}">
+              {% if not run %}Queued
+              {% elif run.status == "completed" %}Done
+              {% elif run.status == "running" %}Importing…
+              {% elif run.status == "failed" %}Failed
+              {% else %}Cancelled{% endif %}
+            </span>
+          {% endwith %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-sm text-[var(--color-text-muted)] mb-6">
+      No services connected yet — you can connect one anytime from
+      Settings &gt; Import.
+    </p>
+  {% endif %}
+  <form method="post" class="flex justify-end">
+    {% csrf_token %}
+    <button type="submit"
+            class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+      Continue
+    </button>
+  </form>
+{% endblock step_options %}

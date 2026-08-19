@@ -1,0 +1,28 @@
+{% comment %}
+  Taste Signals — Top Genres panel body. Split out so the sort dropdown in
+  taste_signals.html can swap it in place via x-ref, same pattern as
+  studio_footprint.html / studio_footprint_grid.html.
+
+  Required context: top_genres_combined, genre_sort_by.
+{% endcomment %}
+{% if top_genres_combined %}
+  <div class="overflow-y-auto pr-1 statistics-card-scroll-compact">
+    {% for genre in top_genres_combined %}
+      <div class="flex items-center gap-3">
+        <span class="text-gray-500 text-sm w-4 shrink-0">{{ forloop.counter }}</span>
+        <span class="text-sm font-medium text-[var(--color-text)] w-20 sm:w-24 truncate shrink-0">{{ genre.name }}</span>
+        <div class="flex-1 h-2.5 rounded-full bg-white/[0.07] overflow-hidden">
+          <div class="h-full rounded-full" style="width: {{ genre.pct }}%; background-color: {{ genre.color }};"></div>
+        </div>
+        {% if genre_sort_by == 'plays' %}
+          <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{{ genre.plays }} play{{ genre.plays|pluralize }}</span>
+        {% else %}
+          <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{{ genre.formatted_duration }}</span>
+        {% endif %}
+        <span class="text-xs text-gray-500 w-12 text-right shrink-0 tabular-nums">{{ genre.pct }}%</span>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="text-sm text-gray-500 py-4">No genre data available for this range.</p>
+{% endif %}

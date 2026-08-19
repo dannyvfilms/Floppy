@@ -1,8 +1,32 @@
 from django import forms
 from django.db.models import Q
+from django.utils.text import slugify
 from django_select2 import forms as s2forms
 
 from lists.models import CustomList
+
+RESERVED_PUBLIC_SLUGS = {"create", "edit", "delete"}
+
+
+def validate_public_slug(raw_slug, *, exclude_pk=None):
+    """Normalize and validate an optional public list slug.
+
+    Shared by CustomListForm and the API so both enforce identical rules.
+    """
+    public_slug = slugify(raw_slug or "").strip("-")
+    if not public_slug:
+        return ""
+
+    if public_slug.isdigit():
+        msg = "Custom list URLs cannot be only numbers."
+        raise forms.ValidationError(msg)
+    if public_slug in RESERVED_PUBLIC_SLUGS:
+        msg = "That URL is reserved."
+        raise forms.ValidationError(msg)
+    if CustomList.objects.filter(public_slug=public_slug).exclude(pk=exclude_pk).exists():
+        msg = "That URL is already in use."
+        raise forms.ValidationError(msg)
+    return public_slug
 
 
 class CollaboratorsWidget(s2forms.ModelSelect2MultipleWidget):
@@ -15,6 +39,7 @@ class TagsField(forms.MultipleChoiceField):
     """Allow arbitrary tags while still supporting select2 choices."""
 
     def valid_value(self, value):
+        """Return the valid value."""
         return True
 
 
@@ -26,9 +51,20 @@ class CustomListForm(forms.ModelForm):
         label="Public (read-only access)",
         help_text="Anyone with the link can view this list",
     )
+    is_smart = forms.BooleanField(
+        required=False,
+        label="Smart List",
+        help_text="Automatically updates based on media types and filters",
+    )
+    public_slug = forms.CharField(
+        required=False,
+        max_length=255,
+        label="Custom URL",
+        help_text="Optional custom slug used for public list links.",
+    )
     tags = TagsField(
         required=False,
-        label="Tags",
+        label="List Tags",
         help_text="Group lists on your public profile",
         widget=s2forms.Select2TagWidget(
             attrs={
@@ -49,7 +85,9 @@ class CustomListForm(forms.ModelForm):
             "tags",
             "collaborators",
             "is_public",
+            "public_slug",
             "allow_recommendations",
+            "is_smart",
         ]
         widgets = {
             "collaborators": CollaboratorsWidget(
@@ -69,6 +107,7 @@ class CustomListForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             self.initial["is_public"] = self.instance.visibility == "public"
             self.initial["tags"] = self._normalize_tags(self.instance.tags)
+            self.initial["is_smart"] = self.instance.is_smart
 
         existing_tags = []
         if available_tags is not None:
@@ -105,6 +144,14 @@ class CustomListForm(forms.ModelForm):
         instance.visibility = "public" if is_public else "private"
         if not is_public:
             instance.allow_recommendations = False
+
+        is_smart = bool(self.cleaned_data.get("is_smart"))
+        instance.is_smart = is_smart
+        if not is_smart:
+            instance.smart_media_types = []
+            instance.smart_excluded_media_types = []
+            instance.smart_filters = {}
+
         if commit:
             instance.save()
             self.save_m2m()
@@ -115,6 +162,13 @@ class CustomListForm(forms.ModelForm):
         tags = self.cleaned_data.get("tags") or []
         return self._normalize_tags(tags)
 
+    def clean_public_slug(self):
+        """Normalize and validate the optional public slug."""
+        return validate_public_slug(
+            self.cleaned_data.get("public_slug", ""),
+            exclude_pk=getattr(self.instance, "pk", None),
+        )
+
     @staticmethod
     def _normalize_tags(tags):
         cleaned = []
@@ -123,7 +177,7 @@ class CustomListForm(forms.ModelForm):
             if tag is None:
                 continue
             if not isinstance(tag, str):
-                tag = str(tag)
+                tag = str(tag)  # noqa: PLW2901  # deliberate in-loop normalisation
             normalized = " ".join(tag.strip().split())
             if not normalized:
                 continue

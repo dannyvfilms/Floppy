@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>floppy</Name>
+  <Repository>ghcr.io/dannyvfilms/floppy:latest</Repository>
+  <Registry>https://github.com/dannyvfilms/Floppy/pkgs/container/floppy</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/dannyvfilms/Floppy/issues</Support>
+  <Project>https://github.com/dannyvfilms/Floppy</Project>
+  <Overview>Floppy is a self-hosted, all-in-one media tracker: movies, TV, anime, manga, books, comics, games, board games, music, and podcasts in one library, history, and set of stats. A broader alternative to Trakt, Letterboxd, and TV Time.&#13;
+&#13;
+Requires a reachable Redis instance (used for caching and as the Celery broker). This is not bundled - run a Redis container on this same Unraid server (for example redis:8-alpine) with port 6379 published to the host. REDIS_URL defaults to host.docker.internal, which resolves to this server automatically, so no IP address needs to be entered - just make sure Redis' port is published to the host and matches the port in REDIS_URL. SQLite is used by default; PostgreSQL is supported via the DB_* variables. Set SECRET to a long random string before first run. See the README for the full environment variable list: https://github.com/dannyvfilms/Floppy#configuration-and-deployment</Overview>
+  <Category>MediaApp:Other Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:8000]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/templates/floppy.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/src/static/favicon/android-chrome-512x512.png</Icon>
+  <ExtraParams>--add-host=host.docker.internal:host-gateway</ExtraParams>
+  <DonateText></DonateText>
+  <DonateLink></DonateLink>
+  <Requires>A reachable Redis instance (cache + Celery broker). Not bundled - run a Redis container on this same Unraid server with port 6379 published to the host. REDIS_URL defaults to host.docker.internal:6379, which resolves to this server automatically.</Requires>
+  <Config Name="WebUI Port" Target="8000" Default="8000" Mode="tcp" Description="Port the Floppy web UI listens on." Type="Port" Display="always" Required="true" Mask="false">8000</Config>
+  <Config Name="App Data" Target="/floppy/db" Default="/mnt/user/appdata/floppy/db" Mode="rw" Description="Persistent storage for SQLite database and local app data." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/floppy/db</Config>
+  <Config Name="SECRET" Target="SECRET" Default="" Mode="" Description="Long random string used as the Django secret key. Required." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="REDIS_URL" Target="REDIS_URL" Default="redis://host.docker.internal:6379" Mode="" Description="URL of a reachable Redis instance, used for caching and as the Celery broker. Defaults to this same server via host.docker.internal - just run a Redis container here with port 6379 published to the host. Change the port if you published Redis on a different one. Required." Type="Variable" Display="always" Required="true" Mask="false">redis://host.docker.internal:6379</Config>
+  <Config Name="TZ" Target="TZ" Default="America/Chicago" Mode="" Description="Timezone used for scheduling and displayed dates." Type="Variable" Display="always" Required="false" Mask="false">America/Chicago</Config>
+  <Config Name="REGISTRATION" Target="REGISTRATION" Default="True" Mode="" Description="Allow new account sign-ups. Set to False after creating your account." Type="Variable" Display="always" Required="false" Mask="false">True</Config>
+  <Config Name="DEMO_ACCOUNT_ENABLED" Target="DEMO_ACCOUNT_ENABLED" Default="False" Mode="" Description="Provision the public demo/demodemo account after migrations. Leave False unless you want it." Type="Variable" Display="always" Required="false" Mask="false">False</Config>
+  <Config Name="TMDB_API" Target="TMDB_API" Default="" Mode="" Description="TMDB API key for movie/TV metadata. Optional but recommended." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="DB_HOST" Target="DB_HOST" Default="" Mode="" Description="PostgreSQL host. Leave blank to use SQLite instead." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="DB_NAME" Target="DB_NAME" Default="floppy" Mode="" Description="PostgreSQL database name (only used when DB_HOST is set)." Type="Variable" Display="advanced" Required="false" Mask="false">floppy</Config>
+  <Config Name="DB_USER" Target="DB_USER" Default="floppy" Mode="" Description="PostgreSQL user (only used when DB_HOST is set)." Type="Variable" Display="advanced" Required="false" Mask="false">floppy</Config>
+  <Config Name="DB_PASSWORD" Target="DB_PASSWORD" Default="" Mode="" Description="PostgreSQL password (only used when DB_HOST is set)." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="DB_PORT" Target="DB_PORT" Default="5432" Mode="" Description="PostgreSQL port (only used when DB_HOST is set)." Type="Variable" Display="advanced" Required="false" Mask="false">5432</Config>
+  <Config Name="URLS" Target="URLS" Default="" Mode="" Description="Public URL if using a reverse proxy, e.g. https://floppy.yourdomain.com" Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="ADMIN_ENABLED" Target="ADMIN_ENABLED" Default="False" Mode="" Description="Enable the Django admin interface at /admin/." Type="Variable" Display="advanced" Required="false" Mask="false">False</Config>
+  <Config Name="WEB_CONCURRENCY" Target="WEB_CONCURRENCY" Default="2" Mode="" Description="Gunicorn worker processes." Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
+  <Config Name="GUNICORN_THREADS" Target="GUNICORN_THREADS" Default="4" Mode="" Description="Gunicorn threads per worker." Type="Variable" Display="advanced" Required="false" Mask="false">4</Config>
+  <Config Name="DEBUG" Target="DEBUG" Default="False" Mode="" Description="Enable Django debug mode. Leave False in production - it slows every request." Type="Variable" Display="advanced" Required="false" Mask="false">False</Config>
+  <Config Name="PUID" Target="PUID" Default="1000" Mode="" Description="User ID to run the container as." Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
+  <Config Name="PGID" Target="PGID" Default="1000" Mode="" Description="Group ID to run the container as." Type="Variable" Display="advanced" Required="false" Mask="false">1000</Config>
+</Container>

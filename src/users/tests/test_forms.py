@@ -1,9 +1,25 @@
 from unittest.mock import patch
 
+from allauth.socialaccount.models import SocialAccount, SocialLogin
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.contrib.sessions.middleware import SessionMiddleware
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
+from django.test import RequestFactory, TestCase
 
-from users.forms import NotificationSettingsForm
+from users.forms import (
+    CustomSignupForm,
+    CustomSocialSignupForm,
+    NotificationSettingsForm,
+)
+
+
+def _build_request():
+    """Build a request with a working session, as allauth's save() flow needs."""
+    request = RequestFactory().post("/accounts/signup/")
+    SessionMiddleware(lambda r: None).process_request(request)
+    request.session.save()
+    return request
 
 
 class NotificationSettingsFormTests(TestCase):
@@ -26,6 +42,7 @@ class NotificationSettingsFormTests(TestCase):
                 "notification_urls",
                 "daily_digest_enabled",
                 "release_notifications_enabled",
+                "premiere_notifications_enabled",
             ],
         )
 
@@ -216,3 +233,108 @@ class NotificationSettingsFormTests(TestCase):
         self.user.refresh_from_db()
         self.assertFalse(self.user.daily_digest_enabled)
         self.assertTrue(self.user.release_notifications_enabled)
+
+
+class CustomSignupFormTests(TestCase):
+    """Tests for the local-registration CustomSignupForm."""
+
+    def _valid_data(self, username="newuser"):
+        return {
+            "username": username,
+            "password1": "SuperSecret123!",
+            "password2": "SuperSecret123!",
+        }
+
+    def test_email_field_removed(self):
+        """Test the email field is dropped since the User model has none."""
+        form = CustomSignupForm(data=self._valid_data())
+
+        self.assertNotIn("email", form.fields)
+
+    def test_password2_label_customized(self):
+        """Test the confirm-password field gets Floppy's copy."""
+        form = CustomSignupForm(data=self._valid_data())
+
+        self.assertEqual(form.fields["password2"].label, "Confirm Password")
+
+    def test_valid_signup_creates_user(self):
+        """Test a fresh username/password signup succeeds end to end."""
+        form = CustomSignupForm(data=self._valid_data())
+
+        self.assertTrue(form.is_valid(), form.errors)
+        user = form.save(_build_request())
+
+        self.assertTrue(get_user_model().objects.filter(pk=user.pk).exists())
+        self.assertEqual(user.username, "newuser")
+
+    def test_duplicate_username_is_a_validation_error_not_a_crash(self):
+        """Test submitting an existing username returns a form error, not a 500."""
+        get_user_model().objects.create_user(username="taken", password="12345")
+
+        form = CustomSignupForm(data=self._valid_data(username="taken"))
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("username", form.errors)
+
+    def test_save_race_condition_raises_validation_error_not_integrity_error(self):
+        """Test a same-username race at save time surfaces as a validation error.
+
+        `clean_username` only checks the DB at validation time; a concurrent
+        signup for the same username can still slip through and hit the
+        database's unique constraint inside save(). That must not propagate
+        as an unhandled IntegrityError (-> HTTP 500).
+        """
+        form = CustomSignupForm(data=self._valid_data(username="racer"))
+        self.assertTrue(form.is_valid(), form.errors)
+
+        with patch(
+            "allauth.account.forms.BaseSignupForm.save",
+            side_effect=IntegrityError,
+        ):
+            with self.assertRaises(ValidationError) as ctx:
+                form.save(_build_request())
+
+        self.assertEqual(ctx.exception.code, "username_taken")
+
+
+class CustomSocialSignupFormTests(TestCase):
+    """Tests for the OIDC/social CustomSocialSignupForm."""
+
+    def _build_sociallogin(self, username=""):
+        user = get_user_model()(username=username)
+        account = SocialAccount(provider="openid_connect", uid="test-uid")
+        return SocialLogin(user=user, account=account)
+
+    def test_email_field_removed(self):
+        """Test the email field is dropped, mirroring local signup."""
+        form = CustomSocialSignupForm(
+            data={"username": "oidcuser"},
+            sociallogin=self._build_sociallogin(),
+        )
+
+        self.assertNotIn("email", form.fields)
+
+    def test_valid_signup_creates_user(self):
+        """Test completing OIDC signup with a fresh username succeeds."""
+        form = CustomSocialSignupForm(
+            data={"username": "oidcuser"},
+            sociallogin=self._build_sociallogin(),
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        user = form.save(_build_request())
+
+        self.assertTrue(get_user_model().objects.filter(pk=user.pk).exists())
+        self.assertEqual(user.username, "oidcuser")
+
+    def test_duplicate_username_is_a_validation_error_not_a_crash(self):
+        """Test an existing username on OIDC completion is a form error, not a 500."""
+        get_user_model().objects.create_user(username="taken", password="12345")
+
+        form = CustomSocialSignupForm(
+            data={"username": "taken"},
+            sociallogin=self._build_sociallogin(),
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("username", form.errors)

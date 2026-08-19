@@ -5,23 +5,68 @@ from app.models import MediaTypes, Sources, Status
 
 # --- Color Constants ---
 COLORS = {
-    "emerald": {"text": "text-emerald-400", "hex": "#10b981"},
-    "purple": {"text": "text-purple-400", "hex": "#a855f7"},
-    "indigo": {"text": "text-indigo-400", "hex": "#6366f1"},
-    "orange": {"text": "text-orange-400", "hex": "#f97316"},
-    "blue": {"text": "text-blue-400", "hex": "#3b82f6"},
-    "red": {"text": "text-red-400", "hex": "#ef4444"},
-    "yellow": {"text": "text-yellow-400", "hex": "#eab308"},
-    "fuchsia": {"text": "text-fuchsia-400", "hex": "#d946ef"},
-    "cyan": {"text": "text-cyan-400", "hex": "#06b6d4"},
+    "emerald": {
+        "text": "text-emerald-400",
+        "background": "bg-emerald-400",
+        "hex": "#10b981",
+    },
+    "purple": {
+        "text": "text-purple-400",
+        "background": "bg-purple-400",
+        "hex": "#a855f7",
+    },
+    "indigo": {
+        "text": "text-indigo-400",
+        "background": "bg-indigo-400",
+        "hex": "#6366f1",
+    },
+    "orange": {
+        "text": "text-orange-400",
+        "background": "bg-orange-400",
+        "hex": "#f97316",
+    },
+    "blue": {
+        "text": "text-blue-400",
+        "background": "bg-blue-400",
+        "hex": "#3b82f6",
+    },
+    "red": {
+        "text": "text-red-400",
+        "background": "bg-red-400",
+        "hex": "#ef4444",
+    },
+    "yellow": {
+        "text": "text-yellow-400",
+        "background": "bg-yellow-400",
+        "hex": "#eab308",
+    },
+    "fuchsia": {
+        "text": "text-fuchsia-400",
+        "background": "bg-fuchsia-400",
+        "hex": "#d946ef",
+    },
+    "cyan": {
+        "text": "text-cyan-400",
+        "background": "bg-cyan-400",
+        "hex": "#06b6d4",
+    },
+    "lime": {
+        "text": "text-lime-400",
+        "background": "bg-lime-400",
+        "hex": "#84cc16",
+    },
+    "sky": {
+        "text": "text-sky-400",
+        "background": "bg-sky-400",
+        "hex": "#87ceeb",
+    },
 }
 
 # --- Central Configuration Dictionary ---
 MEDIA_TYPE_CONFIG = {
     MediaTypes.TV.value: {
-        "sources": [Sources.TMDB],
+        "sources": [Sources.TMDB, Sources.TVDB],
         "default_source": Sources.TMDB,
-        "sample_query": "Breaking Bad",
         "unicode_icon": "📺",
         "verb": ("watch", "watched"),
         "text_color": COLORS["emerald"]["text"],
@@ -32,7 +77,7 @@ MEDIA_TYPE_CONFIG = {
             <polyline points="17 2 12 7 7 2"/>""",
     },
     MediaTypes.SEASON.value: {
-        "sources": [Sources.TMDB],
+        "sources": [Sources.TMDB, Sources.TVDB],
         "default_source": Sources.TMDB,
         "unicode_icon": "📺",
         "verb": ("watch", "watched"),
@@ -46,7 +91,7 @@ MEDIA_TYPE_CONFIG = {
         "unit": ("E", "Episode"),
     },
     MediaTypes.EPISODE.value: {
-        "sources": [Sources.TMDB],
+        "sources": [Sources.TMDB, Sources.TVDB],
         "default_source": Sources.TMDB,
         "unicode_icon": "📺",
         "verb": ("watch", "watched"),
@@ -57,7 +102,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.MOVIE.value: {
         "sources": [Sources.TMDB],
         "default_source": Sources.TMDB,
-        "sample_query": "The Shawshank Redemption",
         "unicode_icon": "🎬",
         "verb": ("watch", "watched"),
         "text_color": COLORS["orange"]["text"],
@@ -75,9 +119,8 @@ MEDIA_TYPE_CONFIG = {
         "date_key": "release_date",
     },
     MediaTypes.ANIME.value: {
-        "sources": [Sources.MAL],
+        "sources": [Sources.MAL, Sources.TMDB, Sources.TVDB],
         "default_source": Sources.MAL,
-        "sample_query": "Perfect Blue",
         "unicode_icon": "🎭",
         "verb": ("watch", "watched"),
         "text_color": COLORS["blue"]["text"],
@@ -92,7 +135,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.MANGA.value: {
         "sources": [Sources.MAL, Sources.MANGAUPDATES],
         "default_source": Sources.MAL,
-        "sample_query": "Berserk",
         "unicode_icon": "📚",
         "verb": ("read", "read"),
         "text_color": COLORS["red"]["text"],
@@ -110,7 +152,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.GAME.value: {
         "sources": [Sources.IGDB],
         "default_source": Sources.IGDB,
-        "sample_query": "Half-Life",
         "unicode_icon": "🎮",
         "verb": ("play", "played"),
         "text_color": COLORS["yellow"]["text"],
@@ -132,7 +173,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.BOOK.value: {
         "sources": [Sources.HARDCOVER, Sources.OPENLIBRARY],
         "default_source": Sources.HARDCOVER,
-        "sample_query": "The Great Gatsby",
         "unicode_icon": "📖",
         "verb": ("read", "read"),
         "text_color": COLORS["fuchsia"]["text"],
@@ -146,7 +186,6 @@ MEDIA_TYPE_CONFIG = {
     MediaTypes.COMIC.value: {
         "sources": [Sources.COMICVINE],
         "default_source": Sources.COMICVINE,
-        "sample_query": "Batman",
         "unicode_icon": "📕",
         "verb": ("read", "read"),
         "text_color": COLORS["cyan"]["text"],
@@ -158,14 +197,28 @@ MEDIA_TYPE_CONFIG = {
             5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/>""",
         "unit": ("#", "Issue"),
     },
+    MediaTypes.COMIC_ISSUE.value: {
+        "sources": [Sources.COMICVINE],
+        "default_source": Sources.COMICVINE,
+        "unicode_icon": "📄",
+        "verb": ("read", "read"),
+        "text_color": COLORS["cyan"]["text"],
+        "stats_color": COLORS["cyan"]["hex"],
+        "svg_icon": """
+            <rect width="8" height="18" x="3" y="3" rx="1"/>
+            <path d="M7 3v18"/>
+            <path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1
+            5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/>""",
+        "unit": ("#", "Read"),
+        "date_key": "store_date",
+    },
     MediaTypes.BOARDGAME.value: {
         "sources": [Sources.BGG],
         "default_source": Sources.BGG,
-        "sample_query": "Catan",
         "unicode_icon": "🎲",
         "verb": ("play", "played"),
-        "text_color": "text-lime-400",
-        "stats_color": "#84cc16",
+        "text_color": COLORS["lime"]["text"],
+        "stats_color": COLORS["lime"]["hex"],
         "svg_icon": """
             <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
             <circle cx="8" cy="8" r="2"/>
@@ -173,12 +226,11 @@ MEDIA_TYPE_CONFIG = {
             <circle cx="16" cy="16" r="2"/>
             <path d="M8 16v-2"/>""",
         "unit": ("#", "Play"),
-        "date_key": "publish_date",
+        "date_key": "year",
     },
     MediaTypes.MUSIC.value: {
         "sources": [Sources.MUSICBRAINZ],
         "default_source": Sources.MUSICBRAINZ,
-        "sample_query": "Bohemian Rhapsody",
         "unicode_icon": "🎵",
         "verb": ("listen", "listened"),
         "text_color": "text-rose-400",
@@ -191,9 +243,8 @@ MEDIA_TYPE_CONFIG = {
         "date_key": "release_date",
     },
     MediaTypes.PODCAST.value: {
-        "sources": [Sources.POCKETCASTS],
+        "sources": [Sources.POCKETCASTS, Sources.GPODDER, Sources.AUDIOBOOKSHELF],
         "default_source": Sources.POCKETCASTS,
-        "sample_query": "The Daily",
         "unicode_icon": "🎙️",
         "verb": ("listen", "listened"),
         "text_color": COLORS["purple"]["text"],
@@ -219,11 +270,26 @@ COLLECTION_FIELD_CONFIG = {
             "audio_codec",
             "audio_channels",
             "bitrate",
+            "purchase_price",
+            "purchase_location",
             "collected_at",
         ],
-        "labels": {"media_type": "Format", "is_3d": "3D", "collected_at": "Collected At"},
+        "labels": {
+            "media_type": "Format",
+            "is_3d": "3D",
+            "purchase_price": "Purchase Price",
+            "purchase_location": "Purchased From",
+            "collected_at": "Collected At",
+        },
         "choices": {
-            "media_type": ["4K Blu-ray", "Blu-ray", "DVD", "Digital", "Streaming", "VHS"],
+            "media_type": [
+                "4K Blu-ray",
+                "Blu-ray",
+                "DVD",
+                "Digital",
+                "Streaming",
+                "VHS",
+            ],
             "resolution": ["480p", "720p", "1080p", "4K", "8K"],
             "hdr": ["HDR10", "HDR10+", "Dolby Vision", "HLG"],
             "audio_codec": [
@@ -243,8 +309,21 @@ COLLECTION_FIELD_CONFIG = {
         },
     },
     "music": {
-        "fields": ["media_type", "audio_codec", "audio_channels", "bitrate", "collected_at"],
-        "labels": {"media_type": "Format", "collected_at": "Collected At"},
+        "fields": [
+            "media_type",
+            "audio_codec",
+            "audio_channels",
+            "bitrate",
+            "purchase_price",
+            "purchase_location",
+            "collected_at",
+        ],
+        "labels": {
+            "media_type": "Format",
+            "purchase_price": "Purchase Price",
+            "purchase_location": "Purchased From",
+            "collected_at": "Collected At",
+        },
         "choices": {
             "media_type": ["Vinyl", "CD", "Digital", "Cassette", "SACD", "Streaming"],
             "audio_codec": ["FLAC", "MP3", "AAC", "ALAC", "WAV", "OGG", "Opus"],
@@ -253,23 +332,38 @@ COLLECTION_FIELD_CONFIG = {
         },
     },
     "books": {
-        "fields": ["media_type", "collected_at"],
-        "labels": {"media_type": "Format", "collected_at": "Collected At"},
+        "fields": ["media_type", "purchase_price", "purchase_location", "collected_at"],
+        "labels": {
+            "media_type": "Format",
+            "purchase_price": "Purchase Price",
+            "purchase_location": "Purchased From",
+            "collected_at": "Collected At",
+        },
         "choices": {
-            "media_type": ["Hardcover", "Paperback", "Trade Paperback", "Digital", "Audiobook"],
+            "media_type": [
+                "Hardcover",
+                "Paperback",
+                "Trade Paperback",
+                "Digital",
+                "Audiobook",
+            ],
         },
     },
     "games": {
         "fields": [
-            "media_type",
             "resolution",
+            "media_type",
             "hdr",
+            "purchase_price",
+            "purchase_location",
             "collected_at",
         ],
         "labels": {
             "media_type": "Format",
             "resolution": "Platform",
             "hdr": "Edition",
+            "purchase_price": "Purchase Price",
+            "purchase_location": "Purchased From",
             "collected_at": "Collected At",
         },
         "choices": {
@@ -302,8 +396,13 @@ COLLECTION_FIELD_CONFIG = {
         },
     },
     "boardgames": {
-        "fields": ["media_type", "collected_at"],
-        "labels": {"media_type": "Format", "collected_at": "Collected At"},
+        "fields": ["media_type", "purchase_price", "purchase_location", "collected_at"],
+        "labels": {
+            "media_type": "Format",
+            "purchase_price": "Purchase Price",
+            "purchase_location": "Purchased From",
+            "collected_at": "Collected At",
+        },
         "choices": {
             "media_type": ["Physical", "Print & Play", "Digital"],
         },
@@ -320,6 +419,7 @@ COLLECTION_FIELD_BY_TYPE = {
     MediaTypes.BOOK.value: COLLECTION_FIELD_CONFIG["books"],
     MediaTypes.MANGA.value: COLLECTION_FIELD_CONFIG["books"],
     MediaTypes.COMIC.value: COLLECTION_FIELD_CONFIG["books"],
+    MediaTypes.COMIC_ISSUE.value: COLLECTION_FIELD_CONFIG["books"],
     MediaTypes.GAME.value: COLLECTION_FIELD_CONFIG["games"],
     MediaTypes.BOARDGAME.value: COLLECTION_FIELD_CONFIG["boardgames"],
 }
@@ -329,22 +429,27 @@ STATUS_CONFIG = {
     Status.COMPLETED.value: {
         "text_color": COLORS["emerald"]["text"],
         "stats_color": COLORS["emerald"]["hex"],
+        "background_color": COLORS["emerald"]["background"],
     },
     Status.IN_PROGRESS.value: {
         "text_color": COLORS["indigo"]["text"],
         "stats_color": COLORS["indigo"]["hex"],
+        "background_color": COLORS["indigo"]["background"],
     },
     Status.PAUSED.value: {
         "text_color": COLORS["orange"]["text"],
         "stats_color": COLORS["orange"]["hex"],
+        "background_color": COLORS["orange"]["background"],
     },
     Status.PLANNING.value: {
-        "text_color": COLORS["blue"]["text"],
-        "stats_color": COLORS["blue"]["hex"],
+        "text_color": COLORS["sky"]["text"],
+        "stats_color": COLORS["sky"]["hex"],
+        "background_color": COLORS["sky"]["background"],
     },
     Status.DROPPED.value: {
         "text_color": COLORS["red"]["text"],
         "stats_color": COLORS["red"]["hex"],
+        "background_color": COLORS["red"]["background"],
     },
 }
 
@@ -374,9 +479,18 @@ def get_default_source_name(media_type):
     return get_property(media_type, "default_source")
 
 
-def get_sample_query(media_type):
-    """Get the sample search query."""
-    return get_property(media_type, "sample_query")
+DISCOVER_ALLOWED_MEDIA_TYPES = {
+    MediaTypes.MOVIE.value,
+    MediaTypes.TV.value,
+    MediaTypes.ANIME.value,
+    MediaTypes.MUSIC.value,
+    MediaTypes.PODCAST.value,
+    MediaTypes.BOOK.value,
+    MediaTypes.COMIC.value,
+    MediaTypes.MANGA.value,
+    MediaTypes.GAME.value,
+    MediaTypes.BOARDGAME.value,
+}
 
 
 def supports_collection_auto_fetch(media_type):
@@ -390,15 +504,18 @@ def get_collection_field_config(media_type):
     return COLLECTION_FIELD_BY_TYPE.get(media_type, COLLECTION_FIELD_CONFIG["video"])
 
 
-def get_sample_search_url(media_type):
-    """Get the full sample search URL."""
-    if media_type == MediaTypes.SEASON.value:
+def get_browse_url(media_type):
+    """Get a Discover URL filtered to the given media type."""
+    if media_type in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value):
         media_type = MediaTypes.TV.value
+    elif media_type == MediaTypes.COMIC_ISSUE.value:
+        media_type = MediaTypes.COMIC.value
 
-    query = get_sample_query(media_type)
+    if media_type not in DISCOVER_ALLOWED_MEDIA_TYPES:
+        media_type = "all"
 
-    base_url = reverse("search")
-    query_params = {"media_type": media_type, "q": query}
+    base_url = reverse("discover")
+    query_params = {"media_type": media_type}
     return f"{base_url}?{urlencode(query_params)}"
 
 
@@ -465,3 +582,8 @@ def get_status_text_color(status):
 def get_status_stats_color(status):
     """Get the stats color for a status."""
     return get_status_property(status, "stats_color")
+
+
+def get_status_background_color(status):
+    """Get the background color for a status."""
+    return get_status_property(status, "background_color")

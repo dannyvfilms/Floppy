@@ -15,7 +15,8 @@ from django.db.models import (
 from django.utils import timezone
 
 from app import config
-from app.models import TV, Item, MediaTypes, Season, Status
+from app.models import TV, Item, MediaTypes, Season, Sources, Status
+from app.services.item_merge import dedupe_cross_provider_items
 
 # Statuses that represent inactive tracking
 # will be ignored when creating events
@@ -75,7 +76,68 @@ class EventManager(models.Manager):
             datetime__lte=end_datetime,
         ).select_related("item")
 
+        hidden_item_ids = self._cross_provider_hidden_season_item_ids(
+            user,
+            enabled_types,
+        )
+        if hidden_item_ids:
+            queryset = queryset.exclude(item_id__in=hidden_item_ids)
+
         return self.sort_with_sentinel_last(queryset)
+
+    def _active_tv_show_media_ids(self, user):
+        """Return media_ids of the user's actively-tracked TV shows."""
+        return (
+            TV.objects.filter(
+                user=user,
+                item__media_type=MediaTypes.TV.value,
+            )
+            .exclude(
+                status__in=INACTIVE_TRACKING_STATUSES,
+            )
+            .values_list("item__media_id", flat=True)
+        )
+
+    def _cross_provider_hidden_season_item_ids(self, user, enabled_types):
+        """Return Season `Item` ids to hide because a preferred counterpart exists.
+
+        A user can legitimately track the same show under both a TMDB and a
+        TVDB identity (the #620 dual-identity model); each identity gets its
+        own independent Season `Item`s and `Event`s. Without this, the
+        calendar shows the same real episode twice - once per identity
+        (#639). Uses the same verified `provider_external_ids["tvdb_id"]`
+        based dedup already used for Home rows.
+        """
+        if not (
+            MediaTypes.TV.value in enabled_types
+            or MediaTypes.SEASON.value in enabled_types
+        ):
+            return set()
+
+        active_tv_shows = self._active_tv_show_media_ids(user)
+        if not active_tv_shows:
+            return set()
+
+        season_items = list(
+            Item.objects.filter(
+                media_type=MediaTypes.SEASON.value,
+                media_id__in=active_tv_shows,
+            ),
+        )
+        if not season_items:
+            return set()
+
+        preferred_source = getattr(
+            user,
+            "tv_metadata_source_default",
+            Sources.TMDB.value,
+        )
+        deduped = dedupe_cross_provider_items(season_items, preferred_source)
+        if len(deduped) == len(season_items):
+            return set()
+
+        kept_ids = {item.id for item in deduped}
+        return {item.id for item in season_items if item.id not in kept_ids}
 
     def _build_tv_query(self, user, enabled_types):
         """Build query for TV shows based on TV status and season statuses."""
@@ -86,16 +148,7 @@ class EventManager(models.Manager):
             return Q()
 
         # Get active TV shows
-        active_tv_shows = (
-            TV.objects.filter(
-                user=user,
-                item__media_type=MediaTypes.TV.value,
-            )
-            .exclude(
-                status__in=INACTIVE_TRACKING_STATUSES,
-            )
-            .values_list("item__media_id", flat=True)
-        )
+        active_tv_shows = self._active_tv_show_media_ids(user)
 
         if not active_tv_shows:
             return Q()

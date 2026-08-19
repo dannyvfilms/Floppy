@@ -36,7 +36,10 @@ class MusicScrobbleServiceTests(TestCase):
         self.user.anime_enabled = True
         self.user.save()
 
-        self.search_patcher = patch("app.services.music_scrobble.musicbrainz.search", return_value={"results": [], "total_results": 0})
+        self.search_patcher = patch(
+            "app.services.music_scrobble.musicbrainz.search",
+            return_value={"results": [], "total_results": 0},
+        )
         self.search_artists_patcher = patch(
             "app.services.music_scrobble.musicbrainz.search_artists",
             return_value={"results": [], "total_results": 0},
@@ -50,7 +53,9 @@ class MusicScrobbleServiceTests(TestCase):
 
     @patch("app.services.music_scrobble.musicbrainz.search_artists")
     @patch("app.services.music_scrobble.musicbrainz.search")
-    def test_record_music_playback_creates_entries(self, mock_search, mock_search_artists):
+    def test_record_music_playback_creates_entries(
+        self, mock_search, mock_search_artists
+    ):
         """Play events build catalog only; scrobble creates tracking entry."""
         mock_search.return_value = {
             "results": [],
@@ -111,6 +116,10 @@ class MusicScrobbleServiceTests(TestCase):
         self.assertTrue(
             AlbumTracker.objects.filter(user=self.user, album=music.album).exists(),
         )
+        history_rows = list(music.history.order_by("history_date"))
+        self.assertEqual(len(history_rows), 1)
+        self.assertEqual(history_rows[0].progress, 1)
+        self.assertEqual(history_rows[0].history_user, self.user)
 
     @patch("app.services.music_scrobble.sync_artist_discography")
     @patch("app.services.music_scrobble.musicbrainz.get_artist")
@@ -212,7 +221,10 @@ class MusicScrobbleServiceTests(TestCase):
         mock_sync_discog,
     ):
         """Search fallback should set MBIDs so metadata and discography can load."""
-        mock_get_artist.return_value = {"country": "NL", "image": "http://example.com/a.jpg"}
+        mock_get_artist.return_value = {
+            "country": "NL",
+            "image": "http://example.com/a.jpg",
+        }
         mock_search.return_value = {
             "results": [
                 {
@@ -274,7 +286,10 @@ class MusicScrobbleServiceTests(TestCase):
             "details": {"duration_minutes": 4},
             "genres": [],
         }
-        mock_get_artist.return_value = {"country": "GB", "image": "http://example.com/legacy.jpg"}
+        mock_get_artist.return_value = {
+            "country": "GB",
+            "image": "http://example.com/legacy.jpg",
+        }
 
         event = MusicPlaybackEvent(
             user=self.user,
@@ -536,7 +551,10 @@ class MusicScrobbleServiceTests(TestCase):
             "per_page": 20,
             "total_pages": 1,
         }
-        mock_get_artist.return_value = {"country": "US", "image": "http://example.com/wb.jpg"}
+        mock_get_artist.return_value = {
+            "country": "US",
+            "image": "http://example.com/wb.jpg",
+        }
 
         event = MusicPlaybackEvent(
             user=self.user,
@@ -560,7 +578,9 @@ class MusicScrobbleServiceTests(TestCase):
         """When album already has tracklist, reuse matching track instead of creating duplicates."""
         artist = Artist.objects.create(name="Walter Beasley")
         album = Album.objects.create(title="Tonight We Love", artist=artist)
-        existing_track = album.tracklist.create(title="Let's Stay Together", track_number=2)
+        existing_track = album.tracklist.create(
+            title="Let's Stay Together", track_number=2
+        )
 
         event = MusicPlaybackEvent(
             user=self.user,
@@ -608,14 +628,22 @@ class MusicScrobbleServiceTests(TestCase):
 
     @patch("app.services.music_scrobble.musicbrainz.search")
     @patch("app.services.music_scrobble.musicbrainz.search_artists")
-    def test_album_dedupe_moves_music_and_tracks(self, mock_search_artists, mock_search_tracks):
+    def test_album_dedupe_moves_music_and_tracks(
+        self, mock_search_artists, mock_search_tracks
+    ):
         """Duplicate albums with same title should merge into primary."""
         mock_search_tracks.return_value = {"results": [], "total_results": 0, "page": 1}
-        mock_search_artists.return_value = {"results": [], "total_results": 0, "page": 1}
+        mock_search_artists.return_value = {
+            "results": [],
+            "total_results": 0,
+            "page": 1,
+        }
         artist = Artist.objects.create(name="Lou Donaldson")
         primary = Album.objects.create(title="Blues Walk", artist=artist)
         dup = Album.objects.create(title="Blues Walk", artist=artist)
-        primary_track = primary.tracklist.create(title="Autumn Nocturne", track_number=5)
+        primary_track = primary.tracklist.create(
+            title="Autumn Nocturne", track_number=5
+        )
         dup_track = dup.tracklist.create(title="Autumn Nocturne", track_number=None)
 
         item = Item.objects.create(
@@ -648,16 +676,24 @@ class MusicScrobbleServiceTests(TestCase):
 
         music = record_music_playback(event)
 
-        self.assertEqual(Album.objects.filter(artist=artist, title="Blues Walk").count(), 1)
+        self.assertEqual(
+            Album.objects.filter(artist=artist, title="Blues Walk").count(), 1
+        )
         self.assertEqual(music.album.id, primary.id)
         self.assertEqual(music.track.id, primary_track.id)
 
     @patch("app.services.music_scrobble.musicbrainz.search")
     @patch("app.services.music_scrobble.musicbrainz.search_artists")
-    def test_album_dedupe_prefers_richer_metadata(self, mock_search_artists, mock_search_tracks):
+    def test_album_dedupe_prefers_richer_metadata(
+        self, mock_search_artists, mock_search_tracks
+    ):
         """Primary selection should favor album with tracks/image/release IDs."""
         mock_search_tracks.return_value = {"results": [], "total_results": 0, "page": 1}
-        mock_search_artists.return_value = {"results": [], "total_results": 0, "page": 1}
+        mock_search_artists.return_value = {
+            "results": [],
+            "total_results": 0,
+            "page": 1,
+        }
         artist = Artist.objects.create(name="Test Artist")
         rich = Album.objects.create(
             title="Blues Walk",
@@ -690,6 +726,56 @@ class MusicScrobbleServiceTests(TestCase):
         dedupe_artist_albums(artist)
         music.refresh_from_db()
 
-        self.assertEqual(Album.objects.filter(artist=artist, title="Blues Walk").count(), 1)
+        self.assertEqual(
+            Album.objects.filter(artist=artist, title="Blues Walk").count(), 1
+        )
         self.assertEqual(music.album.id, rich.id)
         self.assertEqual(music.track.album.id, rich.id)
+
+    @patch("app.services.music_scrobble.musicbrainz.search")
+    @patch("app.services.music_scrobble.musicbrainz.search_artists")
+    def test_scrobble_uses_surviving_album_after_pre_track_dedupe(
+        self,
+        mock_search_artists,
+        mock_search_tracks,
+    ):
+        """Track creation should use the canonical album chosen during dedupe."""
+        mock_search_tracks.return_value = {"results": [], "total_results": 0, "page": 1}
+        mock_search_artists.return_value = {
+            "results": [],
+            "total_results": 0,
+            "page": 1,
+        }
+        artist = Artist.objects.create(name="Test Artist")
+        poor = Album.objects.create(title="Blues Walk", artist=artist)
+        rich = Album.objects.create(
+            title="Blues Walk",
+            artist=artist,
+            musicbrainz_release_id="rel-1",
+            image="http://img/rich.jpg",
+            tracks_populated=True,
+        )
+        rich_track = rich.tracklist.create(title="Track A", track_number=1)
+
+        event = MusicPlaybackEvent(
+            user=self.user,
+            artist_name="Test Artist",
+            album_title="Blues Walk",
+            track_title="Track A",
+            track_number=1,
+            duration_ms=None,
+            plex_rating_key="plex-rich",
+            external_ids={},
+            completed=True,
+            played_at=timezone.now().replace(second=0, microsecond=0),
+        )
+
+        music = record_music_playback(event)
+
+        self.assertEqual(
+            Album.objects.filter(artist=artist, title="Blues Walk").count(), 1
+        )
+        self.assertFalse(Album.objects.filter(id=poor.id).exists())
+        self.assertEqual(music.album.id, rich.id)
+        self.assertEqual(music.track.id, rich_track.id)
+        self.assertEqual(music.track.album_id, rich.id)

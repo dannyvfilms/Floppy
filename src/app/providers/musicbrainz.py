@@ -2,12 +2,16 @@
 
 import logging
 import time
+from collections import OrderedDict
+from http import HTTPStatus
+from urllib.parse import quote
 
 import requests
 from django.conf import settings
 from django.core.cache import cache
 
 from app import helpers
+from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
 from app.providers import services
 
@@ -21,16 +25,85 @@ DISCOGRAPHY_CACHE_VERSION = 2
 _last_request_time = 0
 
 # User-Agent required by MusicBrainz API
-USER_AGENT = "Yamtrack/1.0 (https://github.com/FuzzyGrim/Yamtrack)"
+USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
+_GENRE_ACRONYMS = frozenset({"ebm", "edm", "idm", "ndw", "nsbm", "nwobhm", "usbm"})
+_GENRE_PARENT_SUFFIXES = {
+    "rock": "Rock",
+    "metal": "Metal",
+    "jazz": "Jazz",
+    "folk": "Folk",
+    "country": "Country",
+    "blues": "Blues",
+    "punk": "Punk",
+    "rap": "Rap",
+}
+_GENRE_PARENT_TOKENS = {
+    "experimental": "Experimental",
+}
+_GENRE_PARENT_EXACT_FALLBACKS = {
+    "plunderphonics": ["Experimental"],
+}
+
+
+def capitalize_genre(name: str) -> str:
+    """Return a display-friendly MusicBrainz genre name."""
+    if not name:
+        return name
+
+    normalized = str(name).strip()
+    if not normalized:
+        return normalized
+
+    lowered = normalized.lower()
+    if lowered in _GENRE_ACRONYMS:
+        return lowered.upper()
+
+    if "-" in normalized:
+        return "-".join(capitalize_genre(part) for part in normalized.split("-"))
+
+    return normalized.title()
+
+
+def _normalize_musicbrainz_genre_names(values) -> list[str]:
+    """Normalize raw MusicBrainz genre/tag payloads into deduped display names."""
+    normalized = OrderedDict()
+    for value in values or []:
+        if isinstance(value, dict):
+            value = value.get("name")  # noqa: PLW2901  # deliberate in-loop normalisation
+        name = capitalize_genre(str(value).strip()) if value else ""
+        if name:
+            normalized.setdefault(name.lower(), name)
+    return list(normalized.values())
+
+
+def _infer_genre_parents(genre_name: str) -> list[str]:
+    """Infer broad parent genres when MusicBrainz cannot return genre relations."""
+    normalized_name = capitalize_genre(str(genre_name or "").strip())
+    if not normalized_name:
+        return []
+
+    lowered_name = normalized_name.lower()
+    inferred = []
+    inferred.extend(_GENRE_PARENT_EXACT_FALLBACKS.get(lowered_name, []))
+
+    for token, parent in _GENRE_PARENT_TOKENS.items():
+        if token in lowered_name and lowered_name != parent.lower():
+            inferred.append(parent)
+
+    for suffix, parent in _GENRE_PARENT_SUFFIXES.items():
+        if lowered_name.endswith(f" {suffix}") and lowered_name != parent.lower():
+            inferred.append(parent)
+
+    return _normalize_musicbrainz_genre_names(inferred)
 
 
 def get_wikipedia_data(title):
     """Fetch Wikipedia data for a given title (bio extract and image).
-    
+
     Uses Wikipedia's REST API to get a summary/extract and image.
     The title can be an artist name or a specific Wikipedia article title
     (e.g., "Queen_(band)" which is more accurate than just "Queen").
-    
+
     Returns a dict with 'extract' and 'image' keys, or None values if not found.
     """
     if not title:
@@ -59,7 +132,7 @@ def get_wikipedia_data(title):
 
             # Get the extract (bio)
             extract = data.get("extract", "")
-            result["extract"] = extract if extract else None
+            result["extract"] = extract or None
 
             # Get the image - prefer originalimage, fall back to thumbnail
             original = data.get("originalimage", {})
@@ -78,14 +151,14 @@ def get_wikipedia_data(title):
             cache.set(cache_key, result, 60 * 60 * 24)  # Cache miss for 1 day
 
     except Exception as e:
-        logger.debug("Failed to fetch Wikipedia data for %s: %s", artist_name, e)
+        logger.debug("Failed to fetch Wikipedia data for %s: %s", title, e)
 
     return result
 
 
 def get_wikipedia_extract(artist_name):
     """Fetch the Wikipedia extract for an artist (legacy wrapper).
-    
+
     Returns just the extract string for backwards compatibility.
     """
     data = get_wikipedia_data(artist_name)
@@ -94,7 +167,7 @@ def get_wikipedia_extract(artist_name):
 
 def _rate_limit():
     """Ensure minimum time between MusicBrainz API requests."""
-    global _last_request_time
+    global _last_request_time  # noqa: PLW0603  # module-level rate limiter state
     current_time = time.time()
     elapsed = current_time - _last_request_time
     if elapsed < MIN_REQUEST_INTERVAL:
@@ -117,17 +190,19 @@ def _mb_request(endpoint, params=None):
     }
 
     try:
-        response = services.api_request(
+        return services.api_request(
             Sources.MUSICBRAINZ.value,
             "GET",
             url,
             params=params,
             headers=headers,
         )
-        return response
     except requests.exceptions.HTTPError as error:
         # Downgrade noise for missing/invalid IDs
-        if error.response is not None and error.response.status_code == 404:
+        if (
+            error.response is not None
+            and error.response.status_code == HTTPStatus.NOT_FOUND
+        ):
             logger.debug("MusicBrainz API request 404 for %s: %s", url, error)
         else:
             logger.warning("MusicBrainz API request failed: %s", error)
@@ -138,8 +213,8 @@ def _mb_request(endpoint, params=None):
 
 
 def _try_fetch_cover_from_url(url):
-    """Helper to fetch cover from a specific Cover Art Archive URL.
-    
+    """Fetch a cover from a specific Cover Art Archive URL.
+
     Returns the best quality image URL or None.
     """
     try:
@@ -161,20 +236,20 @@ def _try_fetch_cover_from_url(url):
                     # Try different thumbnail sizes (prefer medium quality for performance)
                     thumbnails = image.get("thumbnails", {})
                     return (
-                        thumbnails.get("500") or
-                        thumbnails.get("large") or
-                        thumbnails.get("250") or
-                        image.get("image")
+                        thumbnails.get("500")
+                        or thumbnails.get("large")
+                        or thumbnails.get("250")
+                        or image.get("image")
                     )
             # No front cover, use first available image
             if response["images"]:
                 first_image = response["images"][0]
                 thumbnails = first_image.get("thumbnails", {})
                 return (
-                    thumbnails.get("500") or
-                    thumbnails.get("large") or
-                    thumbnails.get("250") or
-                    first_image.get("image")
+                    thumbnails.get("500")
+                    or thumbnails.get("large")
+                    or thumbnails.get("250")
+                    or first_image.get("image")
                 )
     except Exception as e:
         logger.debug("Cover art fetch failed for %s: %s", url, e)
@@ -183,14 +258,14 @@ def _try_fetch_cover_from_url(url):
 
 def get_cover_art(release_id=None, release_group_id=None):
     """Fetch cover art from Cover Art Archive.
-    
+
     This is the centralized function for all cover art fetching.
     Tries release first, then release-group as fallback.
-    
+
     Args:
         release_id: MusicBrainz release ID (specific album edition)
         release_group_id: MusicBrainz release group ID (canonical album)
-    
+
     Returns:
         Image URL or IMG_NONE placeholder
     """
@@ -211,7 +286,9 @@ def get_cover_art(release_id=None, release_group_id=None):
 
     # If no cover for release, try release group as fallback
     if not image_url and release_group_id:
-        image_url = _try_fetch_cover_from_url(f"{COVER_ART_BASE}/release-group/{release_group_id}")
+        image_url = _try_fetch_cover_from_url(
+            f"{COVER_ART_BASE}/release-group/{release_group_id}"
+        )
 
     result = image_url or settings.IMG_NONE
 
@@ -226,9 +303,16 @@ def _get_cover_art(release_id, release_group_id=None):
     return get_cover_art(release_id=release_id, release_group_id=release_group_id)
 
 
+def _cover_art_async_url(release_id):
+    """Return a direct Cover Art Archive image URL for client-side loading."""
+    if not release_id:
+        return settings.IMG_NONE
+    return f"{COVER_ART_BASE}/release/{release_id}/front-250"
+
+
 def search(query, page=1, skip_cover_art=False):
     """Search for music recordings on MusicBrainz.
-    
+
     Args:
         query: Search query string
         page: Page number for pagination
@@ -272,7 +356,9 @@ def search(query, page=1, skip_cover_art=False):
                 if isinstance(credit, dict):
                     if not artist_id:
                         artist_id = credit.get("artist", {}).get("id")
-                    artist_parts.append(credit.get("name", credit.get("artist", {}).get("name", "")))
+                    artist_parts.append(
+                        credit.get("name", credit.get("artist", {}).get("name", ""))
+                    )
                     artist_parts.append(credit.get("joinphrase", ""))
             artist_name = "".join(artist_parts).strip()
 
@@ -289,12 +375,15 @@ def search(query, page=1, skip_cover_art=False):
             album_title = first_release.get("title", "")
             release_date = first_release.get("date", "")
             release_id = first_release.get("id")
-            release_group = first_release.get("release-group") or first_release.get("release_group") or {}
+            release_group = (
+                first_release.get("release-group")
+                or first_release.get("release_group")
+                or {}
+            )
             release_group_id = release_group.get("id")
             # Try to get cover art from the first release (skip if requested for faster search)
-            if not skip_cover_art:
-                if release_id:
-                    image = _get_cover_art(release_id)
+            if not skip_cover_art and release_id:
+                image = _get_cover_art(release_id)
 
         # Get duration in milliseconds, convert to minutes
         duration_ms = recording.get("length")
@@ -307,21 +396,23 @@ def search(query, page=1, skip_cover_art=False):
         if artist_name:
             display_title = f"{title} - {artist_name}"
 
-        results.append({
-            "media_id": recording_id,
-            "source": Sources.MUSICBRAINZ.value,
-            "media_type": MediaTypes.MUSIC.value,
-            "title": display_title,
-            "image": image,
-            # Store additional data for later use
-            "artist_name": artist_name,
-            "album_title": album_title,
-            "artist_id": artist_id,
-            "release_id": release_id,
-            "release_group_id": release_group_id,
-            "duration_minutes": duration_minutes,
-            "release_date": release_date,
-        })
+        results.append(
+            {
+                "media_id": recording_id,
+                "source": Sources.MUSICBRAINZ.value,
+                "media_type": MediaTypes.MUSIC.value,
+                "title": display_title,
+                "image": image,
+                # Store additional data for later use
+                "artist_name": artist_name,
+                "album_title": album_title,
+                "artist_id": artist_id,
+                "release_id": release_id,
+                "release_group_id": release_group_id,
+                "duration_minutes": duration_minutes,
+                "release_date": release_date,
+            }
+        )
 
     data = helpers.format_search_response(
         page=page,
@@ -449,6 +540,147 @@ def recording(media_id):
     return result
 
 
+def get_release_group_genres(release_group_id: str) -> list[str]:
+    """Return normalized release-group genres/tags for a MusicBrainz release group."""
+    if not release_group_id:
+        return []
+
+    cache_key = f"musicbrainz_release_group_genres_{release_group_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        response = _mb_request(
+            f"release-group/{release_group_id}",
+            {"inc": "genres+tags"},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug(
+            "Failed to fetch release-group genres for %s: %s",
+            release_group_id,
+            exception_summary(exc),
+        )
+        return []
+
+    genres = _normalize_musicbrainz_genre_names(response.get("genres"))
+    if not genres:
+        genres = _normalize_musicbrainz_genre_names(response.get("tags"))
+
+    cache.set(cache_key, genres, 60 * 60 * 24 * 7)
+    return genres
+
+
+def get_genre_mbid(genre_name: str) -> str:
+    """Return the MusicBrainz genre MBID for a display name, or an empty string."""
+    normalized_name = str(genre_name or "").strip()
+    if not normalized_name:
+        return ""
+
+    cache_key = f"musicbrainz_genre_mbid_v3_{normalized_name.lower()}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    query = f'name:"{normalized_name}"'
+    try:
+        response = _mb_request(
+            "genre",
+            {"query": query},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug(
+            "Failed to resolve MusicBrainz genre MBID for %s: %s",
+            normalized_name,
+            exception_summary(exc),
+        )
+        return ""
+
+    mbid = ""
+    for genre in response.get("genres", []):
+        candidate_name = str(genre.get("name") or "").strip()
+        if candidate_name.lower() == normalized_name.lower():
+            mbid = genre.get("id") or ""
+            break
+    if not mbid and response.get("genres"):
+        mbid = response["genres"][0].get("id") or ""
+
+    cache.set(cache_key, mbid, 60 * 60 * 24 * 30)
+    return mbid
+
+
+def get_genre_parents(genre_name: str, *, max_depth: int = 3) -> list[str]:
+    """Return deduped implied parent genres for a MusicBrainz genre name."""
+    normalized_name = capitalize_genre(str(genre_name or "").strip())
+    if not normalized_name or max_depth < 1:
+        return []
+
+    cache_key = f"musicbrainz_genre_parents_v3_{normalized_name.lower()}_{max_depth}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    mbid = get_genre_mbid(normalized_name)
+    if not mbid:
+        inferred = _infer_genre_parents(normalized_name)
+        cache.set(cache_key, inferred, 60 * 60 * 24 * 30)
+        return inferred
+
+    seen = set()
+
+    def _walk(current_mbid: str, depth: int) -> list[str]:
+        if depth >= max_depth or not current_mbid or current_mbid in seen:
+            return []
+
+        seen.add(current_mbid)
+        try:
+            response = _mb_request(
+                f"genre/{quote(current_mbid)}",
+                {"inc": "genre-rels"},
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug(
+                "Failed to fetch MusicBrainz genre parents for %s: %s",
+                current_mbid,
+                exception_summary(exc),
+            )
+            return []
+
+        matching_relations = [
+            relation
+            for relation in response.get("relations", [])
+            if relation.get("type") == "subgenre of"
+        ]
+        forward_relations = [
+            relation
+            for relation in matching_relations
+            if relation.get("direction") == "forward"
+        ]
+        parent_relations = forward_relations or matching_relations
+
+        parents = []
+        for relation in parent_relations:
+            parent_payload = relation.get("genre") or {}
+            parent_name = capitalize_genre(
+                str(parent_payload.get("name") or "").strip()
+            )
+            parent_mbid = parent_payload.get("id") or ""
+            if parent_name:
+                parents.append(parent_name)
+            if parent_mbid:
+                parents.extend(_walk(parent_mbid, depth + 1))
+        return parents
+
+    normalized = _normalize_musicbrainz_genre_names(_walk(mbid, 0))
+    normalized = [
+        value for value in normalized if value.lower() != normalized_name.lower()
+    ]
+    if not normalized:
+        normalized = _infer_genre_parents(normalized_name)
+    cache.set(cache_key, normalized, 60 * 60 * 24 * 30)
+    return normalized
+
+
 def search_artists(query, page=1):
     """Search for artists on MusicBrainz."""
     cache_key = f"musicbrainz_artist_search_{query.lower()}_p{page}"
@@ -479,11 +711,13 @@ def search_artists(query, page=1):
     if not artists:
         variants = {query}
         if "/" in query:
-            variants.update({
-                query.replace("/", " "),
-                query.replace("/", ""),
-                query.replace("/", "-"),
-            })
+            variants.update(
+                {
+                    query.replace("/", " "),
+                    query.replace("/", ""),
+                    query.replace("/", "-"),
+                }
+            )
         # MusicBrainz sometimes matches better with quoted exact queries
         variants.add(f'"{query}"')
         # Run fallback queries until we get a hit
@@ -502,13 +736,19 @@ def search_artists(query, page=1):
                     total_results = resp.get("count", total_results)
                     break
             except Exception as exc:  # pragma: no cover - defensive
-                logger.debug("musicbrainz.search_artists fallback failed for %s: %s", variant, exc)
+                logger.debug(
+                    "musicbrainz.search_artists fallback failed for %s: %s",
+                    variant,
+                    exception_summary(exc),
+                )
 
     data = {
         "page": page,
         "per_page": per_page,
         "total_results": total_results,
-        "total_pages": (total_results + per_page - 1) // per_page if total_results > 0 else 0,
+        "total_pages": (total_results + per_page - 1) // per_page
+        if total_results > 0
+        else 0,
         "results": [],
     }
 
@@ -523,15 +763,17 @@ def search_artists(query, page=1):
         begin = life_span.get("begin", "")
 
         # Keep both artist_id and id for callers that expect the generic key
-        data["results"].append({
-            "artist_id": artist_id,
-            "id": artist_id,
-            "name": name,
-            "sort_name": sort_name,
-            "disambiguation": disambiguation,
-            "begin_year": begin[:4] if begin else None,
-            "type": artist.get("type", ""),
-        })
+        data["results"].append(
+            {
+                "artist_id": artist_id,
+                "id": artist_id,
+                "name": name,
+                "sort_name": sort_name,
+                "disambiguation": disambiguation,
+                "begin_year": begin[:4] if begin else None,
+                "type": artist.get("type", ""),
+            }
+        )
 
     cache.set(cache_key, data, 60 * 60 * 24)
     return data
@@ -539,7 +781,7 @@ def search_artists(query, page=1):
 
 def search_releases(query, page=1, skip_cover_art=False):
     """Search for releases (albums) on MusicBrainz.
-    
+
     Args:
         query: Search query string
         page: Page number for pagination
@@ -592,20 +834,24 @@ def search_releases(query, page=1, skip_cover_art=False):
         if not skip_cover_art:
             image = _get_cover_art(release_id)
 
-        results.append({
-            "release_id": release_id,
-            "title": title,
-            "artist_name": artist_name,
-            "artist_id": artist_id,
-            "release_date": date,
-            "image": image,
-        })
+        results.append(
+            {
+                "release_id": release_id,
+                "title": title,
+                "artist_name": artist_name,
+                "artist_id": artist_id,
+                "release_date": date,
+                "image": image,
+            }
+        )
 
     data = {
         "page": page,
         "per_page": per_page,
         "total_results": total_results,
-        "total_pages": (total_results + per_page - 1) // per_page if total_results > 0 else 0,
+        "total_pages": (total_results + per_page - 1) // per_page
+        if total_results > 0
+        else 0,
         "results": results,
     }
 
@@ -621,7 +867,7 @@ def get_artist(artist_id):
         return cached
 
     params = {
-        "inc": "releases+release-groups+tags+ratings+annotation+genres+url-rels",
+        "inc": "releases+release-groups+tags+ratings+annotation+genres+url-rels+artist-rels",
     }
 
     response = _mb_request(f"artist/{artist_id}", params)
@@ -638,7 +884,7 @@ def get_artist(artist_id):
     end_date = life_span.get("end", "")
     ended = life_span.get("ended", False)
 
-    # Area (country/location)
+    # Area gives the artist's country or location.
     area = response.get("area") or {}
     area_name = area.get("name", "") if isinstance(area, dict) else ""
 
@@ -690,10 +936,12 @@ def get_artist(artist_id):
         genre_name = g.get("name", "")
         genre_count = g.get("count", 0)
         if genre_name:
-            genres.append({
-                "name": genre_name,
-                "count": genre_count,
-            })
+            genres.append(
+                {
+                    "name": genre_name,
+                    "count": genre_count,
+                }
+            )
     # Sort by count (most relevant first)
     genres.sort(key=lambda x: x.get("count", 0), reverse=True)
 
@@ -704,10 +952,12 @@ def get_artist(artist_id):
         tag_name = t.get("name", "")
         tag_count = t.get("count", 0)
         if tag_name and tag_count > 0:
-            tags.append({
-                "name": tag_name,
-                "count": tag_count,
-            })
+            tags.append(
+                {
+                    "name": tag_name,
+                    "count": tag_count,
+                }
+            )
     # Sort by count (most relevant first)
     tags.sort(key=lambda x: x.get("count", 0), reverse=True)
 
@@ -718,14 +968,39 @@ def get_artist(artist_id):
 
     # Get releases (albums) for this artist
     release_groups = response.get("release-groups", [])
-    albums = []
-    for rg in release_groups[:20]:  # Limit to 20 albums
-        albums.append({
+    albums = [
+        {
             "release_group_id": rg.get("id"),
             "title": rg.get("title", ""),
             "type": rg.get("primary-type", ""),
             "first_release_date": rg.get("first-release-date", ""),
-        })
+        }
+        for rg in release_groups[:20]
+    ]
+
+    # Band members: "member of band" relations where this artist is the band
+    # (the member is the source of the relation, so it appears with direction
+    # "backward" when fetched from the band's own artist page).
+    members = []
+    for rel in relations:
+        if rel.get("type") != "member of band" or rel.get("direction") != "backward":
+            continue
+        member_payload = rel.get("artist") or {}
+        member_id = member_payload.get("id")
+        member_name = member_payload.get("name", "")
+        if not member_id or not member_name:
+            continue
+        attributes = rel.get("attributes", [])
+        members.append(
+            {
+                "artist_id": member_id,
+                "name": member_name,
+                "role": ", ".join(attributes) if attributes else "",
+                "begin_date": rel.get("begin", ""),
+                "end_date": rel.get("end", ""),
+                "ended": rel.get("ended", False),
+            }
+        )
 
     result = {
         "artist_id": artist_id,
@@ -746,6 +1021,7 @@ def get_artist(artist_id):
         "rating": rating,
         "rating_count": rating_count,
         "albums": albums,
+        "members": members,
     }
 
     cache.set(cache_key, result, 60 * 60 * 24 * 7)
@@ -754,18 +1030,20 @@ def get_artist(artist_id):
 
 def get_artist_discography(artist_id, skip_cover_art=False):
     """Get the full discography for an artist from MusicBrainz.
-    
+
     This fetches release-groups (which represent unique album releases)
     and finds a representative release for each to get cover art.
-    
+
     Args:
         artist_id: MusicBrainz artist ID
         skip_cover_art: If True, skip fetching cover art (faster initial load)
-    
+
     Returns a normalized list of albums with:
     - title, release_group_id, release_id, release_date, image, release_type
     """
-    cache_key = f"musicbrainz_artist_discography_v{DISCOGRAPHY_CACHE_VERSION}_{artist_id}"
+    cache_key = (
+        f"musicbrainz_artist_discography_v{DISCOGRAPHY_CACHE_VERSION}_{artist_id}"
+    )
     if skip_cover_art:
         cache_key += "_no_art"
     cached = cache.get(cache_key)
@@ -785,8 +1063,7 @@ def get_artist_discography(artist_id, skip_cover_art=False):
     # Include all MusicBrainz primary types so discography matches their page.
     allowed_types = {"Album", "EP", "Single", "Broadcast", "Other", "Compilation"}
     release_groups = [
-        rg for rg in release_groups
-        if rg.get("primary-type") in allowed_types
+        rg for rg in release_groups if rg.get("primary-type") in allowed_types
     ]
 
     albums = []
@@ -802,16 +1079,18 @@ def get_artist_discography(artist_id, skip_cover_art=False):
         if secondary_types:
             release_type = f"{primary_type} + {', '.join(secondary_types)}"
 
-        albums.append({
-            "release_group_id": rg_id,
-            "title": title,
-            "release_date": first_release_date,
-            "release_type": release_type,
-            "primary_type": primary_type,
-            "secondary_types": secondary_types,
-            "release_id": None,  # Will be filled if we fetch releases
-            "image": settings.IMG_NONE,  # Will be filled later
-        })
+        albums.append(
+            {
+                "release_group_id": rg_id,
+                "title": title,
+                "release_date": first_release_date,
+                "release_type": release_type,
+                "primary_type": primary_type,
+                "secondary_types": secondary_types,
+                "release_id": None,  # Will be filled if we fetch releases
+                "image": "",  # Will be filled later
+            }
+        )
 
     # Now fetch actual releases to get release IDs for cover art
     # We'll batch this to avoid too many API calls
@@ -829,10 +1108,9 @@ def get_artist_discography(artist_id, skip_cover_art=False):
     rg_to_release = {}
     for release in releases:
         rg_id = release.get("release-group", {}).get("id")
-        if rg_id:
-            # Keep first release per release-group (API returns most relevant first)
-            if rg_id not in rg_to_release:
-                rg_to_release[rg_id] = release
+        # Keep first release per release-group (API returns most relevant first)
+        if rg_id and rg_id not in rg_to_release:
+            rg_to_release[rg_id] = release
 
     # Update albums with release IDs and optionally fetch cover art
     for album in albums:
@@ -847,7 +1125,9 @@ def get_artist_discography(artist_id, skip_cover_art=False):
         if not skip_cover_art:
             # Try to get cover art - use both release_id and release_group_id
             # This ensures we try the release-group fallback even if we have a release_id
-            album["image"] = get_cover_art(release_id=release_id, release_group_id=rg_id)
+            album["image"] = get_cover_art(
+                release_id=release_id, release_group_id=rg_id
+            )
 
     # Sort by date (newest first), with albums without dates at the end
     albums.sort(key=lambda x: x.get("release_date", "") or "0000", reverse=True)
@@ -858,13 +1138,13 @@ def get_artist_discography(artist_id, skip_cover_art=False):
 
 def get_release_for_group(release_group_id):
     """Get a representative release for a release group.
-    
+
     This is useful when we only have a release_group_id and need to find
     a specific release to fetch tracks from.
-    
+
     Args:
         release_group_id: The MusicBrainz release group ID
-        
+
     Returns:
         A release ID string, or None if not found
     """
@@ -892,7 +1172,10 @@ def get_release_for_group(release_group_id):
             return release_id
 
         # If no official releases, try without status filter (any release type)
-        logger.debug("No official releases found for release_group %s, trying any release", release_group_id)
+        logger.debug(
+            "No official releases found for release_group %s, trying any release",
+            release_group_id,
+        )
         params = {
             "release-group": release_group_id,
             "limit": 5,
@@ -903,7 +1186,11 @@ def get_release_for_group(release_group_id):
 
         if releases:
             release_id = releases[0].get("id")
-            logger.info("Found non-official release %s for release_group %s", release_id, release_group_id)
+            logger.info(
+                "Found non-official release %s for release_group %s",
+                release_id,
+                release_group_id,
+            )
             cache.set(cache_key, release_id, 60 * 60 * 24 * 7)
             return release_id
 
@@ -915,7 +1202,7 @@ def get_release_for_group(release_group_id):
 
 def get_release(release_id, skip_cover_art: bool = False):
     """Get detailed metadata for a release (album).
-    
+
     Args:
         release_id: MusicBrainz release UUID
         skip_cover_art: If True, do not fetch cover art (use placeholder)
@@ -934,8 +1221,14 @@ def get_release(release_id, skip_cover_art: bool = False):
     title = response.get("title", "Unknown")
     date = response.get("date", "")
 
-    # Get release group ID for cover art fallback
-    release_group_id = response.get("release-group", {}).get("id")
+    # Get release group info for cover art fallback and type classification
+    release_group = response.get("release-group", {})
+    release_group_id = release_group.get("id")
+    primary_type = release_group.get("primary-type", "")
+    secondary_types = release_group.get("secondary-types", [])
+    release_type = primary_type
+    if secondary_types:
+        release_type = f"{primary_type} + {', '.join(secondary_types)}"
 
     # Get artist info
     artist_credits = response.get("artist-credit", [])
@@ -952,20 +1245,30 @@ def get_release(release_id, skip_cover_art: bool = False):
                 artist_parts.append(credit.get("joinphrase", ""))
         artist_name = "".join(artist_parts).strip()
 
+    structured_credits = []
+    for credit in artist_credits:
+        if isinstance(credit, dict):
+            artist_data = credit.get("artist", {})
+            structured_credits.append(
+                {
+                    "artist_id": artist_data.get("id"),
+                    "name": credit.get("name") or artist_data.get("name", ""),
+                    "sort_name": artist_data.get("sort-name", ""),
+                    "join_phrase": credit.get("joinphrase", ""),
+                }
+            )
+
     # Get cover art with release group fallback
-    image = settings.IMG_NONE if skip_cover_art else _get_cover_art(release_id, release_group_id)
+    image = (
+        settings.IMG_NONE
+        if skip_cover_art
+        else _get_cover_art(release_id, release_group_id)
+    )
 
     # Genres/tags (prefer official genres)
-    genres = []
-    for g in response.get("genres", []):
-        name = g.get("name")
-        if name:
-            genres.append(name)
+    genres = _normalize_musicbrainz_genre_names(response.get("genres"))
     if not genres:
-        for t in response.get("tags", []):
-            name = t.get("name")
-            if name:
-                genres.append(name)
+        genres = _normalize_musicbrainz_genre_names(response.get("tags"))
 
     # Get tracks
     media_list = response.get("media", [])
@@ -981,21 +1284,26 @@ def get_release(release_id, skip_cover_art: bool = False):
                 seconds = int((track_length % 60000) // 1000)
                 duration_str = f"{minutes}:{seconds:02d}"
 
-            tracks.append({
-                "recording_id": recording.get("id"),
-                "title": recording.get("title", track.get("title", "")),
-                "track_number": track.get("position"),
-                "disc_number": disc_number,
-                "duration": duration_str,
-                "duration_ms": track_length,
-                "genres": genres,
-            })
+            tracks.append(
+                {
+                    "recording_id": recording.get("id"),
+                    "title": recording.get("title", track.get("title", "")),
+                    "track_number": track.get("position"),
+                    "disc_number": disc_number,
+                    "duration": duration_str,
+                    "duration_ms": track_length,
+                    "genres": genres,
+                }
+            )
 
     result = {
         "release_id": release_id,
+        "release_group_id": release_group_id,
+        "release_type": release_type,
         "title": title,
         "artist_name": artist_name,
         "artist_id": artist_id,
+        "artist_credits": structured_credits,
         "release_date": date,
         "image": image,
         "genres": genres,
@@ -1007,26 +1315,61 @@ def get_release(release_id, skip_cover_art: bool = False):
 
 
 def search_combined(query, page=1):
-    """Combined search returning artists, albums, and tracks.
-    
-    Cover art is skipped during search for speed - results use placeholders.
+    """Search artists, albums and tracks in one call.
+
+    First page returns artists/albums while image files load client-side.
     """
     cache_key = f"musicbrainz_combined_search_{query.lower()}_p{page}"
     cached = cache.get(cache_key)
     if cached:
         return cached
 
-    # For first page, fetch artists, releases, and recordings
-    # For subsequent pages, only fetch recordings (tracks)
-    # Skip cover art for faster search results
+    # For first page, fetch artists, releases, and recordings.
+    # For subsequent pages, only fetch recordings (tracks).
     if page == 1:
         artist_results = search_artists(query, page=1)
         release_results = search_releases(query, page=1, skip_cover_art=True)
         track_results = search(query, page=1, skip_cover_art=True)
 
+        top_releases = []
+        release_art_by_artist_id = {}
+        release_art_by_artist_name = {}
+        for release in release_results.get("results", [])[:5]:
+            release_entry = dict(release)
+            release_image = release_entry.get("image")
+            if (
+                not release_image or release_image == settings.IMG_NONE
+            ) and release_entry.get("release_id"):
+                release_image = _cover_art_async_url(release_entry["release_id"])
+                release_entry["image"] = release_image
+
+            top_releases.append(release_entry)
+            if not release_image or release_image == settings.IMG_NONE:
+                continue
+
+            artist_id = release_entry.get("artist_id")
+            if artist_id and artist_id not in release_art_by_artist_id:
+                release_art_by_artist_id[artist_id] = release_image
+
+            artist_name = str(release_entry.get("artist_name") or "").strip().casefold()
+            if artist_name and artist_name not in release_art_by_artist_name:
+                release_art_by_artist_name[artist_name] = release_image
+
+        top_artists = []
+        for artist in artist_results.get("results", [])[:5]:
+            artist_entry = dict(artist)
+            artist_image = release_art_by_artist_id.get(artist_entry.get("artist_id"))
+            if not artist_image:
+                artist_name_key = str(artist_entry.get("name") or "").strip().casefold()
+                artist_image = release_art_by_artist_name.get(
+                    artist_name_key, settings.IMG_NONE
+                )
+            artist_entry["image"] = artist_image
+            top_artists.append(artist_entry)
+
         data = {
-            "artists": artist_results.get("results", [])[:5],  # Top 5 artists
-            "releases": release_results.get("results", [])[:5],  # Top 5 albums
+            "artists": top_artists,  # Top 5 artists
+            "releases": top_releases,  # Top 5 albums
             "tracks": track_results,  # Full track results with pagination
         }
     else:

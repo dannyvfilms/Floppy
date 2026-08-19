@@ -1,12 +1,17 @@
+from io import BytesIO
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import requests
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from app.models import (
     Book,
+    Sources,
     Status,
 )
+from app.providers import services
 from integrations.imports import (
     goodreads,
 )
@@ -17,6 +22,7 @@ app_mock_path = (
 )
 
 
+@tag("network")
 class ImportGoodreads(TestCase):
     """Test importing media from GoodReads CSV."""
 
@@ -46,4 +52,130 @@ class ImportGoodreads(TestCase):
         self.assertEqual(read_book.status, Status.IN_PROGRESS.value)
         self.assertEqual(read_book.progress, 0)
 
+    def test_unknown_shelf_defaults_to_planning(self):
+        """Unknown shelf values should default to planning instead of failing import."""
+        headers = [
+            "Book Id",
+            "Title",
+            "Author",
+            "ISBN13",
+            "My Rating",
+            "Number of Pages",
+            "Exclusive Shelf",
+            "Date Added",
+            "Date Read",
+            "Private Notes",
+        ]
+        csv_payload = (
+            ",".join(headers) + "\n"
+            "1,Book with Unknown Shelf,Author,9780000000001,0,320,owned,,,\n"
+        )
 
+        resolved_book = {
+            "media_id": "1001",
+            "title": "Book with Unknown Shelf",
+            "image": "",
+        }
+        with patch.object(
+            goodreads.GoodReadsImporter,
+            "_search_book",
+            return_value=resolved_book,
+        ):
+            goodreads.importer(BytesIO(csv_payload.encode("utf-8")), self.user, "new")
+
+        imported_book = Book.objects.get(user=self.user, item__media_id="1001")
+        self.assertEqual(imported_book.status, Status.PLANNING.value)
+
+    def test_import_handles_missing_goodreads_dates(self):
+        """Rows without Goodreads date fields should not crash import."""
+        headers = [
+            "Book Id",
+            "Title",
+            "Author",
+            "ISBN13",
+            "My Rating",
+            "Number of Pages",
+            "Exclusive Shelf",
+            "Date Added",
+            "Date Read",
+            "Private Notes",
+        ]
+        csv_payload = (
+            ",".join(headers) + "\n"
+            "2,Date-less Book,Author,9780000000002,4,220,read,,,\n"
+        )
+
+        resolved_book = {"media_id": "1002", "title": "Date-less Book", "image": ""}
+        with patch.object(
+            goodreads.GoodReadsImporter,
+            "_search_book",
+            return_value=resolved_book,
+        ):
+            goodreads.importer(BytesIO(csv_payload.encode("utf-8")), self.user, "new")
+
+        imported_book = Book.objects.get(user=self.user, item__media_id="1002")
+        self.assertEqual(imported_book.status, Status.COMPLETED.value)
+        self.assertEqual(imported_book.progress, 220)
+
+    def test_import_handles_decimal_rating(self):
+        """Decimal ratings (e.g. '3.0') should not crash import."""
+        headers = [
+            "Book Id",
+            "Title",
+            "Author",
+            "ISBN13",
+            "My Rating",
+            "Number of Pages",
+            "Exclusive Shelf",
+            "Date Added",
+            "Date Read",
+            "Private Notes",
+        ]
+        csv_payload = (
+            ",".join(headers) + "\n"
+            "3,Decimal Rating Book,Author,9780000000003,3.0,245,read,,,\n"
+        )
+
+        resolved_book = {
+            "media_id": "1003",
+            "title": "Decimal Rating Book",
+            "image": "",
+        }
+        with patch.object(
+            goodreads.GoodReadsImporter,
+            "_search_book",
+            return_value=resolved_book,
+        ):
+            goodreads.importer(BytesIO(csv_payload.encode("utf-8")), self.user, "new")
+
+        imported_book = Book.objects.get(user=self.user, item__media_id="1003")
+        self.assertEqual(imported_book.score, 6)
+
+
+class ImportGoodreadsProviderErrors(TestCase):
+    """Test GoodReads provider error handling."""
+
+    def setUp(self):
+        """Create user for the tests."""
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+
+    @patch("integrations.imports.goodreads.GoodReadsImporter._process_row")
+    def test_provider_error_warns_with_goodreads_fields(self, mock_process_row):
+        """Test provider failures warn and continue without requiring media_id."""
+        response = MagicMock(status_code=408, text='{"error":"Request timeout"}')
+        error = requests.exceptions.HTTPError(response=response)
+        mock_process_row.side_effect = services.ProviderAPIError(
+            Sources.HARDCOVER.value,
+            error,
+        )
+
+        with Path(mock_path / "import_goodreads.csv").open("rb") as file:
+            imported_counts, warnings = goodreads.importer(file, self.user, "new")
+
+        self.assertEqual(imported_counts, {})
+        self.assertIn(
+            "Ghosts of the Tristan Basin (Powder Mage, #0.8) (Goodreads ID 28825810)",
+            warnings,
+        )
+        self.assertIn("There was an error contacting Hardcover", warnings)

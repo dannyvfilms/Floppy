@@ -6,7 +6,11 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from app.models import CollectionEntry, Item, MediaTypes, Movie, Sources, Status
-from integrations.tasks import update_collection_metadata_from_plex_webhook
+from integrations import plex as plex_api
+from integrations.tasks import (
+    fetch_collection_metadata_for_item,
+    update_collection_metadata_from_plex_webhook,
+)
 from integrations.webhooks.plex import PlexWebhookProcessor
 
 
@@ -26,9 +30,11 @@ class CollectionWebhookTest(TestCase):
             image="http://example.com/image.jpg",
         )
 
-    @patch("integrations.tasks.plex_api.fetch_metadata")
-    @patch("integrations.tasks.extract_collection_metadata_from_plex")
-    def test_update_collection_metadata_from_plex_webhook(self, mock_extract, mock_fetch):
+    @patch("integrations.tasks._plex_collection.plex_api.fetch_metadata")
+    @patch("integrations.tasks._plex_collection.extract_collection_metadata_from_plex")
+    def test_update_collection_metadata_from_plex_webhook(
+        self, mock_extract, mock_fetch
+    ):
         """Test collection metadata update from Plex webhook task."""
         # Mock Plex metadata response
         mock_plex_metadata = {
@@ -97,7 +103,9 @@ class CollectionWebhookTest(TestCase):
         )
 
         # Mock the task
-        with patch("integrations.webhooks.plex.tasks.update_collection_metadata_from_plex_webhook.delay") as mock_task:
+        with patch(
+            "integrations.webhooks.plex.tasks.update_collection_metadata_from_plex_webhook.delay"
+        ) as mock_task:
             # Test the method directly
             processor._queue_collection_metadata_update(payload, self.user, self.item)
 
@@ -109,3 +117,178 @@ class CollectionWebhookTest(TestCase):
                 "http://plex.example.com",
                 "test_token",
             )
+
+    @patch("integrations.tasks._plex_collection.logger.warning")
+    @patch("integrations.tasks._plex_collection.plex_api.fetch_section_all_items")
+    @patch("integrations.tasks._plex_collection.plex_api.list_resources")
+    def test_fetch_collection_metadata_timeout_logs_without_traceback(
+        self,
+        mock_list_resources,
+        mock_fetch_section_all_items,
+        mock_logger_warning,
+    ):
+        """Expected Plex lookup failures should not emit stack traces."""
+        from integrations.models import PlexAccount
+
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="test_token",
+            plex_username="test",
+            sections=[
+                {
+                    "id": "1",
+                    "title": "Movies",
+                    "type": "movie",
+                    "uri": "http://plex.example.com",
+                    "machine_identifier": "test_machine",
+                }
+            ],
+        )
+        mock_list_resources.return_value = []
+        mock_fetch_section_all_items.side_effect = [
+            ([], 9502),
+            plex_api.PlexClientError(
+                "HTTPSConnectionPool(host='plex.example.com', port=443): Read timed out.",
+            ),
+        ]
+
+        result = fetch_collection_metadata_for_item(self.user.id, self.item.id)
+
+        self.assertIsNone(result)
+        matching_calls = [
+            call
+            for call in mock_logger_warning.call_args_list
+            if call.args and "Error searching section" in call.args[0]
+        ]
+        self.assertTrue(matching_calls)
+        self.assertNotIn("exc_info", matching_calls[0].kwargs)
+
+    @patch("integrations.tasks._plex_collection.plex_api.fetch_section_all_items")
+    def test_fetch_collection_metadata_cached_only_uses_item_lookup(
+        self,
+        mock_fetch_section_all_items,
+    ):
+        from integrations.models import PlexAccount
+        from integrations.tasks import _find_plex_rating_key_for_item
+
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            plex_rating_key="12345",
+            plex_uri="http://plex.example.com",
+        )
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="test_token",
+            plex_username="test",
+        )
+
+        result = _find_plex_rating_key_for_item(
+            self.user,
+            self.item,
+            self.user.plex_account,
+            lookup_policy="cached_only",
+        )
+
+        self.assertEqual(
+            result,
+            ("12345", "http://plex.example.com", "cached"),
+        )
+        mock_fetch_section_all_items.assert_not_called()
+
+    @patch("integrations.tasks._plex_collection.plex_api.fetch_section_all_items")
+    @patch("integrations.tasks._plex_collection.plex_api.list_resources")
+    @patch("integrations.tasks._plex_collection.plex_api.fetch_metadata")
+    @patch(
+        "integrations.tasks._plex_collection.update_collection_metadata_from_plex_webhook"
+    )
+    def test_fetch_collection_metadata_cached_only_uses_episode_derived_show_key(
+        self,
+        mock_update_collection,
+        mock_fetch_metadata,
+        mock_list_resources,
+        mock_fetch_section_all_items,
+    ):
+        from integrations.models import PlexAccount
+
+        show_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test Show",
+            image="http://example.com/show.jpg",
+        )
+        episode_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Pilot",
+            image="http://example.com/episode.jpg",
+        )
+        CollectionEntry.objects.create(
+            user=self.user,
+            item=episode_item,
+            plex_rating_key="222",
+            plex_uri="http://plex.example.com",
+        )
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="test_token",
+            plex_username="test",
+        )
+        mock_fetch_metadata.return_value = {
+            "grandparentKey": "/library/metadata/999",
+        }
+        mock_update_collection.return_value = 88
+
+        result = fetch_collection_metadata_for_item(
+            self.user.id,
+            show_item.id,
+            lookup_policy="cached_only",
+        )
+
+        self.assertEqual(result, 88)
+        mock_update_collection.assert_called_once_with(
+            user_id=self.user.id,
+            item_id=show_item.id,
+            rating_key="999",
+            plex_uri="http://plex.example.com",
+            plex_token="test_token",
+        )
+        mock_list_resources.assert_not_called()
+        mock_fetch_section_all_items.assert_not_called()
+
+    @patch("integrations.tasks._plex_collection.plex_api.fetch_section_all_items")
+    @patch("integrations.tasks._plex_collection.plex_api.list_sections")
+    @patch("integrations.tasks._plex_collection.plex_api.list_resources")
+    @patch(
+        "integrations.tasks._plex_collection.update_collection_metadata_from_plex_webhook"
+    )
+    def test_fetch_collection_metadata_cached_only_skips_library_enumeration_when_uncached(
+        self,
+        mock_update_collection,
+        mock_list_resources,
+        mock_list_sections,
+        mock_fetch_section_all_items,
+    ):
+        from integrations.models import PlexAccount
+
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="test_token",
+            plex_username="test",
+        )
+
+        result = fetch_collection_metadata_for_item(
+            self.user.id,
+            self.item.id,
+            lookup_policy="cached_only",
+        )
+
+        self.assertIsNone(result)
+        mock_update_collection.assert_not_called()
+        mock_list_resources.assert_not_called()
+        mock_list_sections.assert_not_called()
+        mock_fetch_section_all_items.assert_not_called()

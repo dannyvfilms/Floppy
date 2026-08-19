@@ -4,6 +4,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Video resolution height thresholds (in pixels), used to classify streams
+# into standard resolution buckets.
+RESOLUTION_HEIGHT_4K = 2160
+RESOLUTION_HEIGHT_1080P = 1080
+RESOLUTION_HEIGHT_720P = 720
+RESOLUTION_HEIGHT_480P = 480
+
 
 def extract_collection_metadata_from_plex(plex_metadata):
     """Extract format metadata from Plex API metadata response.
@@ -56,13 +63,12 @@ def extract_collection_metadata_from_plex(plex_metadata):
     if video_codec:
         codec_lower = video_codec.lower()
         # HEVC/H.265 often used for HDR
-        if "hevc" in codec_lower or "h265" in codec_lower:
-            # Check if HDR is explicitly mentioned
-            if "hdr" in codec_lower:
-                if "dolby" in codec_lower or "dv" in codec_lower:
-                    result["hdr"] = "Dolby Vision"
-                else:
-                    result["hdr"] = "HDR10"
+        # HEVC/H.265 with HDR explicitly mentioned in the codec string
+        if ("hevc" in codec_lower or "h265" in codec_lower) and "hdr" in codec_lower:
+            if "dolby" in codec_lower or "dv" in codec_lower:
+                result["hdr"] = "Dolby Vision"
+            else:
+                result["hdr"] = "HDR10"
             # May need additional logic to detect HDR from other metadata
 
     # Extract audio codec
@@ -165,13 +171,13 @@ def extract_collection_metadata_from_jellyfin(jellyfin_metadata):
         height = video_stream.get("Height")
         if width and height:
             # Derive resolution from dimensions
-            if height >= 2160:
+            if height >= RESOLUTION_HEIGHT_4K:
                 result["resolution"] = "4k"
-            elif height >= 1080:
+            elif height >= RESOLUTION_HEIGHT_1080P:
                 result["resolution"] = "1080p"
-            elif height >= 720:
+            elif height >= RESOLUTION_HEIGHT_720P:
                 result["resolution"] = "720p"
-            elif height >= 480:
+            elif height >= RESOLUTION_HEIGHT_480P:
                 result["resolution"] = "480p"
 
         # Check for HDR
@@ -320,13 +326,10 @@ def extract_game_platform_from_igdb(igdb_metadata, import_source=None):
     # Extract platforms from IGDB metadata
     details = igdb_metadata.get("details", {})
     platforms = details.get("platforms") or []
-    if platforms:
-        # IGDB returns list of platform names like ["PC", "PlayStation 5", "Xbox Series X|S"]
-        # For now, we'll just note that platforms are available
-        # In the future, could allow user to select which platform they own
-        # For Steam imports, PC is typically the platform
-        if import_source == "steam" and "PC" in platforms:
-            # Steam games are typically PC
-            pass  # media_type already set to "steam"
+    # IGDB returns platform names like ["PC", "PlayStation 5", "Xbox Series X|S"].
+    # For now we only note that platforms are available; a future change could
+    # let the user pick which one they own. Steam imports are typically PC.
+    if platforms and (import_source == "steam" and "PC" in platforms):
+        pass  # media_type already set to "steam"
 
     return result

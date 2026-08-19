@@ -1,0 +1,27 @@
+<div id="artist-relations-container"
+     {% if poll_for_relation_images %}
+       hx-get="{% url 'prefetch_artist_relation_images' artist.id %}"
+       hx-trigger="load delay:500ms, every 5s"
+       hx-target="#artist-relations-container"
+       hx-swap="outerHTML"
+     {% endif %}>
+  {% if band_members %}
+    <section class="mb-8">
+      <h2 class="text-xl font-bold mb-4">Members</h2>
+      {% include "app/components/artist_relation_grid.html" with relations=band_members user=user only %}
+    </section>
+  {% endif %}
+
+  {% if member_of_bands %}
+    <section class="mb-8">
+      <h2 class="text-xl font-bold mb-4">Also In</h2>
+      {% include "app/components/artist_relation_grid.html" with relations=member_of_bands user=user only %}
+    </section>
+  {% endif %}
+
+  {% if poll_for_relation_images %}
+    <div class="mt-4 text-xs text-gray-500">
+      Refreshing photos{% if missing_relation_image_count %} ({{ missing_relation_image_count }} remaining){% endif %}...
+    </div>
+  {% endif %}
+</div>

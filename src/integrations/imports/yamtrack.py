@@ -2,16 +2,32 @@ import json
 import logging
 from collections import defaultdict
 from csv import DictReader
+from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
 from django.conf import settings
+from django.db import IntegrityError
 from django.utils.dateparse import parse_datetime
 
 import app
 from app import config
-from app.models import MediaTypes, Sources, Status
+from app import forms as app_forms
+from app.log_safety import mapping_keys
+from app.models import (
+    Album,
+    AlbumTracker,
+    Artist,
+    ArtistTracker,
+    CollectionEntry,
+    ItemTag,
+    MediaTypes,
+    Sources,
+    Status,
+    Tag,
+)
 from app.providers import services
 from app.templatetags import app_tags
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from lists.models import CustomList, CustomListItem
@@ -39,6 +55,19 @@ def _parse_tags(value):
     except json.JSONDecodeError:
         pass
     return [tag.strip() for tag in str(value).split(",") if tag.strip()]
+
+
+def _parse_json_dict(value):
+    """Parse a JSON object string, defaulting to an empty dict."""
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    return {}
 
 
 def _normalize_status(value):
@@ -74,26 +103,48 @@ def _normalize_status(value):
     return aliases.get(lowered, raw)
 
 
-def importer(file, user, mode):
+def _find_item_after_integrity_error(lookup, original_exc):
+    """Return the Item that caused a UniqueViolation during update_or_create.
+
+    Two-stage search:
+    1. Exact match on all lookup fields (covers PostgreSQL race-window case).
+    2. Broader match ignoring library_media_type, for items whose
+       library_media_type was '' in the DB but exported as 'tv'/'anime'/etc.
+    Raises the original IntegrityError if no row is found either way.
+    """
+    item = app.models.Item.objects.filter(**lookup).first()
+    if item is not None:
+        return item
+    partial = {k: v for k, v in lookup.items() if k != "library_media_type"}
+    item = app.models.Item.objects.filter(**partial).first()
+    if item is not None:
+        return item
+    raise original_exc
+
+
+def importer(file, user, mode, lists_only=False):
     """Import media from CSV file using the class-based importer."""
-    csv_importer = YamtrackImporter(file, user, mode)
+    csv_importer = YamtrackImporter(file, user, mode, lists_only=lists_only)
     return csv_importer.import_data()
 
 
 class YamtrackImporter:
     """Class to handle importing user data from CSV files."""
 
-    def __init__(self, file, user, mode):
+    def __init__(self, file, user, mode, lists_only=False):
         """Initialize the importer with file, user, and mode.
 
         Args:
             file: Uploaded CSV file object
             user: Django user object to import data for
             mode (str): Import mode ("new" or "overwrite")
+            lists_only (bool): When True, only process ``list``/``list_item``
+                rows and skip ``media``/``collection`` rows.
         """
         self.file = file
         self.user = user
         self.mode = mode
+        self.lists_only = lists_only
         self.warnings = []
 
         # Track existing media for "new" mode
@@ -104,11 +155,18 @@ class YamtrackImporter:
 
         # Track bulk creation lists for each media type
         self.bulk_media = defaultdict(list)
+        self.music_tracker_counts = defaultdict(int)
         self.list_map = {}
+        self.smart_lists = []
         self.status_overrides = {
             MediaTypes.TV.value: {},
             MediaTypes.SEASON.value: {},
         }
+        self.collection_count = 0
+        # Item ids whose existing collection entries were already wiped
+        # this run (overwrite mode wipes once per item, then recreates
+        # every CSV copy).
+        self._collection_overwritten_item_ids = set()
 
         logger.info(
             "Initialized Yamtrack CSV importer for user %s with mode %s",
@@ -124,9 +182,11 @@ class YamtrackImporter:
             msg = "Invalid file format. Please upload a CSV file."
             raise MediaImportError(msg) from e
 
-        reader = DictReader(decoded_file)
+        rows = list(DictReader(decoded_file))
+        total = len(rows)
 
-        for row in reader:
+        for i, row in enumerate(rows, start=1):
+            import_progress.report(i, total, "Yamtrack")
             try:
                 self._process_row(row)
             except services.ProviderAPIError as error:
@@ -141,13 +201,19 @@ class YamtrackImporter:
                 raise MediaImportUnexpectedError(error_msg) from error
 
         helpers.cleanup_existing_media(self.to_delete, self.user)
-        helpers.bulk_create_media(self.bulk_media, self.user)
+        self.warnings.extend(helpers.bulk_create_media(self.bulk_media, self.user))
         self._apply_status_overrides()
+
+        for custom_list in self.smart_lists:
+            custom_list.sync_smart_items()
 
         imported_counts = {
             media_type: len(media_list)
             for media_type, media_list in self.bulk_media.items()
         }
+        imported_counts.update(self.music_tracker_counts)
+        if self.collection_count:
+            imported_counts["collection"] = self.collection_count
 
         deduplicated_messages = "\n".join(dict.fromkeys(self.warnings))
         return imported_counts, deduplicated_messages
@@ -178,14 +244,19 @@ class YamtrackImporter:
     def _process_row(self, row):
         """Process a single row from the CSV file."""
         row_type = (row.get("row_type") or "").strip().lower()
-        if row_type in ("", "media"):
-            self._process_media_row(row)
-            return
         if row_type == "list":
             self._process_list_row(row)
             return
         if row_type == "list_item":
             self._process_list_item_row(row)
+            return
+        if self.lists_only:
+            return
+        if row_type in ("", "media"):
+            self._process_media_row(row)
+            return
+        if row_type == "collection":
+            self._process_collection_row(row)
             return
 
         self.warnings.append(f"Skipping unknown row type: {row_type}")
@@ -193,11 +264,22 @@ class YamtrackImporter:
     def _process_media_row(self, row):
         """Process a single media row from the CSV file."""
         media_type = (row.get("media_type") or "").strip().lower()
+
+        if media_type == "music_artist":
+            self._process_music_artist_row(row)
+            return
+        if media_type == "music_album":
+            self._process_music_album_row(row)
+            return
+
+        library_media_type = (row.get("library_media_type") or "").strip().lower()
         row["media_type"] = media_type
         row["source"] = (row.get("source") or "").strip().lower()
         normalized_status = _normalize_status(row.get("status"))
         if normalized_status is not None:
-            row["status"] = normalized_status
+            # An exported blank means the media has no tracking status (a
+            # rating-only row); store a real NULL, not an empty string.
+            row["status"] = normalized_status or None
 
         season_number = (
             int(row["season_number"]) if row["season_number"] != "" else None
@@ -234,18 +316,12 @@ class YamtrackImporter:
                 episode_number,
             )
 
-        item, _ = helpers.retry_on_lock(
-            lambda: app.models.Item.objects.update_or_create(
-                media_id=row["media_id"],
-                source=row["source"],
-                media_type=media_type,
-                season_number=season_number,
-                episode_number=episode_number,
-                defaults={
-                    "title": row["title"],
-                    "image": row["image"],
-                },
-            ),
+        item = self._resolve_item(
+            row,
+            media_type,
+            library_media_type,
+            season_number,
+            episode_number,
         )
 
         model = apps.get_model(app_label="app", model_name=media_type)
@@ -254,13 +330,13 @@ class YamtrackImporter:
             instance.user = self.user
 
         row["item"] = item
-        form = app.forms.get_form_class(media_type)(
+        form = app_forms.get_form_class(media_type)(
             row,
             instance=instance,
         )
 
         if form.is_valid():
-            progressed_at = row.get("progressed_at")
+            progressed_at = row.get("progressed_at") or row.get("end_date")
             if progressed_at:
                 form.instance._history_date = parse_datetime(progressed_at)
             if media_type in (MediaTypes.TV.value, MediaTypes.SEASON.value):
@@ -278,7 +354,11 @@ class YamtrackImporter:
         else:
             error_msg = f"{row['title']} ({media_type}): {form.errors.as_json()}"
             self.warnings.append(error_msg)
-            logger.error(error_msg)
+            logger.error(
+                "Yamtrack import validation failed media_type=%s error_fields=%s",
+                media_type,
+                mapping_keys(form.errors),
+            )
 
     def _process_list_row(self, row):
         """Process a list definition row."""
@@ -294,6 +374,12 @@ class YamtrackImporter:
         list_description = row.get("list_description") or ""
         list_allow_recommendations = _parse_bool(row.get("list_allow_recommendations"))
         list_tags = _parse_tags(row.get("list_tags"))
+        list_is_smart = _parse_bool(row.get("list_is_smart"))
+        list_smart_media_types = _parse_tags(row.get("list_smart_media_types"))
+        list_smart_excluded_media_types = _parse_tags(
+            row.get("list_smart_excluded_media_types")
+        )
+        list_smart_filters = _parse_json_dict(row.get("list_smart_filters"))
 
         existing = None
         if list_source_id:
@@ -303,7 +389,9 @@ class YamtrackImporter:
                 source_id=list_source_id,
             ).first()
         if not existing:
-            existing = CustomList.objects.filter(owner=self.user, name=list_name).first()
+            existing = CustomList.objects.filter(
+                owner=self.user, name=list_name
+            ).first()
 
         seen_key = list_uid or list_name
         already_seen = bool(seen_key and seen_key in self.list_map)
@@ -316,6 +404,10 @@ class YamtrackImporter:
                 existing.allow_recommendations = list_allow_recommendations
                 existing.source = list_source
                 existing.source_id = list_source_id
+                existing.is_smart = list_is_smart
+                existing.smart_media_types = list_smart_media_types
+                existing.smart_excluded_media_types = list_smart_excluded_media_types
+                existing.smart_filters = list_smart_filters
                 existing.save(
                     update_fields=[
                         "description",
@@ -324,6 +416,10 @@ class YamtrackImporter:
                         "allow_recommendations",
                         "source",
                         "source_id",
+                        "is_smart",
+                        "smart_media_types",
+                        "smart_excluded_media_types",
+                        "smart_filters",
                     ],
                 )
                 if not already_seen:
@@ -338,8 +434,15 @@ class YamtrackImporter:
                 allow_recommendations=list_allow_recommendations,
                 source=list_source,
                 source_id=list_source_id,
+                is_smart=list_is_smart,
+                smart_media_types=list_smart_media_types,
+                smart_excluded_media_types=list_smart_excluded_media_types,
+                smart_filters=list_smart_filters,
                 owner=self.user,
             )
+
+        if custom_list.is_smart:
+            self.smart_lists.append(custom_list)
 
         if list_uid:
             self.list_map[list_uid] = custom_list
@@ -355,10 +458,13 @@ class YamtrackImporter:
         if list_uid:
             custom_list = self.list_map.get(list_uid)
         if not custom_list and list_name:
-            custom_list = self.list_map.get(list_name) or CustomList.objects.filter(
-                owner=self.user,
-                name=list_name,
-            ).first()
+            custom_list = (
+                self.list_map.get(list_name)
+                or CustomList.objects.filter(
+                    owner=self.user,
+                    name=list_name,
+                ).first()
+            )
         if not custom_list and list_name:
             custom_list = CustomList.objects.create(
                 name=list_name,
@@ -379,9 +485,9 @@ class YamtrackImporter:
             )
             return
 
-        season_number = (
-            int(row["season_number"]) if row.get("season_number") else None
-        )
+        library_media_type = (row.get("library_media_type") or "").strip().lower()
+
+        season_number = int(row["season_number"]) if row.get("season_number") else None
         episode_number = (
             int(row["episode_number"]) if row.get("episode_number") else None
         )
@@ -398,18 +504,12 @@ class YamtrackImporter:
                 episode_number,
             )
 
-        item, _ = helpers.retry_on_lock(
-            lambda: app.models.Item.objects.update_or_create(
-                media_id=row["media_id"],
-                source=row["source"],
-                media_type=media_type,
-                season_number=season_number,
-                episode_number=episode_number,
-                defaults={
-                    "title": row["title"],
-                    "image": row["image"],
-                },
-            ),
+        item = self._resolve_item(
+            row,
+            media_type,
+            library_media_type,
+            season_number,
+            episode_number,
         )
 
         list_item, created = CustomListItem.objects.get_or_create(
@@ -424,6 +524,127 @@ class YamtrackImporter:
                 CustomListItem.objects.filter(pk=list_item.pk).update(
                     date_added=parsed_date,
                 )
+
+    def _resolve_item(
+        self,
+        row,
+        media_type,
+        library_media_type,
+        season_number,
+        episode_number,
+    ):
+        """Get or update the Item referenced by a CSV row."""
+        item_lookup = {
+            "media_id": row["media_id"],
+            "source": row["source"],
+            "media_type": media_type,
+            "library_media_type": library_media_type,
+            "season_number": season_number,
+            "episode_number": episode_number,
+        }
+        try:
+            item, _ = helpers.retry_on_lock(
+                lambda: app.models.Item.objects.update_or_create(
+                    **item_lookup,
+                    defaults={"title": row["title"], "image": row["image"]},
+                ),
+            )
+        except IntegrityError as exc:
+            item = _find_item_after_integrity_error(item_lookup, exc)
+        self._apply_item_tags(item, row.get("item_tags"))
+        return item
+
+    def _apply_item_tags(self, item, raw_tags):
+        """Get-or-create Tag/ItemTag rows for this item from the CSV item_tags column."""
+        for raw_name in _parse_tags(raw_tags):
+            name = raw_name.strip()
+            if not name:
+                continue
+            tag = Tag.objects.filter(user=self.user, name__iexact=name).first()
+            if tag is None:
+                tag = Tag.objects.create(user=self.user, name=name)
+            ItemTag.objects.get_or_create(tag=tag, item=item)
+
+    def _process_collection_row(self, row):
+        """Process a collection (owned media) row from the CSV file."""
+        media_type = (row.get("media_type") or "").strip().lower()
+        if not media_type:
+            self.warnings.append("Skipping collection row without media_type.")
+            return
+
+        row["media_type"] = media_type
+        row["source"] = (row.get("source") or "").strip().lower()
+        library_media_type = (row.get("library_media_type") or "").strip().lower()
+
+        season_number = int(row["season_number"]) if row.get("season_number") else None
+        episode_number = (
+            int(row["episode_number"]) if row.get("episode_number") else None
+        )
+
+        if row.get("title", "") == "" or row.get("image", "") == "":
+            self._handle_missing_metadata(
+                row,
+                media_type,
+                season_number,
+                episode_number,
+            )
+
+        item = self._resolve_item(
+            row,
+            media_type,
+            library_media_type,
+            season_number,
+            episode_number,
+        )
+
+        entry_fields = {
+            "media_type": (row.get("collection_format") or "").strip(),
+            "resolution": (row.get("collection_resolution") or "").strip(),
+            "hdr": (row.get("collection_hdr") or "").strip(),
+            "is_3d": _parse_bool(row.get("collection_is_3d")),
+            "audio_codec": (row.get("collection_audio_codec") or "").strip(),
+            "audio_channels": (row.get("collection_audio_channels") or "").strip(),
+        }
+        bitrate_raw = (row.get("collection_bitrate") or "").strip()
+        try:
+            entry_fields["bitrate"] = int(bitrate_raw) if bitrate_raw else None
+        except ValueError:
+            self.warnings.append(
+                f"{row.get('title', row['media_id'])}: invalid collection "
+                f"bitrate {bitrate_raw!r}, ignoring.",
+            )
+            entry_fields["bitrate"] = None
+
+        existing = CollectionEntry.objects.filter(user=self.user, item=item)
+        if self.mode == "overwrite":
+            if item.id not in self._collection_overwritten_item_ids:
+                existing.delete()
+                self._collection_overwritten_item_ids.add(item.id)
+        elif any(
+            all(getattr(entry, field) == value for field, value in entry_fields.items())
+            for entry in existing
+        ):
+            # "new" mode: an identical copy already exists, skip.
+            return
+
+        entry = helpers.retry_on_lock(
+            lambda: CollectionEntry.objects.create(
+                user=self.user,
+                item=item,
+                **entry_fields,
+            ),
+        )
+
+        collected_at = parse_datetime(
+            (row.get("collection_collected_at") or "").strip(),
+        )
+        if collected_at:
+            # collected_at is auto_now_add, so it must be set post-create.
+            CollectionEntry.objects.filter(id=entry.id).update(
+                collected_at=collected_at,
+            )
+
+        self.collection_count += 1
 
     def _handle_missing_metadata(self, row, media_type, season_number, episode_number):
         """Handle missing metadata by fetching from provider."""
@@ -462,9 +683,209 @@ class YamtrackImporter:
             row["media_type"] = media_type
             row["image"] = first_result["image"]
 
-            logger.info("Added title from %s: %s", source, row["title"])
-            logger.info("Obtained media id: %s", row["media_id"])
+            logger.info(
+                "Resolved missing metadata for Yamtrack import row from %s",
+                source,
+            )
             return
 
         msg = f"Missing metadata for: {row}"
         raise MediaImportError(msg)
+
+    def _create_artist_from_musicbrainz(self, musicbrainz_id, fallback_name):
+        """Fetch and create an Artist from MusicBrainz, syncing its discography."""
+        from app.providers import musicbrainz
+        from app.services.music import sync_artist_discography
+
+        try:
+            artist_data = musicbrainz.get_artist(musicbrainz_id)
+        except Exception:
+            logger.exception(
+                "Failed to fetch artist %s from MusicBrainz during import",
+                musicbrainz_id,
+            )
+            return None
+        if not artist_data:
+            return None
+
+        artist = Artist.objects.create(
+            name=artist_data.get("name") or fallback_name or "Unknown Artist",
+            sort_name=artist_data.get("sort_name", ""),
+            musicbrainz_id=musicbrainz_id,
+            country=artist_data.get("country", "") or "",
+            genres=[
+                genre.get("name")
+                for genre in artist_data.get("genres", [])
+                if genre.get("name")
+            ],
+        )
+        try:
+            sync_artist_discography(artist)
+        except Exception:
+            logger.exception(
+                "Failed to sync discography for artist %s during import",
+                artist.name,
+            )
+        return artist
+
+    def _create_album_from_musicbrainz(self, release_group_id, fallback_title):
+        """Fetch and create an Album (and its Artist, if needed) from MusicBrainz."""
+        from app.providers import musicbrainz
+
+        try:
+            release_id = musicbrainz.get_release_for_group(release_group_id)
+            release_data = (
+                musicbrainz.get_release(release_id, skip_cover_art=True)
+                if release_id
+                else None
+            )
+        except Exception:
+            logger.exception(
+                "Failed to fetch release for group %s from MusicBrainz during import",
+                release_group_id,
+            )
+            return None
+        if not release_data:
+            return None
+
+        artist = None
+        artist_id = release_data.get("artist_id")
+        artist_name = release_data.get("artist_name")
+        if artist_id:
+            artist = Artist.objects.filter(musicbrainz_id=artist_id).first()
+            if artist is None:
+                artist = self._create_artist_from_musicbrainz(
+                    artist_id, artist_name or ""
+                )
+        if artist is None and artist_name:
+            artist = Artist.objects.filter(name=artist_name).first()
+            if artist is None:
+                artist = Artist.objects.create(name=artist_name)
+        if artist is None:
+            return None
+
+        # sync_artist_discography (triggered above) may have already created
+        # this album via its release-group; reuse it instead of duplicating.
+        album = Album.objects.filter(
+            artist=artist,
+            musicbrainz_release_group_id=release_group_id,
+        ).first()
+        if album:
+            return album
+
+        return Album.objects.create(
+            title=release_data.get("title") or fallback_title or "Unknown Album",
+            artist=artist,
+            musicbrainz_release_id=release_id,
+            musicbrainz_release_group_id=release_group_id,
+        )
+
+    def _process_music_artist_row(self, row):
+        """Process a music_artist tracker row from the CSV."""
+        musicbrainz_id = (row.get("media_id") or "").strip()
+        if not musicbrainz_id:
+            self.warnings.append("Skipping music_artist row with empty media_id.")
+            return
+
+        artist = Artist.objects.filter(musicbrainz_id=musicbrainz_id).first()
+        if artist is None:
+            artist = self._create_artist_from_musicbrainz(
+                musicbrainz_id, row.get("title") or ""
+            )
+        if artist is None:
+            self.warnings.append(
+                f"Skipping music_artist row: could not fetch artist musicbrainz_id={musicbrainz_id}."
+            )
+            return
+
+        score_raw = row.get("score") or ""
+        try:
+            score = Decimal(score_raw) if score_raw != "" else None
+        except InvalidOperation:
+            score = None
+
+        normalized_status = (
+            _normalize_status(row.get("status")) or Status.IN_PROGRESS.value
+        )
+        tracker_defaults = {
+            "status": normalized_status,
+            "score": score,
+            "notes": row.get("notes") or "",
+            "start_date": parse_datetime(row.get("start_date") or "")
+            if row.get("start_date")
+            else None,
+            "end_date": parse_datetime(row.get("end_date") or "")
+            if row.get("end_date")
+            else None,
+        }
+
+        if self.mode == "overwrite":
+            ArtistTracker.objects.update_or_create(
+                user=self.user,
+                artist=artist,
+                defaults=tracker_defaults,
+            )
+        else:
+            ArtistTracker.objects.get_or_create(
+                user=self.user,
+                artist=artist,
+                defaults=tracker_defaults,
+            )
+
+        self.music_tracker_counts["music_artist"] += 1
+
+    def _process_music_album_row(self, row):
+        """Process a music_album tracker row from the CSV."""
+        release_group_id = (row.get("media_id") or "").strip()
+        if not release_group_id:
+            self.warnings.append("Skipping music_album row with empty media_id.")
+            return
+
+        album = Album.objects.filter(
+            musicbrainz_release_group_id=release_group_id
+        ).first()
+        if album is None:
+            album = self._create_album_from_musicbrainz(
+                release_group_id, row.get("title") or ""
+            )
+        if album is None:
+            self.warnings.append(
+                f"Skipping music_album row: could not fetch release_group_id={release_group_id}."
+            )
+            return
+
+        score_raw = row.get("score") or ""
+        try:
+            score = Decimal(score_raw) if score_raw != "" else None
+        except InvalidOperation:
+            score = None
+
+        normalized_status = (
+            _normalize_status(row.get("status")) or Status.IN_PROGRESS.value
+        )
+        tracker_defaults = {
+            "status": normalized_status,
+            "score": score,
+            "notes": row.get("notes") or "",
+            "start_date": parse_datetime(row.get("start_date") or "")
+            if row.get("start_date")
+            else None,
+            "end_date": parse_datetime(row.get("end_date") or "")
+            if row.get("end_date")
+            else None,
+        }
+
+        if self.mode == "overwrite":
+            AlbumTracker.objects.update_or_create(
+                user=self.user,
+                album=album,
+                defaults=tracker_defaults,
+            )
+        else:
+            AlbumTracker.objects.get_or_create(
+                user=self.user,
+                album=album,
+                defaults=tracker_defaults,
+            )
+
+        self.music_tracker_counts["music_album"] += 1

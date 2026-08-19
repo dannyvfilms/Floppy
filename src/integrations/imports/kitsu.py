@@ -9,6 +9,7 @@ from django.utils.dateparse import parse_datetime
 
 import app
 from app.models import MediaTypes, Sources, Status
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -121,7 +122,9 @@ class KitsuImporter:
             if item["type"] == "mappings"
         }
 
-        for entry in response["entries"]:
+        total = len(response["entries"])
+        for i, entry in enumerate(response["entries"], start=1):
+            import_progress.report(i, total, f"Kitsu ({media_type})")
             try:
                 self._process_entry(entry, media_type, media_lookup, mapping_lookup)
             except MediaImportError as error:
@@ -219,8 +222,8 @@ class KitsuImporter:
                     score=self._get_rating(attributes["ratingTwenty"]),
                     progress=max_progress or attributes["progress"],
                     status=Status.COMPLETED.value,
-                    start_date=attributes["startedAt"],
-                    end_date=attributes["finishedAt"],
+                    start_date=self._get_date(attributes["startedAt"]),
+                    end_date=self._get_date(attributes["finishedAt"]),
                     notes=attributes["notes"] or "",
                 )
                 instance._history_date = updated_at
@@ -232,8 +235,8 @@ class KitsuImporter:
             score=self._get_rating(attributes["ratingTwenty"]),
             progress=attributes["progress"],
             status=self._get_status(attributes["status"]),
-            start_date=attributes["startedAt"],
-            end_date=attributes["finishedAt"],
+            start_date=self._get_date(attributes["startedAt"]),
+            end_date=self._get_date(attributes["finishedAt"]),
             notes=attributes["notes"] or "",
         )
 
@@ -325,7 +328,15 @@ class KitsuImporter:
             source=source,
             media_type=media_type,
             defaults={
-                "title": kitsu_metadata["attributes"]["canonicalTitle"],
+                **app.models.Item.title_fields_from_metadata(
+                    {
+                        "title": kitsu_metadata["attributes"]["canonicalTitle"],
+                        "localized_title": kitsu_metadata["attributes"][
+                            "canonicalTitle"
+                        ],
+                        "original_title": None,
+                    },
+                ),
                 "image": image_url,
             },
         )
@@ -345,6 +356,12 @@ class KitsuImporter:
         """Convert the rating from Kitsu to a 0-10 scale."""
         if rating:
             return rating / 2
+        return None
+
+    def _get_date(self, date_str):
+        """Parse a date string from Kitsu and strip seconds/microseconds."""
+        if date_str:
+            return parse_datetime(date_str).replace(second=0, microsecond=0)
         return None
 
     def _get_status(self, status):

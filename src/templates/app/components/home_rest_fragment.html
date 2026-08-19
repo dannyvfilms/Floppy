@@ -1,0 +1,8 @@
+{% comment %}
+  Deferred home content: every group after the first, swapped in place of
+  the shell's skeleton. Also replaces the artwork poller out-of-band with
+  the full set of rows that still need cover polling.
+  Context: home_groups (remaining groups), artwork_poll_row_ids, user
+{% endcomment %}
+{% include "app/components/home_groups.html" %}
+{% include "app/components/home_artwork_poller.html" with poll_row_ids=artwork_poll_row_ids oob=True %}

@@ -1,0 +1,36 @@
+{% comment %}
+Drag-to-reorder wiring for the media_type_picker.html grid.
+Shared by Settings > Sidebar and the setup wizard's media-types step.
+{% endcomment %}
+<script>
+  (() => {
+    const list = document.querySelector('[data-sidebar-order-list]');
+    const orderInput = document.querySelector('[data-sidebar-order-input]');
+    if (!list || !orderInput) return;
+
+    const updateOrder = () => {
+      orderInput.value = Array.from(list.querySelectorAll('[data-sidebar-media-type]'))
+        .map(card => card.dataset.sidebarMediaType)
+        .join(',');
+    };
+
+    const initialize = () => {
+      if (typeof Sortable === 'undefined') return;
+      Sortable.create(list, {
+        animation: 150,
+        handle: '.sidebar-drag-handle',
+        onEnd: updateOrder
+      });
+    };
+
+    if (typeof Sortable !== 'undefined') {
+      initialize();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js';
+    script.addEventListener('load', initialize, { once: true });
+    document.head.appendChild(script);
+  })();
+</script>

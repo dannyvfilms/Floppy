@@ -1,0 +1,172 @@
+from django.urls import re_path
+
+from . import views
+
+urlpatterns = [
+    re_path(r"^calendar/?$", views.CalendarView.as_view(), name="api_calendar"),
+    re_path(
+        r"^calendar/update/?$",
+        views.CalendarUpdateView.as_view(),
+        name="api_update_calendar",
+    ),
+    re_path(
+        r"^changes_history/(?P<media_type>[^/]+)/(?P<history_id>[^/]+)/?$",
+        views.MediaTypeChangesHistoryDetailView.as_view(),
+        name="api_media_changes_history_detail",
+    ),
+    re_path(r"^health/?$", views.HealthView.as_view(), name="api_health"),
+    re_path(r"^info/?$", views.InfoView.as_view(), name="api_info"),
+    re_path(r"^lists/?$", views.ListsView.as_view(), name="api_lists"),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/?$",
+        views.ListDetailView.as_view(),
+        name="api_list_detail",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/items/?$",
+        views.ListItemsView.as_view(),
+        name="api_list_add_item",
+    ),
+    re_path(
+        r"^lists/(?P<list_id>\d+)/items/(?P<item_id>\d+)/?$",
+        views.ListItemView.as_view(),
+        name="api_list_remove_item",
+    ),
+    re_path(r"^media/?$", views.MediaListView.as_view(), name="api_media_list"),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/?$",
+        views.MediaTypeListView.as_view(),
+        name="api_media_type_list",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/?$",
+        views.MediaDetailView.as_view(),
+        name="api_media_detail",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/changes_history/?$",
+        views.MediaChangesHistoryView.as_view(),
+        name="api_media_changes_history",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/history/?$",
+        views.MediaConsumptionHistoryView.as_view(),
+        name="api_media_consumption_history",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/history/(?P<consumption_id>\d+)/?$",
+        views.MediaConsumptionEntryDetailView.as_view(),
+        name="api_media_consumption_entry_detail",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/lists/?$",
+        views.MediaListsView.as_view(),
+        name="api_media_lists",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/lists/(?P<list_id>\d+)/?$",
+        views.MediaListDetailView.as_view(),
+        name="api_media_list_detail",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/recommendations/?$",
+        views.MediaRecommendationsView.as_view(),
+        name="api_media_recommendations",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/seasons/?$",
+        views.MediaSeasonsView.as_view(),
+        name="api_media_seasons",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/sync/?$",
+        views.MediaSyncView.as_view(),
+        name="api_media_sync",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/?$",
+        views.MediaSeasonDetailView.as_view(),
+        name="api_media_season_detail",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/changes_history/?$",
+        views.MediaSeasonChangesHistoryView.as_view(),
+        name="api_media_season_changes_history",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/episodes/?$",
+        views.MediaSeasonEpisodesView.as_view(),
+        name="api_media_season_episodes",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/history/?$",
+        views.MediaSeasonConsumptionHistoryView.as_view(),
+        name="api_media_season_consumption_history",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/history/(?P<consumption_id>\d+)/?$",
+        views.MediaSeasonConsumptionEntryDetailView.as_view(),
+        name="api_media_season_consumption_entry_detail",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/lists/?$",
+        views.MediaSeasonListsView.as_view(),
+        name="api_media_season_lists",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/lists/(?P<list_id>\d+)/?$",
+        views.MediaSeasonListDetailView.as_view(),
+        name="api_media_season_list_detail",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/sync/?$",
+        views.MediaSeasonSyncView.as_view(),
+        name="api_media_season_sync",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/?$",
+        views.MediaEpisodeDetailView.as_view(),
+        name="api_media_episode_detail",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/changes_history/?$",
+        views.MediaEpisodeChangesHistoryView.as_view(),
+        name="api_media_episode_changes_history",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/history/?$",
+        views.MediaEpisodeConsumptionHistoryView.as_view(),
+        name="api_media_episode_consumption_history",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/history/(?P<consumption_id>\d+)/?$",
+        views.MediaEpisodeConsumptionEntryDetailView.as_view(),
+        name="api_media_episode_consumption_entry_detail",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/lists/?$",
+        views.MediaEpisodeListsView.as_view(),
+        name="api_media_episode_lists",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/lists/(?P<list_id>\d+)/?$",
+        views.MediaEpisodeListDetailView.as_view(),
+        name="api_media_episode_list_detail",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/(?P<episode_number>\d+)/sync/?$",
+        views.MediaEpisodeSyncView.as_view(),
+        name="api_media_episode_sync",
+    ),
+    re_path(
+        r"^search/(?P<media_type>[^/]+)/?$",
+        views.SearchProviderView.as_view(),
+        name="api_search_provider",
+    ),
+    re_path(r"^statistics/?$", views.StatisticsView.as_view(), name="api_statistics"),
+]
+
+# FORK: fork-only endpoints (progress, collection, ...) live in fork_urls.py.
+from . import fork_urls  # noqa: E402
+
+urlpatterns += fork_urls.urlpatterns

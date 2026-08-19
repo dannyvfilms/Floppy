@@ -1,82 +1,420 @@
 {% extends "base.html" %}
 {% load static %}
+{% load user_tags %}
+{% load app_tags %}
 
 {% block title %}
-  Calendar - YamTrack
+  Calendar - Floppy
 {% endblock title %}
 
 {% block content %}
   <div class="mb-8">
     <h1 class="text-3xl font-bold mb-2">Calendar</h1>
-    <p class="text-gray-400">Track upcoming releases from your list.</p>
+    <p class="text-[var(--color-text-muted)]">Track upcoming releases from your list.</p>
   </div>
 
-  <div class="bg-[#2a2f35] rounded-lg p-6 mb-6">
+  <div class="bg-[var(--color-surface)] rounded-lg p-6 mb-6" x-data="calendarFilters()">
     <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
       <div class="flex items-center gap-4">
-        <div class="flex items-center bg-[#39404b] rounded-md p-1">
-          <a class="p-2 hover:bg-[#454d5a] rounded-md transition-colors"
+        <div class="flex items-center bg-[var(--color-surface-strong)] rounded-md p-1">
+          <a class="p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
              href="{% url 'calendar' %}?month={{ prev_month }}&year={{ prev_year }}&view={{ view_type }}">
             {% include "app/icons/chevron-left.svg" with classes="w-5 h-5" %}
           </a>
           <h2 class="px-4 text-lg font-semibold min-w-40 text-center">{{ month_name }} {{ year }}</h2>
-          <a class="p-2 hover:bg-[#454d5a] rounded-md transition-colors"
+          <a class="p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
              href="{% url 'calendar' %}?month={{ next_month }}&year={{ next_year }}&view={{ view_type }}">
             {% include "app/icons/chevron-right.svg" with classes="w-5 h-5" %}
           </a>
         </div>
+        <a class="hidden sm:flex w-10 h-10 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex-col items-center justify-center leading-none"
+           href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}&view={{ view_type }}"
+           aria-label="Go to Today">
+          <span class="text-xl font-bold leading-none">{{ today|date:"j" }}</span>
+          <span class="uppercase text-[var(--color-text-secondary)]/90 mt-0.5"
+                style="font-size: 9px; font-weight: 400; letter-spacing: 0.04em; line-height: 1;">
+            {{ today|date:"M" }}
+          </span>
+        </a>
       </div>
 
-      <div class="flex items-center gap-2">
-        <a class="px-4 py-2 text-sm bg-[#39404b] hover:bg-[#454d5a] rounded-md transition-colors"
-           href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}&view={{ view_type }}">Today</a>
+      <div class="flex items-center gap-2 flex-wrap justify-end">
+        <a class="sm:hidden w-10 h-10 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex flex-col items-center justify-center leading-none shrink-0"
+           href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}&view={{ view_type }}"
+           aria-label="Go to Today">
+          <span class="text-xl font-bold leading-none">{{ today|date:"j" }}</span>
+          <span class="uppercase text-[var(--color-text-secondary)]/90 mt-0.5"
+                style="font-size: 9px; font-weight: 400; letter-spacing: 0.04em; line-height: 1;">
+            {{ today|date:"M" }}
+          </span>
+        </a>
 
-        <form method="post" action="{% url 'reload_calendar' %}">
-          {% csrf_token %}
-          <button class="px-4 py-2 text-sm bg-[#39404b] hover:bg-[#454d5a] rounded-md transition-colors flex items-center gap-2 cursor-pointer">
-            {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-4 h-4" %}
-            <span>Fetch New Releases</span>
+        <div class="relative" @click.outside="dropdownOpen = false">
+          <button type="button"
+                  class="h-10 px-3 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center gap-2 cursor-pointer"
+                  @click="actionsOpen = false; dropdownOpen = !dropdownOpen"
+                  :aria-expanded="dropdownOpen">
+            {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
+            <span class="block min-w-0 truncate max-w-[10rem] sm:max-w-[14rem]"
+                  x-text="dropdownLabel()"></span>
+            <svg xmlns="http://www.w3.org/2000/svg"
+                 viewBox="0 0 20 20"
+                 class="w-4 h-4 ml-1"
+                 aria-hidden="true">
+              <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+            </svg>
           </button>
-        </form>
 
-        <div class="bg-[#39404b] rounded-md p-1 space-x-0.5 flex">
-          <a class="p-2 rounded-md transition-colors cursor-pointer {% if view_type == 'grid' %}bg-indigo-600 text-white{% else %}hover:bg-[#454d5a]{% endif %}"
+          <div x-cloak
+               x-show="dropdownOpen"
+               x-transition:enter="transition ease-out duration-100"
+               x-transition:enter-start="transform opacity-0 scale-95"
+               x-transition:enter-end="transform opacity-100 scale-100"
+               x-transition:leave="transition ease-in duration-75"
+               x-transition:leave-start="transform opacity-100 scale-100"
+               x-transition:leave-end="transform opacity-0 scale-95"
+               class="absolute right-0 mt-2 w-64 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
+            <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--color-border)]">
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Media Types</div>
+              <button type="button"
+                      class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
+                      @click="toggleAllTypes()"
+                      x-text="allTypesSelected() ? 'Hide all' : 'Show all'"></button>
+            </div>
+            <div class="max-h-64 overflow-y-auto">
+              <template x-for="type in availableMediaTypes" :key="type.value">
+                <button type="button"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="toggleMediaType(type.value)">
+                  <span x-text="type.label"></span>
+                  <span class="ml-auto" x-show="isTypeSelected(type.value)">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <div class="relative" @click.outside="actionsOpen = false">
+          <button type="button"
+                  aria-label="Calendar Actions"
+                  title="Calendar Actions"
+                  class="w-10 h-10 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center justify-center cursor-pointer"
+                  @click="dropdownOpen = false; actionsOpen = !actionsOpen"
+                  :aria-expanded="actionsOpen">
+            {% include "app/icons/settings.svg" with classes="w-4 h-4" %}
+          </button>
+
+          <div x-cloak
+               x-show="actionsOpen"
+               x-transition:enter="transition ease-out duration-100"
+               x-transition:enter-start="transform opacity-0 scale-95"
+               x-transition:enter-end="transform opacity-100 scale-100"
+               x-transition:leave="transition ease-in duration-75"
+               x-transition:leave-start="transform opacity-100 scale-100"
+               x-transition:leave-end="transform opacity-0 scale-95"
+               class="absolute right-0 mt-2 w-60 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
+            <form method="post" action="{% url 'reload_calendar' %}">
+              {% csrf_token %}
+              <button type="submit"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="actionsOpen = false">
+                {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-4 h-4 mr-3" %}
+                <span>Fetch New Releases</span>
+              </button>
+            </form>
+            <a class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] border-t border-[var(--color-border)]"
+               href="{% url 'download_calendar' token=user.token %}"
+               @click="actionsOpen = false">
+              {% include "app/icons/download.svg" with classes="w-4 h-4 mr-3" %}
+              <span>Download Calendar</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="bg-[var(--color-surface-strong)] rounded-md p-1 space-x-0.5 flex">
+          <a class="p-2 rounded-md transition-colors cursor-pointer {% if view_type == 'grid' %}bg-indigo-600 text-white{% else %}hover:bg-[var(--color-surface-hover)]{% endif %}"
              href="{% url 'calendar' %}?month={{ month }}&year={{ year }}&view=grid">
             {% include "app/icons/grid.svg" with classes="w-4 h-4" %}
           </a>
-          <a class="p-2 rounded-md transition-colors cursor-pointer {% if view_type == 'list' %}bg-indigo-600 text-white{% else %}hover:bg-[#454d5a]{% endif %}"
+          <a class="p-2 rounded-md transition-colors cursor-pointer {% if view_type == 'list' %}bg-indigo-600 text-white{% else %}hover:bg-[var(--color-surface-hover)]{% endif %}"
              href="{% url 'calendar' %}?month={{ month }}&year={{ year }}&view=list">
             {% include "app/icons/list.svg" with classes="w-4 h-4" %}
           </a>
         </div>
 
-        <a class="p-3 text-sm bg-[#39404b] hover:bg-[#454d5a] rounded-md transition-colors"
-           href="{% url 'download_calendar' token=user.token %}">
-          {% include "app/icons/download.svg" with classes="w-4 h-4" %}
-        </a>
       </div>
     </div>
 
     {% if view_type == 'grid' %}
-      {% include "events/components/calendar_grid.html" %}
+      <div x-html="filteredGridHtml"></div>
+      <template x-ref="gridTemplate">
+        {% include "events/components/calendar_grid.html" %}
+      </template>
     {% else %}
-      {% include "events/components/calendar_list.html" %}
+      <div x-html="filteredListHtml"></div>
+      <template x-ref="listTemplate">
+        {% include "events/components/calendar_list.html" %}
+      </template>
     {% endif %}
   </div>
 
-  <div class="bg-[#2a2f35] p-5 rounded-lg mb-6">
+  <div class="bg-[var(--color-surface)] p-5 rounded-lg mb-6"
+       x-data="{
+         selectedMediaTypes: [
+           {% for media_type in media_types %}
+             {% with enabled_field=media_type|add:'_enabled' %}
+               {% if user|get_attr:enabled_field %}'{{ media_type }}',{% endif %}
+             {% endwith %}
+           {% endfor %}
+         ],
+         calendarBaseUrl: '{{ request.scheme }}://{{ request.get_host }}{% url 'download_calendar' token=user.token %}',
+         get calendarExportUrl() {
+           const params = new URLSearchParams();
+           this.selectedMediaTypes.forEach((mediaType) => {
+             params.append('media_types', mediaType);
+           });
+           const query = params.toString();
+           return query ? `${this.calendarBaseUrl}?${query}` : this.calendarBaseUrl;
+         }
+       }">
     <div class="flex items-center mb-3">
       {% include "app/icons/link.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
       <h3 class="text-base font-medium">Export link</h3>
     </div>
-    <p class="text-gray-400 mb-4 text-sm">
+    <p class="text-[var(--color-text-muted)] mb-4 text-sm">
       This link can be used to integrate your calendar into any of your calendar applications.
     </p>
-    <div class="bg-[#262a2f] p-3 rounded-md mb-4">
+
+    <div class="mb-4">
+      <div class="flex items-center mb-3">
+        {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-indigo-400 mr-2" %}
+        <h4 class="text-sm font-semibold">Media Types</h4>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-3 text-xs">
+        Choose which media types to include in this calendar URL.
+      </p>
+      <div class="grid gap-3 md:grid-cols-3">
+        {% for media_type in media_types %}
+          <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
+            <div class="flex items-center text-[var(--color-text-muted)]">
+              {% icon media_type is_active=False %}
+              <span class="text-[var(--color-text-secondary)] text-sm ml-2">{{ media_type|media_type_readable_plural }}</span>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              {% with enabled_field=media_type|add:"_enabled" %}
+                <input class="sr-only peer"
+                       type="checkbox"
+                       value="{{ media_type }}"
+                       x-model="selectedMediaTypes"
+                       {% if user|get_attr:enabled_field %}checked{% endif %}>
+              {% endwith %}
+              <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+              </div>
+            </label>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="bg-[var(--color-surface-dim)] p-3 rounded-md mb-4">
       <input readonly=""
-             class="w-full py-2 px-3 bg-[#262a2f] rounded-md text-gray-300 text-sm border-0 focus:ring-0 outline-none font-mono"
+             class="w-full py-2 px-3 bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono"
              type="text"
-             value="{{ request.scheme }}://{{ request.get_host }}{% url 'download_calendar' token=user.token %}">
+             x-bind:value="calendarExportUrl">
     </div>
   </div>
 {% endblock content %}
+
+{% block js %}
+  {{ block.super }}
+  <script>
+    function calendarFilters() {
+      return {
+        dropdownOpen: false,
+        actionsOpen: false,
+        availableMediaTypes: [
+          {% for media_type in available_media_types %}
+            { value: '{{ media_type }}', label: '{{ media_type|media_type_readable|escapejs }}' }{% if not forloop.last %},{% endif %}
+          {% endfor %}
+        ],
+        selectedMediaTypes: [
+          {% for media_type in available_media_types %}
+            '{{ media_type }}'{% if not forloop.last %},{% endif %}
+          {% endfor %}
+        ],
+        mobileSelectedDay: null,
+        filteredGridHtml: '',
+        filteredListHtml: '',
+        init() {
+          this.$watch('selectedMediaTypes', () => this.applyFilter());
+          this.applyFilter();
+        },
+        dropdownLabel() {
+          if (this.allTypesSelected()) {
+            return 'All Types';
+          }
+          if (this.selectedMediaTypes.length === 0) {
+            return 'No Types';
+          }
+          if (this.selectedMediaTypes.length === 1) {
+            const selectedType = this.availableMediaTypes.find(
+              type => type.value === this.selectedMediaTypes[0],
+            );
+            return selectedType ? selectedType.label : '1 Type';
+          }
+          return `${this.selectedMediaTypes.length} Types`;
+        },
+        allTypesSelected() {
+          return (
+            this.availableMediaTypes.length > 0
+            && this.selectedMediaTypes.length === this.availableMediaTypes.length
+          );
+        },
+        isTypeSelected(mediaType) {
+          return this.selectedMediaTypes.includes(mediaType);
+        },
+        toggleMediaType(mediaType) {
+          if (this.isTypeSelected(mediaType)) {
+            this.selectedMediaTypes = this.selectedMediaTypes.filter(
+              selectedType => selectedType !== mediaType,
+            );
+          } else {
+            this.selectedMediaTypes = [...this.selectedMediaTypes, mediaType];
+          }
+          this.applyFilter();
+        },
+        toggleAllTypes() {
+          if (this.allTypesSelected()) {
+            this.clearAll();
+            return;
+          }
+          this.selectAll();
+        },
+        selectAll() {
+          this.selectedMediaTypes = this.availableMediaTypes.map(type => type.value);
+          this.applyFilter();
+        },
+        clearAll() {
+          this.selectedMediaTypes = [];
+          this.applyFilter();
+        },
+        applyFilter() {
+          if (this.$refs.gridTemplate) {
+            this.filteredGridHtml = this.filterReleaseMarkup(this.$refs.gridTemplate.innerHTML);
+          }
+          if (this.$refs.listTemplate) {
+            this.filteredListHtml = this.filterReleaseMarkup(this.$refs.listTemplate.innerHTML);
+          }
+          this.$nextTick(() => this.bindMobileCalendar());
+        },
+        filterReleaseMarkup(html) {
+          const selected = new Set(this.selectedMediaTypes);
+          const container = document.createElement('div');
+          container.innerHTML = html;
+
+          container.querySelectorAll('[data-release-media-type]').forEach(el => {
+            const type = el.dataset.releaseMediaType;
+            if (!selected.has(type)) {
+              el.remove();
+            }
+          });
+
+          container.querySelectorAll('[data-calendar-day]').forEach(dayEl => {
+            const hasReleases = dayEl.querySelector('[data-release-media-type]');
+            const emptyState = dayEl.querySelector('[data-empty-state]');
+
+            if (emptyState) {
+              emptyState.classList.toggle('hidden', !!hasReleases);
+            }
+          });
+
+          container.querySelectorAll('[data-day-panel]').forEach(panel => {
+            const releaseCount = panel.querySelectorAll('[data-release-media-type]').length;
+            const emptyState = panel.querySelector('[data-mobile-empty-state]');
+
+            if (emptyState) {
+              emptyState.classList.toggle('hidden', releaseCount > 0);
+            }
+          });
+
+          return container.innerHTML;
+        },
+        bindMobileCalendar() {
+          const mobileCalendar = this.$root.querySelector('[data-mobile-calendar]');
+          if (!mobileCalendar) {
+            return;
+          }
+
+          const dayTriggers = [...mobileCalendar.querySelectorAll('[data-day-trigger]')];
+          const dayPanels = [...mobileCalendar.querySelectorAll('[data-day-panel]')];
+          if (!dayTriggers.length || !dayPanels.length) {
+            return;
+          }
+
+          const agendaTitle = mobileCalendar.querySelector('[data-agenda-title]');
+          const agendaCount = mobileCalendar.querySelector('[data-agenda-count]');
+          const monthName = mobileCalendar.dataset.monthName || '';
+
+          const releaseCountByDay = new Map();
+          dayPanels.forEach((panel) => {
+            releaseCountByDay.set(
+              panel.dataset.dayPanel,
+              panel.querySelectorAll('[data-release-media-type]').length,
+            );
+          });
+
+          const updateDayIndicators = () => {
+            dayTriggers.forEach((trigger) => {
+              const count = releaseCountByDay.get(trigger.dataset.dayTrigger) || 0;
+              const activeDots = Math.min(count, 3);
+              const dots = [...trigger.querySelectorAll('[data-day-indicator-dot]')];
+
+              dots.forEach((dot, index) => {
+                dot.style.backgroundColor = index < activeDots
+                  ? '#6366f1'
+                  : 'rgba(148, 163, 184, 0.75)';
+              });
+            });
+          };
+
+          const selectDay = (day) => {
+            this.mobileSelectedDay = day;
+
+            dayTriggers.forEach((trigger) => {
+              const isSelected = trigger.dataset.dayTrigger === day;
+              trigger.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+              trigger.classList.toggle('ring-1', isSelected);
+              trigger.classList.toggle('ring-indigo-400', isSelected);
+            });
+
+            dayPanels.forEach((panel) => {
+              panel.classList.toggle('hidden', panel.dataset.dayPanel !== day);
+            });
+
+            const eventCount = releaseCountByDay.get(day) || 0;
+            if (agendaTitle) {
+              agendaTitle.textContent = monthName ? `${monthName} ${day}` : `Day ${day}`;
+            }
+            if (agendaCount) {
+              agendaCount.textContent = eventCount === 1 ? '1 release' : `${eventCount} releases`;
+            }
+          };
+
+          dayTriggers.forEach((trigger) => {
+            trigger.addEventListener('click', () => selectDay(trigger.dataset.dayTrigger));
+          });
+
+          updateDayIndicators();
+
+          const defaultDay = this.mobileSelectedDay
+            || mobileCalendar.dataset.selectedDay
+            || dayTriggers[0].dataset.dayTrigger;
+          selectDay(defaultDay);
+        }
+      };
+    }
+
+  </script>
+{% endblock js %}

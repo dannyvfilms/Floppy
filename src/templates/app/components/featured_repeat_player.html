@@ -1,0 +1,14 @@
+{% load app_tags %}
+{% comment %}
+  Featured Repeat Player card — photo, name, title count, movies/TV split,
+  "X% of titles" donut ring, "Known for" pills, "View Profile ->" link.
+
+  Required context: featured_person (payload from stats_cast_crew.build_featured_person_payload
+  / get_featured_repeat_player), rendered both on full page load and via the
+  select_featured_person POST swap.
+{% endcomment %}
+<div class="flex flex-col space-y-1 mb-4">
+  <h2 class="text-xl font-semibold text-[var(--color-text)]">Featured Repeat Player</h2>
+  <p class="text-sm text-[var(--color-text-muted)]">The most recurring talent in your library.</p>
+</div>
+{% include "app/components/featured_repeat_player_content.html" %}

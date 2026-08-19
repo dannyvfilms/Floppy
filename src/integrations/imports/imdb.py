@@ -10,6 +10,7 @@ import app
 import app.providers
 from app.models import MediaTypes, Sources, Status
 from app.providers.services import ProviderAPIError
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -98,7 +99,9 @@ class IMDBImporter:
                 raise MediaImportUnexpectedError(error_msg) from error
 
         # Second pass: add non-duplicates to bulk_media
-        for row in rows:
+        total = len(rows)
+        for i, row in enumerate(rows, start=1):
+            import_progress.report(i, total, "IMDB")
             try:
                 self._process_second_pass(row, media_id_counts)
             except Exception as error:

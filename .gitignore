@@ -1,5 +1,6 @@
 __pycache__
 *.pyc
+*.egg-info/
 .env
 .coverage*
 venv
@@ -9,14 +10,49 @@ db.sqlite3-shm
 db.sqlite3-wal
 .DS_Store
 .vscode/launch.json
+.agents
+AGENTS.md
 CLAUDE.md
+.claude/settings.local.json
 requests.http
 TODO.txt
+.codex
 
 # Local dev-only
 .env.dev
 docker-compose.dev.yml
 db-dev/
+src/local_serve.py
 
 # Local dev DB
 db/
+
+# Runtime log file (see LOG_DIR in config/settings.py)
+src/logs/
+
+# Retired Tailwind output path; main.css is the canonical compiled asset.
+src/static/css/tailwind.css
+docs/upstream-review.md
+
+# Pinned tailwindcss CLI (see package.json) — keeps generated main.css reproducible
+node_modules/
+
+# Brand masters are kept outside the repo; only the web-sized derivatives
+# under docs/brand/ and src/static/img/ are committed.
+docs/brand/*-source.png
+.venv/
+
+# Worktrees
+.worktrees/
+worktrees/
+
+# Antigravity Superpowers Docs
+docs/superpowers/
+
+# Local dev
+.env.web-dev
+.flatpak-builder/
+.gstack/
+.worktrees/
+desktop/
+dump.rdb

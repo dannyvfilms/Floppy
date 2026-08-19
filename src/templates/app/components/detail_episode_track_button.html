@@ -1,0 +1,21 @@
+{% load app_tags %}
+
+<div id="episode-track-button-{{ episode.item.id }}{{ target_suffix }}"
+     {% if track_button_oob %}hx-swap-oob="true"{% endif %}>
+  {% with watched=episode.history|watched_count %}
+  <button hx-get="{% media_view_url 'track_modal' episode %}"
+          {# With a watch on record the modal edits it (instance_id) so the fields prefill and Delete works; "Add new entry" inside the modal covers rewatches. #}
+          hx-vals='{"return_url": "{{ detail_return_url|default:request.path|urlencode }}", "episode_number": "{{ episode.episode_number }}", {% if episode.history %}"instance_id": "{{ episode.history.0.id }}"{% else %}"is_create": "1"{% endif %}}'
+          hx-target="#{% component_id 'track' episode %}{{ target_suffix }}"
+          hx-trigger="click"
+          @click="trackOpen = true"
+          title="Track Episode"
+          class="p-2 {% if watched > 0 %}bg-indigo-600 hover:bg-indigo-700{% elif episode.history %}bg-amber-600 hover:bg-amber-700{% else %}bg-gray-600 hover:bg-gray-500{% endif %} text-white rounded-full transition duration-300 cursor-pointer">
+    {% if episode.history %}
+      {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
+    {% else %}
+      {% include "app/icons/eye-closed.svg" with classes="w-4 h-4" %}
+    {% endif %}
+  </button>
+  {% endwith %}
+</div>

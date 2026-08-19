@@ -1,0 +1,21 @@
+{% load user_tags %}
+<form method="post"
+      action="{% url current_source.connect_url_name %}"
+      x-data="{ connecting: false }"
+      @submit="connecting = true"
+      class="w-full max-w-xs">
+  {% csrf_token %}
+  <input type="hidden" name="mode" value="{{ current_source.recommended_import_mode }}">
+  <input type="hidden" name="frequency" value="once">
+  <input type="hidden" name="time" value="00:00">
+  <input type="hidden" name="next" value="{% url 'onboarding_service_setup' %}">
+  <button type="submit"
+          :disabled="connecting"
+          class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer"
+          :class="connecting ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'">
+    <span x-text="connecting ? 'Redirecting…' : 'Connect ' + '{{ current_source.slug|source_name|escapejs }}'"></span>
+  </button>
+  <p class="text-xs text-[var(--color-text-muted)] mt-2 text-center">
+    You'll be sent to {{ current_source.slug|source_name }} to sign in, then brought right back here.
+  </p>
+</form>

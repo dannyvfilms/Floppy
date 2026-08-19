@@ -1,0 +1,38 @@
+      {% if featured_person or role_leaders.columns or studio_footprint.studios %}
+      <div class="mb-4 sm:mb-8 space-y-4 sm:space-y-4"
+           style="margin-top: 1rem;"
+           x-show="['all','tv','movie','anime','game'].includes(selectedMediaType)">
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
+          <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-2 overflow-hidden" id="featured-repeat-player">
+            <div class="flex flex-col space-y-1 mb-4">
+              <h2 class="text-xl font-semibold text-[var(--color-text)]">Featured Repeat Player</h2>
+              <p class="text-sm text-[var(--color-text-muted)]">The most recurring talent in your library.</p>
+            </div>
+            <div x-ref="featuredPlayer">
+              {% include "app/components/featured_repeat_player_content.html" %}
+            </div>
+            <div x-ref="featuredPlayerFooter">
+              {% include "app/components/featured_repeat_player_footer.html" %}
+            </div>
+          </div>
+          <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-3 overflow-hidden">
+            {% include "app/components/role_leaders.html" %}
+          </div>
+        </div>
+
+        <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6" id="person-media-strip">
+          <div x-ref="personStrip">
+            {% include "app/components/person_media_strip_row.html" %}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
+          <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-2 overflow-hidden">
+            {% include "app/components/studio_footprint.html" %}
+          </div>
+          <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-3 overflow-hidden">
+            {% include "app/components/taste_signals.html" %}
+          </div>
+        </div>
+      </div>
+      {% endif %}

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 from django.utils import timezone
 
@@ -228,7 +228,9 @@ class StatisticsDateFilteringTests(TestCase):
         )
 
         # Should include all media except Planning status items
-        self.assertEqual(media_count["total"], 8)  # TV, Season, and 6 Movies (excluding Planning movie4 and movie6)
+        self.assertEqual(
+            media_count["total"], 8
+        )  # TV, Season, and 6 Movies (excluding Planning movie4 and movie6)
         self.assertEqual(media_count[MediaTypes.TV.value], 1)
         self.assertEqual(media_count[MediaTypes.SEASON.value], 1)
         self.assertEqual(media_count[MediaTypes.MOVIE.value], 6)
@@ -711,7 +713,7 @@ class StatisticsTests(TestCase):
             MediaTypes.ANIME.value: Anime.objects.filter(user=self.user),
         }
 
-        score_distribution, top_rated = statistics.get_score_distribution(user_media)
+        score_distribution, top_rated, _ = statistics.get_score_distribution(user_media)
 
         # Check structure
         self.assertIn("labels", score_distribution)
@@ -841,7 +843,7 @@ class StatisticsTests(TestCase):
         months = result["months"]
         self.assertIsInstance(months, list)
 
-    @patch("app.statistics.BasicMedia.objects.get_historical_models")
+    @patch("app.stats_activity.BasicMedia.objects.get_historical_models")
     @patch("app.statistics.apps.get_model")
     def test_get_filtered_historical_data(self, mock_get_model, mock_get_hist_models):
         """Test the get_filtered_historical_data function."""
@@ -934,16 +936,16 @@ class StatisticsTests(TestCase):
         day_minutes_by_type = {
             "Movie": {
                 "2025-01-01": 120,  # Wednesday - 2 hours
-                "2025-01-02": 60,   # Thursday - 1 hour
-                "2025-01-03": 90,   # Friday - 1.5 hours
-                "2025-01-04": 0,    # Saturday - 0
+                "2025-01-02": 60,  # Thursday - 1 hour
+                "2025-01-03": 90,  # Friday - 1.5 hours
+                "2025-01-04": 0,  # Saturday - 0
                 "2025-01-05": 180,  # Sunday - 3 hours
             },
             "TV": {
-                "2025-01-01": 60,   # Wednesday - 1 hour (total: 3h)
-                "2025-01-02": 30,   # Thursday - 0.5 hour (total: 1.5h)
-                "2025-01-03": 0,    # Friday (total: 1.5h)
-                "2025-01-04": 0,    # Saturday (total: 0)
+                "2025-01-01": 60,  # Wednesday - 1 hour (total: 3h)
+                "2025-01-02": 30,  # Thursday - 0.5 hour (total: 1.5h)
+                "2025-01-03": 0,  # Friday (total: 1.5h)
+                "2025-01-04": 0,  # Saturday (total: 0)
                 "2025-01-05": 120,  # Sunday - 2 hours (total: 5h)
             },
         }
@@ -1183,18 +1185,18 @@ class StatisticsTests(TestCase):
             status=Status.IN_PROGRESS.value,
         )
 
-        user_media = {'game': FakeQuerySet([first_session, second_session, other_game])}
+        user_media = {"game": FakeQuerySet([first_session, second_session, other_game])}
 
         result = statistics.get_top_played_media(user_media, start_date, end_date)
 
-        self.assertIn('game', result)
-        self.assertEqual(len(result['game']), 2)
+        self.assertIn("game", result)
+        self.assertEqual(len(result["game"]), 2)
 
-        top_game = result['game'][0]
-        self.assertIs(top_game['media'], second_session)
-        self.assertEqual(top_game['play_count'], 2)
-        self.assertEqual(top_game['total_time_minutes'], 180)
-        self.assertEqual(top_game['formatted_duration'], minutes_to_hhmm(180))
+        top_game = result["game"][0]
+        self.assertIs(top_game["media"], second_session)
+        self.assertEqual(top_game["play_count"], 2)
+        self.assertEqual(top_game["total_time_minutes"], 180)
+        self.assertEqual(top_game["formatted_duration"], minutes_to_hhmm(180))
 
 
 class GameDailyAverageTests(TestCase):
@@ -1224,7 +1226,9 @@ class GameDailyAverageTests(TestCase):
             progress=60,
         )
 
-        result = statistics._collect_game_data([first_session, second_session], None, None)
+        result = statistics._collect_game_data(
+            [first_session, second_session], None, None
+        )
 
         self.assertEqual(len(result), 1)
         self.assertAlmostEqual(result[0]["daily_average"], 165 / 60)
@@ -1336,9 +1340,12 @@ class ConsumptionStatisticsTests(TestCase):
             end_date=now - datetime.timedelta(hours=6),
         )
 
+    @tag("network")
     def test_consumption_stats_aggregation(self):
         """TV/movie consumption helpers should return expected totals and chart data."""
-        with patch("app.statistics._get_media_metadata_for_statistics") as metadata_mock:
+        with patch(
+            "app.stats_time._get_media_metadata_for_statistics",
+        ) as metadata_mock:
             metadata_mock.return_value = {"runtime": "2h"}
             user_media, _ = statistics.get_user_media(
                 self.user,
@@ -1366,7 +1373,9 @@ class ConsumptionStatisticsTests(TestCase):
 
         self.assertEqual(tv_stats["plays"]["total"], 2)
         self.assertAlmostEqual(tv_stats["hours"]["total"], 1.5, places=2)
-        self.assertEqual(tv_stats["charts"]["by_year"]["labels"], [str(self.end_date.year)])
+        self.assertEqual(
+            tv_stats["charts"]["by_year"]["labels"], [str(self.end_date.year)]
+        )
         self.assertEqual(
             tv_stats["charts"]["by_year"]["datasets"][0]["data"],
             [2],
@@ -1380,15 +1389,37 @@ class ConsumptionStatisticsTests(TestCase):
 
         self.assertEqual(movie_stats["plays"]["total"], 2)
         self.assertAlmostEqual(movie_stats["hours"]["total"], 4.0, places=2)
-        self.assertEqual(movie_stats["charts"]["by_year"]["labels"], [str(self.end_date.year)])
+        self.assertEqual(
+            movie_stats["charts"]["by_year"]["labels"], [str(self.end_date.year)]
+        )
         self.assertEqual(
             movie_stats["charts"]["by_year"]["datasets"][0]["data"],
             [2],
         )
 
+    def test_tv_consumption_stats_without_precomputed_minutes(self):
+        """TV consumption should infer minutes without needing a precomputed map."""
+        user_media, _ = statistics.get_user_media(
+            self.user,
+            self.start_date,
+            self.end_date,
+        )
+
+        tv_stats = statistics.get_tv_consumption_stats(
+            user_media,
+            self.start_date,
+            self.end_date,
+            minutes_per_type=None,
+        )
+
+        self.assertEqual(tv_stats["plays"]["total"], 2)
+        self.assertAlmostEqual(tv_stats["hours"]["total"], 1.5, places=2)
+
     def test_statistics_view_includes_consumption_context(self):
         """Statistics view should include the consumption breakdown data."""
-        with patch("app.statistics._get_media_metadata_for_statistics") as metadata_mock:
+        with patch(
+            "app.statistics._get_media_metadata_for_statistics"
+        ) as metadata_mock:
             metadata_mock.return_value = {"runtime": "2h"}
             response = self.client.get(reverse("statistics"))
         self.assertEqual(response.status_code, 200)
@@ -1405,7 +1436,9 @@ class ConsumptionStatisticsTests(TestCase):
         self.user.season_enabled = False
         self.user.save(update_fields=["season_enabled"])
 
-        with patch("app.statistics._get_media_metadata_for_statistics") as metadata_mock:
+        with patch(
+            "app.statistics._get_media_metadata_for_statistics"
+        ) as metadata_mock:
             metadata_mock.return_value = {"runtime": "2h"}
             response = self.client.get(reverse("statistics"))
 
@@ -1413,3 +1446,244 @@ class ConsumptionStatisticsTests(TestCase):
         media_count = response.context["media_count"]
         self.assertNotIn(MediaTypes.SEASON.value, media_count)
         self.assertEqual(response.context["tv_consumption"]["plays"]["total"], 2)
+
+
+class GroupedAnimeStatisticsTests(TestCase):
+    """Grouped anime (TMDB/TVDB) should count as anime, not TV, in all statistics."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="grouped-anime-user",
+            password="password",
+        )
+
+        now = timezone.now()
+        self.start_date = now - datetime.timedelta(days=30)
+        self.end_date = now
+
+        # --- Grouped anime: TV model with library_media_type="anime" ---
+        self.anime_tv_item = Item.objects.get_or_create(
+            media_id="anime_show_1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            defaults={"title": "Attack on Titan (TMDB)"},
+        )[0]
+        self.anime_tv = TV.objects.create(
+            user=self.user,
+            item=self.anime_tv_item,
+            status=Status.COMPLETED.value,
+        )
+        self.anime_season_item = Item.objects.get_or_create(
+            media_id="anime_show_1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            library_media_type=MediaTypes.ANIME.value,
+            defaults={"title": "Attack on Titan S1"},
+        )[0]
+        self.anime_season = Season.objects.create(
+            user=self.user,
+            item=self.anime_season_item,
+            related_tv=self.anime_tv,
+            status=Status.COMPLETED.value,
+        )
+        for ep_num in (1, 2):
+            ep_item = Item.objects.get_or_create(
+                media_id="anime_show_1",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=ep_num,
+                library_media_type=MediaTypes.ANIME.value,
+                defaults={
+                    "title": f"Episode {ep_num}",
+                    "runtime_minutes": 24,
+                },
+            )[0]
+            Episode.objects.create(
+                item=ep_item,
+                related_season=self.anime_season,
+                end_date=now - datetime.timedelta(days=ep_num),
+            )
+
+        # --- Regular TV show (should stay in TV bucket) ---
+        self.tv_item = Item.objects.get_or_create(
+            media_id="regular_tv_1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Regular TV Show"},
+        )[0]
+        self.tv = TV.objects.create(
+            user=self.user,
+            item=self.tv_item,
+            status=Status.COMPLETED.value,
+        )
+        self.tv_season_item = Item.objects.get_or_create(
+            media_id="regular_tv_1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={"title": "Regular TV S1"},
+        )[0]
+        self.tv_season = Season.objects.create(
+            user=self.user,
+            item=self.tv_season_item,
+            related_tv=self.tv,
+            status=Status.COMPLETED.value,
+        )
+        self.tv_ep_item = Item.objects.get_or_create(
+            media_id="regular_tv_1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            defaults={"title": "TV Episode 1", "runtime_minutes": 45},
+        )[0]
+        Episode.objects.create(
+            item=self.tv_ep_item,
+            related_season=self.tv_season,
+            end_date=now - datetime.timedelta(days=3),
+        )
+
+    def _get_media(self):
+        return statistics.get_user_media(self.user, self.start_date, self.end_date)
+
+    def test_grouped_anime_is_in_anime_bucket_not_tv(self):
+        """get_user_media must put grouped anime in 'anime', not 'tv'."""
+        user_media, media_count = self._get_media()
+
+        anime_bucket = user_media.get(MediaTypes.ANIME.value)
+        # Anime bucket may be a single queryset or a list of querysets (flat + grouped)
+        anime_ids = (
+            [
+                m.id
+                for m in statistics._iter_media_list(anime_bucket)
+                if anime_bucket is not None
+            ]
+            if anime_bucket is not None
+            else []
+        )
+        tv_ids = [m.id for m in user_media.get(MediaTypes.TV.value, [])]
+
+        self.assertIn(self.anime_tv.id, anime_ids)
+        self.assertNotIn(self.anime_tv.id, tv_ids)
+        # Regular TV show must stay in tv bucket
+        self.assertIn(self.tv.id, tv_ids)
+
+    def test_grouped_anime_count_in_anime_media_count(self):
+        """media_count must attribute grouped anime to anime, not tv."""
+        _, media_count = self._get_media()
+
+        self.assertGreaterEqual(media_count.get(MediaTypes.ANIME.value, 0), 1)
+        # TV count should reflect only pure TV shows
+        self.assertEqual(media_count.get(MediaTypes.TV.value, 0), 1)
+
+    def test_grouped_anime_minutes_counted_as_anime(self):
+        """Minutes for grouped anime episodes must land in the anime bucket."""
+        user_media, _ = self._get_media()
+        minutes = statistics.calculate_minutes_per_media_type(
+            user_media, self.start_date, self.end_date
+        )
+
+        # 2 episodes × 24 min = 48 min of anime
+        self.assertGreaterEqual(minutes.get(MediaTypes.ANIME.value, 0), 48)
+        # TV minutes should reflect only the regular TV episode (45 min)
+        self.assertLessEqual(minutes.get(MediaTypes.TV.value, 0), 45)
+
+    def test_grouped_anime_status_distribution_is_anime(self):
+        """Status distribution must attribute grouped anime entries to anime."""
+        user_media, _ = self._get_media()
+        distribution = statistics.get_status_distribution(user_media)
+
+        labels = distribution["labels"]
+        self.assertIn("Anime", labels)
+
+        anime_idx = labels.index("Anime")
+        # Sum completed count for anime across all status datasets
+        completed_anime = sum(
+            ds["data"][anime_idx]
+            for ds in distribution["datasets"]
+            if ds["label"] == Status.COMPLETED.value
+        )
+        self.assertGreaterEqual(completed_anime, 1)
+
+    def test_regular_tv_unaffected(self):
+        """Regular TV entries must still be counted as TV after the fix."""
+        user_media, _ = self._get_media()
+        minutes = statistics.calculate_minutes_per_media_type(
+            user_media, self.start_date, self.end_date
+        )
+
+        self.assertGreater(minutes.get(MediaTypes.TV.value, 0), 0)
+
+
+class EpisodelessCompletedSeasonStatisticsTests(TestCase):
+    """A Completed season/show with zero Episode rows must still count.
+
+    Bulk imports (e.g. an MDBList season-rating import, see issue #369)
+    can persist a Season as COMPLETED via bulk_create, bypassing
+    Season.save()'s episode-completion fan-out, leaving it with no
+    Episode children. get_user_media() used to key the TV/Season "All
+    Time" buckets off existing Episode rows, making such shows/seasons
+    invisible in Statistics even though they exist in the library.
+    """
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="episodeless-user",
+            password="password",
+        )
+
+        self.tv_item = Item.objects.create(
+            media_id="900001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Rating Only Show",
+        )
+        self.tv = TV.objects.create(
+            user=self.user,
+            item=self.tv_item,
+            status=Status.COMPLETED.value,
+        )
+
+        self.season_item = Item.objects.create(
+            media_id="900001",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Rating Only Show S1",
+        )
+        # bulk_create mirrors the bulk-import path: it skips Season.save(),
+        # so no Episode backfill happens here.
+        self.season = Season.objects.bulk_create(
+            [
+                Season(
+                    user=self.user,
+                    item=self.season_item,
+                    related_tv=self.tv,
+                    status=Status.COMPLETED.value,
+                    score=7,
+                ),
+            ],
+        )[0]
+
+    def test_episodeless_season_and_show_included_all_time(self):
+        """All Time stats must include the show/season despite zero episodes."""
+        self.assertEqual(
+            Episode.objects.filter(related_season=self.season).count(),
+            0,
+        )
+
+        user_media, media_count = statistics.get_user_media(self.user, None, None)
+
+        self.assertIn(
+            self.tv.id,
+            list(user_media[MediaTypes.TV.value].values_list("id", flat=True)),
+        )
+        self.assertIn(
+            self.season.id,
+            list(user_media[MediaTypes.SEASON.value].values_list("id", flat=True)),
+        )
+        self.assertEqual(media_count[MediaTypes.TV.value], 1)
+        self.assertEqual(media_count[MediaTypes.SEASON.value], 1)

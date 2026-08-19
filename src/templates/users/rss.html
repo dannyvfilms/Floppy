@@ -1,0 +1,146 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% load app_tags %}
+
+{% block title %}
+  RSS - Floppy
+{% endblock title %}
+
+{% block settings_content %}
+  {{ media_types|json_script:"rss-media-types-data" }}
+  <div class="bg-[var(--color-surface)] rounded-lg p-6"
+       x-data="rssSettings('{{ feed_url_template|escapejs }}')">
+    <div class="flex items-center mb-4">
+      {% include "app/icons/rss.svg" with classes="w-6 h-6 text-indigo-400 mr-3" %}
+      <h2 class="text-xl font-semibold">RSS</h2>
+    </div>
+    <p class="text-[var(--color-text-muted)] mb-5 text-sm">
+      Turn a Discover row backed by external metadata (Trakt and other providers) into a feed
+      you can subscribe to, or paste into Radarr's or Sonarr's <span class="text-[var(--color-text-secondary)]">RSS List</span> import.
+    </p>
+
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+        <div>
+          <label class="block text-sm text-[var(--color-text-muted)] mb-2">Media Type</label>
+          <div class="relative">
+            <select x-model="mediaType"
+                    @change="onMediaTypeChange(); refreshPreview()"
+                    class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
+              <template x-for="option in mediaTypes" :key="option.value">
+                <option :value="option.value" x-text="option.label"></option>
+              </template>
+            </select>
+            {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm text-[var(--color-text-muted)] mb-2">Row</label>
+          <div class="relative">
+            <select x-model="rowKey"
+                    @change="refreshPreview()"
+                    class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
+              <template x-for="row in availableRows" :key="row.key">
+                <option :value="row.key" x-text="row.title"></option>
+              </template>
+            </select>
+            {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-6 mb-5">
+        <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer">
+          <input type="checkbox" x-model="skipPlanning" @change="refreshPreview()" class="rounded border-gray-600 bg-[var(--color-surface)] text-indigo-600 focus:ring-indigo-500">
+          Skip Planning
+        </label>
+        <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer">
+          <input type="checkbox" x-model="skipCollected" @change="refreshPreview()" class="rounded border-gray-600 bg-[var(--color-surface)] text-indigo-600 focus:ring-indigo-500">
+          Skip Collected
+        </label>
+      </div>
+
+      <form x-ref="previewForm"
+            hx-get="{% url 'discover_row_feed_preview' %}"
+            hx-target="#rss-preview"
+            hx-trigger="refresh-preview"
+            hx-swap="innerHTML">
+        <input type="hidden" name="media_type" :value="mediaType">
+        <input type="hidden" name="row_key" :value="rowKey">
+        <input type="hidden" name="skip_planning" :value="skipPlanning ? '1' : '0'">
+        <input type="hidden" name="skip_collected" :value="skipCollected ? '1' : '0'">
+      </form>
+
+      <div id="rss-preview" class="mb-5"></div>
+
+      <label class="block text-sm text-[var(--color-text-muted)] mb-2">Feed URL</label>
+      <div class="bg-[var(--color-surface-dim)] p-3 rounded-md">
+        <div class="flex items-center gap-2">
+          <input readonly
+                 id="rss-feed-url"
+                 class="flex-1 py-2 pr-2 pl-3 bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono"
+                 type="text"
+                 :value="feedUrl">
+          <span class="flex items-center cursor-pointer group pr-3"
+                title="Copy"
+                data-copy-target="#rss-feed-url">
+            {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+          </span>
+        </div>
+      </div>
+      <p class="text-gray-500 text-xs mt-3">
+        Compatible with Radarr's and Sonarr's <span class="text-[var(--color-text-muted)]">RSS List</span> import (movies use the
+        <span class="text-[var(--color-text-muted)]">Trending Right Now</span>, <span class="text-[var(--color-text-muted)]">All-Time Greats</span> and
+        <span class="text-[var(--color-text-muted)]">Coming Soon</span> rows for the Movie/TV/Anime media types). This feed uses your
+        account's API token &mdash; regenerating it from
+        <a href="{% url 'integrations' %}" class="text-indigo-400 hover:underline">Integrations</a> invalidates old feed links.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    function rssSettings(feedUrlTemplate) {
+      return {
+        mediaTypes: JSON.parse(document.getElementById('rss-media-types-data').textContent),
+        mediaType: '',
+        rowKey: '',
+        skipPlanning: true,
+        skipCollected: true,
+        init() {
+          this.mediaType = this.mediaTypes[0] ? this.mediaTypes[0].value : '';
+          this.rowKey = this.availableRows[0] ? this.availableRows[0].key : '';
+          this.refreshPreview();
+        },
+        get availableRows() {
+          const option = this.mediaTypes.find((entry) => entry.value === this.mediaType);
+          return option ? option.rows : [];
+        },
+        onMediaTypeChange() {
+          if (!this.availableRows.some((row) => row.key === this.rowKey)) {
+            this.rowKey = this.availableRows[0] ? this.availableRows[0].key : '';
+          }
+        },
+        refreshPreview() {
+          this.$nextTick(() => this.$refs.previewForm.dispatchEvent(new Event('refresh-preview')));
+        },
+        get feedUrl() {
+          if (!this.mediaType || !this.rowKey) {
+            return '';
+          }
+          const base = feedUrlTemplate
+            .replace('MEDIA_TYPE_PLACEHOLDER', this.mediaType)
+            .replace('ROW_KEY_PLACEHOLDER', this.rowKey);
+          const params = new URLSearchParams({
+            skip_planning: this.skipPlanning ? '1' : '0',
+            skip_collected: this.skipCollected ? '1' : '0',
+          });
+          return `${base}?${params.toString()}`;
+        },
+      };
+    }
+  </script>
+{% endblock settings_content %}
+
+{% block js %}
+  <script src="{% static 'js/copy-item.js' %}{% get_static_file_mtime 'js/copy-item.js' %}"></script>
+{% endblock js %}

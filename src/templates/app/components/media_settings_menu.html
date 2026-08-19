@@ -1,0 +1,38 @@
+<div class="relative filter-control {{ menu_class|default:'' }}"
+     x-data="{ open: false, sharing: false }"
+     @click.outside="open = false">
+  <button class="p-2 rounded-md border border-gray-700 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] transition-colors cursor-pointer"
+          title="View settings"
+          @click="open = !open"
+          type="button">{% include "app/icons/settings.svg" with classes="w-5 h-5" %}</button>
+  <div class="absolute right-0 z-40 mt-2 w-56 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
+       x-cloak
+       x-show="open"
+       x-transition:enter="transition ease-out duration-100"
+       x-transition:enter-start="transform opacity-0 scale-95"
+       x-transition:enter-end="transform opacity-100 scale-100"
+       x-transition:leave="transition ease-in duration-75"
+       x-transition:leave-start="transform opacity-100 scale-100"
+       x-transition:leave-end="transform opacity-0 scale-95">
+    <a :href="layoutHref(layout === 'grid' ? 'table' : 'grid')"
+       class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+       @click="open = false">
+      <span x-show="layout === 'grid'">{% include "app/icons/table.svg" with classes="w-4 h-4" %}</span>
+      <span x-show="layout !== 'grid'">{% include "app/icons/four-square.svg" with classes="w-4 h-4" %}</span>
+      <span x-text="layout === 'grid' ? 'Table View' : 'Grid View'"></span>
+    </a>
+    <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
+            type="button"
+            :disabled="sharing"
+            @click="open = false; sharing = true; shareView().finally(() => { sharing = false; })">
+      {% include "app/icons/link.svg" with classes="w-4 h-4" %}
+      <span x-text="sharing ? 'Sharing…' : 'Share View'"></span>
+    </button>
+    <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+            type="button"
+            @click="open = false; toggleSelectMode()">
+      {% include "app/icons/tag.svg" with classes="w-4 h-4" %}
+      <span x-text="selectMode ? 'Cancel Select' : 'Select Items'"></span>
+    </button>
+  </div>
+</div>

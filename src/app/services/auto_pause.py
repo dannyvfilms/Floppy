@@ -10,6 +10,7 @@ from app.models import (
     BoardGame,
     Book,
     Comic,
+    ComicIssue,
     Game,
     Manga,
     MediaTypes,
@@ -28,6 +29,7 @@ TARGET_MODEL_MAP = {
     MediaTypes.MANGA.value: Manga,
     MediaTypes.BOOK.value: Book,
     MediaTypes.COMIC.value: Comic,
+    MediaTypes.COMIC_ISSUE.value: ComicIssue,
     MediaTypes.BOARDGAME.value: BoardGame,
 }
 
@@ -35,8 +37,8 @@ TARGET_MODEL_MAP = {
 def auto_pause_stale_items(now=None) -> dict[str, int]:
     """Pause stale in-progress media for all users with the feature enabled."""
     now = now or timezone.now()
-    User = get_user_model()
-    users = User.objects.filter(
+    user_model = get_user_model()
+    users = user_model.objects.filter(
         auto_pause_in_progress_enabled=True,
     ).iterator()
 

@@ -87,6 +87,87 @@
   - Signals (`src/app/signals.py`) invalidate day caches on media changes and schedule all ranges.
   - `delete_history_record` invalidates stats days and schedules all ranges.
 
+## Discover cache (Redis tab cache over DB row/profile caches)
+- Files: `src/app/discover/tab_cache.py`, `src/app/discover/cache_repo.py`, `src/app/discover/service.py`, `src/app/views.py`, `src/templates/app/discover.html`, `src/static/js/cache-updater.js`.
+- Redis tab keys:
+  - Tab payload: `discover_tab_v1_{user_id}_{media_type}_{show_more}`.
+  - Refresh lock: `discover_tab_v1_refresh_lock_{user_id}_{media_type}_{show_more}`.
+  - Activity version: `discover_tab_v1_activity_version_{user_id}_{media_type}`.
+  - Schedule dedupe: `discover_tab_v1_refresh_scheduled_{user_id}_{activity_version}_{media_type}_{show_more}`.
+  - Active-page context: `discover_tab_v1_active_{user_id}`.
+  - Request warmup throttle: `discover_tab_v1_request_warm_{user_id}`.
+  - Discover action undo snapshot: `discover_action_undo_v1_{user_id}_{token}`.
+- Tab payload fields:
+  - `built_at`
+  - `activity_version`
+  - `media_type`
+  - `show_more`
+  - serialized `rows`
+  - per-row `reserve_items` used for immediate card replacement after a quick action
+  - `optimistic_refreshing` when the cached tab was locally patched and a background rebuild is still pending
+- TTL/stale:
+  - Tab payload TTL: 6h.
+  - Stale after: 15m.
+  - Refresh lock TTL: 5m.
+  - Active Discover context TTL: 45s.
+  - Request warmup throttle TTL: 15m.
+  - Undo snapshot TTL: 60s.
+  - Recently-built window for UI polling: 60s.
+- Lower cache layers kept in DB:
+  - `DiscoverRowCache` for row payloads.
+  - `DiscoverTasteProfile` for per-user taste vectors.
+  - `DiscoverApiCache` for provider payloads.
+- Behavior:
+  - `get_tab_rows()` serves Redis-backed tab payloads in steady state.
+  - `discover_debug=1` bypasses the tab cache and renders rows inline from the service layer.
+  - Discover views call `get_tab_rows(..., allow_inline_bootstrap=False)`, so page loads never block on a cold rebuild.
+  - Cold miss: queue an immediate background refresh, render the loading placeholder, and let the polling loop swap fresh rows in once the build finishes.
+  - Stale hit: serve stale rows, mark them stale in the UI, and queue an immediate rebuild for the active tab.
+  - Discover page loads also warm missing sibling tabs in the background at low priority.
+  - App startup schedules `warm_discover_startup_tabs` once per day via `discover_tab_startup_scheduled`; it warms the default `all` tab for active users if that cache is missing or stale.
+  - `DiscoverWarmupMiddleware` schedules per-user warmup on the first eligible authenticated HTML request every 15 minutes; it prioritizes `all` and then warms enabled Discover media tabs without blocking the response.
+  - Existing Redis tab payloads are intentionally kept during invalidation so the last built rows can keep rendering while background refresh work runs.
+- Manual refresh semantics:
+  - Refresh button invalidates the active tab and also `all` when the active tab is not `all`.
+  - Lower-level row/profile caches are cleared immediately.
+  - Provider API cache is cleared only for manual refreshes (`DiscoverApiCache` is not cleared for automatic invalidation).
+  - The UI polls `cache_status?cache_type=discover&media_type=...&show_more=...` and re-fetches only `#discover-rows` when the rebuild completes.
+- Discover quick-action fast path:
+  - Discover cards can post `planning`, `dismiss`, or `undo` to `discover_action`.
+  - `planning` creates a visible tracked row only if the user does not already track that concrete media item; existing tracked rows are treated as a no-op success and do not create duplicates or undo state.
+  - `dismiss` writes `DiscoverFeedback(not_interested)` and never creates a visible library entry.
+  - Cached tabs are patched optimistically via `apply_cached_action()`:
+    - remove the acted-on identity from visible `items` and hidden `reserve_items`
+    - rebalance rows immediately from `reserve_items`
+    - preserve existing cross-row dedupe semantics
+    - mark the tab payload with `optimistic_refreshing=True`
+  - Undo uses the Redis snapshot key above to restore the prior cached tab payloads and reverse the side effect for up to 60 seconds.
+  - The optimistic patch is only a UI fast path; the normal background rebuild still runs afterward to refill reserves, recompute profiles, and rerank rows.
+- Invalidation triggers:
+  - Tracked-media saves/deletes invalidate the affected media type plus `all`.
+    - `movie -> movie + all`
+    - `tv/season/episode -> tv + all`
+    - `anime -> anime + all`
+    - `music -> music + all`
+    - `podcast -> podcast + all`
+    - `book/comic/manga/game/boardgame -> same type + all`
+  - `ItemTag` changes invalidate the tagged item's mapped Discover media type plus `all`.
+  - `ItemPersonCredit` changes invalidate `movie + all` or `tv + all` for users tracking the credited item.
+  - Invalidation bumps `activity_version` and clears only the lower-level DB caches, so stale Redis tab payloads can still render while the rebuild runs.
+- Active Discover priority mode:
+  - Requests that originated from Discover store a short-lived active-tab context from `next` first, then `Referer`.
+  - When a later tracked-media mutation affects that active Discover tab:
+    - Discover refresh queues immediately (`countdown=0`, `debounce=0`).
+    - History refresh is delayed to 15s.
+    - Statistics refresh is delayed to 20s.
+  - This is queue prioritization and dedupe, not task cancellation.
+- Discover feedback model:
+  - Hidden dismiss feedback is stored in `DiscoverFeedback`, not in the global visible `Status` enum.
+  - Recommendation suppression and negative-learning are same-media-type only, plus the `all` tab through that media type's contribution.
+  - Exact-item filtering excludes hidden feedback from all Discover rows, including provider-backed rows.
+  - Similarity downranking currently applies only to local/personalized Discover rows using negative genre/tag/person affinities derived from dismissed items.
+  - When a user later tracks the same item normally, the matching `DiscoverFeedback(not_interested)` row is deleted automatically.
+
 ## Metadata refresh overlay (runtime + genre backfill)
 - Statistics day builds detect missing runtime/genres and enqueue backfills:
   - Runtime backfill queue: `runtime_backfill_items_queue` + `runtime_backfill_items_scheduled`.
@@ -107,6 +188,7 @@
 - `src/app/views.py` `cache_status()`:
   - History: returns `exists`, `built_at`, `is_stale`, `is_refreshing`, `recently_built`.
   - Statistics: adds `any_range_refreshing`, `refresh_scheduled`, and metadata refresh fields.
+  - Discover: returns the same tab status shape used by history (`exists`, `built_at`, `is_stale`, `is_refreshing`, `recently_built`, `refresh_scheduled`) for the active `media_type` + `show_more`.
   - Clears stale locks to avoid "refreshing" stuck states.
   - If stats cache is stale and no lock exists, it schedules a refresh during polling.
 - `src/static/js/cache-updater.js`:
@@ -116,6 +198,7 @@
 - Templates:
   - `src/templates/app/history.html`: polling is skipped for filtered views (bypass cache).
   - `src/templates/app/statistics.html`: polling only for predefined ranges.
+  - `src/templates/app/discover.html`: shows a top-level background-refresh banner, polls Discover cache status on load/tab switch, and refreshes only `#discover-rows` when a rebuild completes.
 
 ## Known failure modes (symptoms -> suspects)
 - Page 1 works, pages 2+ blank: page miss schedules refresh, but task warms newest days instead of requested `day_keys`.
@@ -123,6 +206,7 @@
 - UI stuck on "refreshing": stale lock not cleared (clock skew or lock payload missing `started_at`).
 - "Warmed" logs but view still misses: key mismatch (logging_style default vs explicit, YYYYMMDD vs YYYY-MM-DD, or version mismatch).
 - Inline rebuild spikes on filtered views: expected; filtered paths bypass cache and build inline.
+- Book/comic/manga details show plain author text (not links): provider item cache payload is stale and lacks `authors_full`, so `authors_linked` cannot be built from IDs.
 
 ## Ops runbook (verify + actions)
 - Cold miss vs broken:
@@ -173,11 +257,12 @@
 - `list_detail.html` disables HTMX history caching on `#items-grid` (`hx-history="false"`) to prevent stale list grids from being restored.
 - `custom_lists.html` sets `htmx.config.getCacheBusterParam = true` so HTMX GETs append `org.htmx.cache-buster`, which avoids Safari reusing cached list HTML.
 - `list_detail.html` sets `htmx.config.getCacheBusterParam = true` so HTMX GETs append `org.htmx.cache-buster`, which avoids Safari reusing cached list HTML.
-- `media_details.html` sets `htmx.config.getCacheBusterParam = true` for HTMX GET requests (including track modal requests). This prevents stale track modal HTML on previously visited pages. The configuration is set immediately and also on DOMContentLoaded as a fallback to ensure it's applied before any HTMX requests.
-- `base.html` adds a global HTMX `htmx:configRequest` hook to append a `cache_bust` param for `track_modal` requests. This is a targeted safety valve when HTMX cache busting + response headers are still not enough (e.g., Safari reusing modal HTML).
+- `media_details.html` sets `htmx.config.getCacheBusterParam = true` for HTMX GET requests (including track and collection modal requests). This prevents stale modal HTML on previously visited pages. The configuration is set immediately and also on DOMContentLoaded as a fallback to ensure it's applied before any HTMX requests.
+- `base.html` adds a global HTMX `htmx:configRequest` hook to append a `cache_bust` param for `track_modal` and `collection/modal` requests. This is a targeted safety valve when HTMX cache busting + response headers are still not enough (e.g., Safari reusing modal HTML).
 - `custom_lists.html` includes meta tags (`cache-control`, `pragma`, `expires`) in the `<head>` to provide additional cache-busting hints to browsers.
 - Podcast episode list fragment sets `Cache-Control: no-cache, no-store, must-revalidate`, plus `Pragma`/`Expires`.
 - `sync_metadata()` uses `cache.ttl()` to prevent immediate re-sync, and deletes provider cache keys when allowed.
+- `media_details()` now self-heals stale reading metadata cache entries with missing `authors_full`: when author details exist but linkable author IDs are missing, it deletes `{source}_{media_type}_{media_id}`, refetches provider metadata, and backfills `ItemPersonCredit` author links.
 - Static asset busting: `get_static_file_mtime()` appends `?mtime` to static URLs.
   - Applied to `css/main.css`, `js/date-range.js`, `js/statistics-charts.js`, and `js/barcode-scanner.js` (added for cache invalidation during development/debugging).
 - Lists view uses annotated `items_count` instead of `items.count()` to avoid stale prefetch cache. The count is always computed fresh from the database via `Count("items", distinct=True)` annotation.
@@ -257,3 +342,41 @@ Default TTL is `CACHE_TIMEOUT` unless specified.
 ## Redis memory notes
 - Approx key count per user per logging_style: `~#days` day payloads + 1 index + locks. For long histories (10k+ days), key volume can be large even with 6h TTLs.
 - Redis eviction policy matters in a 768 MB footprint (allkeys-lru vs volatile-lru changes whether hot caches survive long enough for paging).
+
+### Bounded since #521
+Redis previously had no ceiling at all: no `maxmemory` in any shipped compose file, so it
+defaulted to `maxmemory 0` / `noeviction` and grew until the host OOMed.
+
+- `app/redis_tuning.py` applies `maxmemory` (~15% of detected host memory, clamped to
+  96 MiB–512 MiB) and `maxmemory-policy volatile-lru` at startup, but **only when the
+  operator has not set `maxmemory` themselves**. Override or disable with
+  `FLOPPY_REDIS_MAXMEMORY` (`0` = never touch Redis). `manage.py tune_redis --dry-run`
+  shows what it would do.
+- The policy is `volatile-lru`, not `allkeys-lru`, because this Redis is also the Celery
+  broker: Kombu's queue keys carry no TTL, so `volatile-lru` cannot evict them.
+  **Consequence: any `cache.set(..., timeout=None)` writes a key eviction can never
+  reclaim.** Prefer an explicit TTL for anything large.
+- The largest values are `tmdb_tv_*` and `tmdb_season_*`. Seasons now expire at
+  `SEASON_CACHE_TIMEOUT` (12h) rather than the 24h default, and `search_*` at
+  `SEARCH_CACHE_TIMEOUT` (1h) since those keys are unbounded in count (arbitrary query
+  strings) and the cheapest to refetch.
+- Backfill work queues are Redis **sets** (`app/backfill_queue.py`), not pickled lists.
+  The old read-modify-write of a whole ID list per batch was O(N²) bytes per reconcile
+  sweep and, with `--appendonly yes`, O(N²) disk writes too.
+
+## Cache failures are not errors
+`CACHES["default"]["OPTIONS"]["IGNORE_EXCEPTIONS"]` is on, so a Redis fault reads as a
+cache miss instead of propagating. That is right for the ~460 read-through call sites and
+wrong for the ~20 that use `cache.add` as a lock, because `None` is falsy and reads as
+"someone else holds it". Those go through `app/cache_safety.py`, which exposes the three
+states and requires the caller to say which failure direction is safe:
+
+- `ON_ERROR_SKIP` — best-effort maintenance. Skipping a cache warm during an outage costs
+  nothing; adding load to a struggling host costs plenty.
+- `ON_ERROR_PROCEED` — work the user is waiting on (imports, webhook scrobbles). Silently
+  refusing is data loss; these paths have their own downstream duplicate protection.
+
+`DJANGO_REDIS_LOG_IGNORED_EXCEPTIONS` keeps the swallowed failures visible in the logs.
+Redis is deliberately **not** in the `/health/` liveness subset any more — the app serves
+from Postgres through an outage, so reporting unhealthy would get a working container
+restarted.

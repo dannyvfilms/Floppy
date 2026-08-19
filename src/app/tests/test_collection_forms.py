@@ -79,4 +79,6 @@ class CollectionEntryFormTest(TestCase):
         entry.item = self.item
         entry.save()
 
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=self.item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=self.item).exists()
+        )

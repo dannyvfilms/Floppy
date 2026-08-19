@@ -1,0 +1,28 @@
+{% comment %}
+  Taste Signals — Era Spotlight panel body. Split out so the sort dropdown in
+  taste_signals.html can swap it in place via x-ref, same pattern as
+  taste_signals_genres.html.
+
+  Required context: era_spotlight, genre_sort_by.
+{% endcomment %}
+{% if era_spotlight %}
+  <div class="overflow-y-auto pr-1 statistics-card-scroll-compact">
+    {% for era in era_spotlight %}
+      <div class="flex items-center gap-3">
+        <span class="text-gray-500 text-sm w-4 shrink-0">{{ forloop.counter }}</span>
+        <span class="text-sm font-medium text-[var(--color-text)] w-20 sm:w-24 truncate shrink-0">{{ era.label }}</span>
+        <div class="flex-1 h-2.5 rounded-full bg-white/[0.07] overflow-hidden">
+          <div class="h-full rounded-full bg-amber-500" style="width: {{ era.pct }}%"></div>
+        </div>
+        {% if genre_sort_by == 'plays' %}
+          <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{{ era.plays }} play{{ era.plays|pluralize }}</span>
+        {% else %}
+          <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{{ era.formatted_duration }}</span>
+        {% endif %}
+        <span class="text-xs text-gray-500 w-12 text-right shrink-0 tabular-nums">{{ era.pct }}%</span>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="text-sm text-gray-500 py-4">No release-year data available for this range.</p>
+{% endif %}

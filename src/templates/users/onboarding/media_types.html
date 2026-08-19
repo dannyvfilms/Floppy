@@ -1,0 +1,35 @@
+{% extends "users/onboarding/_layout.html" %}
+
+{% block step_title %}What do you want to track?{% endblock step_title %}
+
+{% block step_explanation %}
+  <p>
+    Pick the kinds of media you want Floppy to track. This controls what
+    shows up in your sidebar and search, and which services we'll offer to
+    connect next.
+  </p>
+  <p>You can change this anytime from Settings, and nothing you skip here is lost.</p>
+{% endblock step_explanation %}
+
+{% block step_options %}
+  <form method="post">
+    {% csrf_token %}
+    {% include "users/components/media_type_picker.html" with grid_cols_class="md:grid-cols-2" %}
+    <div class="mt-6 flex items-center justify-between">
+      <button type="submit"
+              name="action"
+              value="skip"
+              class="px-4 py-2 text-sm rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
+        I'll choose later
+      </button>
+      <button type="submit"
+              class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+        Continue
+      </button>
+    </div>
+  </form>
+{% endblock step_options %}
+
+{% block js %}
+  {% include "users/components/_media_type_order_js.html" %}
+{% endblock js %}

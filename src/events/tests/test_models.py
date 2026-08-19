@@ -301,3 +301,169 @@ class EventManagerTests(TestCase):
             self.past_event,
             limited_events,
         )  # Past event, but filtered by active status
+
+
+class EventManagerCrossProviderDedupTests(TestCase):
+    """The calendar must not show the same real episode twice (#639)."""
+
+    def setUp(self):
+        self.credentials = {"username": "dedup-cal-user", "password": "testpass123"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+
+    def _tv_pair(self, tvdb_id="81189"):
+        """Create a show tracked under both a TMDB and a verified TVDB identity."""
+        tmdb_show = Item.objects.create(
+            title="Breaking Bad",
+            media_id="1396",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            image="",
+            provider_external_ids={"tvdb_id": tvdb_id},
+        )
+        tvdb_show = Item.objects.create(
+            title="Breaking Bad",
+            media_id=tvdb_id,
+            media_type=MediaTypes.TV.value,
+            source=Sources.TVDB.value,
+            image="",
+        )
+        TV.objects.create(
+            item=tmdb_show,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        TV.objects.create(
+            item=tvdb_show,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        tmdb_season = Item.objects.create(
+            title="Breaking Bad",
+            media_id="1396",
+            media_type=MediaTypes.SEASON.value,
+            source=Sources.TMDB.value,
+            image="",
+            season_number=1,
+            provider_external_ids={"tvdb_id": tvdb_id},
+        )
+        tvdb_season = Item.objects.create(
+            title="Breaking Bad",
+            media_id=tvdb_id,
+            media_type=MediaTypes.SEASON.value,
+            source=Sources.TVDB.value,
+            image="",
+            season_number=1,
+        )
+        return tmdb_season, tvdb_season
+
+    def test_get_user_events_hides_non_preferred_duplicate(self):
+        tmdb_season, tvdb_season = self._tv_pair()
+        when = timezone.now() + datetime.timedelta(days=1)
+        tmdb_event = Event.objects.create(
+            item=tmdb_season,
+            content_number=1,
+            datetime=when,
+        )
+        tvdb_event = Event.objects.create(
+            item=tvdb_season,
+            content_number=1,
+            datetime=when,
+        )
+        self.user.tv_metadata_source_default = Sources.TMDB.value
+        self.user.save(update_fields=["tv_metadata_source_default"])
+
+        events = Event.objects.get_user_events(self.user, when.date(), when.date())
+
+        self.assertEqual(list(events), [tmdb_event])
+        self.assertNotIn(tvdb_event, events)
+
+    def test_get_user_events_follows_preferred_source_switch(self):
+        tmdb_season, tvdb_season = self._tv_pair()
+        when = timezone.now() + datetime.timedelta(days=1)
+        tmdb_event = Event.objects.create(
+            item=tmdb_season,
+            content_number=1,
+            datetime=when,
+        )
+        tvdb_event = Event.objects.create(
+            item=tvdb_season,
+            content_number=1,
+            datetime=when,
+        )
+        self.user.tv_metadata_source_default = Sources.TVDB.value
+        self.user.save(update_fields=["tv_metadata_source_default"])
+
+        events = Event.objects.get_user_events(self.user, when.date(), when.date())
+
+        self.assertEqual(list(events), [tvdb_event])
+        self.assertNotIn(tmdb_event, events)
+
+    def test_get_user_events_keeps_unrelated_shows_sharing_a_title(self):
+        """Two unrelated shows sharing a title but no verified tvdb link both survive."""
+        remake_show = Item.objects.create(
+            title="Breaking Bad",
+            media_id="999999",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            image="",
+        )
+        remake_season = Item.objects.create(
+            title="Breaking Bad",
+            media_id="999999",
+            media_type=MediaTypes.SEASON.value,
+            source=Sources.TMDB.value,
+            image="",
+            season_number=1,
+        )
+        tvdb_show = Item.objects.create(
+            title="Breaking Bad",
+            media_id="81189",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TVDB.value,
+            image="",
+        )
+        tvdb_season = Item.objects.create(
+            title="Breaking Bad",
+            media_id="81189",
+            media_type=MediaTypes.SEASON.value,
+            source=Sources.TVDB.value,
+            image="",
+            season_number=1,
+        )
+        TV.objects.create(
+            item=remake_show,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        TV.objects.create(
+            item=tvdb_show,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        when = timezone.now() + datetime.timedelta(days=1)
+        remake_event = Event.objects.create(
+            item=remake_season,
+            content_number=1,
+            datetime=when,
+        )
+        tvdb_event = Event.objects.create(
+            item=tvdb_season,
+            content_number=1,
+            datetime=when,
+        )
+
+        events = Event.objects.get_user_events(self.user, when.date(), when.date())
+
+        self.assertCountEqual(list(events), [remake_event, tvdb_event])
+
+    def test_get_user_events_stays_a_queryset_for_media_type_filtering(self):
+        """download_calendar chains a media-type filter after get_user_events."""
+        tmdb_season, _tvdb_season = self._tv_pair()
+        when = timezone.now() + datetime.timedelta(days=1)
+        Event.objects.create(item=tmdb_season, content_number=1, datetime=when)
+
+        events = Event.objects.get_user_events(self.user, when.date(), when.date())
+        filtered = events.filter(item__media_type__in=[MediaTypes.SEASON.value])
+
+        self.assertEqual(filtered.count(), 1)

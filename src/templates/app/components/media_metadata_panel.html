@@ -1,0 +1,345 @@
+{% load app_tags user_tags widget_tweaks %}
+
+<div class="space-y-6">
+  {% if can_update_metadata_provider and metadata_provider_options and metadata_item %}
+    <section class="space-y-3">
+      <div>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">Metadata Provider</h3>
+        <p class="text-sm text-[var(--color-text-muted)] mt-1">
+          Display metadata can differ from tracking. Watch history stays on {{ identity_provider_label }} until you explicitly migrate a title.
+        </p>
+      </div>
+
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="text-sm text-[var(--color-text-secondary)]">
+            Display metadata is currently coming from <span class="font-semibold">{{ display_provider_label }}</span>.
+          </p>
+          <p class="text-xs text-[var(--color-text-muted)] mt-1">
+            Tracking source stays on {{ identity_provider_label }}.
+          </p>
+        </div>
+        {% if metadata_provider_mapping_status == "missing" %}
+          <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Mapping needed</span>
+        {% elif metadata_provider_mapping_status == "mapped" %}
+          <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Mapped</span>
+        {% endif %}
+      </div>
+
+      <form method="post"
+            action="{% url 'update_metadata_provider_preference' source=identity_provider media_type=media_type media_id=metadata_item.media_id %}"
+            class="space-y-3">
+        {% csrf_token %}
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        <div class="flex flex-col md:flex-row md:items-start gap-3">
+          <div class="relative flex-1"
+               x-data="{
+                 open: false,
+                 selectedValue: '{{ display_provider }}',
+                 selectedLabel: '',
+                 options: [{% for source_option in metadata_provider_options %}{ value: '{{ source_option.value }}', label: '{{ source_option.label|escapejs }}' }{% if not forloop.last %},{% endif %}{% endfor %}],
+                 init() {
+                   const match = this.options.find(o => o.value === this.selectedValue);
+                   this.selectedLabel = match ? match.label : this.options[0]?.label ?? '';
+                 }
+               }"
+               x-init="init()">
+            <button type="button"
+                    @click="open = !open"
+                    @click.outside="open = false"
+                    class="flex h-10 items-center justify-between w-full px-3 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+              <span x-text="selectedLabel"></span>
+              {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
+            </button>
+            <div x-show="open"
+                 x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="transform opacity-0 scale-95"
+                 x-transition:enter-end="transform opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-75"
+                 x-transition:leave-start="transform opacity-100 scale-100"
+                 x-transition:leave-end="transform opacity-0 scale-95"
+                 class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-y-auto max-h-60 z-10 border border-gray-600">
+              <template x-for="option in options" :key="option.value">
+                <button type="button"
+                        @click="selectedValue = option.value; selectedLabel = option.label; open = false"
+                        class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
+                        :class="{ 'text-[var(--color-text)] bg-[var(--color-surface-strong)]': selectedValue === option.value }">
+                  <span x-text="option.label"></span>
+                </button>
+              </template>
+            </div>
+            <input type="hidden" name="provider" x-bind:value="selectedValue">
+          </div>
+
+          <button type="submit"
+                  class="shrink-0 inline-flex h-10 w-48 items-center justify-center px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+            Save Provider
+          </button>
+        </div>
+      </form>
+
+      {% if display_provider != identity_provider %}
+        <div class="pt-2 border-t border-[var(--color-border)] space-y-2">
+          <p class="text-sm text-[var(--color-text-secondary)]">
+            {% if metadata_provider_mapping_status == "missing" %}
+              No automatic match was found on {{ display_provider_label }}.
+            {% else %}
+              Wrong match? Search {{ display_provider_label }} to pick the correct title.
+            {% endif %}
+          </p>
+          <input type="text"
+                 name="q"
+                 placeholder="Search {{ display_provider_label }}..."
+                 class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
+                 hx-get="{% url 'search_remap_candidates' source=identity_provider media_type=media_type media_id=metadata_item.media_id %}?provider={{ display_provider }}&return_url={{ return_url|urlencode }}"
+                 hx-trigger="input changed delay:400ms, keyup[key=='Enter']"
+                 hx-target="#remap-search-results">
+          <div id="remap-search-results"></div>
+        </div>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {% if can_manage_hardcover_edition %}
+    <section class="space-y-3"
+             x-data="{ editionOpen: false }"
+             @click.outside="editionOpen = false">
+      <div>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">Edition</h3>
+        <p class="text-sm text-[var(--color-text-muted)] mt-1">
+          Pick a specific Hardcover edition (e.g. a different language or cover) to use for this title's title and cover. Leave the search blank to see every edition.
+        </p>
+      </div>
+      {% if hardcover_selected_edition %}
+        <div>
+          <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">Selected edition</p>
+          <div class="flex items-center gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
+            {% if hardcover_selected_edition.image %}
+              <img src="{{ hardcover_selected_edition.image }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+            {% else %}
+              <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
+                {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
+              </span>
+            {% endif %}
+            <span class="flex-1 min-w-0">
+              <span class="block truncate text-[var(--color-text)]">{{ hardcover_selected_edition.title }}</span>
+              {% if hardcover_selected_edition.language or hardcover_selected_edition.format %}
+                <span class="block text-xs text-gray-500 truncate">
+                  {{ hardcover_selected_edition.language|default:"" }}{% if hardcover_selected_edition.language and hardcover_selected_edition.format %} · {% endif %}{{ hardcover_selected_edition.format|default:"" }}
+                </span>
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      {% endif %}
+      <div class="relative">
+        <input type="text"
+               name="q"
+               placeholder="Search editions..."
+               autocomplete="off"
+               role="combobox"
+               aria-autocomplete="list"
+               aria-controls="hardcover-edition-results"
+               @focus="editionOpen = true"
+               hx-get="{% url 'list_hardcover_editions' media_id=hardcover_edition_media_id %}?return_url={{ return_url|urlencode }}"
+               hx-trigger="focus, keyup changed delay:250ms"
+               hx-target="#hardcover-edition-results"
+               hx-swap="innerHTML"
+               class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+        <div id="hardcover-edition-results" x-show="editionOpen" x-cloak></div>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if manual_metadata_form %}
+    <section class="space-y-4">
+      <div>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">Custom Metadata</h3>
+        <p class="text-sm text-[var(--color-text-muted)] mt-1">
+          These overrides only affect this item while Custom is selected as the display provider.
+        </p>
+      </div>
+
+      <form method="post"
+            action="{{ manual_metadata_formaction }}"
+            class="space-y-4">
+        {% csrf_token %}
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {% for field in manual_metadata_form %}
+            <div class="{% if field.name == 'synopsis' or field.name == 'genres' or field.name == 'studios' or field.name == 'languages' or field.name == 'authors' or field.name == 'isbn' or field.name == 'platforms' or field.name == 'themes' or field.name == 'creators' %}md:col-span-2{% endif %}">
+              <label class="block text-sm font-medium mb-1 text-[var(--color-text-secondary)]"
+                     for="{{ field.id_for_label }}">{{ field.label }}</label>
+              <div class="relative">
+                {% if field.field.widget.input_type == "number" %}
+                  {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
+                  <div class="absolute inset-y-0 right-0 flex flex-col border-l border-gray-600">
+                    <button type="button"
+                            class="flex-1 px-2 hover:bg-gray-700 transition-colors rounded-tr-md border-t border-r border-gray-600"
+                            onclick="this.parentElement.previousElementSibling.stepUp()">
+                      {% include "app/icons/chevron-up.svg" with classes="w-3.5 h-3.5" %}
+                    </button>
+                    <button type="button"
+                            class="flex-1 px-2 hover:bg-gray-700 transition-colors rounded-br-md border-b border-r border-gray-600"
+                            onclick="this.parentElement.previousElementSibling.stepDown()">
+                      {% include "app/icons/chevron-down.svg" with classes="w-3.5 h-3.5" %}
+                    </button>
+                  </div>
+                {% elif field.name == 'synopsis' or field.name == 'genres' or field.name == 'studios' or field.name == 'languages' or field.name == 'authors' or field.name == 'isbn' or field.name == 'platforms' or field.name == 'themes' or field.name == 'creators' %}
+                  {{ field|add_class:"w-full min-h-28 p-2 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
+                {% else %}
+                  {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
+                {% endif %}
+              </div>
+              {% if field.help_text %}
+                <p class="text-xs text-[var(--color-text-muted)] mt-1">{{ field.help_text }}</p>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+
+        <div class="flex justify-end">
+          <button type="submit"
+                  class="inline-flex h-10 w-48 items-center justify-center px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+            Save Metadata
+          </button>
+        </div>
+      </form>
+    </section>
+  {% endif %}
+
+  {% if image_field and not manual_metadata_form %}
+    <section class="space-y-3"
+             x-data="{ imageUrl: '{{ image_field.value|default_if_none:''|escapejs }}' }">
+      <label class="block text-sm font-medium text-[var(--color-text-secondary)]"
+             for="{{ image_field.id_for_label }}">{{ image_field.label }}</label>
+
+      <div class="flex flex-col md:flex-row md:items-start gap-3">
+        <input type="url"
+               id="{{ image_field.id_for_label }}"
+               name="{{ image_field.html_name }}"
+               value="{{ image_field.value|default_if_none:'' }}"
+               x-model="imageUrl"
+               form="{{ track_form_id }}"
+               placeholder="https://example.com/poster.jpg"
+               class="flex-1 w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+
+        {% if image_save_item_id %}
+          <form method="post"
+                action="{% url 'update_item_image' image_save_item_id %}"
+                class="shrink-0">
+            {% csrf_token %}
+            <input type="hidden" name="return_url" value="{{ return_url }}">
+            <input type="hidden" name="image_url" x-model="imageUrl">
+            <button type="submit"
+                    class="inline-flex h-10 w-48 items-center justify-center px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+              Save Image
+            </button>
+          </form>
+        {% endif %}
+      </div>
+
+      {% if not image_save_item_id %}
+        <p class="text-xs text-[var(--color-text-muted)]">
+          Save this image from the General tab when you add or update the entry.
+        </p>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  {% if can_migrate_grouped_anime and grouped_preview and metadata_item %}
+    <section class="space-y-3">
+      <div>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">Convert to Grouped Series</h3>
+        <p class="text-sm text-[var(--color-text-muted)] mt-1">
+          See how this {{ identity_provider|upper }} entry will map into a single show with seasons before you convert it.
+        </p>
+      </div>
+
+      <div class="bg-[var(--color-surface-dim)] border border-[var(--color-border)] rounded-xl p-4 space-y-4">
+        <div>
+          <p class="text-sm text-[var(--color-text-secondary)]">
+            {{ display_provider|upper }} organizes this anime as
+            <span class="font-semibold">{{ grouped_preview|display_title:user }}</span>,
+            with seasons grouped under one main show.
+          </p>
+          {% if grouped_preview_target %}
+            <p class="text-sm text-[var(--color-text-secondary)] mt-2">
+              This {{ identity_provider|upper }} entry would convert to
+              <span class="font-semibold">{{ grouped_preview_target.season_title|default:"Unknown season" }}</span>
+              {% if grouped_preview_target.episode_start and grouped_preview_target.episode_end %}
+                , episodes {{ grouped_preview_target.episode_start }}-{{ grouped_preview_target.episode_end }}
+              {% elif grouped_preview_target.episode_start %}
+                starting at episode {{ grouped_preview_target.episode_start }}
+              {% endif %}
+              .
+            </p>
+          {% endif %}
+          <p class="text-xs text-[var(--color-text-muted)] mt-1">
+            Nothing changes until you click Convert to Grouped Series. Your existing {{ identity_provider|upper }} entry stays in place until then.
+          </p>
+        </div>
+
+        {% with preview_seasons=grouped_preview.related.seasons %}
+          {% if preview_seasons %}
+            <div class="grid gap-2">
+              {% for season in preview_seasons %}
+                <div class="flex items-center justify-between gap-3 rounded-md bg-[var(--color-panel)] px-3 py-3 {% if season.is_mapped_target %}ring-1 ring-indigo-400/60{% endif %}">
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <p class="text-sm text-[var(--color-text)]">
+                        {% if season.season_number == 0 %}
+                          Specials
+                        {% else %}
+                          Season {{ season.season_number }}
+                        {% endif %}
+                      </p>
+                      {% if season.is_mapped_target %}
+                        <span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                          Conversion target
+                        </span>
+                      {% endif %}
+                    </div>
+                    {% if season.first_air_date %}
+                      <p class="text-xs text-[var(--color-text-muted)]">{{ season.first_air_date|user_date_format:user }}</p>
+                    {% endif %}
+                    {% if season.is_mapped_target and season.mapped_episode_start and season.mapped_episode_end %}
+                      <p class="text-xs text-indigo-300 mt-1">
+                        {{ identity_provider|upper }} episodes: E{{ season.mapped_episode_start }}-E{{ season.mapped_episode_end }}
+                      </p>
+                    {% endif %}
+                  </div>
+                  <p class="text-xs text-[var(--color-text-secondary)] text-right">
+                    {% if season.max_progress or season.max_progress == 0 %}
+                      {{ season.max_progress }} episodes
+                    {% elif season.episode_count or season.episode_count == 0 %}
+                      {{ season.episode_count }} episodes
+                    {% elif season.details and season.details.episodes %}
+                      {{ season.details.episodes }} episodes
+                    {% else %}
+                      ? episodes
+                    {% endif %}
+                  </p>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <div class="flex justify-end">
+          <form method="post"
+                action="{% url 'migrate_grouped_anime' source=identity_provider media_type=media_type media_id=metadata_item.media_id %}">
+            {% csrf_token %}
+            <input type="hidden" name="provider" value="{{ display_provider }}">
+            <input type="hidden" name="return_url" value="{{ return_url }}">
+            <button type="submit"
+                    class="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors text-sm cursor-pointer">
+              Convert to Grouped Series
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+  {% endif %}
+</div>

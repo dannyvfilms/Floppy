@@ -1,0 +1,569 @@
+{% extends "base.html" %}
+{% load app_tags %}
+{% load static %}
+
+{% block title %}
+  Discover - Floppy
+{% endblock title %}
+
+{% block content %}
+  <div x-data="discoverPage('{{ selected_media_type }}', {{ show_more|yesno:'true,false' }}, {{ discover_debug|yesno:'true,false' }}, {{ discover_loading|yesno:'true,false' }}, '{{ discover_activity_version|default:''|escapejs }}')"
+       x-init="init()"
+       class="space-y-6">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-[var(--color-text)]">Discover</h1>
+        <p class="mt-1 text-sm text-[var(--color-text-muted)]">[UNDER CONSTRUCTION] Recommendations powered by global trends and your local activity.</p>
+      </div>
+      <div x-cloak x-show="!isHiddenView()" class="flex items-center gap-2">
+        <button type="button"
+                @click="toggleShowMore()"
+                class="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 cursor-pointer"
+                x-text="showMore ? 'Show Fewer Rows' : 'Show More Rows'"></button>
+        <button type="button"
+                @click="refreshRows()"
+                :disabled="refreshing"
+                class="inline-flex items-center justify-center rounded-md bg-[var(--color-surface)] p-2 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] disabled:opacity-50 disabled:cursor-not-allowed border border-gray-700 cursor-pointer"
+                title="Refresh recommendations">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="{'animate-spin': refreshing}">
+            <path d="M21.5 2v6h-6"></path>
+            <path d="M21.34 15.57a10 10 0 1 1-.57-8.38"></path>
+            <path d="M2.5 22v-6h6"></path>
+            <path d="M2.66 8.43a10 10 0 1 1 .57 8.38"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+      {% for option in discover_media_options %}
+        <button type="button"
+                @click="switchMedia('{{ option.value }}')"
+                class="rounded-full border px-3 py-1.5 text-sm transition-colors cursor-pointer"
+                :class="selectedMedia === '{{ option.value }}'
+                  ? 'border-indigo-500 bg-indigo-600 text-white'
+                  : 'border-gray-700 bg-[var(--color-surface)] text-gray-300 hover:border-gray-500 hover:text-white'">
+          {{ option.label }}
+        </button>
+      {% endfor %}
+    </div>
+
+    <div x-cloak
+         x-show="cacheRefreshing"
+         class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-[var(--color-warning-text)]">
+      Refreshing recommendations in background...
+    </div>
+
+    <div x-cloak
+         x-show="refreshStatusVisible"
+         x-transition
+         role="status"
+         aria-live="polite"
+         class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+      <div class="flex items-center justify-between gap-3">
+        <span x-text="refreshStatusMessage">Recommendations refreshed.</span>
+        <button type="button"
+                @click="dismissRefreshStatus()"
+                class="text-emerald-100/80 transition-colors hover:text-[var(--color-text)] cursor-pointer">
+          {% include "app/icons/x.svg" with classes="h-4 w-4" %}
+        </button>
+      </div>
+    </div>
+
+    <div x-show="toastVisible"
+         x-cloak
+         x-transition
+         class="fixed top-24 right-0 left-0 {% block messages_sidebar_offset %}lg:left-64{% endblock messages_sidebar_offset %} z-50 flex justify-center pointer-events-none mb-4">
+      <div class="w-full max-w-xl px-4 pointer-events-auto">
+        <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-info"
+             x-init="$watch('toastVisible', v => { if (v) { $el.classList.remove('opacity-100','transform-none'); $el.classList.add('opacity-0','translate-y-[-1rem]'); setTimeout(() => $el.classList.add('opacity-100','transform-none'), 10); } })"
+             :class="{ 'transition-all duration-300 ease-out': true }">
+          {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-indigo-300 shrink-0" %}
+          <p class="text-sm font-medium flex-1" x-text="toastMessage"></p>
+          <button x-show="undoToken"
+                  type="button"
+                  @click="undoAction()"
+                  class="shrink-0 rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-400 cursor-pointer">
+            Undo
+          </button>
+          <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                  @click="dismissToast()">
+            {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="discover-rows">
+      {% include "app/components/discover_rows.html" with rows=rows selected_media_type=selected_media_type show_more=show_more discover_debug=discover_debug discover_loading=discover_loading %}
+    </div>
+  </div>
+{% endblock content %}
+
+{% block js %}
+  <script src="{% static 'js/cache-updater.js' %}"></script>
+  <script>
+    function discoverPage(initialMedia, initialShowMore, initialDebug, initialCacheRefreshing, initialActivityVersion) {
+      return {
+        selectedMedia: initialMedia || "all",
+        showMore: Boolean(initialShowMore),
+        discoverDebug: Boolean(initialDebug),
+        refreshing: false,
+        cacheRefreshing: Boolean(initialCacheRefreshing),
+        cacheUpdater: null,
+        activityVersions: {},
+        rowsSwapHandler: null,
+        rowsRefreshListener: null,
+        discoverActionListener: null,
+        swapGuardListener: null,
+        refreshStatusMessage: "",
+        refreshStatusVisible: false,
+        refreshStatusTimer: null,
+        manualRefreshPending: false,
+        toastMessage: "",
+        undoToken: "",
+        undoActiveMediaType: "",
+        toastVisible: false,
+        toastTimer: null,
+        init() {
+          if (initialActivityVersion) {
+            this.rememberActivityVersion(this.selectedMedia, initialActivityVersion);
+          }
+          this.updateUrl();
+          this.bindEvents();
+          if (this.discoverDebug) {
+            return;
+          }
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              this.syncCacheUpdater();
+              this.checkCacheStatus();
+            }, 200);
+          });
+        },
+        bindEvents() {
+          this.swapGuardListener = (event) => {
+            if (this.discoverDebug) {
+              return;
+            }
+            const target = event.detail?.target;
+            const targetId = target?.id || "";
+            if (
+              targetId !== "discover-rows"
+              && !targetId.startsWith("discover-row-")
+            ) {
+              return;
+            }
+
+            const xhr = event.detail?.xhr;
+            if (!xhr) {
+              return;
+            }
+
+            const responseMediaType = xhr.getResponseHeader("X-Discover-Media-Type");
+            const responseShowMore = xhr.getResponseHeader("X-Discover-Show-More");
+            const responseVersion = xhr.getResponseHeader("X-Discover-Activity-Version");
+
+            if (responseMediaType && responseMediaType !== this.selectedMedia) {
+              event.detail.shouldSwap = false;
+              return;
+            }
+            if (
+              responseShowMore
+              && (responseShowMore === "1") !== this.showMore
+            ) {
+              event.detail.shouldSwap = false;
+              return;
+            }
+
+            const currentVersion = this.activityVersions[
+              responseMediaType || this.selectedMedia
+            ];
+            if (
+              responseVersion
+              && currentVersion
+              && this.compareActivityVersions(responseVersion, currentVersion) < 0
+            ) {
+              event.detail.shouldSwap = false;
+              return;
+            }
+
+            if (responseMediaType && responseVersion) {
+              this.rememberActivityVersion(responseMediaType, responseVersion);
+            }
+          };
+          document.body.addEventListener("htmx:beforeSwap", this.swapGuardListener);
+
+          this.rowsRefreshListener = (event) => {
+            if (!event.target || event.target.id !== "discover-rows") {
+              return;
+            }
+            if (this.discoverDebug || this.isHiddenView()) {
+              this.resetRefreshState();
+              return;
+            }
+            this.checkCacheStatus();
+          };
+          document.body.addEventListener("htmx:afterSwap", this.rowsRefreshListener);
+
+          this.discoverActionListener = (event) => {
+            this.showToast(event.detail || {});
+            if (this.isHiddenView()) {
+              this.fetchRows();
+              return;
+            }
+            if (!this.discoverDebug) {
+              this.checkCacheStatus();
+            }
+          };
+          document.body.addEventListener("discoverActionComplete", this.discoverActionListener);
+        },
+        destroy() {
+          // Stop polling and drop body listeners when the page is swapped away
+          this.stopCacheUpdater();
+          if (this.swapGuardListener) {
+            document.body.removeEventListener("htmx:beforeSwap", this.swapGuardListener);
+          }
+          if (this.rowsRefreshListener) {
+            document.body.removeEventListener("htmx:afterSwap", this.rowsRefreshListener);
+          }
+          if (this.discoverActionListener) {
+            document.body.removeEventListener("discoverActionComplete", this.discoverActionListener);
+          }
+        },
+        resetRefreshState() {
+          this.refreshing = false;
+          this.cacheRefreshing = false;
+        },
+        clearRefreshStatusTimer() {
+          if (this.refreshStatusTimer) {
+            clearTimeout(this.refreshStatusTimer);
+            this.refreshStatusTimer = null;
+          }
+        },
+        showRefreshStatus(message) {
+          this.clearRefreshStatusTimer();
+          this.refreshStatusMessage = message;
+          this.refreshStatusVisible = Boolean(message);
+          if (!this.refreshStatusVisible) {
+            return;
+          }
+          this.refreshStatusTimer = setTimeout(() => this.dismissRefreshStatus(), 5000);
+        },
+        dismissRefreshStatus() {
+          this.clearRefreshStatusTimer();
+          this.refreshStatusVisible = false;
+          this.refreshStatusMessage = "";
+        },
+        clearToastTimer() {
+          if (this.toastTimer) {
+            clearTimeout(this.toastTimer);
+            this.toastTimer = null;
+          }
+        },
+        activityVersionRank(version) {
+          const rank = Date.parse(version || "");
+          return Number.isFinite(rank) ? rank : 0;
+        },
+        compareActivityVersions(left, right) {
+          return this.activityVersionRank(left) - this.activityVersionRank(right);
+        },
+        rememberActivityVersion(mediaType, version) {
+          if (!mediaType || !version) {
+            return;
+          }
+          const currentVersion = this.activityVersions[mediaType];
+          if (
+            !currentVersion
+            || this.compareActivityVersions(version, currentVersion) >= 0
+          ) {
+            this.activityVersions[mediaType] = version;
+          }
+        },
+        showToast(detail) {
+          this.clearToastTimer();
+          this.toastMessage = detail.message || "";
+          this.undoToken = detail.undo_token || "";
+          this.undoActiveMediaType = detail.active_media_type || "";
+          this.toastVisible = Boolean(this.toastMessage || this.undoToken);
+          this.toastTimer = setTimeout(() => this.dismissToast(), 8000);
+        },
+        dismissToast() {
+          this.clearToastTimer();
+          this.toastVisible = false;
+          this.toastMessage = "";
+          this.undoToken = "";
+          this.undoActiveMediaType = "";
+        },
+        isHiddenView() {
+          return this.selectedMedia === "hidden";
+        },
+        stopCacheUpdater() {
+          if (this.cacheUpdater) {
+            this.cacheUpdater.stop();
+          }
+        },
+        syncCacheUpdater() {
+          this.stopCacheUpdater();
+          if (this.discoverDebug || this.isHiddenView() || !window.CacheUpdater) {
+            this.cacheUpdater = null;
+            return;
+          }
+          this.cacheUpdater = window.CacheUpdater.init("discover", {
+            mediaType: this.selectedMedia,
+            showMore: this.showMore,
+            onUpdate: () => this.fetchRows({
+              showRefreshComplete: this.manualRefreshPending,
+            }),
+            onRefreshComplete: (success) => {
+              if (success) {
+                return;
+              }
+              this.manualRefreshPending = false;
+              this.resetRefreshState();
+            },
+          });
+        },
+        attachAfterSwap(callback) {
+          const target = document.getElementById("discover-rows");
+          if (!target) {
+            if (callback) {
+              callback();
+            }
+            return;
+          }
+          if (this.rowsSwapHandler) {
+            target.removeEventListener("htmx:afterSwap", this.rowsSwapHandler);
+            this.rowsSwapHandler = null;
+          }
+          if (!callback) {
+            return;
+          }
+          this.rowsSwapHandler = () => {
+            target.removeEventListener("htmx:afterSwap", this.rowsSwapHandler);
+            this.rowsSwapHandler = null;
+            callback();
+          };
+          target.addEventListener("htmx:afterSwap", this.rowsSwapHandler);
+        },
+        updateUrl() {
+          const params = new URLSearchParams();
+          params.set("media_type", this.selectedMedia);
+          params.set("show_more", this.showMore ? "1" : "0");
+          if (this.discoverDebug) {
+            params.set("discover_debug", "1");
+          }
+          const query = params.toString();
+          window.history.replaceState({}, "", `${window.location.pathname}?${query}`);
+        },
+        async checkCacheStatus() {
+          if (this.discoverDebug || this.isHiddenView()) {
+            return;
+          }
+          if (!this.cacheUpdater) {
+            this.syncCacheUpdater();
+          }
+          if (!this.cacheUpdater) {
+            return;
+          }
+
+          const params = new URLSearchParams();
+          params.set("cache_type", "discover");
+          params.set("media_type", this.selectedMedia);
+          params.set("show_more", this.showMore ? "1" : "0");
+
+          try {
+            const response = await fetch(`/api/cache-status/?${params.toString()}`);
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            const data = await response.json();
+            const refreshInProgress = Boolean(
+              data.is_refreshing || data.refresh_scheduled,
+            );
+            if (
+              this.manualRefreshPending
+              && !refreshInProgress
+              && data.exists
+              && !data.is_stale
+              && data.recently_built
+            ) {
+              this.fetchRows({ showRefreshComplete: true });
+              return;
+            }
+
+            this.cacheRefreshing = refreshInProgress;
+            this.refreshing = refreshInProgress;
+            this.cacheUpdater.lastBuiltAt = data.built_at || null;
+            this.cacheUpdater.wasRefreshing = data.is_refreshing || false;
+            if (refreshInProgress) {
+              this.cacheUpdater.start();
+            } else {
+              this.cacheUpdater.stop();
+            }
+          } catch (error) {
+            console.error("Discover cache status check failed:", error);
+          }
+        },
+        fetchRows({ showRefreshComplete = false } = {}) {
+          const params = new URLSearchParams();
+          params.set("media_type", this.selectedMedia);
+          params.set("show_more", this.showMore ? "1" : "0");
+          if (this.discoverDebug) {
+            params.set("discover_debug", "1");
+          }
+          this.attachAfterSwap(() => {
+            if (this.discoverDebug || this.isHiddenView()) {
+              this.manualRefreshPending = false;
+              this.resetRefreshState();
+              return;
+            }
+            if (showRefreshComplete) {
+              this.manualRefreshPending = false;
+              this.resetRefreshState();
+              this.showRefreshStatus("Recommendations refreshed.");
+            }
+            this.checkCacheStatus();
+          });
+          htmx.ajax("GET", `{% url 'discover_rows' %}?${params.toString()}`, {
+            target: "#discover-rows",
+            swap: "innerHTML",
+          });
+          this.updateUrl();
+        },
+        async undoAction() {
+          if (!this.undoToken) {
+            return;
+          }
+
+          const body = new FormData();
+          body.append("action", "undo");
+          body.append("undo_token", this.undoToken);
+          body.append(
+            "active_media_type",
+            this.isHiddenView() ? (this.undoActiveMediaType || "all") : this.selectedMedia,
+          );
+          body.append("show_more", this.showMore ? "1" : "0");
+          if (this.discoverDebug) {
+            body.append("discover_debug", "1");
+          }
+
+          const response = await fetch("{% url 'discover_action' %}", {
+            method: "POST",
+            headers: {"X-CSRFToken": "{{ csrf_token }}"},
+            body,
+          });
+          if (!response.ok) {
+            return;
+          }
+
+          if (this.isHiddenView()) {
+            this.dismissToast();
+            this.fetchRows();
+            return;
+          }
+
+          const responseMediaType = response.headers.get("X-Discover-Media-Type");
+          const responseShowMore = response.headers.get("X-Discover-Show-More");
+          const responseVersion = response.headers.get("X-Discover-Activity-Version");
+          if (responseMediaType && responseMediaType !== this.selectedMedia) {
+            return;
+          }
+          if (
+            responseShowMore
+            && (responseShowMore === "1") !== this.showMore
+          ) {
+            return;
+          }
+          const currentVersion = this.activityVersions[
+            responseMediaType || this.selectedMedia
+          ];
+          if (
+            responseVersion
+            && currentVersion
+            && this.compareActivityVersions(responseVersion, currentVersion) < 0
+          ) {
+            return;
+          }
+          if (responseMediaType && responseVersion) {
+            this.rememberActivityVersion(responseMediaType, responseVersion);
+          }
+
+          const html = await response.text();
+          const target = document.getElementById("discover-rows");
+          if (target) {
+            target.innerHTML = html;
+            if (window.htmx) {
+              window.htmx.process(target);
+            }
+          }
+          this.dismissToast();
+          if (this.discoverDebug) {
+            this.resetRefreshState();
+            return;
+          }
+          this.checkCacheStatus();
+        },
+        switchMedia(mediaType) {
+          if (this.selectedMedia === mediaType) {
+            return;
+          }
+          this.selectedMedia = mediaType;
+          this.manualRefreshPending = false;
+          this.dismissRefreshStatus();
+          this.resetRefreshState();
+          this.syncCacheUpdater();
+          this.fetchRows();
+        },
+        toggleShowMore() {
+          if (this.isHiddenView()) {
+            return;
+          }
+          this.showMore = !this.showMore;
+          this.manualRefreshPending = false;
+          this.dismissRefreshStatus();
+          this.resetRefreshState();
+          this.syncCacheUpdater();
+          this.fetchRows();
+        },
+        async refreshRows() {
+          if (this.isHiddenView()) {
+            this.fetchRows();
+            return;
+          }
+          this.manualRefreshPending = true;
+          this.dismissRefreshStatus();
+          this.refreshing = true;
+          this.cacheRefreshing = !this.discoverDebug;
+          this.syncCacheUpdater();
+          if (this.cacheUpdater) {
+            this.cacheUpdater.wasRefreshing = true;
+            this.cacheUpdater.lastBuiltAt = null;
+          }
+
+          const body = new FormData();
+          body.append("media_type", this.selectedMedia);
+          body.append("show_more", this.showMore ? "1" : "0");
+
+          const response = await fetch("{% url 'refresh_discover' %}", {
+            method: "POST",
+            headers: {"X-CSRFToken": "{{ csrf_token }}"},
+            body,
+          });
+
+          if (!response.ok) {
+            this.resetRefreshState();
+            return;
+          }
+
+          if (this.discoverDebug) {
+            this.fetchRows();
+            return;
+          }
+
+          this.checkCacheStatus();
+        },
+      };
+    }
+  </script>
+{% endblock js %}

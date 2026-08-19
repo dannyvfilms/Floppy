@@ -1,25 +1,49 @@
 {% extends "base.html" %}
 {% load static %}
+{% load app_tags %}
 
 {% block title %}
-  Server Error - Yamtrack
+  {{ error_page_title|default:"Server Error" }} - Floppy
 {% endblock title %}
 
+{% block extra_head %}
+  {{ block.super }}
+  <script src="{% static 'js/copy-item.js' %}{% get_static_file_mtime 'js/copy-item.js' %}"></script>
+{% endblock extra_head %}
+
 {% block body %}
-  <div class="min-h-screen bg-[#212529] flex flex-col items-center justify-center text-white p-4">
+  <div class="min-h-screen bg-[var(--color-page-bg)] flex flex-col items-center justify-center text-[var(--color-text)] p-4">
     <div class="text-center max-w-md">
       <div class="mb-6">
-        <div class="text-9xl font-bold text-red-500">500</div>
-        <h1 class="text-3xl font-bold mt-4 mb-3">Something Went Wrong</h1>
-        <p class="text-gray-400 mb-4">
+        <div class="text-9xl font-bold text-red-500">{{ error_status_code|default:"500" }}</div>
+        <h1 class="text-3xl font-bold mt-4 mb-3">{{ error_heading|default:"Something Went Wrong" }}</h1>
+        <p class="text-[var(--color-text-muted)] mb-4">
           {% if error_message %}
             {{ error_message }}
           {% else %}
             We're sorry, but there was an error processing your request.
           {% endif %}
         </p>
+        {% if error_support_text %}
+          <div class="mb-4 rounded-lg border border-amber-400/30 bg-amber-400/10 p-4 text-left">
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-200/80">
+              {{ error_support_title|default:"Provider note" }}
+            </p>
+            <p class="mt-2 text-sm leading-6 text-amber-50">
+              {{ error_support_text }}
+            </p>
+            {% if error_support_url %}
+              <a href="{{ error_support_url }}"
+                 class="mt-3 inline-flex items-center gap-2 text-sm font-medium text-amber-200 hover:text-amber-100 hover:underline">
+                <span>{{ error_support_link_label|default:"Open documentation" }}</span>
+                {% include "app/icons/external-link.svg" with classes="h-4 w-4" %}
+              </a>
+            {% endif %}
+          </div>
+        {% endif %}
+        {% include "includes/error_report_panel.html" %}
         <p class="text-sm text-gray-500 mb-6">
-          If you believe this was a bug, please <a href="https://github.com/dannyvfilms/Yamtrack/issues"
+          If you believe this was a bug, please <a href="https://github.com/dannyvfilms/Floppy/issues"
     class="text-indigo-400 hover:underline">report the issue.</a>
         </p>
       </div>
@@ -30,7 +54,7 @@
           <span>Try Again</span>
         </a>
         <a href="{% url 'home' %}"
-           class="flex items-center justify-center gap-2 px-6 py-3 bg-[#39404b] text-white rounded-md hover:bg-[#454d5a] transition-colors">
+           class="flex items-center justify-center gap-2 px-6 py-3 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
           {% include "app/icons/house.svg" with classes="w-5 h-5" %}
           <span>Back to Home</span></a>
       </div>

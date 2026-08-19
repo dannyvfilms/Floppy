@@ -1,7 +1,8 @@
 import json
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, tag
 from django.urls import reverse
 
 from app.models import TV, Anime, Episode, Item, MediaTypes, Movie, Season, Status
@@ -24,6 +25,7 @@ class EmbyWebhookTests(TestCase):
         response = self.client.post(url, data={}, content_type="application/json")
         self.assertEqual(response.status_code, 401)
 
+    @tag("network")
     def test_tv_episode_mark_played(self):
         """Test webhook handles TV episode mark played event."""
         payload = {
@@ -77,8 +79,39 @@ class EmbyWebhookTests(TestCase):
         )
         self.assertIsNotNone(episode.end_date)
 
-    def test_anime_episode_mark_played(self):
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data")
+    @patch("app.providers.mal.anime")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_anime_episode_mark_played(
+        self,
+        mock_find,
+        mock_tv_with_seasons,
+        mock_mal_anime,
+        mock_fetch_mapping_data,
+    ):
         """Test webhook handles anime episode mark played event."""
+        mock_find.return_value = {
+            "tv_episode_results": [
+                {"show_id": 209867, "season_number": 1, "episode_number": 1},
+            ],
+            "tv_results": [],
+        }
+        mock_tv_with_seasons.return_value = {
+            "media_id": "209867",
+            "title": "Frieren: Beyond Journey's End",
+            "tvdb_id": 424536,
+            "season/1": {"episodes": [{"episode_number": 1}]},
+        }
+        mock_fetch_mapping_data.return_value = {
+            "tvdb_show:424536:s1": {"mal:52991": {"1-28": "1-28"}},
+        }
+        mock_mal_anime.return_value = {
+            "media_id": "52991",
+            "title": "Sousou no Frieren",
+            "image": "https://example.com/frieren.jpg",
+            "max_progress": 28,
+        }
         payload = {
             "Event": "playback.stop",
             "Item": {
@@ -118,6 +151,7 @@ class EmbyWebhookTests(TestCase):
         self.assertEqual(anime.status, Status.IN_PROGRESS.value)
         self.assertEqual(anime.progress, 1)
 
+    @tag("network")
     def test_movie_mark_played(self):
         """Test webhook handles movie mark played event."""
         payload = {
@@ -159,6 +193,7 @@ class EmbyWebhookTests(TestCase):
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.progress, 1)
 
+    @tag("network")
     def test_anime_movie_mark_played(self):
         """Test webhook handles movie mark played event."""
         payload = {
@@ -292,6 +327,7 @@ class EmbyWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Movie.objects.count(), 0)
 
+    @tag("network")
     def test_repeated_watch(self):
         """Test webhook handles repeated watches."""
         payload = {

@@ -1,0 +1,16 @@
+{% if media.item.genres %}
+  {% with genre_media_type=media_type|default:media.item.media_type %}
+    <div class="flex flex-wrap gap-1.5">
+      {% for genre in media.item.genres %}
+        {% if genre_media_type %}
+          <a href="{% url 'medialist' genre_media_type %}?genre={{ genre|urlencode }}"
+             class="inline-flex items-center whitespace-nowrap rounded-full border border-violet-400/18 bg-violet-500/[0.07] px-2 py-0.5 text-xs font-medium text-violet-100 transition-colors duration-200 hover:bg-violet-500/[0.15]">{{ genre }}</a>
+        {% else %}
+          <span class="inline-flex items-center whitespace-nowrap rounded-full border border-violet-400/18 bg-violet-500/[0.07] px-2 py-0.5 text-xs font-medium text-violet-100">{{ genre }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endwith %}
+{% else %}
+  <span class="text-gray-500">-</span>
+{% endif %}

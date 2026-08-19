@@ -1,4 +1,7 @@
-FROM python:3.12-alpine3.21 AS repo_meta
+ARG PYTHON_VERSION=3.12
+ARG ALPINE_VERSION=3.21
+
+FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION} AS repo_meta
 
 WORKDIR /repo
 COPY . .
@@ -39,10 +42,27 @@ if config_path.exists():
 Path("/repo_owner").write_text(owner)
 PY
 
-FROM python:3.12-alpine3.21
+FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION} AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.3 /uv /uvx /bin/
+ENV UV_LINK_MODE=copy
+
+WORKDIR /floppy
+
+COPY ./pyproject.toml ./uv.lock ./
+COPY ./mcp_server/pyproject.toml ./mcp_server/pyproject.toml
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --no-install-workspace
+
+COPY ./mcp_server ./mcp_server
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-default-groups --no-editable
+
+FROM python:${PYTHON_VERSION}-alpine${ALPINE_VERSION}
 
 # https://stackoverflow.com/questions/58701233/docker-logs-erroneously-appears-empty-until-container-stops
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/floppy/.venv/bin:$PATH"
 
 # Define build argument with default value
 ARG VERSION=dev
@@ -51,18 +71,32 @@ ARG COMMIT_SHA=unknown
 ENV VERSION=$VERSION
 ENV COMMIT_SHA=$COMMIT_SHA
 
-COPY ./requirements.txt /requirements.txt
+# Default target for the bundled MCP server (see mcp_server/) when invoked
+# via `docker exec` — nginx already listens on 8000 inside the container.
+ENV FLOPPY_URL=http://127.0.0.1:8000
+
+# supervisord expands %(ENV_...)s in supervisord.conf and refuses to start if a
+# referenced variable is unset, so these need image-level defaults even though
+# entrypoint.sh overwrites them from the detected resource tier (issue #521).
+ENV FLOPPY_CELERY_ROLE=background
+ENV FLOPPY_CELERY_QUEUES=celery
+ENV FLOPPY_START_INTERACTIVE_WORKER=true
+ENV FLOPPY_START_DISCOVER_WORKER=true
+
 COPY ./entrypoint.sh /entrypoint.sh
 COPY ./supervisord.conf /etc/supervisord.conf
 COPY ./nginx.conf /etc/nginx/nginx.conf
+# Generate a copy of the nginx config with IPv6 support.
+RUN sed 's/listen 8000;/listen 8000; listen [::]:8000;/' /etc/nginx/nginx.conf > /etc/nginx/nginx.ipv6.conf
 
-WORKDIR /yamtrack
+WORKDIR /floppy
+
+# Legacy compat: pre-rename compose files bind-mount ./db to /yamtrack/db.
+# Without this symlink such a mount lands on a stale path and the app
+# silently creates an empty database.
+RUN ln -s /floppy /yamtrack
 
 RUN apk add --no-cache nginx shadow \
-    && pip install --no-cache-dir -r /requirements.txt \
-    && pip install --no-cache-dir supervisor==4.2.5 \
-    && rm -rf /root/.cache /tmp/* \
-    && find /usr/local -type d -name __pycache__ -exec rm -rf {} + \
     && chmod +x /entrypoint.sh \
     # create user abc for later PUID/PGID mapping
     && useradd -U -M -s /bin/sh abc \
@@ -70,11 +104,17 @@ RUN apk add --no-cache nginx shadow \
     && mkdir -p /var/log/nginx \
     && mkdir -p /var/lib/nginx/body
 
-COPY --from=repo_meta /repo_owner /etc/yamtrack/fork_owner
+COPY --from=repo_meta /repo_owner /etc/floppy/fork_owner
+COPY --from=builder /floppy/.venv /floppy/.venv
 
 # Django app
 COPY src ./
-RUN python manage.py collectstatic --noinput
+RUN SECRET=build-time-placeholder python manage.py collectstatic --noinput
+
+# MCP server (mcp/floppy_mcp) — bundled so `docker exec` always runs the
+# version shipped with this image, instead of a user's local checkout that
+# can silently drift from the app version.
+COPY mcp_server ./mcp_server
 
 EXPOSE 8000
 

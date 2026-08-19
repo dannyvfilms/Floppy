@@ -5,35 +5,39 @@
 {# Track Episode Modal #}
 <div x-show="trackOpen"
      x-cloak
+     data-track-modal-root
      @keydown.escape.window="trackOpen = false"
      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
   <div class="w-[400px] max-h-[90vh] px-4 md:px-0 relative z-60"
        @click.outside="trackOpen = false">
-    <div class="bg-[#2a2f35] p-6 rounded-lg max-h-[70svh] overflow-y-auto">
+    <div class="bg-[var(--color-surface)] p-6 rounded-lg max-h-[70svh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold text-white">Track Episode</h2>
-        <button class="text-gray-400 hover:text-white transition-colors cursor-pointer"
+        <h2 class="text-xl font-bold text-[var(--color-text)]">Track Episode</h2>
+        <button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                 @click="trackOpen = false">{% include "app/icons/x.svg" with classes="w-5 h-5" %}</button>
       </div>
 
       {# Episode preview data #}
-      <div class="bg-[#343a40] rounded-lg p-4 mb-6">
+      <div class="bg-[var(--color-surface-muted)] rounded-lg p-4 mb-6">
         <div class="flex items-start gap-4">
           <img alt="{{ episode.title }}"
                class="w-20 h-20 rounded object-cover shrink-0"
+               data-image-source="{{ episode.image_source|default:'primary' }}"
                src="{{ episode.image }}">
           <div>
             <h3 class="text-lg font-semibold mb-1 line-clamp-1">{{ episode_title }}</h3>
-            <p class="text-sm text-gray-400">Episode {{ episode.episode_number }}</p>
-            {% if episode.history %}
-              {% if episode.history|length == 1 %}
-                <p class="text-sm text-gray-400 mt-1">Watched once</p>
+            <p class="text-sm text-[var(--color-text-muted)]">Episode {{ episode.display_episode_number|default:episode.episode_number }}</p>
+            {% with watched_count=episode.history|watched_count %}
+              {% if watched_count == 1 %}
+                <p class="text-sm text-[var(--color-text-muted)] mt-1">Watched once</p>
+              {% elif watched_count > 1 %}
+                <p class="text-sm text-[var(--color-text-muted)] mt-1">Watched {{ watched_count }} times</p>
+              {% elif episode.history %}
+                <p class="text-sm text-[var(--color-text-muted)] mt-1">Dropped</p>
               {% else %}
-                <p class="text-sm text-gray-400 mt-1">Watched {{ episode.history|length }} times</p>
+                <p class="text-sm text-[var(--color-text-muted)] mt-1">Not watched yet</p>
               {% endif %}
-            {% else %}
-              <p class="text-sm text-gray-400 mt-1">Not watched yet</p>
-            {% endif %}
+            {% endwith %}
           </div>
         </div>
       </div>
@@ -43,12 +47,20 @@
 
         {% if episode.history %}
           <div>
-            <label class="block text-sm font-medium text-gray-300 mb-3">Previous Watches</label>
+            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-3">Previous Watches</label>
             <div class="max-h-[200px] overflow-y-auto space-y-2">
 
               {% for entry in episode.history %}
-                <div class="flex items-center justify-between bg-[#343a40] rounded-md p-3 border border-gray-600">
-                  <div class="text-sm text-white">{{ entry.end_date|user_date_format:user|default_if_none:"No date provided" }}</div>
+                <div class="flex items-center justify-between bg-[var(--color-surface-muted)] rounded-md p-3 border border-gray-600">
+                  <div class="text-sm text-[var(--color-text)]">
+                    {% if entry.dropped %}
+                      <span class="text-amber-400 italic">Dropped</span>
+                    {% elif entry.end_date %}
+                      {{ entry.end_date|user_date_format:user }}
+                    {% else %}
+                      No date provided
+                    {% endif %}
+                  </div>
                   <form method="post"
                         action="{% url 'media_delete' %}?next={{ request.path }}">
                     {% csrf_token %}
@@ -66,46 +78,98 @@
           <div class="border-t border-gray-600 my-6"></div>
         {% endif %}
 
-        <form method="post"
-              action="{% url 'episode_save' %}?next={{ request.path }}">
+        {# Watch form (date input) #}
+        <form id="episode-watch-{{ media.season_number }}-{{ episode.episode_number }}"
+              method="post"
+              action="{% url 'episode_save' %}?next={{ request.path }}"
+              hx-post="{% url 'episode_save' %}?next={{ request.path }}"
+              hx-swap="none"
+              @submit="closeTrackModal($el)">
           {% csrf_token %}
           <input type="hidden" name="media_id" value="{{ media.media_id }}">
           <input type="hidden" name="season_number" value="{{ media.season_number }}">
           <input type="hidden" name="source" value="{{ media.source }}">
+          {% if media.library_media_type %}
+            <input type="hidden"
+                   name="library_media_type"
+                   value="{{ media.library_media_type }}">
+          {% endif %}
           <input type="hidden"
                  name="episode_number"
                  value="{{ episode.episode_number }}">
+          {% watch_operation_id as episode_watch_operation_id %}
+          <input type="hidden"
+                 name="watch_operation_id"
+                 value="{{ episode_watch_operation_id }}">
 
-          <label class="block text-sm font-medium text-gray-300 mb-2">Watch Date</label>
+          <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">Watch Date</label>
 
           {# djlint:off #}
-          <div class="relative" x-data="{ 
-              inputDateTime: '{% if TRACK_TIME %}{% now "Y-m-d\TH:i" %}{% else %}{% now "Y-m-d" %}{% endif %}',
+          <div class="flex items-stretch border border-gray-600 rounded-md bg-[var(--color-surface-muted)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]" x-data="{
+              inputDateTime: '',
               inputType: '{% if TRACK_TIME %}datetime-local{% else %}date{% endif %}'
-          }">
-            <input class="w-full p-3 bg-[#343a40] rounded-md text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[#4a9eff] appearance-none"
+          }" x-effect="if (trackOpen) { const d = new Date(); inputDateTime = inputType === 'datetime-local' ? new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19) : d.toISOString().slice(0, 10) }">
+            <input class="flex-1 p-3 bg-transparent border-0 outline-none text-[var(--color-text)] appearance-none"
                    x-bind:type="inputType"
+                   x-bind:step="inputType === 'datetime-local' ? '1' : null"
                    name="end_date"
                    onfocus="this.showPicker?.()"
                    x-model="inputDateTime">
-            {% if episode.air_date %}
+            <div class="w-px bg-gray-600 self-stretch my-1"></div>
+            <div class="flex items-center">
               <button type="button"
-                      @click="inputDateTime = inputType === 'datetime-local' ? '{{ episode.air_date|date:'Y-m-d' }}T{% now "H:i" %}' : '{{ episode.air_date|date:'Y-m-d' }}'"
-                      class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center text-sm text-indigo-400 hover:text-indigo-300 transition-colors bg-[#2a2f35] px-2 py-1 rounded cursor-pointer">
-                {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-1" %}
-                Air date
+                      @click="inputDateTime = ''"
+                      aria-label="Clear date"
+                      class="hidden md:inline-flex items-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer {% if not episode.air_date %}rounded-r-md{% endif %}">
+                {% include "app/icons/x.svg" with classes="w-3.5 h-3.5" %}
               </button>
-            {% endif %}
+              {% if episode.air_date %}
+                <button type="button"
+                        @click="inputDateTime = inputType === 'datetime-local' ? '{{ episode.air_date|date:'Y-m-d' }}T{% now "H:i:s" %}' : '{{ episode.air_date|date:'Y-m-d' }}'"
+                        class="flex items-center text-sm text-indigo-400 hover:text-indigo-300 hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
+                  {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-1" %}
+                  Air date
+                </button>
+              {% endif %}
+            </div>
           </div>
           {# djlint:on #}
-
-          <div class="flex justify-end-safe gap-3 mt-6">
-            <button type="submit"
-                    class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
-              Add watch
-            </button>
-          </div>
         </form>
+
+        {# Drop form (no date input) #}
+        <form id="episode-drop-{{ media.season_number }}-{{ episode.episode_number }}"
+              method="post"
+              action="{% url 'episode_drop' %}?next={{ request.path }}"
+              hx-post="{% url 'episode_drop' %}?next={{ request.path }}"
+              hx-swap="none"
+              @submit="closeTrackModal($el)">
+          {% csrf_token %}
+          <input type="hidden" name="media_id" value="{{ media.media_id }}">
+          <input type="hidden" name="season_number" value="{{ media.season_number }}">
+          <input type="hidden" name="source" value="{{ media.source }}">
+          {% if media.library_media_type %}
+            <input type="hidden"
+                   name="library_media_type"
+                   value="{{ media.library_media_type }}">
+          {% endif %}
+          <input type="hidden"
+                 name="episode_number"
+                 value="{{ episode.episode_number }}">
+        </form>
+
+        {# Shared button row #}
+        <div class="flex justify-end-safe gap-3 mt-6">
+          <button type="submit"
+                  form="episode-drop-{{ media.season_number }}-{{ episode.episode_number }}"
+                  class="px-4 py-2 bg-gray-600 text-[var(--color-text)] rounded-md hover:bg-gray-500 transition-colors cursor-pointer">
+            Drop
+          </button>
+          <button type="submit"
+                  form="episode-watch-{{ media.season_number }}-{{ episode.episode_number }}"
+                  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
+            Add watch
+          </button>
+        </div>
       </div>
     </div>
   </div>

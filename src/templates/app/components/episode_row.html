@@ -1,0 +1,176 @@
+{% load app_tags %}
+{% load user_tags %}
+<div class="bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg"
+     x-show="!$store.epLayout || $store.epLayout !== 'list'">
+  <div class="flex flex-col md:flex-row"
+       x-data="{
+         revealed: false,
+         hovering: false,
+         epWatched: {{ episode.history|yesno:'true,false' }},
+         blurActive: {% if not public_view|default:False and user.is_authenticated %}{{ user.obfuscate_episodes|yesno:'true,false' }}{% else %}false{% endif %},
+         syncBlurState(active) {
+           this.blurActive = active;
+           if (active) this.revealed = false;
+         },
+         init() {
+           this.handleEpisodeBlurChange = (event) => {
+             this.syncBlurState(event.detail.active);
+           };
+           window.addEventListener('episode-blur-changed', this.handleEpisodeBlurChange);
+
+           if (typeof window.__episodeBlurActive === 'boolean') {
+             this.syncBlurState(window.__episodeBlurActive);
+           } else {
+             window.__episodeBlurActive = this.blurActive;
+           }
+         },
+         destroy() {
+           if (this.handleEpisodeBlurChange) {
+             window.removeEventListener('episode-blur-changed', this.handleEpisodeBlurChange);
+           }
+         },
+         toggleBlur() {
+           const nextActive = !this.blurActive;
+           window.__episodeBlurActive = nextActive;
+           window.dispatchEvent(new CustomEvent('episode-blur-changed', {
+             detail: { active: nextActive }
+           }));
+           fetch('{% url 'toggle_obfuscate_episodes' %}', {
+             method: 'POST',
+             headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+             body: new URLSearchParams(),
+             redirect: 'manual'
+           });
+         }
+       }">
+    <div @mouseenter="hovering = true"
+         @mouseleave="hovering = false"
+         class="relative shrink-0 self-start overflow-hidden">
+      {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block">{% endif %}
+      <img src="{{ IMG_NONE }}"
+           alt="E{{ episode.display_episode_number|default:episode.episode_number }}"
+           data-src="{{ episode.image }}"
+           data-image-source="{{ episode.image_source|default:'primary' }}"
+           class="lazyload {% if media_type == MediaTypes.PODCAST.value %}md:w-40 md:h-40{% else %}md:w-64 md:h-40{% endif %} {% if ep_detail_url %}hover:opacity-90 transition-opacity{% endif %} shrink-0 {% if episode.image != IMG_NONE %}object-cover{% endif %}"
+           :style="{ filter: (blurActive && !epWatched && !revealed) ? 'blur(8px)' : '', transition: 'filter 0.4s ease' }">
+      {% if ep_detail_url %}</a>{% endif %}
+      {% if not public_view|default:False and user.is_authenticated %}
+        {# Centered reveal button — shows on hover when blurred and not yet revealed #}
+        <div class="absolute inset-0 z-20 flex items-center justify-center"
+             x-show="hovering && blurActive && !epWatched && !revealed"
+             x-transition:enter="transition-opacity duration-150"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition-opacity duration-150"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             style="display:none">
+          <button @click.prevent="revealed = true"
+                  class="bg-black/70 rounded-full p-3 text-white hover:bg-black/90 transition-colors"
+                  title="Reveal thumbnail">
+            {% include "app/icons/eye.svg" with classes="w-5 h-5" %}
+          </button>
+        </div>
+        {# Corner eyeball — shows on hover; toggles the global blur setting #}
+        <div class="absolute top-2 right-2 z-20"
+             x-show="hovering && (!blurActive || epWatched || revealed)"
+             x-transition:enter="transition-opacity duration-150"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition-opacity duration-150"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             style="display:none">
+          <button @click.prevent="toggleBlur()"
+                  class="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80 transition-colors"
+                  :title="blurActive ? 'Show all thumbnails' : 'Hide unseen thumbnails'">
+            <span x-show="blurActive">{% include "app/icons/eye.svg" with classes="w-3.5 h-3.5" %}</span>
+            <span x-show="!blurActive">{% include "app/icons/eye-closed.svg" with classes="w-3.5 h-3.5" %}</span>
+          </button>
+        </div>
+      {% endif %}
+    </div>
+    <div class="py-3 flex-1 flex flex-col">
+      <div class="flex-1">
+        <div class="flex justify-between items-start mb-2 space-x-2 px-4">
+          {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block min-w-0 hover:text-indigo-400 transition-colors">{% endif %}
+          <div>
+            <h2 class="text-xl font-semibold mb-1 line-clamp-1 flex items-center gap-1.5">
+              {{ episode.title }}
+              {% if episode.collection_entry %}
+                <span class="text-indigo-400 shrink-0"
+                      title="Collected{% if episode.collection_entry.resolution %} • {{ episode.collection_entry.resolution }}{% endif %}">
+                  {% include "app/icons/cube.svg" with classes="w-4 h-4" %}
+                </span>
+              {% endif %}
+            </h2>
+            <p class="text-sm text-[var(--color-text-muted)]">
+              {% if episode.display_episode_number|default:episode.episode_number %}Episode {{ episode.display_episode_number|default:episode.episode_number }} • {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:"Unknown date" }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
+            </p>
+          </div>
+          {% if ep_detail_url %}</a>{% endif %}
+          {% if not public_view|default:False %}
+            <div class="flex items-start space-x-2 shrink-0">
+              {% include "app/components/detail_row_actions.html" with episode=episode action_media_type=MediaTypes.EPISODE.value track_button_variant="episode" current_instance=current_instance history_item=episode.item detail_return_url=detail_return_url request=request csrf_token=csrf_token TRACK_TIME=TRACK_TIME user=user media_type=media_type MediaTypes=MediaTypes only %}
+            </div>
+          {% endif %}
+        </div>
+        {% if episode.overview %}
+        <div class="{% if episode.history or episode.collection_entry and episode.collection_entry.resolution %}md:h-[calc(2*1.5rem)]{% else %}md:h-[calc(3*1.5rem)]{% endif %} px-4"
+             :class="(blurActive && !epWatched && !revealed) ? 'md:overflow-visible' : 'md:overflow-y-auto'">
+          {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block">{% endif %}
+          <p class="text-sm text-[var(--color-text-secondary)] leading-relaxed text-pretty"
+             :style="{ filter: (blurActive && !epWatched && !revealed) ? 'blur(6px)' : '', transition: 'filter 0.4s ease' }">{{ episode.overview }}</p>
+          {% if ep_detail_url %}</a>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% include "app/components/detail_episode_history_line.html" with episode=episode user=user history_oob=False only %}
+    </div>
+  </div>
+</div>
+
+{# Compact list view row — shown when episode layout toggle is set to list #}
+<div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-border)] transition-colors"
+     x-show="$store.epLayout === 'list'"
+     style="display:none">
+  {# Episode number #}
+  <span class="shrink-0 w-9 text-center text-[11px] font-mono text-gray-500 tabular-nums">
+    {% if episode.display_episode_number|default:episode.episode_number %}E{{ episode.display_episode_number|default:episode.episode_number }}{% endif %}
+  </span>
+
+  {# Title + metadata #}
+  <div class="flex-1 min-w-0">
+    {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="group/ep-row block">{% endif %}
+    <p class="text-sm font-medium truncate flex items-center gap-1.5 {% if ep_detail_url %}group-hover/ep-row:text-indigo-400 transition-colors{% endif %}">
+      <span class="truncate">{{ episode.title }}</span>
+      {% if episode.collection_entry %}
+        <span class="text-indigo-400 shrink-0"
+              title="Collected{% if episode.collection_entry.resolution %} • {{ episode.collection_entry.resolution }}{% endif %}">
+          {% include "app/icons/cube.svg" with classes="w-3.5 h-3.5" %}
+        </span>
+      {% endif %}
+    </p>
+    <p class="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
+      {{ episode.air_date|user_date_format:user|default_if_none:"" }}{% if episode.runtime %} · {{ episode.runtime }}{% endif %}{% if not public_view|default:False and episode.history %}{% with wc=episode.history|watched_count %}{% if wc %} · {% if wc == 1 %}Watched once{% else %}Watched {{ wc }} times{% endif %}{% endif %}{% endwith %}{% endif %}
+    </p>
+    {% if ep_detail_url %}</a>{% endif %}
+  </div>
+
+  {# Track button #}
+  {% if not public_view|default:False %}
+    <div class="shrink-0" x-data="{ trackOpen: false }">
+      {% include "app/components/detail_episode_track_button.html" with episode=episode detail_return_url=detail_return_url request=request track_button_oob=False target_suffix="-list" only %}
+      <div x-show="trackOpen"
+           @keydown.escape.window="trackOpen = false"
+           class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
+             style="width: min(96vw, 72rem);"
+             @click.outside="trackOpen = false"
+             @click.stop>
+          <div id="{% component_id 'track' episode %}-list"></div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>

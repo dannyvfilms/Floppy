@@ -1,17 +1,42 @@
-import json
 import logging
 import re
 
 from django.utils import timezone
 
 import app
-from app.models import MediaTypes
-from app.providers import services
+from app import live_playback
+from app.log_safety import exception_summary, mapping_keys, presence_map, safe_url
+from app.models import MediaTypes, Sources
 from app.services import music_scrobble
+from integrations import plex as plex_api
+from integrations.imports.helpers import find_item_across_buckets
 
 from .base import BaseWebhookProcessor
 
 logger = logging.getLogger(__name__)
+
+# Ignore "media.stop" events reported before this much playback (ms) has elapsed.
+MIN_STOP_VIEW_OFFSET_MS = 60_000
+
+# Plex ratings arrive on a 0-5, 0-10, or 0-100 scale depending on source; normalize to 0-10.
+RATING_HALF_SCALE_MAX = 5
+RATING_SCALE_MAX = 10
+RATING_PERCENTAGE_SCALE_MAX = 100
+
+# Numeric IDs above this are more likely IMDB-style (tt########) than TMDB IDs.
+LIKELY_IMDB_NUMERIC_ID_THRESHOLD = 3_000_000
+
+
+class _TasksProxy:
+    """Lazily import integrations.tasks to avoid circular imports."""
+
+    def __getattr__(self, name):
+        from integrations import tasks as tasks_module
+
+        return getattr(tasks_module, name)
+
+
+tasks = _TasksProxy()
 
 
 class PlexWebhookProcessor(BaseWebhookProcessor):
@@ -26,26 +51,44 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         """Process the incoming Plex webhook payload."""
         event_type = payload.get("event")
         logger.info("Received Plex webhook event: %s", event_type)
-        logger.debug("Received Plex webhook payload: %s", json.dumps(payload, indent=2))
+        logger.debug(
+            "Received Plex webhook payload keys=%s metadata_keys=%s",
+            mapping_keys(payload),
+            mapping_keys(payload.get("Metadata")),
+        )
 
         if not self._is_supported_event(payload.get("event")):
             logger.debug("Ignoring Plex webhook event type: %s", event_type)
             return None
 
         payload_user = payload["Account"]["title"].strip().lower()
-        if not self._is_valid_user(payload_user, user):
-            logger.debug(
-                "Ignoring Plex webhook event for user %s: not a valid user",
-                payload_user,
+        rejection_reason = self._get_user_rejection_reason(payload_user, payload, user)
+        if rejection_reason is not None:
+            metadata = payload.get("Metadata", {}) or {}
+            media_label = (
+                self._get_media_title(payload) or metadata.get("title") or "<unknown>"
+            )
+            logger.info(
+                "Ignored Plex webhook event=%s title=%s for yamtrack_user=%s: %s",
+                event_type,
+                media_label,
+                user.username,
+                rejection_reason,
             )
             return None
 
         media_type = self._get_media_type(payload)
         if media_type == MediaTypes.MUSIC.value:
+            if event_type not in ("media.play", "media.resume", "media.scrobble"):
+                logger.debug(
+                    "Ignoring Plex music webhook event type: %s",
+                    event_type,
+                )
+                return None
+
             if not getattr(user, "music_enabled", False):
                 logger.debug(
-                    "Ignoring Plex music webhook for user %s: music disabled",
-                    payload_user,
+                    "Ignoring Plex music webhook because music tracking is disabled"
                 )
                 return None
 
@@ -53,49 +96,158 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             music_entry = music_scrobble.record_music_playback(music_event)
             if music_entry is None:
                 logger.info(
-                    "Processed Plex music %s for %s: %s - %s (no tracking yet; waiting for scrobble)",
+                    "Processed Plex music %s event (tracking deferred)",
                     "scrobble" if music_event.completed else "play",
-                    payload_user,
-                    music_event.track_title,
-                    music_event.artist_name or "Unknown Artist",
                 )
                 return None
             logger.info(
-                "Processed Plex music %s for %s: %s - %s (status=%s, progress=%s)",
+                "Processed Plex music %s event (status=%s progress=%s)",
                 "scrobble" if music_event.completed else "play",
-                payload_user,
-                music_event.track_title,
-                music_event.artist_name or "Unknown Artist",
                 music_entry.status,
                 music_entry.progress,
             )
-            
+
             # Queue collection metadata update for music
             if music_entry.item:
                 logger.debug(
-                    "Queueing collection metadata update for music track: %s (item_id=%s)",
-                    music_entry.item.title,
-                    music_entry.item.id,
+                    "Queueing collection metadata update for Plex music track",
                 )
                 self._queue_collection_metadata_update(payload, user, music_entry.item)
             else:
                 logger.warning(
                     "Cannot queue collection metadata update: music_entry has no item"
                 )
-            
+
             return music_entry
 
         # Handle rating events separately
         if event_type == "media.rate":
             return self._process_rating(payload, user)
 
-        ids = self.resolve_external_ids(payload)
-        logger.info("Extracted IDs from payload: %s", ids)
-        if not any(ids.get(key) for key in ("tmdb_id", "imdb_id", "tvdb_id")):
+        ids = self.resolve_external_ids(
+            payload,
+            allow_title_search=event_type not in ("media.pause", "media.stop"),
+        )
+        logger.info(
+            "Extracted Plex ID presence from payload: %s",
+            presence_map(ids, ("tmdb_id", "imdb_id", "tvdb_id", "anidb_id")),
+        )
+
+        playback_media_type = self._get_live_playback_media_type(payload)
+        self._update_live_playback_state(
+            payload,
+            user,
+            ids,
+            playback_media_type,
+        )
+
+        if event_type in ("media.play", "media.resume"):
+            return None
+
+        if event_type == "media.pause":
+            return None
+
+        if event_type == "media.stop":
+            view_offset_ms = (payload.get("Metadata") or {}).get("viewOffset") or 0
+            if view_offset_ms < MIN_STOP_VIEW_OFFSET_MS:
+                return None
+
+        if not any(
+            ids.get(key) for key in ("tmdb_id", "imdb_id", "tvdb_id", "anidb_id")
+        ):
             logger.warning("Ignoring Plex webhook call because no ID was found.")
             return None
 
         self._process_media(payload, user, ids)
+        return None
+
+    def _get_live_playback_media_type(self, payload):
+        """Map raw Plex metadata type into a playback card media type."""
+        metadata_type = (
+            ((payload.get("Metadata", {}) or {}).get("type") or "").strip().lower()
+        )
+        if metadata_type == "episode":
+            return MediaTypes.EPISODE.value
+        if metadata_type == "movie":
+            return MediaTypes.MOVIE.value
+        return None
+
+    def _update_live_playback_state(
+        self,
+        payload,
+        user,
+        ids,
+        playback_media_type,
+    ):
+        """Update cache-backed live playback state for home-page UI."""
+        if playback_media_type not in (
+            MediaTypes.MOVIE.value,
+            MediaTypes.EPISODE.value,
+        ):
+            return
+
+        event_type = payload.get("event")
+        media_id = None
+        season_number = None
+        episode_number = None
+
+        if playback_media_type == MediaTypes.MOVIE.value:
+            media_id = ids.get("tmdb_id")
+        else:
+            season_number, episode_number = self._extract_season_episode_from_payload(
+                payload,
+            )
+            resolve_media_id = event_type in (
+                "media.play",
+                "media.resume",
+                "media.scrobble",
+            )
+            if resolve_media_id:
+                # Prefer TVDB/IMDB resolution — they reliably return the
+                # show-level TMDB ID via the TMDB find API.  The raw
+                # tmdb_id from Plex GUIDs is often an episode-level ID
+                # that would 404 on /tv/{id}.
+                if ids.get("tvdb_id") or ids.get("imdb_id"):
+                    alt_ids = dict(ids)
+                    alt_ids["tmdb_id"] = None
+                    resolved_id, _, _ = super()._find_tv_media_id(alt_ids)
+                    if resolved_id:
+                        media_id = str(resolved_id)
+                        logger.debug(
+                            "Live playback resolved show ID via TVDB/IMDB",
+                        )
+
+                # Fallback: title search. The raw tmdb_id is stripped before
+                # calling _find_tv_media_id so its "direct TMDB ID" branch
+                # can't short-circuit the title search with a possibly
+                # episode-level ID — see the final fallback note below.
+                if media_id is None:
+                    series_title = self._extract_series_title(payload)
+                    if series_title:
+                        alt_ids = dict(ids)
+                        alt_ids["tmdb_id"] = None
+                        resolved_media_id, _, _ = self._find_tv_media_id(
+                            alt_ids,
+                            series_title=series_title,
+                            allow_title_fallback=True,
+                        )
+                        if resolved_media_id:
+                            media_id = str(resolved_media_id)
+            # Deliberately no further fallback to the raw ids["tmdb_id"] here:
+            # for TV episodes it may be episode-level (a separate TMDB ID
+            # namespace from the show), which would 404 the details page.
+            # Leaving media_id as None degrades gracefully — the card links to
+            # home instead of a URL that 500s. See issue #547.
+
+        live_playback.apply_plex_event(
+            user_id=user.id,
+            payload=payload,
+            playback_media_type=playback_media_type,
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            season_number=season_number,
+            episode_number=episode_number,
+        )
 
     def resolve_external_ids(self, payload, allow_title_search=True):
         """Extract external IDs, optionally allowing title search fallback."""
@@ -116,26 +268,35 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             source = "tvdb_id" if ids.get("tvdb_id") else "imdb_id"
             try:
                 from app.providers import tmdb
-                find_results = tmdb.find(external_id, source=source)
-                
+
+                find_results = tmdb.find(external_id, source)
+
                 tmdb_id = None
                 if media_type == MediaTypes.TV.value:
-                    results = find_results.get("tv_results") or find_results.get("tv_episode_results") or []
-                    if results:
-                        tmdb_id = results[0].get("media_id")
+                    episode_results = find_results.get("tv_episode_results") or []
+                    if episode_results:
+                        tmdb_id = episode_results[0].get("show_id")
+                    else:
+                        tv_results = find_results.get("tv_results") or []
+                        if tv_results:
+                            tmdb_id = tv_results[0].get("id")
                 else:
                     results = find_results.get("movie_results") or []
                     if results:
-                        tmdb_id = results[0].get("media_id")
-                
+                        tmdb_id = results[0].get("id")
+
                 if tmdb_id:
                     ids["tmdb_id"] = str(tmdb_id)
-                    logger.info("Resolved %s %s to TMDB ID %s using find API", source, external_id, tmdb_id)
+                    logger.info("Resolved Plex external ID to TMDB using find API")
                     return ids
 
-                logger.debug("TMDB find returned no results for %s %s", source, external_id)
+                logger.debug("TMDB find returned no results for source=%s", source)
             except Exception as exc:
-                logger.warning("TMDB find fallback failed for %s %s: %s", source, external_id, exc)
+                logger.warning(
+                    "TMDB find fallback failed for source=%s: %s",
+                    source,
+                    exception_summary(exc),
+                )
 
         # Fallback to title search for TV shows and Movies
         if media_type not in (MediaTypes.TV.value, MediaTypes.MOVIE.value):
@@ -145,8 +306,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         # For episodes, use series title (grandparentTitle) falling back to episode title if needed
         # For movies, use the movie title
         search_title = (
-            metadata.get("grandparentTitle")
-            or metadata.get("title")
+            metadata.get("grandparentTitle") or metadata.get("title")
             if media_type == MediaTypes.TV.value
             else metadata.get("title")
         )
@@ -158,6 +318,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
         try:
             from app.providers import services
+
             search_results = services.search(
                 media_type,
                 search_title,
@@ -173,104 +334,44 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         if original_date:
             year = str(original_date).split("-")[0]
             for result in results:
-                # Use first_air_date for TV, release_date for movies
-                date_key = (
-                    "first_air_date"
-                    if media_type == MediaTypes.TV.value
-                    else "release_date"
-                )
-                result_date = result.get("details", {}).get(date_key) or ""
-                if str(result_date).startswith(year):
+                result_year = result.get("year")
+                if result_year and str(result_year) == year:
                     tmdb_id = result.get("media_id")
                     break
 
         if not tmdb_id and results:
-            tmdb_id = results[0].get("media_id")
+            # No year match (or no year in payload): only accept a result whose
+            # title actually agrees with Plex's title. Guessing results[0] here
+            # is how unrelated titles get matched (see #510).
+            normalized_search_title = self._normalize_series_title(search_title)
+            for result in results:
+                candidate_title = self._normalize_series_title(result.get("title"))
+                if candidate_title and candidate_title == normalized_search_title:
+                    tmdb_id = result.get("media_id")
+                    break
 
         if tmdb_id:
             ids["tmdb_id"] = str(tmdb_id)
-            logger.info(
-                "Resolved plex:// GUID to TMDB ID %s using title search for '%s'",
-                tmdb_id,
-                search_title,
-            )
+            logger.info("Resolved plex:// GUID via title search")
         else:
-            logger.debug("Title search returned no match for '%s'", search_title)
+            logger.debug("Title search returned no confident Plex GUID match")
 
         return ids
 
-    def _find_tv_media_id(self, ids, series_title=None, allow_title_fallback=False):
-        """
-        Resolve TMDB ID for a TV show using external IDs or title search.
-
-        Returns:
-            tuple: (media_id, season_number, episode_number)
-                   season/episode are None unless extracted from specific lookup context,
-                   checking primarily for show ID here.
-        """
-        # 1. Try resolving using existing IDs (TMDB, TVDB, IMDB)
-        tmdb_id = ids.get("tmdb_id")
-        if tmdb_id:
-            return str(tmdb_id), None, None
-
-        if not allow_title_fallback or not series_title:
-            return None, None, None
-
-        # 2. Try title search
-        logger.debug("TV ID missing; attempting title search for '%s'", series_title)
-        try:
-            search_results = services.search(
-                MediaTypes.TV.value,
-                series_title,
-                page=1,
-            )
-            results = search_results.get("results") or []
-            if results:
-                found_id = results[0].get("media_id")
-                logger.info(
-                    "Resolved '%s' to TMDB ID %s via title search",
-                    series_title,
-                    found_id,
-                )
-                return str(found_id), None, None
-            
-            logger.debug("Title search returned no results for '%s'", series_title)
-
-            # Try stripping year from title like "Show (YYYY)"
-            clean_title = re.sub(r'\s*\(\d{4}\)$', '', series_title)
-            if clean_title != series_title:
-                logger.debug("Retrying search with cleaned title '%s'", clean_title)
-                search_results = services.search(
-                    MediaTypes.TV.value,
-                    clean_title,
-                    page=1,
-                )
-                results = search_results.get("results") or []
-                if results:
-                    found_id = results[0].get("media_id")
-                    logger.info(
-                        "Resolved '%s' to TMDB ID %s via title search",
-                        clean_title,
-                        found_id,
-                    )
-                    return str(found_id), None, None
-
-        except Exception as exc:
-            logger.warning("Title search failed for '%s': %s", series_title, exc)
-
-        return None, None, None
-
-
     def _process_rating(self, payload, user):
         """Process media.rate webhook events to update user ratings.
-        
+
         Note: Plex may not send media.rate webhook events reliably.
         Ratings are primarily synced via the Plex import process which
         fetches ratings from library items.
         """
         logger.info("Processing media.rate webhook event")
-        logger.debug("Full rating payload: %s", json.dumps(payload, indent=2))
-        
+        logger.debug(
+            "Plex rating payload keys=%s metadata_keys=%s",
+            mapping_keys(payload),
+            mapping_keys(payload.get("Metadata")),
+        )
+
         metadata = payload.get("Metadata", {})
         # Try different possible field names for user rating (preserve 0 values)
         user_rating = None
@@ -287,13 +388,14 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 user_rating = value
                 rating_source = source
                 break
-        
+
         logger.debug("Rating payload metadata keys: %s", list(metadata.keys()))
         logger.debug(
-            "userRating value: %s (sources checked: userRating, user_rating, rating, payload.rating, payload.userRating)",
-            user_rating,
+            "Plex rating payload contains user_rating=%s source=%s",
+            user_rating is not None,
+            rating_source,
         )
-        
+
         if user_rating is None:
             logger.warning(
                 "No userRating found in Plex rating payload. "
@@ -304,34 +406,45 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             # Try fetching rating from Plex API as fallback
             rating_key = metadata.get("ratingKey") or metadata.get("ratingkey")
             if rating_key:
-                logger.info("Attempting to fetch rating from Plex API for rating_key: %s", rating_key)
-                user_rating = self._fetch_rating_from_plex_api(user, rating_key, payload)
+                logger.info("Attempting to fetch rating from Plex API")
+                user_rating = self._fetch_rating_from_plex_api(
+                    user, rating_key, payload
+                )
                 if user_rating is None:
                     logger.warning("Could not fetch rating from Plex API either")
                     return None
                 rating_source = "userRating"
             else:
-                logger.warning("No ratingKey found in payload, cannot fetch rating from API")
+                logger.warning(
+                    "No ratingKey found in payload, cannot fetch rating from API"
+                )
                 return None
 
         title = self._get_media_title(payload)
         media_type = self._get_media_type(payload)
-        
-        logger.debug("Media type: %s, Title: %s", media_type, title)
-        
+
+        logger.debug("Plex rating payload media_type=%s", media_type)
+
         if not media_type:
-            logger.warning("Ignoring rating for unsupported media type. Payload type: %s", metadata.get("type"))
+            logger.warning(
+                "Ignoring rating for unsupported media type. Payload type: %s",
+                metadata.get("type"),
+            )
             return None
 
         # Check if this is a rating removal event (-1.0)
         try:
             rating_float = float(user_rating)
             if rating_float == -1.0:
-                logger.info("Detected rating removal event for %s: %s", media_type, title)
+                logger.info(
+                    "Detected Plex webhook rating removal for media_type=%s", media_type
+                )
                 # Resolve external IDs for removal
                 ids = self.resolve_external_ids(payload)
                 if not any(ids.get(key) for key in ("tmdb_id", "imdb_id", "tvdb_id")):
-                    logger.warning("Ignoring Plex rating removal webhook because no ID was found for %s", title)
+                    logger.warning(
+                        "Ignoring Plex rating removal webhook because no ID was found"
+                    )
                     return None
                 # Handle rating removal
                 self._remove_rating(payload, user, ids, media_type)
@@ -347,15 +460,15 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             rating_source=rating_source,
         )
         if normalized_rating is None:
-            logger.warning("Invalid rating value '%s' for %s - skipped", user_rating, title)
+            logger.warning("Invalid Plex rating value received; skipped")
             return None
 
-        logger.info("Processing rating for %s: %s (rating: %s -> normalized: %s)", media_type, title, user_rating, normalized_rating)
+        logger.info("Processing Plex rating for media_type=%s", media_type)
 
         # Resolve external IDs
         ids = self.resolve_external_ids(payload)
         if not any(ids.get(key) for key in ("tmdb_id", "imdb_id", "tvdb_id")):
-            logger.warning("Ignoring Plex rating webhook because no ID was found for %s", title)
+            logger.warning("Ignoring Plex rating webhook because no ID was found")
             return None
 
         # Apply rating based on media type
@@ -382,7 +495,10 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         try:
             movie_metadata = app.providers.tmdb.movie(tmdb_id)
         except Exception as exc:
-            logger.warning("Failed to fetch movie metadata for TMDB ID %s: %s", tmdb_id, exc)
+            logger.warning(
+                "Failed to fetch movie metadata during Plex rating sync: %s",
+                exception_summary(exc),
+            )
             return
 
         movie_item, _ = app.models.Item.objects.get_or_create(
@@ -411,10 +527,8 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
         action = "Created" if created else "Updated"
         logger.info(
-            "%s movie rating for %s: %.1f",
+            "%s movie rating from Plex webhook",
             action,
-            movie_item.title,
-            rating,
         )
 
     def _apply_tv_rating(self, payload, user, ids, rating):
@@ -429,7 +543,10 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         try:
             tv_metadata = app.providers.tmdb.tv(tmdb_id)
         except Exception as exc:
-            logger.warning("Failed to fetch TV metadata for TMDB ID %s: %s", tmdb_id, exc)
+            logger.warning(
+                "Failed to fetch TV metadata during Plex rating sync: %s",
+                exception_summary(exc),
+            )
             return
 
         tv_item, _ = app.models.Item.objects.get_or_create(
@@ -457,15 +574,13 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
         action = "Created" if created else "Updated"
         logger.info(
-            "%s TV show rating for %s: %.1f",
+            "%s TV rating from Plex webhook",
             action,
-            tv_item.title,
-            rating,
         )
 
     def _remove_rating(self, payload, user, ids, media_type):
         """Remove rating from a movie or TV instance.
-        
+
         Only removes ratings from existing instances; does not create new instances.
         """
         from app.models import Sources
@@ -475,13 +590,14 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             logger.warning("Cannot remove rating: no TMDB ID found")
             return
 
-        title = self._get_media_title(payload)
-
         if media_type == MediaTypes.MOVIE.value:
             try:
                 movie_metadata = app.providers.tmdb.movie(tmdb_id)
             except Exception as exc:
-                logger.warning("Failed to fetch movie metadata for TMDB ID %s: %s", tmdb_id, exc)
+                logger.warning(
+                    "Failed to fetch movie metadata for Plex rating removal: %s",
+                    exception_summary(exc),
+                )
                 return
 
             movie_item, _ = app.models.Item.objects.get_or_create(
@@ -503,26 +619,35 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             if movie_instance:
                 movie_instance.score = None
                 movie_instance.save(update_fields=["score"])
-                logger.info("Removed rating for movie: %s", movie_item.title)
+                logger.info("Removed movie rating from Plex webhook")
             else:
-                logger.debug("No movie instance found to remove rating for %s", movie_item.title)
+                logger.debug("No movie instance found for Plex rating removal")
 
         elif media_type == MediaTypes.TV.value:
             try:
                 tv_metadata = app.providers.tmdb.tv(tmdb_id)
             except Exception as exc:
-                logger.warning("Failed to fetch TV metadata for TMDB ID %s: %s", tmdb_id, exc)
+                logger.warning(
+                    "Failed to fetch TV metadata for Plex rating removal: %s",
+                    exception_summary(exc),
+                )
                 return
 
-            tv_item, _ = app.models.Item.objects.get_or_create(
+            tv_item = find_item_across_buckets(
                 media_id=tmdb_id,
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.TV.value,
-                defaults={
-                    "title": tv_metadata["title"],
-                    "image": tv_metadata["image"],
-                },
             )
+            if tv_item is None:
+                tv_item, _ = app.models.Item.objects.get_or_create(
+                    media_id=tmdb_id,
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.TV.value,
+                    defaults={
+                        "title": tv_metadata["title"],
+                        "image": tv_metadata["image"],
+                    },
+                )
 
             # Only remove rating from existing instances
             tv_instance = app.models.TV.objects.filter(
@@ -533,9 +658,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             if tv_instance:
                 tv_instance.score = None
                 tv_instance.save(update_fields=["score"])
-                logger.info("Removed rating for TV show: %s", tv_item.title)
+                logger.info("Removed TV rating from Plex webhook")
             else:
-                logger.debug("No TV instance found to remove rating for %s", tv_item.title)
+                logger.debug("No TV instance found for Plex rating removal")
         else:
             logger.debug("Rating removal not supported for media type: %s", media_type)
 
@@ -546,8 +671,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             logger.debug("Ignoring unsupported media type")
             return
 
-        title = self._get_media_title(payload)
-        logger.info("Received webhook for %s: %s", media_type, title)
+        logger.info("Received Plex webhook for media_type=%s", media_type)
 
         if media_type == MediaTypes.TV.value:
             # Extract season/episode from Plex payload
@@ -559,16 +683,21 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             self._process_movie(payload, user, ids)
 
     def _is_supported_event(self, event_type):
-        return event_type in ("media.scrobble", "media.play", "media.rate")
+        return event_type in (
+            "media.scrobble",
+            "media.play",
+            "media.resume",
+            "media.pause",
+            "media.stop",
+            "media.rate",
+        )
 
-    def _fetch_rating_from_plex_api(self, user, rating_key, payload):
-        """Fetch user rating from Plex API as fallback if not in webhook payload."""
-        from integrations import plex as plex_api
-        
+    def _resolve_plex_server(self, user, payload):
+        """Return (plex_account, server_uri) for API callbacks, or (None, None)."""
         plex_account = getattr(user, "plex_account", None)
         if not plex_account or not plex_account.plex_token:
-            logger.debug("No Plex account found for user %s", user.username)
-            return None
+            logger.debug("No Plex account found for API callback")
+            return None, None
 
         # Get server URI from payload or account
         plex_uri = None
@@ -588,7 +717,52 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                         break
 
         if not plex_uri:
-            logger.debug("No Plex server URI found for rating fetch")
+            logger.debug("No Plex server URI found for API callback")
+            return None, None
+
+        return plex_account, plex_uri
+
+    def _fetch_local_season_episode_count(self, user, payload):
+        """Ask the Plex server how many episodes the played season really has.
+
+        Used only when TMDB has no metadata for the season, so an otherwise
+        unresolvable local-only season can still reach Completed.
+        """
+        parent_rating_key = (payload.get("Metadata") or {}).get("parentRatingKey")
+        if not parent_rating_key:
+            return None
+
+        plex_account, plex_uri = self._resolve_plex_server(user, payload)
+        if not plex_uri:
+            return None
+
+        try:
+            metadata = plex_api.fetch_metadata(
+                plex_account.plex_token,
+                plex_uri,
+                str(parent_rating_key),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch season episode count from Plex API: %s",
+                exception_summary(exc),
+            )
+            return None
+
+        if not metadata:
+            return None
+
+        try:
+            leaf_count = int(metadata.get("leafCount"))
+        except (TypeError, ValueError):
+            return None
+
+        return leaf_count if leaf_count > 0 else None
+
+    def _fetch_rating_from_plex_api(self, user, rating_key, payload):
+        """Fetch user rating from Plex API as fallback if not in webhook payload."""
+        plex_account, plex_uri = self._resolve_plex_server(user, payload)
+        if not plex_uri:
             return None
 
         try:
@@ -599,10 +773,13 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             )
             if metadata:
                 user_rating = metadata.get("userRating")
-                logger.debug("Fetched userRating from Plex API: %s", user_rating)
+                logger.debug("Fetched user rating from Plex API")
                 return user_rating
         except Exception as exc:
-            logger.warning("Failed to fetch rating from Plex API: %s", exc)
+            logger.warning(
+                "Failed to fetch rating from Plex API: %s",
+                exception_summary(exc),
+            )
 
         return None
 
@@ -613,7 +790,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         rating_source: str | None = None,
     ) -> float | None:
         """Normalize Plex rating values onto a 0-10 scale.
-        
+
         Plex userRating values are typically on a 0-10 scale (even for 5-star UI).
         Some metadata sources may report 0-100, which we normalize down.
         """
@@ -623,59 +800,144 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
         try:
             rating = float(rating_value)
         except (TypeError, ValueError):
-            entry_title = title or "Unknown title"
-            logger.warning("Invalid Plex rating '%s' for %s - skipped", rating_value, entry_title)
+            logger.warning("Invalid Plex rating received (non-numeric)")
             return None
 
         if rating < 0:
-            entry_title = title or "Unknown title"
-            logger.warning("Invalid Plex rating '%s' for %s (negative) - skipped", rating_value, entry_title)
+            logger.warning("Invalid Plex rating received (negative)")
             return None
 
         if rating_source in {"userRating", "user_rating", "payload_userRating"}:
-            if rating <= 10:
-                rating = rating
-            elif rating <= 100:
+            if rating <= RATING_SCALE_MAX:
+                pass  # value already in the expected range
+            elif rating <= RATING_PERCENTAGE_SCALE_MAX:
                 rating /= 10
             else:
-                entry_title = title or "Unknown title"
-                logger.warning(
-                    "Invalid Plex rating '%s' for %s (out of range) - skipped",
-                    rating_value,
-                    entry_title,
-                )
+                logger.warning("Invalid Plex rating received (out of range)")
                 return None
-        elif rating <= 5:
+        elif rating <= RATING_HALF_SCALE_MAX:
             rating *= 2
-        elif rating <= 10:
-            rating = rating
-        elif rating <= 100:
+        elif rating <= RATING_SCALE_MAX:
+            pass  # value already in the expected range
+        elif rating <= RATING_PERCENTAGE_SCALE_MAX:
             rating /= 10
         else:
-            entry_title = title or "Unknown title"
-            logger.warning("Invalid Plex rating '%s' for %s (out of range) - skipped", rating_value, entry_title)
+            logger.warning("Invalid Plex rating received (out of range)")
             return None
 
         rating = round(rating, 1)
-        if rating < 0 or rating > 10:
-            entry_title = title or "Unknown title"
-            logger.warning("Invalid Plex rating '%s' for %s (normalized out of range) - skipped", rating_value, entry_title)
+        if rating < 0 or rating > RATING_SCALE_MAX:
+            logger.warning("Invalid Plex rating received (normalized out of range)")
             return None
 
         return rating
 
-    def _is_valid_user(self, payload_user, user):
-        stored_usernames = [
+    def _is_valid_user(self, payload_user, payload, user):
+        return self._get_user_rejection_reason(payload_user, payload, user) is None
+
+    def _get_user_rejection_reason(self, payload_user, payload, user):
+        stored_usernames = {
             u.strip().lower()
             for u in (user.plex_usernames or "").split(",")
             if u.strip()
-        ]
+        }
+        plex_account = getattr(user, "plex_account", None)
+        plex_username = str(getattr(plex_account, "plex_username", "") or "").strip()
+        if plex_username:
+            stored_usernames.add(plex_username.lower())
+
+        payload_usernames = {
+            candidate
+            for candidate in [
+                payload_user,
+                self._extract_payload_username(payload),
+            ]
+            if candidate
+        }
         logger.debug(
-            "Checking if payload user '%s' is in stored usernames: %s",
-            payload_user,
-            stored_usernames,
+            "Checking Plex webhook payload user against configured usernames",
         )
-        return payload_user in stored_usernames
+
+        if stored_usernames and payload_usernames.intersection(stored_usernames):
+            return self._get_library_rejection_reason(payload, user)
+
+        payload_account_id = self._extract_payload_account_id(payload)
+        connected_account_id = str(
+            getattr(plex_account, "plex_account_id", "") or "",
+        ).strip()
+        if (
+            payload_account_id
+            and connected_account_id
+            and payload_account_id == connected_account_id
+        ):
+            return self._get_library_rejection_reason(payload, user)
+
+        configured_usernames = (
+            sorted(stored_usernames) if stored_usernames else ["<none>"]
+        )
+        payload_username_values = (
+            sorted(payload_usernames) if payload_usernames else ["<none>"]
+        )
+        return (
+            "payload user/account did not match configured Plex identity "
+            f"(payload_usernames={payload_username_values}, "
+            f"payload_account_id={payload_account_id or '<none>'}, "
+            f"configured_usernames={configured_usernames}, "
+            f"connected_account_id={connected_account_id or '<none>'})"
+        )
+
+    def _extract_payload_username(self, payload):
+        """Extract any alternate Plex username field from a webhook payload."""
+        for value in (
+            payload.get("user"),
+            payload.get("owner"),
+        ):
+            if isinstance(value, str) and value.strip():
+                return value.strip().lower()
+        return None
+
+    def _extract_payload_account_id(self, payload):
+        """Extract Plex account id from webhook payload when available."""
+        account = payload.get("Account", {}) or {}
+        for key in ("id", "accountID", "accountId", "account_id"):
+            value = account.get(key)
+            if value is None:
+                continue
+            value = str(value).strip()
+            if value:
+                return value
+        return None
+
+    def _is_valid_library(self, payload, user):
+        return self._get_library_rejection_reason(payload, user) is None
+
+    def _get_library_rejection_reason(self, payload, user):
+        selected_libraries = user.plex_webhook_libraries
+        if not selected_libraries:
+            return None
+
+        machine_identifier = payload.get("Server", {}).get("uuid")
+        section_id = payload.get("Metadata", {}).get("librarySectionID")
+        if not machine_identifier or not section_id:
+            logger.debug(
+                "Rejecting Plex webhook event because library info is missing while library filtering is enabled.",
+            )
+            return (
+                "library filtering is enabled but the webhook payload is missing "
+                "Server.uuid or Metadata.librarySectionID"
+            )
+
+        payload_library = f"{machine_identifier}::{section_id}"
+        logger.debug(
+            "Checking Plex webhook payload library against configured libraries",
+        )
+        if payload_library in selected_libraries:
+            return None
+
+        return (
+            f"payload library {payload_library} is not selected "
+            f"(selected_libraries={sorted(selected_libraries)})"
+        )
 
     def _is_played(self, payload):
         return payload["event"] == "media.scrobble"
@@ -706,10 +968,7 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             metadata = payload.get("Metadata", {})
             artist = metadata.get("grandparentTitle")
             track = metadata.get("title")
-            if artist and track:
-                title = f"{artist} - {track}"
-            else:
-                title = track or artist
+            title = f"{artist} - {track}" if artist and track else track or artist
 
         return title
 
@@ -732,9 +991,24 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             "imdb_id": None,
             "tvdb_id": None,
             "plex_guid": None,
+            "anidb_id": None,
         }
 
         logger.debug("Extracting external IDs from %d GUIDs", len(guids))
+
+        def extract_hama_anidb_id(guid_value):
+            """Extract the AniDB ID from a Hama agent GUID string."""
+            if not guid_value:
+                return None
+
+            guid_lower = guid_value.lower()
+            if "hama://anidb-" not in guid_lower:
+                return None
+
+            match = re.search(r"anidb-(\d+)", guid_lower)
+            if match:
+                return match.group(1)
+            return None
 
         for guid in guids:
             guid_value = guid.get("id") if isinstance(guid, dict) else guid
@@ -743,16 +1017,22 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
             guid_lower = guid_value.lower()
 
+            if ids["anidb_id"] is None:
+                anidb_id = extract_hama_anidb_id(guid_value)
+                if anidb_id:
+                    ids["anidb_id"] = anidb_id
+                    logger.debug("Found AniDB ID in Plex GUIDs")
+
             if ids["plex_guid"] is None and guid_lower.startswith("plex://"):
                 ids["plex_guid"] = guid_value.split("plex://", 1)[1]
-                logger.debug("Found plex_guid: %s", ids["plex_guid"])
+                logger.debug("Found Plex GUID in payload")
 
             # Priority 1: Explicitly labeled IMDB or 'tt' prefix anywhere
             if ids["imdb_id"] is None:
                 imdb_id = self._extract_imdb_id(guid_value)
                 if imdb_id:
                     ids["imdb_id"] = imdb_id
-                    logger.debug("Found imdb_id: %s", imdb_id)
+                    logger.debug("Found IMDB ID in Plex GUIDs")
                     if "imdb" in guid_lower:
                         continue
 
@@ -764,21 +1044,29 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 if tmdb_id:
                     # If it looks like an IMDB ID (7+ digits) and we don't have an IMDB ID yet,
                     # AND it's a TV show, be skeptical of treating it as TMDB.
-                    if int(tmdb_id) > 3000000 and ids["imdb_id"] is None:
+                    if (
+                        int(tmdb_id) > LIKELY_IMDB_NUMERIC_ID_THRESHOLD
+                        and ids["imdb_id"] is None
+                    ):
                         ids["imdb_id"] = f"tt{tmdb_id}"
-                        logger.debug("Skeptically treated large TMDB ID as IMDB: %s", ids["imdb_id"])
+                        logger.debug("Skeptically treated large TMDB-style ID as IMDB")
                     else:
                         ids["tmdb_id"] = tmdb_id
-                        logger.debug("Found tmdb_id: %s", tmdb_id)
+                        logger.debug("Found TMDB ID in Plex GUIDs")
 
             # Priority 3: TVDB
-            if ids["tvdb_id"] is None and ("tvdb" in guid_lower or "thetvdb" in guid_lower):
+            if ids["tvdb_id"] is None and (
+                "tvdb" in guid_lower or "thetvdb" in guid_lower
+            ):
                 tvdb_id = self._extract_numeric_guid_id(guid_value)
                 if tvdb_id:
                     ids["tvdb_id"] = tvdb_id
-                    logger.debug("Found tvdb_id: %s", tvdb_id)
+                    logger.debug("Found TVDB ID in Plex GUIDs")
 
-            if all(ids.get(key) for key in ("tmdb_id", "imdb_id", "tvdb_id", "plex_guid")):
+            if all(
+                ids.get(key)
+                for key in ("tmdb_id", "imdb_id", "tvdb_id", "plex_guid", "anidb_id")
+            ):
                 break
 
         return ids
@@ -885,25 +1173,24 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
 
     def _queue_collection_metadata_update(self, payload, user, item):
         """Queue collection metadata update task for Plex webhook."""
-        from integrations import tasks
-        from integrations import plex as plex_api
-
         # Get Plex account
         plex_account = getattr(user, "plex_account", None)
         if not plex_account or not plex_account.plex_token:
-            logger.debug("No Plex account found for user %s, skipping collection update", user.username)
+            logger.debug("No Plex account found, skipping collection update")
             return
 
         # Extract rating key from payload
         metadata = payload.get("Metadata", {})
         rating_key = metadata.get("ratingKey") or metadata.get("ratingkey")
         if not rating_key:
-            logger.debug("No rating key found in Plex payload, skipping collection update")
+            logger.debug(
+                "No rating key found in Plex payload, skipping collection update"
+            )
             return
 
         # Get server URI - try multiple methods, prioritizing known-good sources
         plex_uri = None
-        
+
         # Method 1: Try to get from Server info in payload (most reliable from webhook)
         server_info = payload.get("Server", {})
         if server_info:
@@ -937,22 +1224,23 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                         if plex_uri:
                             break
             except Exception as exc:
-                logger.debug("Failed to get Plex URI from resources API: %s", exc)
+                logger.debug(
+                    "Failed to get Plex URI from resources API: %s",
+                    exception_summary(exc),
+                )
 
         # Method 4: Last resort - try Player addresses (may not be server URI)
         if not plex_uri:
             player_info = payload.get("Player", {})
-            if player_info:
-                if isinstance(player_info, dict):
-                    # Prefer localAddress over publicAddress for local connections
-                    plex_uri = player_info.get("localAddress") or player_info.get("publicAddress")
+            if player_info and isinstance(player_info, dict):
+                # Prefer localAddress over publicAddress for local connections
+                plex_uri = player_info.get("localAddress") or player_info.get(
+                    "publicAddress"
+                )
 
         if not plex_uri:
             logger.warning(
-                "No Plex server URI found for collection update (item=%s, rating_key=%s). "
-                "Tried Player.localAddress, Server.uri, account sections, and resources API.",
-                item.title,
-                rating_key,
+                "No Plex server URI found for collection update after checking payload, sections, and resources API.",
             )
             return
 
@@ -962,7 +1250,9 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             # Prefer localAddress for local connections (usually http)
             # publicAddress might be remote, but default to http for compatibility
             plex_uri = f"http://{plex_uri}"
-            logger.debug("Normalized Plex URI (added http:// scheme): %s", plex_uri)
+            logger.debug(
+                "Normalized Plex URI for collection update: %s", safe_url(plex_uri)
+            )
 
         # Queue the collection metadata update task
         try:
@@ -973,17 +1263,10 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 plex_uri,
                 plex_account.plex_token,
             )
-            logger.info(
-                "Queued collection metadata update for %s (item_id=%s, rating_key=%s, uri=%s)",
-                item.title,
-                item.id,
-                rating_key,
-                plex_uri,
-            )
+            logger.info("Queued collection metadata update from Plex webhook")
         except Exception as exc:
             logger.warning(
-                "Failed to queue collection metadata update for %s: %s",
-                item.title,
-                exc,
+                "Failed to queue collection metadata update from Plex webhook: %s",
+                exception_summary(exc),
                 exc_info=True,
             )

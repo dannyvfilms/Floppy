@@ -1,0 +1,5 @@
+{% if media.item.igdb_user_rating is not None %}
+  <div class="font-medium">{{ media.item.igdb_user_rating|floatformat:1 }}</div>
+{% else %}
+  <div class="text-[var(--color-text-muted)]">--</div>
+{% endif %}

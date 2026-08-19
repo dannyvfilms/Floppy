@@ -4,20 +4,171 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - "dev"
+      - "release"
       - "latest"
     tags:
       - "v*"
   pull_request:
     branches:
-      - "dev"
+      - "latest"
+
+# A push to latest must not be overtaken by an older build that started later
+# because runners were queued. Keep one publish per ref in flight and let the
+# newest pending run replace intermediate commits without cancelling the run
+# currently publishing.
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: dannyvfilms/yamtrack
+  IMAGE_NAME: dannyvfilms/floppy
+  LEGACY_IMAGE_NAME: dannyvfilms/yamtrack
 
 jobs:
+  test:
+    name: Smoke built image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      SMOKE_APP: floppy-smoke-app-${{ github.run_id }}-${{ github.run_attempt }}
+      SMOKE_IMAGE: floppy:ci-smoke
+      SMOKE_NETWORK: floppy-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+      SMOKE_REDIS: floppy-smoke-redis-${{ github.run_id }}-${{ github.run_attempt }}
+      SMOKE_SHA: ${{ github.sha }}
+      SMOKE_VOLUME: floppy-smoke-db-${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Docker buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: ${{ env.SMOKE_IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          platforms: linux/amd64
+          build-args: |
+            VERSION=ci-smoke
+            COMMIT_SHA=${{ env.SMOKE_SHA }}
+
+      - name: Run and restart test image
+        run: |
+          set -euo pipefail
+
+          wait_for_redis() {
+            for _ in $(seq 1 30); do
+              if timeout 10 docker exec "$SMOKE_REDIS" redis-cli ping | grep -qx PONG; then
+                return 0
+              fi
+              sleep 2
+            done
+            echo "Redis did not become ready" >&2
+            return 1
+          }
+
+          wait_for_health() {
+            for _ in $(seq 1 60); do
+              state=$(docker inspect --format '{{.State.Status}}' "$SMOKE_APP")
+              health=$(docker inspect --format '{{.State.Health.Status}}' "$SMOKE_APP")
+              if [ "$health" = healthy ]; then
+                return 0
+              fi
+              if [ "$state" = exited ] || [ "$state" = dead ]; then
+                echo "Floppy exited before becoming healthy" >&2
+                return 1
+              fi
+              sleep 5
+            done
+            echo "Floppy did not become healthy" >&2
+            return 1
+          }
+
+          assert_runtime() {
+            curl -fsS --max-time 10 http://127.0.0.1:8000/health/ >/dev/null
+            login_html=$(curl -fsS --max-time 10 http://127.0.0.1:8000/accounts/login/)
+            grep -Fq 'alt="Floppy"' <<<"$login_html"
+            curl -fsS --max-time 10 http://127.0.0.1:8000/static/css/main.css >/dev/null
+            curl -fsS --max-time 10 http://127.0.0.1:8000/api/v1/info/ |
+              python3 -c 'import json, sys; assert json.load(sys.stdin)["version"] == "ci-smoke"'
+            test "$(docker exec "$SMOKE_APP" printenv VERSION)" = ci-smoke
+            test "$(docker exec "$SMOKE_APP" printenv COMMIT_SHA)" = "$SMOKE_SHA"
+            timeout 30 docker exec "$SMOKE_APP" test -s /floppy/db/db.sqlite3
+            timeout 120 docker exec "$SMOKE_APP" python manage.py migrate --check --noinput
+            timeout 30 docker exec "$SMOKE_APP" python manage.py shell -c \
+              'from django.conf import settings; import os, redis; assert settings.VERSION == os.environ["VERSION"] == "ci-smoke"; assert settings.COMMIT_SHA == os.environ["COMMIT_SHA"]; assert redis.Redis.from_url(settings.REDIS_URL).ping()'
+            timeout 30 docker exec "$SMOKE_APP" python -c \
+              'import importlib.metadata; import floppy_mcp; assert importlib.metadata.version("floppy-mcp")'
+            timeout 10 docker exec "$SMOKE_APP" sh -c \
+              'timeout 5 floppy-mcp </dev/null; status=$?; [ "$status" -eq 0 ] || [ "$status" -eq 124 ]'
+          }
+
+          start_app() {
+            docker run --detach \
+              --name "$SMOKE_APP" \
+              --network "$SMOKE_NETWORK" \
+              --publish 127.0.0.1:8000:8000 \
+              --env TZ=UTC \
+              --env SECRET=ci-smoke-only-not-a-production-secret \
+              --env REDIS_URL="redis://$SMOKE_REDIS:6379" \
+              --env ADMIN_ENABLED=False \
+              --env DEMO_ACCOUNT_ENABLED=False \
+              --env DEBUG=False \
+              --env FLOPPY_RESOURCE_TIER=minimal \
+              --volume "$SMOKE_VOLUME:/floppy/db" \
+              "$SMOKE_IMAGE"
+          }
+
+          image_env=$(docker image inspect "$SMOKE_IMAGE" --format '{{range .Config.Env}}{{println .}}{{end}}')
+          grep -Fxq VERSION=ci-smoke <<<"$image_env"
+          grep -Fxq "COMMIT_SHA=$SMOKE_SHA" <<<"$image_env"
+          docker network create "$SMOKE_NETWORK"
+          docker volume create "$SMOKE_VOLUME"
+          docker run --detach --name "$SMOKE_REDIS" --network "$SMOKE_NETWORK" redis:8-alpine
+          wait_for_redis
+
+          start_app
+          wait_for_health
+          assert_runtime
+
+          docker logs "$SMOKE_APP" >"$RUNNER_TEMP/floppy-smoke-first.log" 2>&1
+          docker rm --force "$SMOKE_APP"
+          start_app
+          wait_for_health
+          assert_runtime
+
+      - name: Print test container logs
+        if: failure()
+        run: |
+          if [ -f "$RUNNER_TEMP/floppy-smoke-first.log" ]; then
+            echo "First Floppy boot logs:"
+            tail -n 500 "$RUNNER_TEMP/floppy-smoke-first.log"
+          fi
+          for container in "$SMOKE_APP" "$SMOKE_REDIS"; do
+            if docker inspect "$container" >/dev/null 2>&1; then
+              echo "$container logs:"
+              docker logs --tail 500 "$container" 2>&1 || true
+            fi
+          done
+
+      - name: Clean up test containers
+        if: always()
+        run: |
+          docker rm --force "$SMOKE_APP" "$SMOKE_REDIS" 2>/dev/null || true
+          docker network rm "$SMOKE_NETWORK" 2>/dev/null || true
+          docker volume rm "$SMOKE_VOLUME" 2>/dev/null || true
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     if: github.actor != 'dependabot[bot]'
     permissions:
@@ -29,60 +180,82 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # This ensures all tags are fetched for git describe
+          fetch-depth: 0 # Required for version metadata and stable-tag validation.
 
       - name: Get version from git
         id: get-version
         run: |
           VERSION=$(git describe --tags 2>/dev/null || echo "dev")
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Using version: $VERSION"
 
+      - name: Validate stable release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Invalid stable release tag::Expected vX.Y.Z, got $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+          git fetch --no-tags origin release:refs/remotes/origin/release
+          tag_commit=$(git rev-list -n 1 "$GITHUB_REF_NAME")
+          release_commit=$(git rev-parse refs/remotes/origin/release)
+
+          if [[ "$tag_commit" != "$release_commit" ]]; then
+            echo "::error title=Stable release tag is not release HEAD::Tag $GITHUB_REF_NAME resolves to $tag_commit, but release is $release_commit. Create the release tag from the verified release HEAD."
+            exit 1
+          fi
+
+          echo "Stable release tag $GITHUB_REF_NAME is anchored to release HEAD $release_commit"
+
       - name: Setup Docker buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Extract Docker metadata tags
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Dual-publish during the rename grace period: the legacy path keeps
+          # receiving identical approved tags so pre-rename deployments still
+          # get updates. Drop the second line only after that migration is done.
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}
           tags: |
-            type=ref,event=branch,enable=${{ github.ref != 'refs/heads/latest' }}
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/latest' }}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/latest' }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=release,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      # Determine if we should push the image
-      - name: Set push flag
-        id: push-flag
-        run: |
-          if [[ "${{ github.event_name }}" != "pull_request" || "${{ github.event.pull_request.head.repo.full_name }}" == "${{ github.repository }}" ]]; then
-            echo "PUSH=true" >> $GITHUB_OUTPUT
-          else
-            echo "PUSH=false" >> $GITHUB_OUTPUT
-          fi
-
-      # Only log in if we're going to push
+      # Publication contract:
+      # - PR: build only, never authenticate or publish (#782/#793).
+      # - latest branch: publish the moving :dev channel only (#797).
+      # - release branch: validate only; a branch update is not a release.
+      # - vX.Y.Z tag at exact release HEAD: publish stable aliases and semver.
+      # - workflow_dispatch: validation only; it is not a publication backdoor.
       - name: Log into registry ${{ env.REGISTRY }}
-        if: steps.push-flag.outputs.PUSH == 'true'
-        uses: docker/login-action@v3
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/latest' || startsWith(github.ref, 'refs/tags/v'))
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          username: dannyvfilms
-          password: ${{ secrets.GHCR_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
         id: build-and-push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
-          push: ${{ steps.push-flag.outputs.PUSH }}
+          push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/latest' || startsWith(github.ref, 'refs/tags/v')) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

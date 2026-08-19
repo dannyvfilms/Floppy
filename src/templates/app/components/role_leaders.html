@@ -1,0 +1,284 @@
+{% load app_tags %}
+{% comment %}
+  Role Leaders — 4 columns (Actors/Actresses/Directors/Writers), each a scrollable
+  numbered list. Clicking a row POSTs to select_featured_person and swaps the
+  Featured Repeat Player card + media strip via $refs. Sort dropdown updates the
+  leaderboard ordering and resets the featured person to the new default leader.
+
+  Required context: role_leaders (from stats_cast_crew.get_role_leaders),
+  current_range_name / current_start_date / current_end_date for the POST body.
+{% endcomment %}
+<div x-data="{
+       selectedPersonKey: '{{ featured_person.source|default:"" }}:{{ featured_person.person_id|default:"" }}',
+       open: false,
+       selectedSort: '{{ role_leaders.sort_by|default:"plays"|escapejs }}',
+       selectedLabel: '',
+       loading: false,
+       currentRangeName: '{{ selected_range_name|default:""|escapejs }}',
+       currentStartDate: '{{ start_date_str|default:""|escapejs }}',
+       currentEndDate: '{{ end_date_str|default:""|escapejs }}',
+       totalLibraryTitles: {{ media_count.total|default:0 }},
+       selectedMediaType: 'all',
+       init() {
+         this.selectedLabel = this.selectedSort === 'time' ? 'Time' : (this.selectedSort === 'titles' ? 'Titles' : 'Plays');
+         this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
+         window.addEventListener('stats-media-type-changed', () => {
+           this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
+           this.refresh();
+         });
+         // The initial server render is always the unfiltered all-types aggregate —
+         // if the page loaded with a media-type already in the URL (reload,
+         // bookmark, browser history), fetch the filtered cards immediately
+         // instead of waiting for the user to re-toggle the selector.
+         if (this.selectedMediaType !== 'all') {
+           this.refresh();
+         }
+       },
+       async animateSwap(target, html, afterSwap = null) {
+         if (!target) {
+           return;
+         }
+         target.classList.add('transition-all', 'duration-200', 'ease-out');
+         target.classList.add('opacity-0', 'translate-y-1');
+         await new Promise(resolve => setTimeout(resolve, 120));
+         target.innerHTML = html;
+         if (afterSwap) {
+           afterSwap();
+         }
+         target.classList.remove('translate-y-1');
+         target.classList.add('translate-y-0');
+         requestAnimationFrame(() => {
+           target.classList.remove('opacity-0');
+         });
+         await new Promise(resolve => setTimeout(resolve, 180));
+         target.classList.remove('transition-all', 'duration-200', 'ease-out', 'translate-y-0');
+       },
+       async animateCardSwap(target, html) {
+         if (!target) {
+           return;
+         }
+         target.innerHTML = html;
+         const cards = Array.from(target.querySelectorAll('.home-row-card'));
+         cards.forEach((card) => {
+           card.classList.add('transition-all', 'duration-200', 'ease-out', 'opacity-0', 'translate-y-1');
+         });
+         requestAnimationFrame(() => {
+           cards.forEach((card, index) => {
+             setTimeout(() => {
+               card.classList.remove('opacity-0', 'translate-y-1');
+             }, index * 18);
+           });
+         });
+         await new Promise(resolve => setTimeout(resolve, 220));
+         cards.forEach((card) => {
+           card.classList.remove('transition-all', 'duration-200', 'ease-out');
+         });
+       },
+       async refresh() {
+         if (this.loading) {
+           return;
+         }
+         const previousSort = this.selectedSort;
+         const previousLabel = this.selectedLabel;
+         const previousKey = this.selectedPersonKey;
+         this.open = false;
+         this.loading = true;
+         try {
+           const body = new URLSearchParams();
+           body.set('sort_by', this.selectedSort);
+           if (this.currentRangeName) {
+             body.set('range_name', this.currentRangeName);
+           }
+           if (this.currentStartDate) {
+             body.set('start_date', this.currentStartDate);
+           }
+           if (this.currentEndDate) {
+             body.set('end_date', this.currentEndDate);
+           }
+           if (this.totalLibraryTitles) {
+             body.set('total_library_titles', this.totalLibraryTitles);
+           }
+           if (this.selectedMediaType && this.selectedMediaType !== 'all') {
+             body.set('media_type', this.selectedMediaType);
+           }
+           const response = await fetch('{% url 'update_top_talent_sort' %}', {
+             method: 'POST',
+             headers: {
+               'Content-Type': 'application/x-www-form-urlencoded',
+               'X-CSRFToken': '{{ csrf_token }}',
+               'X-Requested-With': 'XMLHttpRequest'
+             },
+             body: body.toString()
+           });
+           const data = await response.json();
+           if (!response.ok || !data.success) {
+             throw new Error(data.error || 'Failed to save top talent sort');
+           }
+           if (data.requires_reload) {
+             window.location.reload();
+             return;
+           }
+           if (data.selected_person_key) {
+             this.selectedPersonKey = data.selected_person_key;
+           }
+           if (data.role_leaders_html && this.$refs.roleLeadersGrid) {
+             this.$refs.roleLeadersGrid.innerHTML = data.role_leaders_html;
+           }
+           if (data.studio_footprint_html && this.$refs.studioFootprintGrid) {
+             this.$refs.studioFootprintGrid.innerHTML = data.studio_footprint_html;
+           }
+           const swapTasks = [];
+           if (data.featured_html && this.$refs.featuredPlayer) {
+             swapTasks.push(
+               this.animateSwap(this.$refs.featuredPlayer, data.featured_html, () => {
+                 if (window.renderFeaturedPersonRing) {
+                   window.renderFeaturedPersonRing(data.pct_of_library || 0);
+                 }
+               }),
+             );
+           }
+           if (data.footer_html && this.$refs.featuredPlayerFooter) {
+             this.$refs.featuredPlayerFooter.innerHTML = data.footer_html;
+           }
+           if (data.strip_html && this.$refs.personStrip) {
+             swapTasks.push(this.animateCardSwap(this.$refs.personStrip, data.strip_html));
+           }
+           await Promise.all(swapTasks);
+         } catch (error) {
+           this.selectedSort = previousSort;
+           this.selectedLabel = previousLabel;
+           this.selectedPersonKey = previousKey;
+           console.error('Failed to refresh top talent cards:', error);
+         } finally {
+           this.loading = false;
+         }
+       },
+       async setSort(sortBy, label) {
+         if (this.loading || this.selectedSort === sortBy) {
+           this.open = false;
+           return;
+         }
+         this.selectedSort = sortBy;
+         this.selectedLabel = label;
+         await this.refresh();
+       },
+       async selectPerson(source, personId) {
+         const key = source + ':' + personId;
+         if (this.loading || this.selectedPersonKey === key) {
+           return;
+         }
+         const previousKey = this.selectedPersonKey;
+         this.selectedPersonKey = key;
+         this.loading = true;
+         try {
+           const body = new URLSearchParams();
+           body.set('person_source', source);
+           body.set('person_id', personId);
+           if (this.currentRangeName) {
+             body.set('range_name', this.currentRangeName);
+           }
+           if (this.currentStartDate) {
+             body.set('start_date', this.currentStartDate);
+           }
+           if (this.currentEndDate) {
+             body.set('end_date', this.currentEndDate);
+           }
+           if (this.totalLibraryTitles) {
+             body.set('total_library_titles', this.totalLibraryTitles);
+           }
+           const response = await fetch('{% url 'select_featured_person' %}', {
+             method: 'POST',
+             headers: {
+               'Content-Type': 'application/x-www-form-urlencoded',
+               'X-CSRFToken': '{{ csrf_token }}',
+               'X-Requested-With': 'XMLHttpRequest'
+             },
+             body: body.toString()
+           });
+           const data = await response.json();
+           if (!response.ok || !data.success) {
+             throw new Error(data.error || 'Failed to load featured person');
+           }
+           const swapTasks = [];
+           if (data.featured_html && this.$refs.featuredPlayer) {
+             swapTasks.push(
+               this.animateSwap(this.$refs.featuredPlayer, data.featured_html, () => {
+                 if (window.renderFeaturedPersonRing) {
+                   window.renderFeaturedPersonRing(data.pct_of_library || 0);
+                 }
+               }),
+             );
+           }
+           if (data.footer_html && this.$refs.featuredPlayerFooter) {
+             this.$refs.featuredPlayerFooter.innerHTML = data.footer_html;
+           }
+           if (data.strip_html && this.$refs.personStrip) {
+             swapTasks.push(this.animateCardSwap(this.$refs.personStrip, data.strip_html));
+           }
+           await Promise.all(swapTasks);
+         } catch (error) {
+           this.selectedPersonKey = previousKey;
+           console.error('Failed to select featured person:', error);
+         } finally {
+           this.loading = false;
+         }
+       }
+     }">
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div class="flex flex-col space-y-1">
+      <h2 class="text-xl font-semibold text-[var(--color-text)]">Role Leaders</h2>
+      <p class="text-sm text-[var(--color-text-muted)]">Top contributors by role across your library.</p>
+    </div>
+
+    <div class="w-full sm:w-auto sm:min-w-32 sm:ml-auto">
+      <div class="relative">
+        <button type="button"
+                @click="open = !open"
+                @click.outside="open = false"
+                class="flex items-center justify-between w-full gap-2 px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+          <span x-text="selectedLabel"></span>
+          <svg xmlns="http://www.w3.org/2000/svg"
+               width="24"
+               height="24"
+               viewBox="0 0 24 24"
+               fill="none"
+               stroke="currentColor"
+               stroke-width="2"
+               stroke-linecap="round"
+               stroke-linejoin="round"
+               class="w-4 h-4 ml-1 text-[var(--color-text-muted)]">
+            <path d="m6 9 6 6 6-6"></path>
+          </svg>
+        </button>
+        <div x-show="open"
+             x-transition:enter="transition ease-out duration-100"
+             x-transition:enter-start="transform opacity-0 scale-95"
+             x-transition:enter-end="transform opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-75"
+             x-transition:leave-start="transform opacity-100 scale-100"
+             x-transition:leave-end="transform opacity-0 scale-95"
+             class="absolute right-0 z-10 mt-2 min-w-full py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden border border-gray-600">
+          <button type="button"
+                  @click="setSort('plays', 'Plays')"
+                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+            Plays
+          </button>
+          <button type="button"
+                  @click="setSort('time', 'Time')"
+                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+            Time
+          </button>
+          <button type="button"
+                  @click="setSort('titles', 'Titles')"
+                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+            Titles
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3" x-ref="roleLeadersGrid">
+    {% include "app/components/role_leaders_grid.html" %}
+  </div>
+</div>

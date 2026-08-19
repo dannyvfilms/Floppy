@@ -1,0 +1,22 @@
+{% load app_tags %}
+
+{# Hero variant of the episode track button used on the standalone episode page. The wrapper id is keyed on the stable source/media/season/episode identifiers (NOT episode.item.id) so that episode_save can target it with an OOB swap even on the very first watch, when no episode Item exists yet. The enclosing x-data="{ trackOpen: false }" scope and the track modal live in the parent template, so only this button is replaced on swap. #}
+{# Once a watch exists the button edits it (instance_id) instead of stacking another one, so status/start date/notes prefill and Delete is usable. Adding a rewatch is the "Add new entry" action inside the modal. #}
+<div id="episode-track-button-{{ source }}-{{ media_id }}-{{ season_number }}-{{ episode_number }}"
+     {% if track_button_oob %}hx-swap-oob="true"{% endif %}>
+  <button type="button"
+          hx-get="{% url 'track_modal' source=source media_type='episode' media_id=media_id season_number=season_number %}"
+          hx-vals='{"return_url": "{{ track_return_url|default:request.path|urlencode }}", "episode_number": "{{ episode_number }}", {% if episode.history %}"instance_id": "{{ episode.history.0.id }}"{% else %}"is_create": "1"{% endif %}}'
+          hx-target="#episode-track-modal-{{ source }}-{{ media_id }}-{{ season_number }}-{{ episode_number }}"
+          hx-trigger="click"
+          @click="trackOpen = true"
+          class="inline-flex w-full items-center justify-center gap-3 rounded-xl px-5 py-3 text-white shadow-sm transition duration-300 cursor-pointer sm:w-auto {% if episode.history %}bg-indigo-600 hover:bg-indigo-700{% else %}bg-gray-600 hover:bg-gray-700{% endif %}">
+    {% if episode.history %}
+      {% include "app/icons/eye.svg" with classes="w-5 h-5 shrink-0" %}
+      <span class="font-medium">Watched</span>
+    {% else %}
+      {% include "app/icons/eye-closed.svg" with classes="w-5 h-5 shrink-0" %}
+      <span class="font-medium">Mark Watched</span>
+    {% endif %}
+  </button>
+</div>

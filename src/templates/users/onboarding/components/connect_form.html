@@ -1,0 +1,26 @@
+{% load user_tags %}
+<form method="post"
+      action="{% url current_source.connect_url_name %}"
+      x-data="{ connecting: false }"
+      @submit="connecting = true"
+      class="flex flex-col gap-3 w-full max-w-xs">
+  {% csrf_token %}
+  <input type="hidden" name="mode" value="{{ current_source.recommended_import_mode }}">
+  <input type="hidden" name="frequency" value="once">
+  <input type="hidden" name="time" value="00:00">
+  <input type="hidden" name="next" value="{% url 'onboarding_service_setup' %}">
+  {% for field_name, field_label, field_type in current_source.connect_fields %}
+    <div class="text-left">
+      <label class="block text-xs text-[var(--color-text-muted)] mb-1">{{ field_label }}</label>
+      <input type="{{ field_type }}"
+             name="{{ field_name }}"
+             class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+    </div>
+  {% endfor %}
+  <button type="submit"
+          :disabled="connecting"
+          class="px-4 py-2 text-sm rounded-md transition-colors cursor-pointer"
+          :class="connecting ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'">
+    <span x-text="connecting ? 'Connecting…' : 'Connect'"></span>
+  </button>
+</form>

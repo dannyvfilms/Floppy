@@ -1,0 +1,14 @@
+{% comment %}
+  Media strip card for the Featured Repeat Player's horizontal title strip.
+  Delegates to the existing person_filmography_card.html (poster, star rating
+  badge, role/plays line) rather than duplicating its markup — used as the
+  grid_template override for _scrollable_row.html.
+
+  Expects: media_list.items — list of plain dicts with title/image/media_type/
+  media_id/source/year/vote_average/role (already formatted, e.g. "12 plays").
+{% endcomment %}
+{% for entry in media_list.items %}
+  <div class="home-row-card {{ media_list.card_width_class|default:'w-32 sm:w-36' }} shrink-0">
+    {% include "app/components/person_filmography_card.html" with entry=entry source=entry.source user=user IMG_NONE=IMG_NONE show_watched_runtime_chip=False %}
+  </div>
+{% endfor %}

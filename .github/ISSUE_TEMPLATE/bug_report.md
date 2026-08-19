@@ -1,7 +1,7 @@
 ---
 name: Bug report
 about: Create a report to help us improve
-title: "[BUG]"
+title: "[BUG] "
 labels: bug
 assignees: ''
 
@@ -22,5 +22,5 @@ If applicable, add screenshots to help explain your problem.
 **Error logs**
  If you have any error logs, paste them here:
 
-**Yamtrack version**:
+**Floppy version**:
 **Database**: SQLite (default) or PostgreSQL

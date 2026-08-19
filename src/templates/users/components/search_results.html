@@ -1,9 +1,9 @@
 {% load app_tags %}
 
 {% if items %}
-  <div class="max-h-48 overflow-y-auto bg-[#39404b] rounded-md mb-4">
+  <div class="max-h-48 overflow-y-auto bg-[var(--color-surface-strong)] rounded-md mb-4">
     {% for item in items %}
-      <div class="flex items-center justify-between p-2 hover:bg-[#343a40] border-b border-gray-700 last:border-0 cursor-pointer"
+      <div class="flex items-center justify-between p-2 hover:bg-[var(--color-surface-muted)] border-b border-gray-700 last:border-0 cursor-pointer"
            hx-post="{% url 'exclude_notification_item' %}"
            hx-target="#excluded-items-container"
            hx-swap="innerHTML"
@@ -14,8 +14,8 @@
                class="w-8 h-10 object-cover rounded mr-2"
                src="{{ item.image }}">
           <div>
-            <p class="text-sm text-gray-200">{{ item }}</p>
-            <p class="text-xs text-gray-400">{{ item.media_type|media_type_readable }}</p>
+            <p class="text-sm text-[var(--color-text-secondary)]">{{ item }}</p>
+            <p class="text-xs text-[var(--color-text-muted)]">{{ item.media_type|media_type_readable }}</p>
           </div>
         </div>
         <span class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-2 py-1 rounded transition-colors">Exclude</span>
@@ -23,7 +23,7 @@
     {% endfor %}
   </div>
 {% elif query %}
-  <div class="max-h-48 overflow-y-auto bg-[#39404b] rounded-md mb-4">
-    <div class="p-3 text-sm text-gray-400 text-center">No matching items found</div>
+  <div class="max-h-48 overflow-y-auto bg-[var(--color-surface-strong)] rounded-md mb-4">
+    <div class="p-3 text-sm text-[var(--color-text-muted)] text-center">No matching items found</div>
   </div>
 {% endif %}

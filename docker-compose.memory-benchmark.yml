@@ -1,0 +1,24 @@
+services:
+  floppy:
+    # The harness always sets this before `up`; a default lets `exec` and
+    # `down` re-read this file during cleanup without requiring interpolation.
+    image: ${FLOPPY_BENCHMARK_IMAGE:-floppy:memory-benchmark}
+    environment:
+      SECRET: memory-benchmark-only-secret
+      REDIS_URL: redis://redis:6379
+      DEBUG: "False"
+      DEMO_ACCOUNT_ENABLED: "False"
+      REGISTRATION: "False"
+      FLOPPY_RESOURCE_TIER: standard
+    depends_on:
+      redis:
+        condition: service_started
+    volumes:
+      - benchmark_db:/floppy/db
+
+  redis:
+    image: redis:8-alpine
+    command: redis-server --appendonly no --save "" --maxmemory 256mb --maxmemory-policy volatile-lru
+
+volumes:
+  benchmark_db:

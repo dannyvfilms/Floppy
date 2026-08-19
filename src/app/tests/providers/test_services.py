@@ -2,21 +2,30 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import requests
-from django.test import TestCase
+from django.core.cache import cache
+from django.test import TestCase, override_settings
 
-from app.models import MediaTypes, Sources
+from app.models import Item, MediaTypes, Sources
 from app.providers import (
     igdb,
     mal,
     services,
     tmdb,
 )
+from integrations.imports.helpers import encrypt
+from users.models import User
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 
 
 class ServicesTests(TestCase):
     """Test the services module functions."""
+
+    def assert_metadata_title_payload(self, payload, expected_title):
+        """Assert merged metadata payload keeps canonical title fields."""
+        self.assertEqual(payload["title"], expected_title)
+        self.assertIn("original_title", payload)
+        self.assertIn("localized_title", payload)
 
     @patch("app.providers.services.session.get")
     def test_api_request_get(self, mock_get):
@@ -63,6 +72,109 @@ class ServicesTests(TestCase):
         self.assertEqual(kwargs["json"], {"json_param": "value"})
         self.assertEqual(kwargs["data"], {"form_data": "value"})
         self.assertIn("timeout", kwargs)
+
+    def tearDown(self):
+        """Avoid leaking the tmdb proxy cache key between tests."""
+        cache.delete("tmdb_proxy_url")
+        super().tearDown()
+
+    @patch("app.providers.services.session.get")
+    def test_api_request_uses_configured_tmdb_proxy(self, mock_get):
+        """TMDB requests should route through a configured user's proxy URL."""
+        User.objects.create_user(
+            username="proxy-user",
+            password="testpass123",
+            tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
+        )
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_get.return_value = mock_response
+
+        services.api_request(Sources.TMDB.value, "GET", "https://example.com/api")
+
+        _, kwargs = mock_get.call_args
+        self.assertEqual(
+            kwargs["proxies"],
+            {"http": "socks5://127.0.0.1:1080", "https": "socks5://127.0.0.1:1080"},
+        )
+
+    @patch("app.providers.services.session.get")
+    def test_api_request_omits_proxies_when_not_configured(self, mock_get):
+        """No proxy should be applied when no user has one configured."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_get.return_value = mock_response
+
+        services.api_request(Sources.TMDB.value, "GET", "https://example.com/api")
+
+        _, kwargs = mock_get.call_args
+        self.assertNotIn("proxies", kwargs)
+
+    @patch("app.providers.services.session.get")
+    def test_api_request_only_proxies_tmdb_provider(self, mock_get):
+        """Non-TMDB providers should not pick up the TMDB proxy setting."""
+        User.objects.create_user(
+            username="proxy-user",
+            password="testpass123",
+            tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
+        )
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_get.return_value = mock_response
+
+        services.api_request(Sources.TVDB.value, "GET", "https://example.com/api")
+
+        _, kwargs = mock_get.call_args
+        self.assertNotIn("proxies", kwargs)
+
+    @patch("app.providers.services.session.get")
+    def test_api_request_wraps_connection_failures(self, mock_get):
+        """Network failures should raise a provider error without crashing views."""
+        mock_get.side_effect = requests.exceptions.ConnectionError("dns failure")
+
+        with self.assertRaises(services.ProviderAPIError) as cm:
+            services.api_request(
+                Sources.TMDB.value,
+                "GET",
+                "https://example.com/api",
+            )
+
+        self.assertEqual(cm.exception.provider, Sources.TMDB.value)
+        self.assertEqual(cm.exception.provider_label, Sources.TMDB.label)
+        self.assertIsNone(cm.exception.status_code)
+        self.assertIn("Could not reach", str(cm.exception))
+
+    @patch("app.providers.services.time.sleep")
+    @patch("app.providers.services.session.get")
+    def test_api_request_retries_transient_http_errors(
+        self,
+        mock_get,
+        mock_sleep,
+    ):
+        """Transient upstream 5xx responses should be retried before failing."""
+        failed_response = MagicMock()
+        failed_response.status_code = 502
+        failed_response.headers = {}
+        failed_response.raise_for_status.side_effect = requests.exceptions.HTTPError(
+            "502 Bad Gateway",
+            response=failed_response,
+        )
+
+        successful_response = MagicMock()
+        successful_response.raise_for_status.return_value = None
+        successful_response.json.return_value = {"data": "retry_success"}
+
+        mock_get.side_effect = [failed_response, successful_response]
+
+        result = services.api_request(
+            Sources.TMDB.value,
+            "GET",
+            "https://example.com/api",
+        )
+
+        self.assertEqual(result, {"data": "retry_success"})
+        self.assertEqual(mock_get.call_count, 2)
+        mock_sleep.assert_called_once_with(1)
 
     @patch("app.providers.services.api_request")
     def test_request_error_handling_rate_limit(self, mock_api_request):
@@ -136,6 +248,31 @@ class ServicesTests(TestCase):
 
         self.assertEqual(cm.exception.provider, Sources.TMDB.value)
 
+    @patch("app.providers.tmdb.logger.exception")
+    def test_handle_error_tmdb_non_json_server_error_skips_decode_traceback(
+        self,
+        mock_logger_exception,
+    ):
+        """TMDB 5xx HTML bodies should raise provider errors without JSON tracebacks."""
+        mock_response = MagicMock()
+        mock_response.status_code = 502
+        mock_response.headers = {}
+        mock_response.text = "<html>Bad Gateway</html>"
+        mock_response.json.side_effect = requests.exceptions.JSONDecodeError(
+            "Expecting value",
+            "",
+            0,
+        )
+
+        error = requests.exceptions.HTTPError("502 Bad Gateway")
+        error.response = mock_response
+
+        with self.assertRaises(services.ProviderAPIError) as cm:
+            tmdb.handle_error(error)
+
+        self.assertEqual(cm.exception.provider, Sources.TMDB.value)
+        mock_logger_exception.assert_not_called()
+
     def test_handle_error_mal_forbidden(self):
         """Test the handle_error function with MAL forbidden error."""
         mock_response = MagicMock()
@@ -150,6 +287,107 @@ class ServicesTests(TestCase):
 
         self.assertEqual(cm.exception.provider, Sources.MAL.value)
 
+    def test_igdb_game_adds_hltb_external_link_when_resolvable(self):
+        """IGDB game metadata should expose resolvable HowLongToBeat links."""
+        with (
+            patch("app.providers.igdb.cache.get", return_value=None),
+            patch("app.providers.igdb.get_access_token", return_value="token"),
+            patch("app.providers.igdb.cache.set"),
+            patch("app.providers.igdb.services.api_request") as mock_api_request,
+        ):
+            mock_api_request.return_value = [
+                {
+                    "id": 1942,
+                    "name": "The Witcher 3: Wild Hunt",
+                    "url": "https://www.igdb.com/games/the-witcher-3-wild-hunt",
+                    "game_type": 0,
+                    "external_games": [{"url": "www.howlongtobeat.com/game/10270"}],
+                },
+            ]
+
+            response = igdb.game("1942")
+
+        self.assertEqual(
+            response["external_links"]["HowLongToBeat"],
+            "https://www.howlongtobeat.com/game/10270",
+        )
+
+    def test_igdb_game_falls_back_to_hltb_search_link_when_unresolvable(self):
+        """IGDB game metadata should add HLTB search link when direct URL is missing."""
+        with (
+            patch("app.providers.igdb.cache.get", return_value=None),
+            patch("app.providers.igdb.get_access_token", return_value="token"),
+            patch("app.providers.igdb.cache.set"),
+            patch("app.providers.igdb.services.api_request") as mock_api_request,
+        ):
+            mock_api_request.return_value = [
+                {
+                    "id": 1942,
+                    "name": "The Witcher 3: Wild Hunt",
+                    "url": "https://www.igdb.com/games/the-witcher-3-wild-hunt",
+                    "game_type": 0,
+                    "external_games": [
+                        {"url": "https://store.steampowered.com/app/292030"}
+                    ],
+                },
+            ]
+
+            response = igdb.game("1942")
+
+        self.assertEqual(
+            response["external_links"]["HowLongToBeat"],
+            "https://howlongtobeat.com/?q=The+Witcher+3%3A+Wild+Hunt",
+        )
+
+    def test_igdb_game_adds_hltb_external_link_from_websites(self):
+        """IGDB game metadata should resolve HLTB links from websites data too."""
+        with (
+            patch("app.providers.igdb.cache.get", return_value=None),
+            patch("app.providers.igdb.get_access_token", return_value="token"),
+            patch("app.providers.igdb.cache.set"),
+            patch("app.providers.igdb.services.api_request") as mock_api_request,
+        ):
+            mock_api_request.return_value = [
+                {
+                    "id": 1942,
+                    "name": "The Witcher 3: Wild Hunt",
+                    "url": "https://www.igdb.com/games/the-witcher-3-wild-hunt",
+                    "game_type": 0,
+                    "websites": [{"url": "https://howlongtobeat.com/game/10270"}],
+                },
+            ]
+
+            response = igdb.game("1942")
+
+        self.assertEqual(
+            response["external_links"]["HowLongToBeat"],
+            "https://howlongtobeat.com/game/10270",
+        )
+
+    def test_igdb_game_omits_hltb_links_without_url_or_title(self):
+        """IGDB game metadata should skip HLTB links when URL and title are missing."""
+        with (
+            patch("app.providers.igdb.cache.get", return_value=None),
+            patch("app.providers.igdb.get_access_token", return_value="token"),
+            patch("app.providers.igdb.cache.set"),
+            patch("app.providers.igdb.services.api_request") as mock_api_request,
+        ):
+            mock_api_request.return_value = [
+                {
+                    "id": 1942,
+                    "name": "",
+                    "url": "https://www.igdb.com/games/the-witcher-3-wild-hunt",
+                    "game_type": 0,
+                    "external_games": [
+                        {"url": "https://store.steampowered.com/app/292030"}
+                    ],
+                },
+            ]
+
+            response = igdb.game("1942")
+
+        self.assertNotIn("external_links", response)
+
     @patch("app.providers.mal.anime")
     def test_get_media_metadata_anime(self, mock_anime):
         """Test the get_media_metadata function for anime."""
@@ -161,7 +399,7 @@ class ServicesTests(TestCase):
             Sources.MAL.value,
         )
 
-        self.assertEqual(result, {"title": "Test Anime"})
+        self.assert_metadata_title_payload(result, "Test Anime")
 
         mock_anime.assert_called_once_with("1")
 
@@ -176,7 +414,7 @@ class ServicesTests(TestCase):
             Sources.MANGAUPDATES.value,
         )
 
-        self.assertEqual(result, {"title": "Test Manga"})
+        self.assert_metadata_title_payload(result, "Test Manga")
 
         mock_manga.assert_called_once_with("1")
 
@@ -191,7 +429,7 @@ class ServicesTests(TestCase):
             Sources.MAL.value,
         )
 
-        self.assertEqual(result, {"title": "Test Manga"})
+        self.assert_metadata_title_payload(result, "Test Manga")
 
         mock_manga.assert_called_once_with("1")
 
@@ -206,9 +444,27 @@ class ServicesTests(TestCase):
             Sources.TMDB.value,
         )
 
-        self.assertEqual(result, {"title": "Test TV"})
+        self.assert_metadata_title_payload(result, "Test TV")
 
-        mock_tv.assert_called_once_with("1")
+        mock_tv.assert_called_once_with("1", None)
+
+    @patch("app.providers.tvdb.tv")
+    def test_get_media_metadata_tv_tvdb(self, mock_tv):
+        """Test the get_media_metadata function for TVDB TV shows."""
+        mock_tv.return_value = {"title": "Test TVDB Show"}
+
+        result = services.get_media_metadata(
+            MediaTypes.TV.value,
+            "81189",
+            Sources.TVDB.value,
+        )
+
+        self.assert_metadata_title_payload(result, "Test TVDB Show")
+        mock_tv.assert_called_once_with(
+            "81189",
+            routed_media_type=MediaTypes.TV.value,
+            language=None,
+        )
 
     @patch("app.providers.tmdb.tv_with_seasons")
     def test_get_media_metadata_tv_with_seasons(self, mock_tv_with_seasons):
@@ -222,9 +478,29 @@ class ServicesTests(TestCase):
             season_numbers=[1, 2],
         )
 
-        self.assertEqual(result, {"title": "Test TV with Seasons"})
+        self.assert_metadata_title_payload(result, "Test TV with Seasons")
 
-        mock_tv_with_seasons.assert_called_once_with("1", [1, 2])
+        mock_tv_with_seasons.assert_called_once_with("1", [1, 2], None)
+
+    @patch("app.providers.tvdb.tv_with_seasons")
+    def test_get_media_metadata_tv_with_seasons_tvdb(self, mock_tv_with_seasons):
+        """Test the get_media_metadata function for TVDB seasons."""
+        mock_tv_with_seasons.return_value = {"title": "Test TVDB Seasons"}
+
+        result = services.get_media_metadata(
+            "tv_with_seasons",
+            "81189",
+            Sources.TVDB.value,
+            season_numbers=[0, 1],
+        )
+
+        self.assert_metadata_title_payload(result, "Test TVDB Seasons")
+        mock_tv_with_seasons.assert_called_once_with(
+            "81189",
+            [0, 1],
+            routed_media_type=MediaTypes.TV.value,
+            language=None,
+        )
 
     @patch("app.providers.tmdb.tv_with_seasons")
     def test_get_media_metadata_season(self, mock_tv_with_seasons):
@@ -240,9 +516,9 @@ class ServicesTests(TestCase):
             season_numbers=[1],
         )
 
-        self.assertEqual(result, {"title": "Test Season"})
+        self.assert_metadata_title_payload(result, "Test Season")
 
-        mock_tv_with_seasons.assert_called_once_with("1", [1])
+        mock_tv_with_seasons.assert_called_once_with("1", [1], None)
 
     @patch("app.providers.tmdb.episode")
     def test_get_media_metadata_episode(self, mock_episode):
@@ -257,9 +533,9 @@ class ServicesTests(TestCase):
             episode_number="2",
         )
 
-        self.assertEqual(result, {"title": "Test Episode"})
+        self.assert_metadata_title_payload(result, "Test Episode")
 
-        mock_episode.assert_called_once_with("1", 1, "2")
+        mock_episode.assert_called_once_with("1", 1, "2", None)
 
     @patch("app.providers.tmdb.movie")
     def test_get_media_metadata_movie(self, mock_movie):
@@ -272,9 +548,9 @@ class ServicesTests(TestCase):
             Sources.TMDB.value,
         )
 
-        self.assertEqual(result, {"title": "Test Movie"})
+        self.assert_metadata_title_payload(result, "Test Movie")
 
-        mock_movie.assert_called_once_with("1")
+        mock_movie.assert_called_once_with("1", None)
 
     @patch("app.providers.igdb.game")
     def test_get_media_metadata_game(self, mock_game):
@@ -287,7 +563,7 @@ class ServicesTests(TestCase):
             Sources.IGDB.value,
         )
 
-        self.assertEqual(result, {"title": "Test Game"})
+        self.assert_metadata_title_payload(result, "Test Game")
 
         mock_game.assert_called_once_with("1")
 
@@ -302,7 +578,7 @@ class ServicesTests(TestCase):
             Sources.COMICVINE.value,
         )
 
-        self.assertEqual(result, {"title": "Test Comic"})
+        self.assert_metadata_title_payload(result, "Test Comic")
 
         mock_comic.assert_called_once_with("1")
 
@@ -317,7 +593,7 @@ class ServicesTests(TestCase):
             Sources.OPENLIBRARY.value,
         )
 
-        self.assertEqual(result, {"title": "Test Book"})
+        self.assert_metadata_title_payload(result, "Test Book")
 
         mock_book.assert_called_once_with("1")
 
@@ -332,7 +608,7 @@ class ServicesTests(TestCase):
             Sources.MANUAL.value,
         )
 
-        self.assertEqual(result, {"title": "Test Manual"})
+        self.assert_metadata_title_payload(result, "Test Manual")
 
         mock_metadata.assert_called_once_with("1", MediaTypes.MOVIE.value)
 
@@ -348,7 +624,7 @@ class ServicesTests(TestCase):
             season_numbers=[1],
         )
 
-        self.assertEqual(result, {"title": "Test Manual Season"})
+        self.assert_metadata_title_payload(result, "Test Manual Season")
 
         mock_season.assert_called_once_with("1", 1)
 
@@ -365,7 +641,7 @@ class ServicesTests(TestCase):
             episode_number="2",
         )
 
-        self.assertEqual(result, {"title": "Test Manual Episode"})
+        self.assert_metadata_title_payload(result, "Test Manual Episode")
 
         mock_episode.assert_called_once_with("1", 1, "2")
 
@@ -373,7 +649,9 @@ class ServicesTests(TestCase):
     def test_get_media_metadata_tmdb_episode_not_found(self, mock_episode):
         """Test the get_media_metadata function for TMDB episodes that don't exist."""
         mock_response = type(
-            "Response", (), {"status_code": 404, "text": "Episode not found"},
+            "Response",
+            (),
+            {"status_code": 404, "text": "Episode not found"},
         )()
         mock_error = type("Error", (), {"response": mock_response})()
         mock_episode.side_effect = services.ProviderAPIError(
@@ -392,8 +670,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(cm.exception.provider, Sources.TMDB.value)
 
-        mock_episode.assert_called_once_with("1396", 1, "3")
-
+        mock_episode.assert_called_once_with("1396", 1, "3", None)
 
     @patch("app.providers.hardcover.book")
     def test_get_media_metadata_hardcover_book(self, mock_book):
@@ -406,9 +683,9 @@ class ServicesTests(TestCase):
             Sources.HARDCOVER.value,
         )
 
-        self.assertEqual(result, {"title": "Test Hardcover Book"})
+        self.assert_metadata_title_payload(result, "Test Hardcover Book")
 
-        mock_book.assert_called_once_with("1")
+        mock_book.assert_called_once_with("1", edition_id=None)
 
     @patch("app.providers.mal.search")
     def test_search_anime(self, mock_search):
@@ -420,6 +697,22 @@ class ServicesTests(TestCase):
         self.assertEqual(result, [{"title": "Test Anime"}])
 
         mock_search.assert_called_once_with(MediaTypes.ANIME.value, "test", 1)
+
+    @override_settings(TVDB_API_KEY="test-tvdb-key")
+    @patch("app.providers.tvdb.search")
+    def test_search_anime_tvdb(self, mock_search):
+        """Test the search function for anime via TVDB."""
+        mock_search.return_value = {"results": []}
+
+        result = services.search(
+            MediaTypes.ANIME.value,
+            "test",
+            1,
+            source=Sources.TVDB.value,
+        )
+
+        self.assertEqual(result, {"results": []})
+        mock_search.assert_called_once_with(MediaTypes.ANIME.value, "test", 1, None)
 
     @patch("app.providers.mangaupdates.search")
     def test_search_manga_mangaupdates(self, mock_search):
@@ -457,7 +750,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(result, [{"title": "Test TV"}])
 
-        mock_search.assert_called_once_with(MediaTypes.TV.value, "test", 1)
+        mock_search.assert_called_once_with(MediaTypes.TV.value, "test", 1, None)
 
     @patch("app.providers.tmdb.search")
     def test_search_movie(self, mock_search):
@@ -468,7 +761,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(result, [{"title": "Test Movie"}])
 
-        mock_search.assert_called_once_with(MediaTypes.MOVIE.value, "test", 1)
+        mock_search.assert_called_once_with(MediaTypes.MOVIE.value, "test", 1, None)
 
     @patch("app.providers.igdb.search")
     def test_search_game(self, mock_search):
@@ -523,3 +816,43 @@ class ServicesTests(TestCase):
         self.assertEqual(result, [{"title": "Test Comic"}])
 
         mock_search.assert_called_once_with("test", 1)
+
+    def test_get_media_metadata_returns_local_payload_for_audiobookshelf_books(self):
+        """Audiobookshelf books should use local Item metadata, not Open Library."""
+        Item.objects.create(
+            media_id="abs-book-1",
+            source=Sources.AUDIOBOOKSHELF.value,
+            media_type=MediaTypes.BOOK.value,
+            title="The Blade Itself",
+            image="https://img.example/blade.jpg",
+            runtime_minutes=123,
+            authors=["Joe Abercrombie"],
+            isbn=["9780316387310"],
+        )
+
+        metadata = services.get_media_metadata(
+            MediaTypes.BOOK.value,
+            "abs-book-1",
+            Sources.AUDIOBOOKSHELF.value,
+        )
+
+        self.assertEqual(metadata["title"], "The Blade Itself")
+        self.assertEqual(metadata["details"]["author"], ["Joe Abercrombie"])
+        self.assertEqual(metadata["details"]["runtime_minutes"], 123)
+        self.assertEqual(metadata["source"], Sources.AUDIOBOOKSHELF.value)
+
+    @patch("app.providers.openlibrary.book")
+    def test_get_media_metadata_does_not_call_openlibrary_for_audiobookshelf(
+        self,
+        mock_ol_book,
+    ):
+        """Audiobookshelf IDs should not be sent to Open Library providers."""
+        metadata = services.get_media_metadata(
+            MediaTypes.BOOK.value,
+            "f9e2ce45ec9315a7c54c",
+            Sources.AUDIOBOOKSHELF.value,
+        )
+
+        mock_ol_book.assert_not_called()
+        self.assertEqual(metadata["source"], Sources.AUDIOBOOKSHELF.value)
+        self.assertEqual(metadata["media_id"], "f9e2ce45ec9315a7c54c")

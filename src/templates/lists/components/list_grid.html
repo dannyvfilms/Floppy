@@ -4,14 +4,14 @@
 {% for custom_list in custom_lists %}
   <div {% if forloop.last and custom_lists.has_next %} hx-get="{% if profile_username %}{% url 'user_profile' profile_username %}?page={{ custom_lists.next_page_number }}{% else %}{% url 'lists' %}?page={{ custom_lists.next_page_number }}{% endif %}" hx-trigger="revealed threshold:200px" hx-swap="afterend" hx-include="#filter-form" hx-indicator="#loading-indicator" {% endif %}
        x-data="{ showModal: false }">
-    <div class="media-card bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
+    <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
          style="aspect-ratio: 3/2 !important;">
       <div class="relative">
-        <a href="{% url 'list_detail' custom_list.id %}">
-          <img alt="{{ custom_list.name }}"
-               class="media-card-poster lazyload w-full aspect-[3/2] bg-[#3e454d] {% if custom_list.image != IMG_NONE %}object-cover{% endif %}"
-               data-src="{{ custom_list.image }}"
-               src="{{ IMG_NONE }}">
+        <a href="{% url 'list_detail' custom_list.public_reference %}">
+          <div class="media-card-poster w-full aspect-[3/2] bg-[var(--color-surface-alt)] animate-pulse"
+               hx-get="{% url 'list_cover_image' custom_list.id %}"
+               hx-trigger="revealed"
+               hx-swap="outerHTML"></div>
         </a>
 
         {% if not profile_username and custom_list.form %}
@@ -22,13 +22,16 @@
       </div>
 
       <div class="media-card-body p-3 bg-card-body">
-        <div class="flex items-center gap-2 min-w-0">
-          <a href="{% url 'list_detail' custom_list.id %}"
-             class="media-card-title text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+        <div class="media-card-title-row flex items-center gap-2 min-w-0">
+          <a href="{% url 'list_detail' custom_list.public_reference %}"
+             class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
              title="{{ custom_list.name }}">{{ custom_list.name }}</a>
         </div>
-        <p class="media-card-year text-xs text-gray-400 mt-1">
-          {% if custom_list.items_count > 0 %}{{ custom_list.items_count }} item{{ custom_list.items_count|pluralize }}{% endif %}
+        <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
+          {% if custom_list.items_count > 0 %}
+            {{ custom_list.items_count }} item{{ custom_list.items_count|pluralize }}
+            {% if custom_list.completion_percent is not None %}· {{ custom_list.completion_percent }}% completed{% endif %}
+          {% endif %}
         </p>
       </div>
 
@@ -36,5 +39,12 @@
         {% include "lists/components/list_form.html" with form=custom_list.form %}
       {% endif %}
     </div>
+    {% if current_sort == 'last_watched' %}
+      {% if custom_list.last_watched_at %}
+        <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ custom_list.last_watched_at|user_date_format:user }}</p>
+      {% else %}
+        <p class="mt-2 text-sm font-semibold text-[var(--color-text-muted)]">No watched items</p>
+      {% endif %}
+    {% endif %}
   </div>
 {% endfor %}

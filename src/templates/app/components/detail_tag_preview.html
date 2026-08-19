@@ -1,0 +1,30 @@
+<div id="{{ preview_id }}"
+     {% if swap_oob %}hx-swap-oob="outerHTML"{% endif %}
+     data-has-preview="{% if detail_tag_sections %}true{% else %}false{% endif %}">
+  {% if detail_tag_sections %}
+    {% for detail_tag_section in detail_tag_sections %}
+      <div class="{% if not forloop.first %}mt-3 border-t border-white/10 pt-3{% endif %}">
+        <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{{ detail_tag_section.title }}</div>
+        {% if detail_tag_section.entries %}
+          <div class="flex flex-wrap gap-2">
+            {% for detail_tag in detail_tag_section.entries %}
+              {% if detail_tag.url %}
+                <a href="{{ detail_tag.url }}"
+                   class="inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium shadow-sm transition-colors duration-200 hover:brightness-110 {{ detail_tag.chip_classes }}">{{ detail_tag.label }}</a>
+              {% else %}
+                <span class="inline-flex h-8 items-center rounded-full border px-3 text-sm font-medium shadow-sm {{ detail_tag.chip_classes }}">{{ detail_tag.label }}</span>
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% elif detail_tag_section.empty_label %}
+          <button type="button"
+                  class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/[0.04] px-3 py-2 text-sm font-medium text-gray-200 transition-colors duration-200 hover:border-violet-400/30 hover:bg-violet-500/[0.08] hover:text-white cursor-pointer"
+                  @click.stop.prevent="tagsPreviewOpen = false; $refs.manageTagsButton.click()">
+            {% include "app/icons/tag.svg" with classes="w-4 h-4 opacity-80" %}
+            <span>{{ detail_tag_section.empty_label }}</span>
+          </button>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>

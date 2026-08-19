@@ -3,18 +3,18 @@
 
 {% for tracker in media_list %}
   <div {% if forloop.last and media_list.has_next %} hx-get="{% url 'medialist' media_type %}?page={{ media_list.next_page_number }}" hx-trigger="revealed threshold:200px" hx-swap="afterend" hx-include="#filter-form" hx-indicator="#loading-indicator" class="pagination-trigger" data-page="{{ media_list.next_page_number }}" {% endif %}
-       class="media-card bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative"
+       class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative"
        x-data="{ trackOpen: false }">
     <div class="relative">
       <a href="{% url 'podcast_show_detail' tracker.show.id %}">
         {# Show image #}
         {% if tracker.show.image and tracker.show.image != IMG_NONE %}
           <img alt="{{ tracker.show.title }}"
-               class="media-card-poster lazyload w-full aspect-[2/3] bg-[#3e454d] object-cover"
+               class="media-card-poster lazyload w-full aspect-[2/3] bg-[var(--color-surface-alt)] object-cover"
                data-src="{{ tracker.show.image }}"
                src="{{ IMG_NONE }}">
         {% else %}
-          <div class="w-full aspect-[2/3] bg-[#3e454d] flex items-center justify-center">
+          <div class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] flex items-center justify-center">
             {% include "app/icons/microphone.svg" with classes="w-16 h-16 text-gray-600" %}
           </div>
         {% endif %}
@@ -25,22 +25,22 @@
         {% with status_value=tracker.status %}
           <div class="w-4 h-4 {{ status_value|status_color }} {% if tracker.end_date or tracker.start_date %}mr-1.5{% endif %}">
             {% if status_value == Status.COMPLETED.value %}
-              {% include "app/icons/states/completed.svg" %}
+              {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
             {% elif status_value == Status.IN_PROGRESS.value %}
-              {% include "app/icons/states/in-progress.svg" %}
+              {% include "app/icons/states/in-progress.svg" with classes="w-full h-full" %}
             {% elif status_value == Status.PAUSED.value %}
-              {% include "app/icons/states/paused.svg" %}
+              {% include "app/icons/states/paused.svg" with classes="w-full h-full" %}
             {% elif status_value == Status.PLANNING.value %}
-              {% include "app/icons/states/planning.svg" %}
+              {% include "app/icons/states/planning.svg" with classes="w-full h-full" %}
             {% elif status_value == Status.DROPPED.value %}
-              {% include "app/icons/states/dropped.svg" %}
+              {% include "app/icons/states/dropped.svg" with classes="w-full h-full" %}
             {% endif %}
           </div>
         {% endwith %}
         {% if tracker.end_date %}
-          <span class="text-sm text-white">{{ tracker.end_date|user_date_format:user }}</span>
+          <span class="text-sm text-[var(--color-text)]">{{ tracker.end_date|user_date_format:user }}</span>
         {% elif tracker.start_date %}
-          <span class="text-sm text-white">{{ tracker.start_date|user_date_format:user }}</span>
+          <span class="text-sm text-[var(--color-text)]">{{ tracker.start_date|user_date_format:user }}</span>
         {% endif %}
       </div>
 
@@ -83,7 +83,7 @@
     <div class="media-card-body p-3">
       <div class="flex items-center gap-2 min-w-0">
         <a href="{% url 'podcast_show_detail' tracker.show.id %}"
-           class="media-card-title text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+           class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
            title="{{ tracker.show.title }}">{{ tracker.show.title }}</a>
         {% if tracker.score %}
           <span class="flex items-center gap-1 text-xs text-yellow-300 shrink-0">
@@ -93,7 +93,7 @@
         {% endif %}
       </div>
       {% if tracker.show.author %}
-        <p class="text-xs text-gray-400 mt-1 line-clamp-1">{{ tracker.show.author }}</p>
+        <p class="text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1">{{ tracker.show.author }}</p>
       {% endif %}
     </div>
 

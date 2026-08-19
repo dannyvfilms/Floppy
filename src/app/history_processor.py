@@ -116,14 +116,16 @@ def collect_creation_changes(new_record, history_model, media_type, user):
     for field in history_model._meta.get_fields():
         if (
             field.name.startswith("history_")
-            or field.name in ["id"]
+            or field.name == "id"
             or not hasattr(new_record, field.attname)
             or (field.name == "progress" and media_type == MediaTypes.MOVIE.value)
         ):
             continue
 
         value = getattr(new_record, field.attname, None)
-        if not value:
+        if not value and not (
+            media_type == MediaTypes.EPISODE.value and field.name == "end_date"
+        ):
             continue
 
         change_data = {
@@ -161,7 +163,7 @@ def apply_date_status_integration(changes, user):
     ):
         date_changes["start_date"]["description"] = (
             f"Started on "
-            f"{app_tags.date_format(date_changes['start_date']['new'], user)}"
+            f"{app_tags.datetime_format(date_changes['start_date']['new'], user)}"
         )
         changes["status_change"] = None
 
@@ -172,7 +174,8 @@ def apply_date_status_integration(changes, user):
         and status_change["new"] == Status.COMPLETED.value
     ):
         date_changes["end_date"]["description"] = (
-            f"Finished on {app_tags.date_format(date_changes['end_date']['new'], user)}"
+            f"Finished on "
+            f"{app_tags.datetime_format(date_changes['end_date']['new'], user)}"
         )
         changes["status_change"] = None
 
@@ -193,7 +196,7 @@ def build_changes_list(changes, processed_entry):
     processed_entry["changes"].extend(changes["other_changes"])
 
 
-def format_description(field_name, old_value, new_value, media_type=None, user=None):  # noqa: C901, PLR0911, PLR0912
+def format_description(field_name, old_value, new_value, media_type=None, user=None):
     """Format change description in a human-readable way.
 
     Provides natural language descriptions for various types of changes,
@@ -202,8 +205,8 @@ def format_description(field_name, old_value, new_value, media_type=None, user=N
     rating_scale_max = user.rating_scale_max if user else 10
 
     if field_name in {"start_date", "end_date"}:
-        new_value = app_tags.date_format(new_value, user)
-        old_value = app_tags.date_format(old_value, user)
+        new_value = app_tags.datetime_format(new_value, user)
+        old_value = app_tags.datetime_format(old_value, user)
 
     # If old_value is None, treat it as an initial setting
     if old_value is None:
@@ -222,7 +225,9 @@ def format_description(field_name, old_value, new_value, media_type=None, user=N
                 return f"{action} paused {verb}ing"
 
         if field_name == "score":
-            display_score = user.format_score_for_display(new_value) if user else new_value
+            display_score = (
+                user.format_score_for_display(new_value) if user else new_value
+            )
             return f"Rated {display_score}/{rating_scale_max}"
 
         if field_name == "progress" and media_type:
@@ -234,7 +239,9 @@ def format_description(field_name, old_value, new_value, media_type=None, user=N
 
         if field_name in ["start_date", "end_date"]:
             field_display = "Started" if field_name == "start_date" else "Finished"
-            return f"{field_display} on {new_value}"
+            if new_value:
+                return f"{field_display} on {new_value}"
+            return f"{field_display} without date"
 
         if field_name == "notes":
             return "Added notes"

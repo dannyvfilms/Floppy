@@ -10,7 +10,38 @@ from app.providers import services
 
 logger = logging.getLogger(__name__)
 
+BOOK_CATEGORY_BUNDLE = 8  # Hardcover book_category_id for bundle editions
+
 base_url = "https://api.hardcover.app/v1/graphql"
+MAX_SEARCH_QUERY_LENGTH = 50
+
+
+def cap_search_query(query):
+    """Limit long book queries before sending them to Hardcover search."""
+    query = str(query or "")
+
+    if len(query) <= MAX_SEARCH_QUERY_LENGTH:
+        return query
+
+    capped_query = query[:MAX_SEARCH_QUERY_LENGTH]
+    if query[MAX_SEARCH_QUERY_LENGTH].isspace():
+        return capped_query.rstrip()
+
+    word_boundary = capped_query.rfind(" ")
+    if word_boundary == -1:
+        return capped_query
+
+    return capped_query[:word_boundary].rstrip()
+
+
+def _authorization_header():
+    """Return the Hardcover auth header, normalizing raw tokens."""
+    api_token = (settings.HARDCOVER_API or "").strip()
+    if not api_token:
+        return api_token
+    if api_token.lower().startswith("bearer "):
+        return api_token
+    return f"Bearer {api_token}"
 
 
 def handle_error(error):
@@ -33,6 +64,7 @@ def handle_error(error):
 
 def search(query, page):
     """Search for books on Hardcover."""
+    query = cap_search_query(query)
     cache_key = (
         f"search_{Sources.HARDCOVER.value}_{MediaTypes.BOOK.value}_{query}_{page}"
     )
@@ -64,14 +96,16 @@ def search(query, page):
                 "POST",
                 base_url,
                 params={"query": search_query, "variables": variables},
-                headers={"Authorization": settings.HARDCOVER_API},
+                headers={"Authorization": _authorization_header()},
             )
         except requests.exceptions.HTTPError as error:
             handle_error(error)
 
         # Check for GraphQL errors in the response
         if "errors" in response:
-            error_messages = [err.get("message", "Unknown error") for err in response["errors"]]
+            error_messages = [
+                err.get("message", "Unknown error") for err in response["errors"]
+            ]
             logger.error("GraphQL errors from Hardcover API: %s", error_messages)
             # Return empty results on GraphQL errors
             return helpers.format_search_response(page, settings.PER_PAGE, 0, [])
@@ -81,7 +115,27 @@ def search(query, page):
             logger.error("Invalid response structure from Hardcover API: %s", response)
             return helpers.format_search_response(page, settings.PER_PAGE, 0, [])
 
-        hits = response["data"]["search"]["results"]["hits"]
+        search_data = response["data"].get("search")
+        if not isinstance(search_data, dict):
+            logger.warning(
+                "Invalid Hardcover search payload for query=%r page=%s: %s",
+                query,
+                page,
+                response,
+            )
+            return helpers.format_search_response(page, settings.PER_PAGE, 0, [])
+
+        results_data = search_data.get("results")
+        if not isinstance(results_data, dict):
+            logger.warning(
+                "Invalid Hardcover search results payload for query=%r page=%s: %s",
+                query,
+                page,
+                response,
+            )
+            return helpers.format_search_response(page, settings.PER_PAGE, 0, [])
+
+        hits = results_data.get("hits") or []
         results = [
             {
                 "media_id": hit["document"]["id"],
@@ -93,7 +147,7 @@ def search(query, page):
             }
             for hit in hits
         ]
-        total_results = response["data"]["search"]["results"]["found"]
+        total_results = results_data.get("found") or 0
 
         data = helpers.format_search_response(
             page,
@@ -107,9 +161,17 @@ def search(query, page):
     return data
 
 
-def book(media_id):
-    """Get metadata for a book from Hardcover."""
+def book(media_id, edition_id=None):
+    """Get metadata for a book from Hardcover.
+
+    `edition_id` optionally overrides the title/cover/format/ISBN with a
+    specific Hardcover edition's data (see #539), while book-level fields
+    (synopsis, genres, rating, series, authors) always come from the book
+    itself, since Hardcover doesn't vary those per edition.
+    """
     cache_key = f"{Sources.HARDCOVER.value}_{MediaTypes.BOOK.value}_{media_id}"
+    if edition_id:
+        cache_key += f"_{edition_id}"
     data = cache.get(cache_key)
 
     if data is None:
@@ -126,7 +188,7 @@ def book(media_id):
             pages
             release_date
             slug
-            cached_contributors(path: "[0]['author']['name']")
+            cached_contributors
             default_cover_edition {
               edition_format
               isbn_13
@@ -151,14 +213,16 @@ def book(media_id):
                 "POST",
                 base_url,
                 params={"query": book_query, "variables": variables},
-                headers={"Authorization": settings.HARDCOVER_API},
+                headers={"Authorization": _authorization_header()},
             )
         except requests.exceptions.HTTPError as error:
             handle_error(error)
 
         # Check for GraphQL errors in the response
         if "errors" in response:
-            error_messages = [err.get("message", "Unknown error") for err in response["errors"]]
+            error_messages = [
+                err.get("message", "Unknown error") for err in response["errors"]
+            ]
             logger.warning("GraphQL errors from Hardcover API: %s", error_messages)
             # Continue processing if we can still get book data despite errors
 
@@ -166,7 +230,9 @@ def book(media_id):
         if "data" not in response:
             logger.error("No 'data' key in Hardcover API response: %s", response)
             services.raise_not_found_error(
-                Sources.HARDCOVER.value, media_id, "book",
+                Sources.HARDCOVER.value,
+                media_id,
+                "book",
             )
 
         book_data = response["data"].get("books_by_pk")
@@ -178,7 +244,17 @@ def book(media_id):
                 "book",
             )
 
-        edition_details = get_edition_details(book_data.get("default_cover_edition"))
+        edition_data = book_data.get("default_cover_edition")
+        title = book_data["title"]
+        image = book_data.get("cached_image") or settings.IMG_NONE
+
+        selected_edition = _get_edition(edition_id) if edition_id else None
+        if selected_edition:
+            edition_data = selected_edition
+            title = selected_edition.get("title") or title
+            image = _extract_image_url(selected_edition.get("cached_image")) or image
+
+        edition_details = get_edition_details(edition_data)
         series_data = process_series_data(book_data.get("featured_book_series"))
 
         related = {}
@@ -186,32 +262,159 @@ def book(media_id):
             # Use specific series name if available, otherwise default to "Series"
             series_title = series_data.get("name") or "Series"
             related[series_title] = series_data["books"]
+        authors_full = get_authors_full(book_data.get("cached_contributors"))
+        author_names = [
+            author.get("name") for author in authors_full if author.get("name")
+        ]
 
         data = {
             "media_id": book_data["id"],
             "source": Sources.HARDCOVER.value,
             "source_url": f"https://hardcover.app/books/{book_data['slug']}",
             "media_type": MediaTypes.BOOK.value,
-            "title": book_data["title"],
+            "title": title,
             "max_progress": book_data.get("pages"),
-            "image": book_data.get("cached_image") or settings.IMG_NONE,
+            "image": image,
             "synopsis": book_data.get("description") or "No synopsis available.",
             "genres": get_tags(book_data.get("cached_tags")),
             "score": get_ratings(book_data.get("rating")),
             "score_count": book_data.get("ratings_count", 0),
             "series_name": series_data.get("name"),
             "series_position": series_data.get("position"),
+            "edition_id": str(selected_edition["id"]) if selected_edition else None,
             "details": {
                 "format": edition_details.get("format"),
                 "number_of_pages": book_data.get("pages"),
                 "publish_date": edition_details.get("release_date")
                 or book_data.get("release_date"),
-                "author": book_data.get("cached_contributors"),
+                "author": ", ".join(author_names) if author_names else None,
                 "publisher": edition_details.get("publisher"),
                 "isbn": edition_details.get("isbn"),
             },
+            "authors_full": authors_full,
             "related": related,
         }
+
+        cache.set(cache_key, data)
+
+    return data
+
+
+def _get_edition(edition_id):
+    """Fetch a single Hardcover edition's display fields by id."""
+    edition_query = """
+    query GetEdition($edition_id: Int!) {
+      editions_by_pk(id: $edition_id) {
+        id
+        title
+        cached_image(path: "url")
+        edition_format
+        isbn_13
+        isbn_10
+        release_date
+        publisher {
+          name
+        }
+      }
+    }
+    """
+
+    try:
+        response = services.api_request(
+            Sources.HARDCOVER.value,
+            "POST",
+            base_url,
+            params={
+                "query": edition_query,
+                "variables": {"edition_id": int(edition_id)},
+            },
+            headers={"Authorization": _authorization_header()},
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+        return None
+
+    if "errors" in response:
+        logger.warning(
+            "GraphQL errors from Hardcover API fetching edition %s: %s",
+            edition_id,
+            [err.get("message", "Unknown error") for err in response.get("errors", [])],
+        )
+
+    edition_data = (response.get("data") or {}).get("editions_by_pk")
+    if not edition_data:
+        logger.warning("Hardcover edition %s not found", edition_id)
+        return None
+
+    return edition_data
+
+
+def editions(media_id):
+    """List available Hardcover editions for a book, for the edition picker."""
+    cache_key = f"{Sources.HARDCOVER.value}_editions_{media_id}"
+    data = cache.get(cache_key)
+
+    if data is None:
+        editions_query = """
+        query GetBookEditions($book_id: Int!) {
+          books_by_pk(id: $book_id) {
+            editions {
+              id
+              title
+              cached_image(path: "url")
+              edition_format
+              isbn_13
+              isbn_10
+              release_date
+              publisher {
+                name
+              }
+              language {
+                language
+              }
+            }
+          }
+        }
+        """
+
+        try:
+            response = services.api_request(
+                Sources.HARDCOVER.value,
+                "POST",
+                base_url,
+                params={
+                    "query": editions_query,
+                    "variables": {"book_id": int(media_id)},
+                },
+                headers={"Authorization": _authorization_header()},
+            )
+        except requests.exceptions.HTTPError as error:
+            handle_error(error)
+
+        if "errors" in response:
+            logger.warning(
+                "GraphQL errors from Hardcover API listing editions for %s: %s",
+                media_id,
+                [err.get("message", "Unknown error") for err in response.get("errors", [])],
+            )
+
+        book_data = (response.get("data") or {}).get("books_by_pk") or {}
+        raw_editions = book_data.get("editions") or []
+
+        data = [
+            {
+                "id": str(edition["id"]),
+                "title": edition.get("title"),
+                "image": _extract_image_url(edition.get("cached_image"))
+                or settings.IMG_NONE,
+                "format": edition.get("edition_format") or "Unknown",
+                "language": (edition.get("language") or {}).get("language"),
+                "publisher": (edition.get("publisher") or {}).get("name"),
+                "release_date": edition.get("release_date"),
+            }
+            for edition in raw_editions
+            if edition.get("id")
+        ]
 
         cache.set(cache_key, data)
 
@@ -223,6 +426,87 @@ def get_tags(tags_data):
     if not tags_data:
         return None
     return [tag["tag"] for tag in tags_data]
+
+
+def _extract_image_url(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        return (
+            value.get("url")
+            or value.get("medium_url")
+            or value.get("large_url")
+            or value.get("original_url")
+            or ""
+        )
+    return ""
+
+
+def get_authors_full(contributors):
+    """Normalize Hardcover contributor payload into authors_full rows."""
+    if not contributors or not isinstance(contributors, list):
+        return []
+
+    authors = []
+    seen = set()
+    for index, contributor in enumerate(contributors):
+        if not isinstance(contributor, dict):
+            continue
+
+        author_data = contributor.get("author")
+        if not isinstance(author_data, dict):
+            author_data = contributor
+
+        person_id = (
+            author_data.get("id")
+            or contributor.get("author_id")
+            or contributor.get("id")
+        )
+        name = (
+            (author_data.get("name") if isinstance(author_data, dict) else None)
+            or contributor.get("name")
+            or ""
+        ).strip()
+        if person_id is None or not name:
+            continue
+
+        dedupe_key = str(person_id)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        image = (
+            _extract_image_url(
+                author_data.get("cached_image") if isinstance(author_data, dict) else ""
+            )
+            or _extract_image_url(
+                author_data.get("image") if isinstance(author_data, dict) else ""
+            )
+            or _extract_image_url(contributor.get("cached_image"))
+            or _extract_image_url(contributor.get("image"))
+            or settings.IMG_NONE
+        )
+        role = (
+            contributor.get("contribution")
+            or contributor.get("role")
+            or contributor.get("type")
+            or "Author"
+        )
+        sort_order = contributor.get("position")
+        if sort_order is None:
+            sort_order = index
+
+        authors.append(
+            {
+                "person_id": str(person_id),
+                "name": name,
+                "image": image,
+                "role": role,
+                "sort_order": sort_order,
+            },
+        )
+
+    return authors
 
 
 def get_ratings(rating_data):
@@ -250,7 +534,7 @@ def get_edition_details(edition_data):
     return {
         "format": edition_data.get("edition_format") or "Unknown",
         "publisher": publisher_name,
-        "isbn": isbns if isbns else None,
+        "isbn": isbns or None,
         "release_date": edition_data.get("release_date"),
     }
 
@@ -271,6 +555,110 @@ def get_image_url(response):
     if response.get("image") and response["image"].get("url"):
         return response["image"]["url"]
     return settings.IMG_NONE
+
+
+def author_profile(author_id):
+    """Return metadata for a Hardcover author profile."""
+    cache_key = f"{Sources.HARDCOVER.value}_person_{author_id}"
+    data = cache.get(cache_key)
+    if data is not None:
+        return data
+
+    profile_query = """
+    query GetAuthorProfile($author_id: Int!) {
+      authors_by_pk(id: $author_id) {
+        id
+        name
+        bio
+        cached_image(path: "url")
+        born_date
+        death_date
+        location
+        contributions(limit: 200, order_by: {id: desc}) {
+          contribution
+          book {
+            id
+            title
+            slug
+            release_date
+            cached_image(path: "url")
+          }
+        }
+      }
+    }
+    """
+
+    variables = {
+        "author_id": int(author_id),
+    }
+
+    try:
+        response = services.api_request(
+            Sources.HARDCOVER.value,
+            "POST",
+            base_url,
+            params={"query": profile_query, "variables": variables},
+            headers={"Authorization": _authorization_header()},
+        )
+    except requests.exceptions.HTTPError as error:
+        handle_error(error)
+
+    author_data = (response.get("data") or {}).get("authors_by_pk") or {}
+    if "errors" in response:
+        error_messages = [
+            err.get("message", "Unknown error") for err in response["errors"]
+        ]
+        logger.error(
+            "GraphQL errors from Hardcover API (author profile): %s", error_messages
+        )
+        if not author_data:
+            services.raise_not_found_error(Sources.HARDCOVER.value, author_id, "author")
+
+    if not author_data:
+        services.raise_not_found_error(Sources.HARDCOVER.value, author_id, "author")
+
+    bibliography = []
+    seen_book_ids = set()
+    for contribution in author_data.get("contributions", []) or []:
+        if not isinstance(contribution, dict):
+            continue
+        entry = contribution.get("book")
+        if not isinstance(entry, dict):
+            continue
+        media_id = entry.get("id")
+        title = entry.get("title")
+        if media_id is None or not title:
+            continue
+        book_id = str(media_id)
+        if book_id in seen_book_ids:
+            continue
+        seen_book_ids.add(book_id)
+        bibliography.append(
+            {
+                "media_id": book_id,
+                "source": Sources.HARDCOVER.value,
+                "media_type": MediaTypes.BOOK.value,
+                "title": title,
+                "image": entry.get("cached_image") or settings.IMG_NONE,
+                "year": get_year(entry.get("release_date")),
+                "role": contribution.get("contribution") or "Author",
+            },
+        )
+
+    data = {
+        "person_id": str(author_data.get("id") or author_id),
+        "source": Sources.HARDCOVER.value,
+        "name": author_data.get("name") or "",
+        "image": author_data.get("cached_image") or settings.IMG_NONE,
+        "biography": author_data.get("bio") or "",
+        "known_for_department": "Author",
+        "birth_date": author_data.get("born_date"),
+        "death_date": author_data.get("death_date"),
+        "place_of_birth": author_data.get("location") or "",
+        "bibliography": bibliography,
+    }
+    cache.set(cache_key, data)
+    return data
 
 
 def get_series_details(series_id):
@@ -303,7 +691,7 @@ def get_series_details(series_id):
             "POST",
             base_url,
             params={"query": series_query, "variables": variables},
-            headers={"Authorization": settings.HARDCOVER_API},
+            headers={"Authorization": _authorization_header()},
         )
     except requests.exceptions.HTTPError as error:
         logger.warning("Failed to fetch series details: %s", error)
@@ -327,7 +715,7 @@ def process_series_data(featured_series):
 
     if series_id:
         series_items = get_series_details(series_id)
-        
+
         if series_items:
             # Note: The Hardcover API currently doesn't expose the Series object directly via GraphQL
             # for the series_id returned in featured_book_series, nor does book_series link to it.
@@ -339,7 +727,7 @@ def process_series_data(featured_series):
                 pos = item.get("position")
                 if pos is None:
                     continue
-                
+
                 book_data = item.get("book")
                 if not book_data:
                     continue
@@ -350,16 +738,22 @@ def process_series_data(featured_series):
                     continue
                 if "bonus chapter" in title.lower():
                     continue
-                if book_data.get("compilation") or book_data.get("book_category_id") == 8:
+                if (
+                    book_data.get("compilation")
+                    or book_data.get("book_category_id") == BOOK_CATEGORY_BUNDLE
+                ):
                     continue
 
                 # Use ratings_count as a proxy for "most representative" edition
                 ratings = book_data.get("ratings_count", 0) or 0
-                
+
                 if pos not in best_by_position:
                     best_by_position[pos] = item
                 else:
-                    existing_ratings = best_by_position[pos].get("book", {}).get("ratings_count", 0) or 0
+                    existing_ratings = (
+                        best_by_position[pos].get("book", {}).get("ratings_count", 0)
+                        or 0
+                    )
                     if ratings > existing_ratings:
                         best_by_position[pos] = item
 
@@ -371,14 +765,15 @@ def process_series_data(featured_series):
             for pos in sorted_positions[:limit_books]:
                 item = best_by_position[pos]
                 book_data = item.get("book")
-                
+
                 series_books.append(
                     {
                         "media_id": book_data["id"],
                         "source": Sources.HARDCOVER.value,
                         "media_type": MediaTypes.BOOK.value,
                         "title": book_data["title"],
-                        "image": book_data.get("cached_image") or "https://assets.hardcover.app/static/covers/cover4.webp",
+                        "image": book_data.get("cached_image")
+                        or "https://assets.hardcover.app/static/covers/cover4.webp",
                         "year": get_year(book_data.get("release_date")),
                         "series_position": pos,
                     }

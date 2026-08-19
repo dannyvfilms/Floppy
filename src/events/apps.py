@@ -14,6 +14,6 @@ class EventsConfig(AppConfig):
         """Run when the app is ready."""
         # Disable the reload_calendar task when testing
         if settings.TESTING:
-            from events.tasks import reload_calendar  # noqa: PLC0415
+            from events.tasks import reload_calendar
 
             reload_calendar.delay = MagicMock()

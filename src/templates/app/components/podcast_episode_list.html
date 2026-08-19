@@ -2,7 +2,7 @@
 {% load user_tags %}
 
 {% for episode in episodes %}
-  <div class="bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg episode-card" data-episode-uuid="{% if episode.track_adapter %}{{ episode.track_adapter.episode_uuid }}{% elif episode.music_wrapper and episode.music_wrapper.item %}{{ episode.music_wrapper.item.media_id }}{% endif %}">
+  <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg episode-card" data-episode-uuid="{% if episode.track_adapter %}{{ episode.track_adapter.episode_uuid }}{% elif episode.music_wrapper and episode.music_wrapper.item %}{{ episode.music_wrapper.item.media_id }}{% endif %}">
     <div class="flex flex-col md:flex-row">
       <img src="{{ IMG_NONE }}"
            alt="E{{ episode.episode_number }}"
@@ -13,7 +13,7 @@
           <div class="flex justify-between items-start mb-2 space-x-2 px-4">
             <div>
               <h2 class="text-xl font-semibold mb-1 line-clamp-1">{{ episode.title }}</h2>
-              <p class="text-sm text-gray-400">
+              <p class="text-sm text-[var(--color-text-muted)]">
                 {% if episode.episode_number %}Episode {{ episode.episode_number }} • {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:"Unknown date" }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
               </p>
             </div>
@@ -82,8 +82,8 @@
           </div>
         </div>
         {% if episode.history %}
-          <p class="text-xs text-gray-400 mt-2 px-4">
-            Last watched: {{ episode.history.0.end_date|user_date_format:user|default_if_none:"No date provided" }}
+          <p class="text-xs text-[var(--color-text-muted)] mt-2 px-4">
+            Last watched: {{ episode.history.0.end_date|datetime_format:user|default_if_none:"No date provided" }}
             {% if episode.history|length > 1 %}• Watched {{ episode.history|length }} times{% endif %}
           </p>
         {% endif %}
@@ -101,7 +101,7 @@
        hx-disinherit="*"
        class="py-4 episodes-load-more-trigger"
        data-page="{{ next_page }}">
-    <div class="htmx-indicator text-center text-gray-400">
+    <div class="htmx-indicator text-center text-[var(--color-text-muted)]">
       <p>Loading more episodes...</p>
     </div>
   </div>

@@ -1,0 +1,60 @@
+{% load app_tags %}
+{% if featured_person %}
+  <div class="space-y-3">
+    <div class="grid grid-cols-1 gap-2 sm:gap-3 lg:grid-cols-3 lg:items-center">
+      <div class="flex justify-center lg:justify-start lg:items-center">
+        {% if featured_person.image and featured_person.image != IMG_NONE %}
+          <img src="{{ IMG_NONE }}"
+               data-src="{{ featured_person.image }}"
+               alt="{{ featured_person.name }}"
+               class="lazyload rounded-full object-cover bg-[var(--color-surface-strong)] shrink-0"
+               style="width: 8rem; height: 8rem;">
+        {% else %}
+          <div class="rounded-full bg-[var(--color-surface-strong)] flex items-center justify-center shrink-0"
+               style="width: 8rem; height: 8rem;">
+            {% include "app/icons/person.svg" with classes="w-12 h-12 text-gray-500" %}
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="min-w-0 text-center lg:text-left lg:h-32 lg:flex lg:flex-col lg:justify-between lg:py-1">
+        <h3 class="text-lg font-semibold leading-tight text-[var(--color-text)] truncate">{{ featured_person.name }}</h3>
+
+        <div class="space-y-1.5">
+          <p class="text-4xl font-bold text-indigo-400 leading-none">{{ featured_person.unique_titles }}</p>
+          <p class="text-xs text-gray-500 uppercase tracking-wide leading-none">titles</p>
+        </div>
+
+        <div class="grid {% if featured_person.unique_games %}grid-cols-3{% else %}grid-cols-2{% endif %} items-center justify-center lg:justify-start gap-x-4 gap-y-2">
+          <div>
+            <p class="text-2xl font-semibold text-blue-400 leading-none">{{ featured_person.unique_movies }}</p>
+            <p class="text-xs text-gray-500 leading-none mt-1">Movies</p>
+          </div>
+          {% if featured_person.unique_games %}
+            <div>
+              <p class="text-2xl font-semibold text-violet-400 leading-none">{{ featured_person.unique_games }}</p>
+              <p class="text-xs text-gray-500 leading-none mt-1">Games</p>
+            </div>
+          {% endif %}
+          <div>
+            <p class="text-2xl font-semibold text-emerald-400 leading-none">{{ featured_person.unique_shows }}</p>
+            <p class="text-xs text-gray-500 leading-none mt-1">Shows</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-center lg:justify-end lg:items-center">
+        <div class="relative shrink-0" style="width:128px;height:128px;">
+          <div id="featuredPersonRingCenter"
+               class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center"></div>
+          <canvas id="featuredPersonRingChart" style="position:relative;z-index:1"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  {{ featured_person.pct_of_library|json_script:"featured_person_pct" }}
+{% else %}
+  <div class="flex flex-col items-center justify-center py-8 text-center">
+    <p class="text-[var(--color-text-muted)]">No repeat cast or crew found for this range.</p>
+  </div>
+{% endif %}

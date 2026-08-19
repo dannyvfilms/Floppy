@@ -4,16 +4,19 @@
 {# History card component - used for both 2:3 and 1:1 aspect ratio cards #}
 {# Args: entry, card_class (search-result-card or search-result-card-square), history_mode, user #}
 
-<div class="media-card bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
+<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
      data-media-type="{{ entry.media_type }}"
-     x-data="{ historyOpen: false, listsOpen: false }">
-  <div class="relative">
-    <a href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{% url 'album_detail' entry.album.id %}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}">
-      <img alt="{{ entry.title }}"
+     x-data="{ trackOpen: false, historyOpen: false, listsOpen: false }">
+  <div class="media-card-visual relative">
+    {% with entry.item|display_title:user as preferred_entry_title %}
+    <a hx-boost="true"
+       href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}">
+      <img alt="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}"
            class="media-card-poster lazyload w-full {% if card_class == 'search-result-card-square' %}aspect-[1/1]{% else %}aspect-[2/3]{% endif %} {% if entry.poster != IMG_NONE %}object-cover{% endif %}"
            data-src="{{ entry.poster }}"
            src="{{ IMG_NONE }}">
     </a>
+    {% endwith %}
 
     {# Status chip (top-left) #}
     {% if entry.status %}
@@ -21,15 +24,15 @@
         {% with status_value=entry.status %}
           <div class="w-4 h-4 {{ status_value|status_color }}">
             {% if status_value == "Completed" %}
-              {% include "app/icons/states/completed.svg" %}
+              {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
             {% elif status_value == "In progress" %}
-              {% include "app/icons/states/in-progress.svg" %}
+              {% include "app/icons/states/in-progress.svg" with classes="w-full h-full" %}
             {% elif status_value == "Paused" %}
-              {% include "app/icons/states/paused.svg" %}
+              {% include "app/icons/states/paused.svg" with classes="w-full h-full" %}
             {% elif status_value == "Planning" %}
-              {% include "app/icons/states/planning.svg" %}
+              {% include "app/icons/states/planning.svg" with classes="w-full h-full" %}
             {% elif status_value == "Dropped" %}
-              {% include "app/icons/states/dropped.svg" %}
+              {% include "app/icons/states/dropped.svg" with classes="w-full h-full" %}
             {% endif %}
           </div>
         {% endwith %}
@@ -49,19 +52,20 @@
         {# Darkening background layer #}
         <div class="absolute inset-0 bg-black/50 z-0"></div>
         
-        <a href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{% url 'album_detail' entry.album.id %}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
+        <a hx-boost="true"
+           href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
            class="absolute inset-0 z-0"></a>
 
         <div class="relative z-10 flex items-center justify-center space-x-2.5">
           {% if history_mode != "release" %}
-            {# Edit History Button #}
+            {# Edit Tracking Button #}
             <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
-                    title="Edit history"
-                    hx-get="{% media_view_url 'history_modal' entry.item %}"
-                    hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"{% if entry.instance_id %}, "instance_id": "{{ entry.instance_id }}"{% endif %}}'
-                    hx-target="#{% component_id 'history' entry.item entry.entry_key %}"
+                    title="Edit tracking"
+                    hx-get="{% media_view_url 'track_modal' entry.item %}"
+                    hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"{% if entry.instance_id %}, "instance_id": "{{ entry.instance_id }}"{% endif %}, "standard_modal": "1"}'
+                    hx-target="#{% component_id 'track' entry.item entry.entry_key %}"
                     hx-trigger="click once"
-                    @click="historyOpen = true">
+                    @click="trackOpen = true">
               {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
             </button>
 
@@ -90,20 +94,101 @@
 
   {# Card body with hover-reveal title (matches media_card.html structure) #}
   <div class="media-card-body p-3 bg-card-body">
-    <div class="flex items-center gap-2 min-w-0">
-      <a href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{% url 'album_detail' entry.album.id %}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
-         class="media-card-title text-sm font-semibold text-white hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
-         title="{{ entry.display_title|default:entry.title }}">
-        {{ entry.display_title|default:entry.title }}
+    {% with entry.item|display_title:user as preferred_entry_title %}
+      {% with entry.item|alternative_title:user as entry_alternative_title %}
+    <div class="media-card-title-row flex items-center gap-2 min-w-0">
+      <a href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
+         hx-boost="true"
+         class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-indigo-400 transition duration-300 line-clamp-1 min-w-0"
+         title="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}">
+        {{ preferred_entry_title|default:entry.display_title|default:entry.title }}
       </a>
-      {% if entry.media_type == MediaTypes.MUSIC.value and entry.score is not None %}
+      {% if entry_alternative_title %}
+        <span class="relative shrink-0"
+              x-data="{
+                tooltipOpen: false,
+                tooltipStyle: '',
+                setTooltipPosition() {
+                  this.$nextTick(() => {
+                    const trigger = this.$refs.trigger;
+                    const panel = this.$refs.panel;
+                    if (!trigger || !panel) {
+                      return;
+                    }
+
+                    const triggerRect = trigger.getBoundingClientRect();
+                    const panelWidth = Math.min(panel.offsetWidth || 224, window.innerWidth - 32);
+                    const panelHeight = panel.offsetHeight || 0;
+                    const left = Math.min(
+                      Math.max(16, triggerRect.left + (triggerRect.width / 2) - (panelWidth / 2)),
+                      window.innerWidth - panelWidth - 16,
+                    );
+                    const showAbove = triggerRect.top >= panelHeight + 24;
+                    const top = showAbove ? triggerRect.top - panelHeight - 8 : triggerRect.bottom + 8;
+
+                    this.tooltipStyle = `left: ${left}px; top: ${top}px; width: ${panelWidth}px;`;
+                  });
+                },
+                openTooltip() {
+                  this.tooltipOpen = true;
+                  this.setTooltipPosition();
+                },
+                closeTooltip() {
+                  this.tooltipOpen = false;
+                },
+                toggleTooltip() {
+                  if (this.tooltipOpen) {
+                    this.closeTooltip();
+                    return;
+                  }
+
+                  this.openTooltip();
+                },
+              }"
+              @click.outside="closeTooltip()"
+              @keydown.escape.window="closeTooltip()"
+              @resize.window="if (tooltipOpen) setTooltipPosition()"
+              @scroll.window="if (tooltipOpen) setTooltipPosition()">
+          <button x-ref="trigger"
+                  @mouseenter="openTooltip()"
+                  @mouseleave="closeTooltip()"
+                  @focus="openTooltip()"
+                  @blur="closeTooltip()"
+                  @click.prevent.stop="toggleTooltip()"
+                  class="text-gray-500 hover:text-[var(--color-text-muted)] transition-colors cursor-pointer inline-flex items-center"
+                  type="button"
+                  aria-label="Show alternative title">
+            {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
+          </button>
+          <template x-teleport="body">
+            <div x-cloak
+                 x-ref="panel"
+                 x-show="tooltipOpen"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 scale-95"
+                 x-transition:enter-end="opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100 scale-100"
+                 x-transition:leave-end="opacity-0 scale-95"
+                 class="fixed z-50 pointer-events-none rounded-lg p-3 text-xs text-[var(--color-text)]"
+                 style="display: none; background: rgba(0, 0, 0, 0.85); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);"
+                 :style="tooltipStyle"
+                 role="tooltip">
+              <p>{{ entry_alternative_title }}</p>
+            </div>
+          </template>
+        </span>
+      {% endif %}
+      {% if entry.score|show_media_score:user %}
         <span class="flex items-center gap-1 text-xs text-yellow-300 shrink-0">
           {% include "app/icons/star.svg" with classes="w-3 h-3 text-yellow-400 fill-current" %}
           <span class="font-medium">{{ entry.score|score_display:user }}</span>
         </span>
       {% endif %}
     </div>
-    <p class="media-card-year text-xs text-gray-400 mt-1">
+      {% endwith %}
+    {% endwith %}
+    <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
       {# History-specific info: episode label, play count, or timestamp #}
       {% if history_mode == "release" %}
         <span class="text-indigo-400 font-medium">Released</span>
@@ -136,13 +221,14 @@
 
   {# Modals #}
   {% if entry.item and entry.item.media_type and history_mode != "release" %}
-    {# History Modal #}
-    <div x-show="historyOpen"
-         @keydown.escape.window="historyOpen = false"
+    {# Track Modal #}
+    <div x-show="trackOpen"
+         @keydown.escape.window="trackOpen = false"
          class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="w-152 modal-max-height overflow-y-auto px-4 md:px-0 relative z-60"
-           @click.outside="historyOpen = false">
-        <div id="{% component_id 'history' entry.item entry.entry_key %}"></div>
+      <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
+           style="width: min(96vw, 72rem);"
+           @click.outside="trackOpen = false">
+        <div id="{% component_id 'track' entry.item entry.entry_key %}"></div>
       </div>
     </div>
 

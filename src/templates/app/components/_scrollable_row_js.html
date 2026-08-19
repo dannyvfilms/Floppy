@@ -1,0 +1,341 @@
+{% comment %}
+  JS for horizontal scrolling rows with HTMX infinite-scroll and active playback ticker.
+  Include once per page that uses _scrollable_row.html.
+
+  Depends on:
+    - HTMX (htmx.trigger)
+    - Elements with [data-home-row="true"] for infinite scroll
+    - Elements with [data-active-playback-card] for the playback ticker
+{% endcomment %}
+{% include "app/components/_release_year_fetch_js.html" %}
+<script>
+  var homeRowLoadTimers = new WeakMap();
+  var homeRowObservers = new WeakMap();
+
+  function getHomeRowItemCount(row) {
+    return Array.from(row.children).filter(child => !child.hasAttribute('data-home-row-sentinel')).length;
+  }
+
+  function getHomeRowPrefetchDistance(row) {
+    const parsedDistance = Number.parseInt(row.dataset.homeRowPrefetchDistance || '1152', 10);
+    return Number.isNaN(parsedDistance) ? 1152 : parsedDistance;
+  }
+
+  function getHomeRowCounts(row) {
+    const loaded = Number.parseInt(row.dataset.loadedCount || '0', 10);
+    const total = Number.parseInt(row.dataset.totalCount || '0', 10);
+    return {
+      loaded: Number.isNaN(loaded) ? 0 : loaded,
+      total: Number.isNaN(total) ? 0 : total,
+    };
+  }
+
+  function syncHomeRowLoadedCount(row) {
+    row.dataset.loadedCount = String(getHomeRowItemCount(row));
+  }
+
+  function syncHomeRowSentinel(row) {
+    let sentinel = row.querySelector('[data-home-row-sentinel="true"]');
+    if (!sentinel) {
+      sentinel = document.createElement('div');
+      sentinel.dataset.homeRowSentinel = 'true';
+      sentinel.setAttribute('aria-hidden', 'true');
+      sentinel.className = 'shrink-0 w-px self-stretch opacity-0 pointer-events-none';
+    }
+    row.appendChild(sentinel);
+  }
+
+  function reloadHomeRow(row, rowId) {
+    row._prevScrollLeft = row.scrollLeft;
+    row.dataset.fullReload = 'true';
+    htmx.ajax('GET', `/?load_row=${rowId}&offset=0`, {
+      target: row,
+      swap: 'innerHTML',
+    });
+  }
+
+  if (!window.__floppyHomeRowRefreshBound) {
+    window.__floppyHomeRowRefreshBound = true;
+    document.body.addEventListener('refreshHomeRow', function(event) {
+      const rowId = event.detail && event.detail.rowId;
+      if (!rowId) return;
+      const row = document.querySelector(`#media-grid-row-${rowId}`);
+      if (row) reloadHomeRow(row, rowId);
+    });
+  }
+
+  function triggerHomeRowLoadMore(row) {
+    const { loaded, total } = getHomeRowCounts(row);
+    if (row.dataset.loading === 'true' || row.dataset.homeRowExhausted === 'true' || loaded >= total) {
+      return;
+    }
+    row.dataset.stickToEnd = 'true';
+    htmx.trigger(row, 'home-row-load-more');
+  }
+
+  function isHomeRowNearEnd(row) {
+    const prefetchDistance = getHomeRowPrefetchDistance(row);
+    return row.scrollLeft + row.clientWidth >= row.scrollWidth - prefetchDistance;
+  }
+
+  function maybeLoadMoreHomeRow(row) {
+    if (!isHomeRowNearEnd(row)) {
+      return;
+    }
+    triggerHomeRowLoadMore(row);
+  }
+
+  function maybeAutofillHomeRow(row) {
+    const { loaded, total } = getHomeRowCounts(row);
+    if (row.dataset.loading === 'true' || row.dataset.homeRowExhausted === 'true' || loaded >= total) {
+      return;
+    }
+    if (row.scrollWidth <= row.clientWidth + 1) {
+      row.dataset.stickToEnd = 'true';
+      htmx.trigger(row, 'home-row-load-more');
+    }
+  }
+
+  function ensureHomeRowObserver(row) {
+    if (!('IntersectionObserver' in window) || homeRowObservers.has(row) || row.dataset.homeRowExhausted === 'true') {
+      return;
+    }
+
+    const sentinel = row.querySelector('[data-home-row-sentinel="true"]');
+    if (!sentinel) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        triggerHomeRowLoadMore(row);
+      }
+    }, {
+      root: row,
+      threshold: 0,
+      rootMargin: `0px ${getHomeRowPrefetchDistance(row)}px 0px 0px`,
+    });
+
+    observer.observe(sentinel);
+    homeRowObservers.set(row, observer);
+  }
+
+  function scheduleHomeRowLoadMore(row) {
+    const existingTimer = homeRowLoadTimers.get(row);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(() => {
+      homeRowLoadTimers.delete(row);
+      maybeLoadMoreHomeRow(row);
+    }, 120);
+    homeRowLoadTimers.set(row, timer);
+  }
+
+  function scrollRowByPage(containerId, dir) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.scrollBy({ left: dir === 'next' ? el.clientWidth * 0.9 : -el.clientWidth * 0.9, behavior: 'smooth' });
+  }
+
+  function updateScrollBtns(row) {
+    const id = row.id;
+    if (!id) return;
+    const prevBtn = document.querySelector(`[data-scroll-dir="prev"][data-scroll-target="${id}"]`);
+    const nextBtn = document.querySelector(`[data-scroll-dir="next"][data-scroll-target="${id}"]`);
+    if (!prevBtn && !nextBtn) return;
+
+    const atStart = row.scrollLeft < 2;
+    if (prevBtn) {
+      if (atStart) {
+        prevBtn.classList.add('opacity-0', 'pointer-events-none');
+      } else {
+        prevBtn.classList.remove('opacity-0', 'pointer-events-none');
+      }
+    }
+
+    if (nextBtn) {
+      const { loaded, total } = getHomeRowCounts(row);
+      const atEnd = row.scrollLeft + row.clientWidth >= row.scrollWidth - 4;
+      if (atEnd && loaded >= total) {
+        nextBtn.classList.add('opacity-0', 'pointer-events-none');
+      } else {
+        nextBtn.classList.remove('opacity-0', 'pointer-events-none');
+      }
+    }
+  }
+
+  function initHomeRowInfiniteScroll() {
+    document.querySelectorAll('[data-home-row="true"]').forEach(row => {
+      if (row.dataset.homeRowBound === 'true') {
+        return;
+      }
+      row.dataset.homeRowBound = 'true';
+      ensureHomeRowObserver(row);
+      row.addEventListener('scroll', () => {
+        row.dataset.stickToEnd = isHomeRowNearEnd(row) ? 'true' : 'false';
+        maybeLoadMoreHomeRow(row);
+        scheduleHomeRowLoadMore(row);
+        updateScrollBtns(row);
+      }, { passive: true });
+    });
+    requestAnimationFrame(() => {
+      document.querySelectorAll('[data-home-row="true"]').forEach(row => {
+        ensureHomeRowObserver(row);
+        syncHomeRowLoadedCount(row);
+        maybeAutofillHomeRow(row);
+        updateScrollBtns(row);
+      });
+    });
+  }
+
+  function formatPlaybackClock(totalSeconds) {
+    const clamped = Math.max(0, Math.floor(totalSeconds || 0));
+    const hours = Math.floor(clamped / 3600);
+    const minutes = Math.floor((clamped % 3600) / 60);
+    const seconds = clamped % 60;
+
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  function updateActivePlaybackCard(card) {
+    const status = card.dataset.playbackStatus || 'playing';
+    const offset = Number.parseInt(card.dataset.playbackOffset || '0', 10);
+    const duration = Number.parseInt(card.dataset.playbackDuration || '0', 10);
+    const updatedAt = Number.parseInt(card.dataset.playbackUpdatedAt || '0', 10);
+
+    let currentSeconds = Number.isNaN(offset) ? 0 : offset;
+    if (status === 'playing' && !Number.isNaN(updatedAt) && updatedAt > 0) {
+      currentSeconds += Math.max(0, Math.floor(Date.now() / 1000) - updatedAt);
+    }
+
+    const durationSeconds = Number.isNaN(duration) ? 0 : Math.max(0, duration);
+    if (durationSeconds > 0) {
+      currentSeconds = Math.min(currentSeconds, durationSeconds);
+    }
+
+    const timeNode = card.querySelector('[data-playback-time]');
+    if (timeNode) {
+      timeNode.textContent = durationSeconds > 0
+        ? `${formatPlaybackClock(currentSeconds)} / ${formatPlaybackClock(durationSeconds)}`
+        : formatPlaybackClock(currentSeconds);
+    }
+
+    const progressBar = card.querySelector('[data-playback-bar]');
+    if (progressBar) {
+      const width = durationSeconds > 0
+        ? Math.min(100, (currentSeconds / durationSeconds) * 100)
+        : 0;
+      progressBar.style.width = `${width}%`;
+    }
+  }
+
+  function initActivePlaybackTicker() {
+    // Timer id lives on window so a re-executed copy of this script can
+    // still clear the interval started by a previous page.
+    if (window.__floppyActivePlaybackTimer) {
+      clearInterval(window.__floppyActivePlaybackTimer);
+      window.__floppyActivePlaybackTimer = null;
+    }
+
+    const tick = () => {
+      const cards = document.querySelectorAll('[data-active-playback-card]');
+      cards.forEach(updateActivePlaybackCard);
+    };
+
+    tick();
+    window.__floppyActivePlaybackTimer = setInterval(tick, 1000);
+  }
+
+  function initHomePageEnhancements() {
+    loadVisibleReleaseYears();
+    initHomeRowInfiniteScroll();
+    initActivePlaybackTicker();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initHomePageEnhancements);
+  } else {
+    initHomePageEnhancements();
+  }
+
+  // Bind once: these handlers resolve functions and state through global
+  // names, so the latest executed copy of this script is always used.
+  if (!window.__floppyHomeRowEventsBound) {
+  window.__floppyHomeRowEventsBound = true;
+
+  document.body.addEventListener('htmx:beforeRequest', function(event) {
+    const row = event.detail.elt;
+    if (row && row.matches('[data-home-row="true"]')) {
+      row.dataset.loading = 'true';
+      row.dataset.pendingOffset = row.dataset.loadedCount || '0';
+    }
+  });
+
+  document.body.addEventListener('htmx:afterRequest', function(event) {
+    const row = event.detail.elt;
+    if (row && row.matches('[data-home-row="true"]')) {
+      const xhr = event.detail.xhr;
+      const freshTotal = xhr && xhr.getResponseHeader('X-Home-Row-Total');
+      if (freshTotal !== null && freshTotal !== undefined) {
+        row.dataset.totalCount = freshTotal;
+      }
+      row.dataset.loading = 'false';
+    }
+  });
+
+  document.body.addEventListener('click', function(e) {
+    const btn = e.target.closest('[data-scroll-dir]');
+    if (!btn) return;
+    scrollRowByPage(btn.dataset.scrollTarget, btn.dataset.scrollDir);
+  });
+
+  document.body.addEventListener('htmx:afterSwap', function(event) {
+    const row = event.detail.target;
+    if (row && row.matches('[data-home-row="true"]')) {
+      const isFullReload = row.dataset.fullReload === 'true';
+      if (isFullReload) {
+        delete row.dataset.fullReload;
+        delete row.dataset.homeRowExhausted;
+        const obs = homeRowObservers.get(row);
+        if (obs) { obs.disconnect(); homeRowObservers.delete(row); }
+        row.dataset.homeRowBound = 'false';
+        if (row._prevScrollLeft !== undefined) {
+          row.scrollLeft = row._prevScrollLeft;
+          delete row._prevScrollLeft;
+        }
+      }
+      const pendingOffset = Number.parseInt(row.dataset.pendingOffset || '0', 10);
+      syncHomeRowSentinel(row);
+      syncHomeRowLoadedCount(row);
+      row.dataset.stickToEnd = 'false';
+      const newLoadedCount = Number.parseInt(row.dataset.loadedCount || '0', 10);
+      if (!isFullReload && row.dataset.pendingOffset !== undefined && newLoadedCount <= pendingOffset) {
+        // The response appended no new cards even though the client still
+        // believed more items existed — stop retrying this row for good,
+        // regardless of what total says, to avoid looping on the same offset.
+        row.dataset.homeRowExhausted = 'true';
+        const obs = homeRowObservers.get(row);
+        if (obs) { obs.disconnect(); homeRowObservers.delete(row); }
+      }
+      delete row.dataset.pendingOffset;
+      requestAnimationFrame(() => {
+        ensureHomeRowObserver(row);
+        maybeAutofillHomeRow(row);
+        maybeLoadMoreHomeRow(row);
+        updateScrollBtns(row);
+      });
+    }
+    setTimeout(() => {
+      loadVisibleReleaseYears();
+      initHomeRowInfiniteScroll();
+      initActivePlaybackTicker();
+    }, 50);
+  });
+
+  }
+</script>

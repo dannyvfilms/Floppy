@@ -9,6 +9,7 @@ from django.utils import timezone
 import app
 import app.providers
 from app.models import MediaTypes, Sources, Status
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
@@ -76,7 +77,9 @@ class HowLongToBeatImporter:
                 raise MediaImportUnexpectedError(error_msg) from error
 
         # Second pass: add non-duplicates to bulk_media
-        for row in rows:
+        total = len(rows)
+        for i, row in enumerate(rows, start=1):
+            import_progress.report(i, total, "HowLongToBeat")
             try:
                 self._process_second_pass(row, media_id_counts)
             except Exception as error:
@@ -226,7 +229,7 @@ class HowLongToBeatImporter:
         }
 
         for field, status in status_mapping.items():
-            if row[field] == "X":
+            if row.get(field) in {"X", "✓"}:
                 return status.value
 
         return Status.COMPLETED.value
@@ -271,8 +274,8 @@ class HowLongToBeatImporter:
                 default=0,
             ),
             status=self._determine_status(row),
-            start_date=self._parse_hltb_date(row["Start Date"]),
-            end_date=self._parse_hltb_date(row["Completion Date"]),
+            start_date=self._parse_hltb_date(row.get("Start Date")),
+            end_date=self._parse_hltb_date(row.get("Completion Date")),
             notes=self._format_notes(row),
         )
         instance._history_date = updated_at

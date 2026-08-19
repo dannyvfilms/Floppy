@@ -1,6 +1,9 @@
 import logging
-from datetime import datetime
+import re
+from collections import defaultdict
+from datetime import UTC, datetime
 from enum import IntEnum
+from urllib.parse import quote_plus, urlparse
 
 import requests
 from django.conf import settings
@@ -13,6 +16,8 @@ from app.providers import services
 
 logger = logging.getLogger(__name__)
 base_url = "https://api.igdb.com/v4"
+IGDB_SEARCH_CACHE_VERSION = "v5"
+TOKENIZED_SEARCH_MIN_TERMS = 2
 
 
 class ExternalGameSource(IntEnum):
@@ -62,18 +67,17 @@ def handle_error(error):
 
     # Invalid keys
     if status_code in (requests.codes.bad_request, requests.codes.forbidden):
-        try:
-            details = error_json.get("message").capitalize()
-            if details:
-                raise services.ProviderAPIError(
-                    Sources.IGDB.value,
-                    error,
-                    details,
-                )
-        # it can be other error format
-        except (KeyError, AttributeError):
-            logger.exception("Unexpected error format from IGDB API")
-            raise services.ProviderAPIError(Sources.IGDB.value, error) from None
+        details = _extract_igdb_error_details(error_json)
+
+        if details:
+            raise services.ProviderAPIError(
+                Sources.IGDB.value,
+                error,
+                details,
+            )
+
+        logger.exception("Unexpected error format from IGDB API")
+        raise services.ProviderAPIError(Sources.IGDB.value, error) from None
 
     raise services.ProviderAPIError(Sources.IGDB.value, error)
 
@@ -178,7 +182,14 @@ def external_game(external_id, source=ExternalGameSource.STEAM):
 
 def search(query, page):
     """Search for games on IGDB using MultiQuery."""
-    cache_key = f"search_{Sources.IGDB.value}_{MediaTypes.GAME.value}_{query}_{page}"
+    normalized_query = _normalize_search_query(query)
+    if not normalized_query:
+        return helpers.format_search_response(page, settings.PER_PAGE, 0, [])
+
+    cache_key = (
+        f"search_{IGDB_SEARCH_CACHE_VERSION}_{Sources.IGDB.value}_"
+        f"{MediaTypes.GAME.value}_{normalized_query}_{page}"
+    )
     data = cache.get(cache_key)
 
     if data is None:
@@ -189,31 +200,133 @@ def search(query, page):
             "Authorization": f"Bearer {access_token}",
         }
 
-        base_conditions = (
-            f'where name ~ *"{query}"* & game_type = (0,1,2,3,4,5,6,7,8,9,10)'
+        data = None
+        for tokenized in (False, True):
+            multiquery = _build_search_multiquery(
+                query,
+                page,
+                tokenized=tokenized,
+            )
+            if multiquery is None:
+                continue
+
+            response = _perform_search_request(url, headers, multiquery)
+            search_results, total_results = _extract_search_results(response)
+
+            results = [
+                {
+                    "media_id": media["id"],
+                    "source": Sources.IGDB.value,
+                    "media_type": MediaTypes.GAME.value,
+                    "title": media["name"],
+                    "image": get_image_url(media),
+                    "year": get_release_year(media),
+                    "platforms": get_list(media, "platforms"),
+                }
+                for media in search_results
+            ]
+
+            data = helpers.format_search_response(
+                page,
+                settings.PER_PAGE,
+                total_results,
+                results,
+            )
+
+            if search_results:
+                break
+
+            if not tokenized:
+                logger.debug(
+                    "IGDB literal search returned no results for %r; "
+                    "retrying with tokenized fallback",
+                    query,
+                )
+
+        cache.set(cache_key, data)
+
+    return data
+
+
+def _normalize_search_query(query):
+    """Return a canonical cache/search key for IGDB text queries."""
+    if not isinstance(query, str):
+        return ""
+
+    normalized = re.sub(r"[\W_]+", " ", query).strip().casefold()
+    return " ".join(normalized.split())
+
+
+def _tokenize_search_query(query):
+    """Split an IGDB title query into punctuation-insensitive search terms."""
+    if not isinstance(query, str):
+        return []
+
+    return [term for term in re.split(r"[\W_]+", query.strip()) if term]
+
+
+def _build_search_query_condition(query, *, tokenized=False):
+    """Return the APICalypse search condition for the given query mode."""
+    if tokenized:
+        terms = _tokenize_search_query(query)
+        if len(terms) < TOKENIZED_SEARCH_MIN_TERMS:
+            return None
+        return " & ".join(
+            f'(name ~ *"{term}"* | alternative_names.name ~ *"{term}"*)'
+            for term in terms
         )
 
-        if not settings.IGDB_NSFW:
-            base_conditions += " & themes != (42)"
+    escaped_query = str(query or "").strip().replace("\\", "\\\\").replace('"', '\\"')
+    if not escaped_query:
+        return None
+    return (
+        f'(name ~ *"{escaped_query}"* '
+        f'| alternative_names.name ~ *"{escaped_query}"*)'
+    )
 
-        offset = (page - 1) * settings.PER_PAGE
 
-        # Create the multiquery with both search and count
-        multiquery = (
-            'query games "SearchResults" {'
-            "fields name,cover.image_id;"
-            "sort total_rating_count desc;"
-            f"limit {settings.PER_PAGE};"
-            f"offset {offset};"
-            f"{base_conditions};"
-            "};"
-            'query games/count "TotalCount" {'
-            f"{base_conditions};"
-            "};"
+def _build_search_multiquery(query, page, *, tokenized=False):
+    """Build the IGDB multiquery payload for a game search attempt."""
+    search_condition = _build_search_query_condition(query, tokenized=tokenized)
+    if not search_condition:
+        return None
+
+    conditions = [search_condition, "game_type = (0,1,2,3,4,5,6,7,8,9,10,11)"]
+    if not settings.IGDB_NSFW:
+        conditions.append("themes != (42)")
+
+    base_conditions = " & ".join(conditions)
+    offset = (page - 1) * settings.PER_PAGE
+
+    return (
+        'query games "SearchResults" {'
+        "fields name,cover.image_id,platforms.name,first_release_date;"
+        "sort total_rating_count desc;"
+        f"limit {settings.PER_PAGE};"
+        f"offset {offset};"
+        f"where {base_conditions};"
+        "};"
+        'query games/count "TotalCount" {'
+        f"where {base_conditions};"
+        "};"
+    )
+
+
+def _perform_search_request(url, headers, multiquery):
+    """Execute an IGDB search multiquery and retry once on token expiration."""
+    try:
+        return services.api_request(
+            Sources.IGDB.value,
+            "POST",
+            url,
+            data=multiquery,
+            headers=headers,
         )
-
-        try:
-            response = services.api_request(
+    except requests.exceptions.HTTPError as error:
+        error_resp = handle_error(error)
+        if error_resp and error_resp.get("retry"):
+            headers["Authorization"] = f"Bearer {get_access_token()}"
+            return services.api_request(
                 Sources.IGDB.value,
                 "POST",
                 url,
@@ -221,70 +334,68 @@ def search(query, page):
                 headers=headers,
             )
 
-        except requests.exceptions.HTTPError as error:
-            error_resp = handle_error(error)
-            if error_resp and error_resp.get("retry"):
-                # Retry the request with the new access token
-                headers["Authorization"] = f"Bearer {get_access_token()}"
-                response = services.api_request(
-                    Sources.IGDB.value,
-                    "POST",
-                    url,
-                    data=data,
-                    headers=headers,
-                )
 
-        search_results = next(
-            (item["result"] for item in response if item["name"] == "SearchResults"),
-            [],
-        )
-        total_results = next(
-            (item["count"] for item in response if item["name"] == "TotalCount"),
-            0,
-        )
+def _extract_igdb_error_details(error_json):
+    """Return a user-facing IGDB error string from a decoded response payload."""
+    if isinstance(error_json, dict):
+        raw_message = error_json.get("message")
+        if isinstance(raw_message, str) and raw_message:
+            return raw_message.capitalize()
 
-        results = [
-            {
-                "media_id": media["id"],
-                "source": Sources.IGDB.value,
-                "media_type": MediaTypes.GAME.value,
-                "title": media["name"],
-                "image": get_image_url(media),
-                "year": get_release_year(media),
-            }
-            for media in search_results
-        ]
+    if isinstance(error_json, list):
+        first_error = error_json[0] if error_json else None
+        if isinstance(first_error, dict):
+            for key in ("message", "cause", "title"):
+                raw_message = first_error.get(key)
+                if isinstance(raw_message, str) and raw_message:
+                    return raw_message.capitalize()
 
-        data = helpers.format_search_response(
-            page,
-            settings.PER_PAGE,
-            total_results,
-            results,
-        )
+    return None
 
-        cache.set(cache_key, data)
 
-    return data
+def _extract_search_results(response):
+    """Return the search results and total count from an IGDB multiquery response."""
+    search_results = next(
+        (item["result"] for item in response if item["name"] == "SearchResults"),
+        [],
+    )
+    total_results = next(
+        (item["count"] for item in response if item["name"] == "TotalCount"),
+        0,
+    )
+    return search_results, total_results
 
 
 def game(media_id):
     """Return the metadata for the selected game from IGDB."""
-    cache_key = f"{Sources.IGDB.value}_{MediaTypes.GAME.value}_{media_id}"
+    if not str(media_id).strip().isdigit():
+        message = (
+            f"IGDB game IDs must be numeric integers, got {media_id!r}. "
+            "Non-numeric IDs cannot be looked up directly on IGDB."
+        )
+        raise ValueError(message)
+    cache_key = f"{Sources.IGDB.value}_{MediaTypes.GAME.value}_v2_{media_id}"
     data = cache.get(cache_key)
     if data is None:
         access_token = get_access_token()
         url = f"{base_url}/games"
         data = (
             "fields name,cover.image_id,artworks.image_id,screenshots.image_id,"
-            "url,summary,game_type,first_release_date,total_rating,total_rating_count,"
-            "genres.name,themes.name,platforms.name,involved_companies.company.name,"
+            "url,summary,game_type,first_release_date,"
+            "rating,rating_count,aggregated_rating,aggregated_rating_count,"
+            "genres.name,themes.name,platforms.name,"
+            "involved_companies.company.id,involved_companies.company.name,"
+            "involved_companies.company.logo.image_id,"
             "parent_game.name,parent_game.cover.image_id,"
             "remasters.name,remasters.cover.image_id,"
             "remakes.name,remakes.cover.image_id,"
             "expansions.name,expansions.cover.image_id,"
             "standalone_expansions.name,standalone_expansions.cover.image_id,"
             "expanded_games.name,expanded_games.cover.image_id,"
-            "similar_games.name,similar_games.cover.image_id;"
+            "similar_games.name,similar_games.cover.image_id,"
+            "dlcs.name,dlcs.cover.image_id,"
+            "external_games.url,external_games.uid,external_games.external_game_source,"
+            "websites.url;"
             f"where id = {media_id};"
         )
         headers = {
@@ -316,7 +427,9 @@ def game(media_id):
         # Check if response is empty (no results found)
         if not response:
             services.raise_not_found_error(
-                Sources.IGDB.value, media_id, "game",
+                Sources.IGDB.value,
+                media_id,
+                "game",
             )
 
         response = response[0]  # response is a list with a single element
@@ -331,7 +444,9 @@ def game(media_id):
             "synopsis": response.get("summary", "No synopsis available."),
             "genres": get_list(response, "genres"),
             "score": get_score(response),
-            "score_count": response.get("total_rating_count"),
+            "score_count": response.get("aggregated_rating_count"),
+            "igdb_user_rating": get_user_rating(response),
+            "igdb_user_rating_count": response.get("rating_count"),
             "details": {
                 "format": get_game_type(response["game_type"]),
                 "release_date": get_start_date(response),
@@ -339,17 +454,106 @@ def game(media_id):
                 "platforms": get_list(response, "platforms"),
                 "companies": get_companies(response),
             },
+            "studios_full": get_companies_full(response),
             "related": {
                 "parent_game": get_parent(response.get("parent_game")),
                 "remasters": get_related(response.get("remasters")),
                 "remakes": get_related(response.get("remakes")),
                 "expansions": get_related(response.get("expansions")),
+                "dlcs": get_related(response.get("dlcs")),
                 "standalone_expansions": get_related(
                     response.get("standalone_expansions"),
                 ),
                 "expanded_games": get_related(response.get("expanded_games")),
                 "recommendations": get_related(response.get("similar_games")),
             },
+        }
+        external_links = {}
+        hltb_url = get_hltb_url(response)
+        if hltb_url:
+            external_links["HowLongToBeat"] = hltb_url
+        else:
+            hltb_search_url = get_hltb_search_url(response.get("name"))
+            if hltb_search_url:
+                external_links["HowLongToBeat"] = hltb_search_url
+
+        if external_links:
+            data["external_links"] = external_links
+
+        external_ids = get_external_ids(response, hltb_url)
+        if external_ids:
+            data["external_ids"] = external_ids
+        cache.set(cache_key, data)
+    return data
+
+
+def company_profile(company_id):
+    """Return the metadata and game catalog for an IGDB company."""
+    if not str(company_id).strip().isdigit():
+        return None
+
+    cache_key = f"{Sources.IGDB.value}_company_{company_id}"
+    data = cache.get(cache_key)
+    if data is None:
+        access_token = get_access_token()
+        url = f"{base_url}/companies"
+        query = (
+            "fields name,description,developed,published,logo.image_id,"
+            "url,start_date,country,status;"
+            f"where id = {company_id};"
+        )
+        headers = {
+            "Client-ID": settings.IGDB_ID,
+            "Authorization": f"Bearer {access_token}",
+        }
+
+        try:
+            response = services.api_request(
+                Sources.IGDB.value,
+                "POST",
+                url,
+                data=query,
+                headers=headers,
+            )
+        except requests.exceptions.HTTPError as error:
+            error_resp = handle_error(error)
+            if error_resp and error_resp.get("retry"):
+                headers["Authorization"] = f"Bearer {get_access_token()}"
+                response = services.api_request(
+                    Sources.IGDB.value,
+                    "POST",
+                    url,
+                    data=query,
+                    headers=headers,
+                )
+
+        if not response:
+            return None
+
+        response = response[0]
+        developed_ids = [str(game_id) for game_id in response.get("developed") or []]
+        published_ids = [str(game_id) for game_id in response.get("published") or []]
+        game_entries = get_company_games(
+            developed_ids,
+            published_ids,
+            access_token=access_token,
+        )
+        data = {
+            "media_id": str(response["id"]),
+            "source": Sources.IGDB.value,
+            "source_url": response.get("url") or "",
+            "title": response["name"],
+            "name": response["name"],
+            "image": get_company_logo_url(response.get("logo")),
+            "description": (response.get("description") or "").strip(),
+            "details": {
+                "founded": get_company_start_date(response),
+                "country": response.get("country"),
+                "status": response.get("status"),
+                "developed_count": len(developed_ids),
+                "published_count": len(published_ids),
+            },
+            "games": game_entries,
         }
         cache.set(cache_key, data)
     return data
@@ -361,7 +565,9 @@ def get_image_url(response):
     # e.g game: 287348
     cover_image_id = response.get("cover", {}).get("image_id")
     if cover_image_id:
-        return f"https://images.igdb.com/igdb/image/upload/t_original/{cover_image_id}.jpg"
+        return (
+            f"https://images.igdb.com/igdb/image/upload/t_original/{cover_image_id}.jpg"
+        )
 
     artworks = response.get("artworks") or []
     for artwork in artworks:
@@ -401,9 +607,126 @@ def get_release_year(media):
         return None
 
     try:
-        return datetime.utcfromtimestamp(date_value).year
+        return datetime.fromtimestamp(date_value, tz=UTC).year
     except (TypeError, ValueError, OSError, OverflowError):
         return None
+
+
+def get_company_start_date(response):
+    """Return the founded date for an IGDB company."""
+    try:
+        return timezone.datetime.fromtimestamp(
+            response["start_date"],
+            tz=timezone.get_current_timezone(),
+        ).strftime("%Y-%m-%d")
+    except KeyError:
+        return None
+
+
+def _fetch_games_by_ids(game_ids, *, access_token=None):
+    """Return raw IGDB game rows for the provided ids."""
+    if not game_ids:
+        return []
+
+    access_token = access_token or get_access_token()
+    headers = {
+        "Client-ID": settings.IGDB_ID,
+        "Authorization": f"Bearer {access_token}",
+    }
+    game_rows = []
+    chunk_size = 100
+
+    for start_index in range(0, len(game_ids), chunk_size):
+        chunk = game_ids[start_index : start_index + chunk_size]
+        url = f"{base_url}/games"
+        query = (
+            "fields id,name,cover.image_id,first_release_date;"
+            f"where id = ({','.join(chunk)});"
+        )
+        try:
+            response = services.api_request(
+                Sources.IGDB.value,
+                "POST",
+                url,
+                data=query,
+                headers=headers,
+            )
+        except requests.exceptions.HTTPError as error:
+            error_resp = handle_error(error)
+            if error_resp and error_resp.get("retry"):
+                headers["Authorization"] = f"Bearer {get_access_token()}"
+                response = services.api_request(
+                    Sources.IGDB.value,
+                    "POST",
+                    url,
+                    data=query,
+                    headers=headers,
+                )
+        if response:
+            game_rows.extend(response)
+
+    return game_rows
+
+
+def get_company_games(developed_ids, published_ids, *, access_token=None):
+    """Return normalized game rows for an IGDB company."""
+    ordered_game_ids = []
+    game_roles = defaultdict(set)
+
+    for game_id in developed_ids or []:
+        if game_id not in ordered_game_ids:
+            ordered_game_ids.append(game_id)
+        game_roles[game_id].add("Developer")
+
+    for game_id in published_ids or []:
+        if game_id not in ordered_game_ids:
+            ordered_game_ids.append(game_id)
+        game_roles[game_id].add("Publisher")
+
+    if not ordered_game_ids:
+        return []
+
+    game_rows = _fetch_games_by_ids(ordered_game_ids, access_token=access_token)
+    game_rows_by_id = {str(game["id"]): game for game in game_rows if game.get("id")}
+    games = []
+
+    for index, game_id in enumerate(ordered_game_ids):
+        game = game_rows_by_id.get(game_id)
+        if not game:
+            continue
+
+        roles = [
+            role
+            for role in ("Developer", "Publisher")
+            if role in game_roles.get(game_id, set())
+        ]
+        games.append(
+            {
+                "media_id": game_id,
+                "source": Sources.IGDB.value,
+                "media_type": MediaTypes.GAME.value,
+                "title": game["name"],
+                "image": get_image_url(game),
+                "year": get_release_year(game),
+                "role": ", ".join(roles),
+                "department": "",
+                "credit_type": "game",
+                "sort_order": index,
+            },
+        )
+
+    games.sort(
+        key=lambda row: (
+            row.get("year") is None,
+            -(row.get("year") or 0),
+            row.get("title", "").lower(),
+        ),
+    )
+
+    for index, game in enumerate(games):
+        game["sort_order"] = index
+
+    return games
 
 
 def get_start_date(response):
@@ -429,26 +752,166 @@ def get_list(response, field):
         return None
 
 
+def get_company_logo_url(logo):
+    """Return a normalized company logo URL for IGDB company rows."""
+    if not isinstance(logo, dict):
+        return ""
+
+    image_id = str(logo.get("image_id") or "").strip()
+    if not image_id:
+        return ""
+
+    return f"https://images.igdb.com/igdb/image/upload/t_logo_med/{image_id}.png"
+
+
+def get_companies_full(response):
+    """Return normalized studio/company rows for the game."""
+    studios = []
+    seen_company_ids = set()
+
+    for index, company_entry in enumerate(response.get("involved_companies") or []):
+        if not isinstance(company_entry, dict):
+            continue
+        company = company_entry.get("company")
+        if not isinstance(company, dict):
+            continue
+
+        company_id = company.get("id")
+        company_name = str(company.get("name") or "").strip()
+        if company_id is None or not company_name:
+            continue
+
+        company_id_str = str(company_id)
+        if company_id_str in seen_company_ids:
+            continue
+        seen_company_ids.add(company_id_str)
+
+        studios.append(
+            {
+                "studio_id": company_id_str,
+                "name": company_name,
+                "logo": get_company_logo_url(company.get("logo")),
+                "sort_order": index,
+            },
+        )
+
+    studios.sort(
+        key=lambda row: (
+            row.get("sort_order") is None,
+            row.get("sort_order", 0),
+            row.get("name", "").lower(),
+        ),
+    )
+    return studios
+
+
 def get_companies(response):
     """Return the companies involved in the game."""
     # when no companies, involved_companies is not present in the response
     # e.g game: 238417
-    try:
-        return ", ".join(
-            company["company"]["name"] for company in response["involved_companies"]
-        )
-    except KeyError:
-        return None
+    studios = get_companies_full(response)
+    if studios:
+        return ", ".join(company["name"] for company in studios)
+    return None
 
 
 def get_score(response):
-    """Return the score of the game."""
-    # when no score, total_rating is not present in the response
+    """Return the critic score of the game (IGDB aggregated_rating)."""
+    # when no score, aggregated_rating is not present in the response
     try:
-        score = response["total_rating"]  # returns e.g 92.70730625238252
+        score = response["aggregated_rating"]  # returns e.g 92.70730625238252
         return round(score / 10, 1)
     except KeyError:
         return None
+
+
+def get_user_rating(response):
+    """Return the user rating of the game (IGDB rating)."""
+    # when no rating, rating is not present in the response
+    try:
+        score = response["rating"]  # returns e.g 92.70730625238252
+        return round(score / 10, 1)
+    except KeyError:
+        return None
+
+
+def get_hltb_url(response):
+    """Return a normalized HowLongToBeat URL when IGDB metadata includes one."""
+    for section in ("external_games", "websites"):
+        for entry in response.get(section) or []:
+            normalized_url = _normalize_url(entry.get("url"))
+            if normalized_url and _is_hltb_url(normalized_url):
+                return normalized_url
+    return None
+
+
+def _normalize_url(url):
+    """Return a normalized URL with scheme or None if invalid."""
+    if not isinstance(url, str):
+        return None
+
+    normalized_url = url.strip()
+    if not normalized_url:
+        return None
+
+    if normalized_url.startswith("//"):
+        normalized_url = f"https:{normalized_url}"
+    elif not normalized_url.startswith(("http://", "https://")):
+        normalized_url = f"https://{normalized_url.lstrip('/')}"
+
+    if not urlparse(normalized_url).netloc:
+        return None
+
+    return normalized_url
+
+
+def _is_hltb_url(url):
+    """Return whether the URL points to HowLongToBeat."""
+    hostname = (urlparse(url).hostname or "").lower()
+    return hostname == "howlongtobeat.com" or hostname.endswith(".howlongtobeat.com")
+
+
+def get_hltb_search_url(title):
+    """Return a HowLongToBeat search URL for a game title."""
+    if not isinstance(title, str):
+        return None
+
+    query = title.strip()
+    if not query:
+        return None
+
+    return f"https://howlongtobeat.com/?q={quote_plus(query)}"
+
+
+def get_external_ids(response, hltb_url=None):
+    """Return normalized external ids exposed by IGDB metadata."""
+    external_ids = {}
+    for entry in response.get("external_games") or []:
+        uid = entry.get("uid")
+        if uid in (None, ""):
+            continue
+        source = entry.get("external_game_source")
+        if source == ExternalGameSource.STEAM:
+            external_ids["steam_app_id"] = str(uid)
+        elif source == ExternalGameSource.ITCH_IO:
+            external_ids["itch_id"] = str(uid)
+
+    direct_hltb_url = hltb_url or get_hltb_url(response)
+    if direct_hltb_url:
+        game_id = _extract_hltb_game_id(direct_hltb_url)
+        if game_id:
+            external_ids["hltb_game_id"] = game_id
+    return external_ids
+
+
+def _extract_hltb_game_id(url):
+    """Return the numeric HLTB game id from a URL."""
+    if not isinstance(url, str):
+        return None
+    match = re.search(r"/game/(\d+)", url)
+    if not match:
+        return None
+    return match.group(1)
 
 
 def get_parent(parent_game):

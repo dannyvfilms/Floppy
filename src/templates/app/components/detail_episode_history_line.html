@@ -1,0 +1,32 @@
+{% load user_tags %}
+{% load app_tags %}
+
+<p id="episode-history-{{ episode.item.id }}"
+   {% if history_oob %}hx-swap-oob="true"{% endif %}
+   class="text-xs text-[var(--color-text-muted)] mt-2 px-4"
+   {% if not episode.history and not episode.collection_entry %}style="display: none;"{% endif %}>
+  {% if episode.history %}
+    {% with first=episode.history.0 watched=episode.history|watched_count %}
+      {% if first.dropped and watched == 0 %}
+        Dropped
+      {% else %}
+        {% if first.start_date %}Started: {{ first.start_date|datetime_format:user }} •{% endif %}
+        Ended:
+        {% if first.end_date %}
+          {{ first.end_date|datetime_format:user }}
+        {% else %}
+          No date provided
+        {% endif %}
+        {% if watched > 1 %}• Watched {{ watched }} times{% endif %}
+        {% if first.notes %}
+          • <span class="inline-flex items-center gap-1 align-middle" title="You wrote a note">
+            {% include "app/icons/page.svg" with classes="w-3 h-3 inline" %}Note
+          </span>
+        {% endif %}
+      {% endif %}
+      {% if episode.collection_entry %}• Collected{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}{% endif %}
+    {% endwith %}
+  {% elif episode.collection_entry %}
+    Collected{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}
+  {% endif %}
+</p>

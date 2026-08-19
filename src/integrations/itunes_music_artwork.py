@@ -12,16 +12,16 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 ITUNES_API_BASE = "https://itunes.apple.com/search"
-USER_AGENT = "Yamtrack/1.0 (https://github.com/FuzzyGrim/Yamtrack)"
+USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 
 
 def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:
     """Fetch album artwork from iTunes API.
-    
+
     Args:
         album_title: Album title
         artist_name: Artist name
-        
+
     Returns:
         Image URL string or None if not found
     """
@@ -29,7 +29,7 @@ def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:
     cache_key = f"itunes_album_artwork_{artist_name}_{album_title}".lower()
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached if cached else None
+        return cached or None
 
     try:
         # Build search query: "artist_name album_title"
@@ -82,9 +82,15 @@ def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:
             if album_matches and artist_matches:
                 artwork_url = result.get("artworkUrl600") or result.get("artworkUrl100")
                 if artwork_url:
-                    logger.debug("Found iTunes artwork for album %s by %s", album_title, artist_name)
+                    logger.debug(
+                        "Found iTunes artwork for album %s by %s",
+                        album_title,
+                        artist_name,
+                    )
                     # Cache the result
-                    cache.set(cache_key, artwork_url, 60 * 60 * 24 * 7)  # Cache for 7 days
+                    cache.set(
+                        cache_key, artwork_url, 60 * 60 * 24 * 7
+                    )  # Cache for 7 days
                     return artwork_url
 
         # If no exact match, try first result if artist matches
@@ -93,20 +99,35 @@ def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:
             if artist_name_lower in result_artist or result_artist in artist_name_lower:
                 artwork_url = result.get("artworkUrl600") or result.get("artworkUrl100")
                 if artwork_url:
-                    logger.debug("Using iTunes artwork for album %s by %s (best match)", album_title, artist_name)
+                    logger.debug(
+                        "Using iTunes artwork for album %s by %s (best match)",
+                        album_title,
+                        artist_name,
+                    )
                     cache.set(cache_key, artwork_url, 60 * 60 * 24 * 7)
                     return artwork_url
 
         # Last resort: use first result if available
         if results:
-            artwork_url = results[0].get("artworkUrl600") or results[0].get("artworkUrl100")
+            artwork_url = results[0].get("artworkUrl600") or results[0].get(
+                "artworkUrl100"
+            )
             if artwork_url:
-                logger.debug("Using first iTunes result for album %s by %s", album_title, artist_name)
+                logger.debug(
+                    "Using first iTunes result for album %s by %s",
+                    album_title,
+                    artist_name,
+                )
                 cache.set(cache_key, artwork_url, 60 * 60 * 24 * 7)
                 return artwork_url
 
     except Exception as e:
-        logger.debug("Failed to fetch album artwork from iTunes for %s by %s: %s", album_title, artist_name, e)
+        logger.debug(
+            "Failed to fetch album artwork from iTunes for %s by %s: %s",
+            album_title,
+            artist_name,
+            e,
+        )
 
     # Cache None to avoid repeated lookups
     cache.set(cache_key, None, 60 * 60 * 24 * 7)
@@ -115,15 +136,15 @@ def fetch_album_artwork(album_title: str, artist_name: str) -> str | None:
 
 def fetch_artist_artwork(artist_name: str) -> str | None:
     """Fetch artist artwork from iTunes API.
-    
+
     Note: iTunes doesn't typically have direct artist photos, so this
     function searches for albums by the artist and returns artwork from
     a representative album (preferring early releases which are often
     more iconic).
-    
+
     Args:
         artist_name: Artist name
-        
+
     Returns:
         Image URL string or None if not found
     """
@@ -131,7 +152,7 @@ def fetch_artist_artwork(artist_name: str) -> str | None:
     cache_key = f"itunes_artist_artwork_{artist_name}".lower()
     cached = cache.get(cache_key)
     if cached is not None:
-        return cached if cached else None
+        return cached or None
 
     try:
         # Build search query: just artist name
@@ -185,16 +206,19 @@ def fetch_artist_artwork(artist_name: str) -> str | None:
             return None
 
         # Sort by release date (earliest first) and use first one
-        artist_albums.sort(key=lambda x: x[0] if x[0] else "9999-12-31")
+        artist_albums.sort(key=lambda x: x[0] or "9999-12-31")
         artwork_url = artist_albums[0][1]
 
         logger.debug("Found iTunes artwork for artist %s", artist_name)
         # Cache the result
         cache.set(cache_key, artwork_url, 60 * 60 * 24 * 7)  # Cache for 7 days
-        return artwork_url
 
     except Exception as e:
-        logger.debug("Failed to fetch artist artwork from iTunes for %s: %s", artist_name, e)
+        logger.debug(
+            "Failed to fetch artist artwork from iTunes for %s: %s", artist_name, e
+        )
+    else:
+        return artwork_url
 
     # Cache None to avoid repeated lookups
     cache.set(cache_key, None, 60 * 60 * 24 * 7)

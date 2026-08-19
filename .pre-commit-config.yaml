@@ -1,0 +1,55 @@
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit
+        entry: scripts/audit_dependencies.sh
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock|mcp_server/pyproject\.toml)$
+      - id: uv-lock-check
+        name: uv-lock-check
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock|mcp_server/pyproject\.toml)$
+      - id: check-migrations
+        name: check-migrations
+        entry: uv run --no-sync python src/manage.py makemigrations --check
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: django-upgrade
+        name: django-upgrade
+        entry: uv run --no-sync django-upgrade
+        language: system
+        types: [python]
+      - id: ruff
+        name: ruff
+        entry: uv run --no-sync ruff check --fix
+        language: system
+        types: [python]
+        require_serial: true
+      - id: ruff-format
+        name: ruff-format
+        entry: uv run --no-sync ruff format
+        language: system
+        types: [python]
+        require_serial: true
+      - id: djlint-lint
+        name: djlint-lint
+        entry: uv run --no-sync djlint --lint
+        language: system
+        types: [html]
+        require_serial: true
+      - id: djlint-reformat
+        name: djlint-reformat
+        entry: uv run --no-sync djlint --reformat
+        language: system
+        types: [html]
+        require_serial: true

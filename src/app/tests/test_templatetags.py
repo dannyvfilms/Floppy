@@ -1,11 +1,18 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from uuid import UUID
 
+from django.contrib.auth import get_user_model
+from django.template.loader import render_to_string
 from django.test import TestCase
+from django.test.client import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
-from app.models import Item, MediaTypes, Sources
+from app import config
+from app.models import Album, Artist, Item, MediaTypes, Sources, Studio
 from app.templatetags import app_tags
+from users.models import DateFormatChoices, TimeFormatChoices
 
 
 class AppTagsTests(TestCase):
@@ -13,6 +20,12 @@ class AppTagsTests(TestCase):
 
     def setUp(self):
         """Set up test data."""
+        self.user = get_user_model().objects.create_user(
+            username="templater",
+            password="12345",
+        )
+        self.request_factory = RequestFactory()
+
         # Create a sample item for testing
         self.tv_item = Item(
             media_id="1668",
@@ -92,6 +105,14 @@ class AppTagsTests(TestCase):
             "no underscores here",
         )
 
+    def test_watch_operation_id_returns_fresh_uuid(self):
+        """Each rendered first-party watch control receives a fresh UUID."""
+        first = app_tags.watch_operation_id()
+        second = app_tags.watch_operation_id()
+
+        self.assertEqual(str(UUID(first)), first)
+        self.assertNotEqual(first, second)
+
     def test_slug(self):
         """Test the slug filter."""
         # Test normal slugification
@@ -102,6 +123,15 @@ class AppTagsTests(TestCase):
         self.assertEqual(app_tags.slug("★★★"), "%E2%98%85%E2%98%85%E2%98%85")
         self.assertEqual(app_tags.slug("[Oshi no Ko]"), "oshi-no-ko")
         self.assertEqual(app_tags.slug("_____"), "_____")
+
+    def test_title_preserve_acronyms(self):
+        """Test acronym-preserving title casing."""
+        self.assertEqual(app_tags.title_preserve_acronyms("rom"), "Rom")
+        self.assertEqual(app_tags.title_preserve_acronyms("ROM"), "ROM")
+        self.assertEqual(
+            app_tags.title_preserve_acronyms("digital deluxe"),
+            "Digital Deluxe",
+        )
 
     def test_media_type_readable(self):
         """Test the media_type_readable filter."""
@@ -116,12 +146,20 @@ class AppTagsTests(TestCase):
             singular = label
 
             # Special cases that don't change in plural form
-            if singular.lower() in [MediaTypes.ANIME.value, MediaTypes.MANGA.value]:
+            if singular.lower() in [
+                MediaTypes.ANIME.value,
+                MediaTypes.MANGA.value,
+                MediaTypes.MUSIC.value,
+            ]:
                 expected = singular
             else:
                 expected = f"{singular}s"
 
             self.assertEqual(app_tags.media_type_readable_plural(media_type), expected)
+
+    def test_media_status_readable_preserves_unknown_provider_status(self):
+        """Provider metadata statuses must not break tracking-status rendering."""
+        self.assertEqual(app_tags.media_status_readable("Released"), "Released")
 
     def test_default_source(self):
         """Test the default_source filter."""
@@ -148,19 +186,26 @@ class AppTagsTests(TestCase):
             # Check that it returns a non-empty string
             self.assertTrue(isinstance(result, str))
 
-    def test_sample_search(self):
-        """Test the sample_search filter."""
+    def test_browse_url(self):
+        """Test the browse_url filter."""
+        expected_media_type = {
+            MediaTypes.SEASON.value: MediaTypes.TV.value,
+            MediaTypes.EPISODE.value: MediaTypes.TV.value,
+            MediaTypes.COMIC_ISSUE.value: MediaTypes.COMIC.value,
+        }
+
         # Test all media types
         for media_type in MediaTypes.values:
-            if media_type in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value):
-                # Skip season and episode for sample_search
-                continue
+            result = app_tags.browse_url(media_type)
 
-            result = app_tags.sample_search(media_type)
+            self.assertIn("/discover", result)
+            self.assertNotIn("q=", result)
 
-            self.assertIn("/search", result)
-            self.assertIn(f"media_type={media_type}", result)
-            self.assertIn("q=", result)
+            mapped_media_type = expected_media_type.get(media_type, media_type)
+            if mapped_media_type in config.DISCOVER_ALLOWED_MEDIA_TYPES:
+                self.assertIn(f"media_type={mapped_media_type}", result)
+            else:
+                self.assertIn("media_type=all", result)
 
     def test_media_color(self):
         """Test the media_color filter."""
@@ -175,8 +220,8 @@ class AppTagsTests(TestCase):
         """Test the natural_day filter."""
         # Create mock user with date_format preference
         mock_user = MagicMock()
-        mock_user.date_format = "Y-m-d"
-        mock_user.time_format = "H:i"
+        mock_user.date_format = DateFormatChoices.ISO_8601
+        mock_user.time_format = TimeFormatChoices.HH_MM
 
         # Mock current date to March 29, 2025
         with patch("django.utils.timezone.now") as mock_now:
@@ -229,6 +274,452 @@ class AppTagsTests(TestCase):
                 app_tags.natural_day(further, mock_user),
                 "2025-04-10 15:00",
             )
+
+    def test_iso_date_format_respects_user_preference(self):
+        """iso_date_format should handle user choice keys without raising."""
+        iso_user = SimpleNamespace(date_format=DateFormatChoices.ISO_8601)
+        month_user = SimpleNamespace(date_format=DateFormatChoices.MONTH_D_YYYY)
+
+        self.assertEqual(
+            app_tags.iso_date_format("2026-03-04", iso_user),
+            "2026-03-04",
+        )
+        self.assertEqual(
+            app_tags.iso_date_format("2026-03-04", month_user),
+            "Mar 04, 2026",
+        )
+        self.assertEqual(
+            app_tags.iso_date_format(timezone.datetime(2026, 3, 4).date(), iso_user),
+            "2026-03-04",
+        )
+        self.assertEqual(
+            app_tags.iso_date_format("not-a-date", iso_user),
+            "not-a-date",
+        )
+
+    @patch("app.templatetags.app_tags.date")
+    def test_format_date_range_display_prefers_this_month_over_last_7_days(
+        self, mock_date
+    ):
+        """Month-to-date ranges should keep the month label even when they span 7 days."""
+        today = timezone.datetime(2026, 5, 7).date()
+        mock_date.today.return_value = today
+
+        self.assertEqual(
+            app_tags.format_date_range_display(today.replace(day=1), today),
+            "This Month",
+        )
+
+    def test_music_artist_url_returns_canonical_details_path(self):
+        """Music artists should resolve to the canonical shared details route."""
+        artist = Artist.objects.create(name="The Amazing Artist")
+
+        self.assertEqual(
+            app_tags.music_artist_url(artist),
+            reverse(
+                "music_artist_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "the-amazing-artist",
+                },
+            ),
+        )
+
+    def test_music_artist_join_phrase_normalizes_display_spacing(self):
+        """Album artist separators should have consistent display spacing."""
+        self.assertEqual(app_tags.music_artist_join_phrase("\u2014 "), " \u2014 ")
+        self.assertEqual(app_tags.music_artist_join_phrase(" & "), " & ")
+        self.assertEqual(app_tags.music_artist_join_phrase(","), ", ")
+        self.assertEqual(app_tags.music_artist_join_phrase(""), "")
+
+    def test_music_album_url_returns_nested_canonical_details_path(self):
+        """Music albums should resolve to the nested artist/album shared route."""
+        artist = Artist.objects.create(name="The Amazing Artist")
+        album = Album.objects.create(title="First Record", artist=artist)
+
+        self.assertEqual(
+            app_tags.music_album_url(album),
+            reverse(
+                "music_album_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "the-amazing-artist",
+                    "album_id": album.id,
+                    "album_slug": "first-record",
+                },
+            ),
+        )
+
+    def test_music_album_url_accepts_statistics_track_rollup_dict(self):
+        """Track rollup dicts with album metadata should still resolve canonically."""
+        self.assertEqual(
+            app_tags.music_album_url(
+                {
+                    "album_id": 17,
+                    "album": "Live at Home",
+                    "album_artist_id": 9,
+                    "album_artist_name": "Short Name",
+                },
+            ),
+            reverse(
+                "music_album_details",
+                kwargs={
+                    "artist_id": 9,
+                    "artist_slug": "short-name",
+                    "album_id": 17,
+                    "album_slug": "live-at-home",
+                },
+            ),
+        )
+
+    def test_studio_url_returns_canonical_details_path(self):
+        """Studio objects should resolve to the canonical shared details route."""
+        studio = Studio.objects.create(
+            source=Sources.IGDB.value,
+            source_studio_id="123",
+            name="CD Projekt Red",
+        )
+
+        self.assertEqual(
+            app_tags.studio_url(studio),
+            reverse(
+                "studio_detail",
+                kwargs={
+                    "source": Sources.IGDB.value,
+                    "studio_id": studio.source_studio_id,
+                    "name": "cd-projekt-red",
+                },
+            ),
+        )
+
+    def test_studio_url_accepts_metadata_dict(self):
+        """Studio metadata dicts should still resolve canonically."""
+        self.assertEqual(
+            app_tags.studio_url(
+                {
+                    "source": Sources.TMDB.value,
+                    "studio_id": 44,
+                    "name": "Pixar Animation Studios",
+                },
+            ),
+            reverse(
+                "studio_detail",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "studio_id": 44,
+                    "name": "pixar-animation-studios",
+                },
+            ),
+        )
+
+    def test_media_card_uses_canonical_music_album_url(self):
+        """Music media cards should link through the nested shared album route."""
+        artist = Artist.objects.create(name="Card Artist")
+        album = Album.objects.create(title="Card Album", artist=artist)
+        item = Item.objects.create(
+            media_id="track-card-1",
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Card Song",
+            image="http://example.com/card-album.jpg",
+        )
+        request = self.request_factory.get("/library")
+        request.user = self.user
+
+        content = render_to_string(
+            "app/components/media_card.html",
+            {
+                "item": item,
+                "media": SimpleNamespace(
+                    album=album,
+                    status=None,
+                    progress=None,
+                    next_event=None,
+                    episodes_left=0,
+                ),
+                "user": self.user,
+                "title": item.title,
+                "show_status_chip": False,
+                "show_progress_chip": False,
+            },
+            request=request,
+        )
+
+        self.assertIn(
+            reverse(
+                "music_album_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "card-artist",
+                    "album_id": album.id,
+                    "album_slug": "card-album",
+                },
+            ),
+            content,
+        )
+
+    def test_genres_cell_falls_back_to_plain_text_for_blank_media_type(self):
+        """Genres cell shouldn't crash reversing 'medialist' for a blank media_type."""
+        item = Item(
+            media_id="blank-type-1",
+            source=Sources.TMDB.value,
+            media_type="",
+            title="Legacy Item",
+            genres=["Drama"],
+        )
+
+        content = render_to_string(
+            "app/components/cells/media_genres_cell.html",
+            {"media": SimpleNamespace(item=item)},
+        )
+
+        self.assertIn("Drama", content)
+        self.assertNotIn("<a href", content)
+
+    def test_progress_changer_uses_episode_label_for_tv_and_season(self):
+        """Quick progress controls should use episode labels for TV-derived progress."""
+        tv_content = render_to_string(
+            "app/components/progress_changer.html",
+            {
+                "media": SimpleNamespace(
+                    id=1,
+                    item=self.tv_item,
+                    progress=1,
+                    max_progress=10,
+                    formatted_progress="1",
+                ),
+                "csrf_token": "token",
+                "MediaTypes": MediaTypes,
+            },
+        )
+        season_content = render_to_string(
+            "app/components/progress_changer.html",
+            {
+                "media": SimpleNamespace(
+                    id=2,
+                    item=self.season_item,
+                    progress=1,
+                    max_progress=10,
+                    formatted_progress="1",
+                ),
+                "csrf_token": "token",
+                "MediaTypes": MediaTypes,
+            },
+        )
+
+        self.assertIn("Episode", tv_content)
+        self.assertNotIn('progress-unit"> s', tv_content)
+        self.assertIn("Episodes", season_content)
+
+    def test_media_card_teleports_alt_title_tooltip(self):
+        """Grid media cards should teleport alternate-title tooltips outside the clipped shell."""
+        item = Item(
+            media_id="tooltip-card-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Attack on Titan",
+            localized_title="Attack on Titan",
+            original_title="Shingeki no Kyojin",
+            image="http://example.com/tooltip-card.jpg",
+        )
+        request = self.request_factory.get("/search")
+        request.user = self.user
+
+        content = render_to_string(
+            "app/components/media_card.html",
+            {
+                "item": item,
+                "media": SimpleNamespace(
+                    album=None,
+                    status=None,
+                    progress=None,
+                    next_event=None,
+                    episodes_left=0,
+                ),
+                "user": self.user,
+                "title": item.title,
+                "from_grid": True,
+                "show_status_chip": False,
+                "show_progress_chip": False,
+            },
+            request=request,
+        )
+
+        self.assertIn("media-card-visual", content)
+        self.assertIn('aria-label="Show alternative title"', content)
+        self.assertIn('x-teleport="body"', content)
+        self.assertIn('x-ref="panel"', content)
+
+    def test_history_card_uses_canonical_music_album_url(self):
+        """Music history cards should link to the shared nested album route."""
+        artist = Artist.objects.create(name="History Artist")
+        album = Album.objects.create(title="History Album", artist=artist)
+        item = Item.objects.create(
+            media_id="track-history-1",
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="History Song",
+            image="http://example.com/history-album.jpg",
+        )
+        request = self.request_factory.get("/history")
+        request.user = self.user
+
+        content = render_to_string(
+            "app/components/history_card.html",
+            {
+                "entry": SimpleNamespace(
+                    media_type=MediaTypes.MUSIC.value,
+                    album=album,
+                    item=item,
+                    poster=item.image,
+                    status=None,
+                    runtime_display=None,
+                    display_title=item.title,
+                    title=item.title,
+                    played_at_local=timezone.now(),
+                    time_range_display="6:00 PM",
+                    play_count=1,
+                    progress_display=None,
+                    episode_label=None,
+                    episode_code=None,
+                    show=None,
+                    score=None,
+                    entry_key="music-entry-1",
+                    instance_id=1,
+                ),
+                "card_class": "search-result-card-square",
+                "history_mode": "history",
+                "user": self.user,
+            },
+            request=request,
+        )
+
+        self.assertIn(
+            reverse(
+                "music_album_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "history-artist",
+                    "album_id": album.id,
+                    "album_slug": "history-album",
+                },
+            ),
+            content,
+        )
+
+    def test_history_card_episode_edit_uses_track_modal(self):
+        """Episode history cards should open the track modal so ratings can be edited."""
+        item = Item.objects.create(
+            media_id="episode-history-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="History Episode",
+            image="http://example.com/history-episode.jpg",
+            season_number=1,
+            episode_number=2,
+        )
+        request = self.request_factory.get("/history")
+        request.user = self.user
+
+        content = render_to_string(
+            "app/components/history_card.html",
+            {
+                "entry": SimpleNamespace(
+                    media_type=MediaTypes.EPISODE.value,
+                    album=None,
+                    item=item,
+                    poster=item.image,
+                    status=None,
+                    runtime_display=None,
+                    display_title=item.title,
+                    title=item.title,
+                    played_at_local=timezone.now(),
+                    time_range_display="6:00 PM",
+                    play_count=1,
+                    progress_display=None,
+                    episode_label="S1E2",
+                    episode_code="S1E2",
+                    show=None,
+                    score=8,
+                    entry_key="episode-entry-1",
+                    instance_id=7,
+                ),
+                "card_class": "search-result-card",
+                "history_mode": "activity",
+                "user": self.user,
+            },
+            request=request,
+        )
+
+        expected_track_url = reverse(
+            "track_modal",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.EPISODE.value,
+                "media_id": "episode-history-1",
+                "season_number": 1,
+            },
+        )
+        self.assertIn(f'hx-get="{expected_track_url}"', content)
+        self.assertIn('"instance_id": "7"', content)
+        self.assertIn('"standard_modal": "1"', content)
+        self.assertNotIn('hx-get="/history_modal/', content)
+
+    def test_history_card_teleports_alt_title_tooltip(self):
+        """History cards should teleport alternate-title tooltips outside the clipped shell."""
+        item = Item.objects.create(
+            media_id="tooltip-history-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Attack on Titan",
+            localized_title="Attack on Titan",
+            original_title="Shingeki no Kyojin",
+            image="http://example.com/tooltip-history.jpg",
+        )
+        request = self.request_factory.get("/history")
+        request.user = self.user
+
+        content = render_to_string(
+            "app/components/history_card.html",
+            {
+                "entry": SimpleNamespace(
+                    media_type=MediaTypes.ANIME.value,
+                    album=None,
+                    item=item,
+                    poster=item.image,
+                    status=None,
+                    runtime_display=None,
+                    display_title=item.title,
+                    title=item.title,
+                    played_at_local=timezone.now(),
+                    time_range_display="6:00 PM",
+                    play_count=1,
+                    progress_display=None,
+                    episode_label=None,
+                    episode_code=None,
+                    show=None,
+                    score=None,
+                    entry_key="history-entry-1",
+                    instance_id=1,
+                ),
+                "card_class": "search-result-card",
+                "history_mode": "history",
+                "user": self.user,
+            },
+            request=request,
+        )
+
+        self.assertIn("media-card-visual", content)
+        self.assertIn('aria-label="Show alternative title"', content)
+        self.assertIn('x-teleport="body"', content)
+        self.assertIn('x-ref="panel"', content)
+
+    def test_match_percent_clamps_and_rounds(self):
+        """match_percent should clamp values to [0,100] and round."""
+        self.assertEqual(app_tags.match_percent(0.9123), 91)
+        self.assertEqual(app_tags.match_percent(1.6), 100)
+        self.assertEqual(app_tags.match_percent(-0.4), 0)
+        self.assertEqual(app_tags.match_percent(None), None)
 
     def test_media_url(self):
         """Test the media_url filter."""
@@ -292,6 +783,24 @@ class AppTagsTests(TestCase):
         episode_dict_id = app_tags.component_id("card", self.episode_dict)
         self.assertEqual(episode_dict_id, "card-episode-1668-1-1")
 
+        # Objects without season/episode attributes should still resolve safely
+        candidate_like = SimpleNamespace(
+            media_type=MediaTypes.TV.value,
+            media_id="1668",
+        )
+        self.assertEqual(app_tags.component_id("card", candidate_like), "card-tv-1668")
+
+        # Podcast media_ids contain ":" (e.g. "itunes:12345"), which is invalid
+        # inside a CSS id selector used by hx-target="#...". It must be
+        # sanitized so htmx doesn't throw a querySelectorAll SyntaxError (#502).
+        podcast_like = SimpleNamespace(
+            media_type=MediaTypes.PODCAST.value,
+            media_id="itunes:1247343210",
+        )
+        podcast_id = app_tags.component_id("track", podcast_like, 4)
+        self.assertNotIn(":", podcast_id)
+        self.assertEqual(podcast_id, "track-podcast-itunes-1247343210-4")
+
     def test_media_view_url(self):
         """Test the media_view_url tag."""
         # Test with object for TV
@@ -325,8 +834,80 @@ class AppTagsTests(TestCase):
         self.assertEqual(episode_modal, expected_episode_modal)
 
         # Test with dict for Episode
-        episode_dict_modal = app_tags.media_view_url("history_modal", self.episode_dict)
+        episode_dict_modal = app_tags.media_view_url(
+            "history_modal",
+            self.episode_dict,
+        )
         self.assertEqual(episode_dict_modal, expected_episode_modal)
+
+        expected_episode_track_modal = reverse(
+            "track_modal",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.EPISODE.value,
+                "media_id": "1668",
+                "season_number": 1,
+            },
+        )
+        self.assertEqual(
+            app_tags.media_view_url("track_modal", self.episode_item),
+            expected_episode_track_modal,
+        )
+        self.assertEqual(
+            app_tags.media_view_url("track_modal", self.episode_dict),
+            expected_episode_track_modal,
+        )
+
+        # Test with podcast ID containing path separators
+        podcast_episode_dict = {
+            "source": Sources.POCKETCASTS.value,
+            "media_type": MediaTypes.PODCAST.value,
+            "media_id": "gid://art19-episode-locator/V0/MCjgWTshRbS9H7f24imvk8a2E6Zsyb6NQJHy6B0h6hQ",
+        }
+        podcast_lists_modal = app_tags.media_view_url(
+            "lists_modal",
+            podcast_episode_dict,
+        )
+        expected_podcast_lists_modal = reverse(
+            "lists_modal",
+            kwargs={
+                "source": Sources.POCKETCASTS.value,
+                "media_type": MediaTypes.PODCAST.value,
+                "media_id": podcast_episode_dict["media_id"],
+            },
+        )
+        self.assertEqual(podcast_lists_modal, expected_podcast_lists_modal)
+
+        # Objects without season/episode attributes should still resolve safely
+        candidate_like = SimpleNamespace(
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            media_id="1668",
+        )
+        self.assertEqual(
+            app_tags.media_view_url("track_modal", candidate_like),
+            expected_tv_modal,
+        )
+
+        # TMDB includes season_number=0 on top-level anime metadata. It is not
+        # a season route and must not become /lists_modal/.../<id>/0.
+        anime_dict = {
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.ANIME.value,
+            "media_id": "83611",
+            "season_number": 0,
+        }
+        self.assertEqual(
+            app_tags.media_view_url("lists_modal", anime_dict),
+            reverse(
+                "lists_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.ANIME.value,
+                    "media_id": "83611",
+                },
+            ),
+        )
 
     def test_unicode_icon(self):
         """Test the unicode_icon tag for all media types."""
@@ -356,3 +937,580 @@ class AppTagsTests(TestCase):
                 self.assertTrue(len(inactive_result) > 0)
             except KeyError:
                 self.fail(f"icon raised KeyError for {media_type}")
+
+    def test_show_media_score(self):
+        """Test if we should show media rating or not."""
+        # Create mock users
+        mock_user_show = MagicMock()
+        mock_user_show.hide_zero_rating = False
+
+        mock_user_hide = MagicMock()
+        mock_user_hide.hide_zero_rating = True
+
+        # With hide_zero_rating=False, show all non-None scores
+        self.assertTrue(app_tags.show_media_score(1, mock_user_show))
+        self.assertTrue(app_tags.show_media_score(0, mock_user_show))
+        self.assertFalse(app_tags.show_media_score(None, mock_user_show))
+
+        # With hide_zero_rating=True, hide zero scores
+        self.assertTrue(app_tags.show_media_score(1, mock_user_hide))
+        self.assertFalse(app_tags.show_media_score(0, mock_user_hide))
+        self.assertFalse(app_tags.show_media_score(None, mock_user_hide))
+
+
+class NextEpisodeUrlTests(TestCase):
+    """Test the next_episode_url template tag."""
+
+    def setUp(self):
+        """Set up a user for tracked media."""
+        self.user = get_user_model().objects.create_user(
+            username="nextep",
+            password="12345",
+        )
+
+    def _create_tv_with_completed_season(self, media_id="1668", progress=8):
+        """Return a TV show whose only tracked season is completed."""
+        from app.models import TV, Season, Status
+
+        tv_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Untracked Next Season TV",
+            image="http://example.com/tv.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Untracked Next Season TV",
+            image="http://example.com/tv-s1.jpg",
+            season_number=1,
+        )
+        # Create as PLANNING then flip via update() so the fixture does not
+        # trigger the completed-on-create fan-out (which fetches metadata).
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        Season.objects.filter(pk=season.pk).update(
+            status=Status.COMPLETED.value,
+        )
+        return tv_item, tv
+
+    def test_tv_show_falls_back_to_untracked_season_events(self):
+        """Link the first event episode of the next untracked season."""
+        from events.models import Event
+
+        tv_item, tv = self._create_tv_with_completed_season()
+        untracked_season_item = Item.objects.create(
+            media_id="1668",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Untracked Next Season TV",
+            image="http://example.com/tv-s2.jpg",
+            season_number=2,
+        )
+        Event.objects.create(
+            item=untracked_season_item,
+            content_number=1,
+            datetime=timezone.now(),
+            notification_sent=False,
+        )
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "untracked-next-season-tv",
+                    "season_number": 2,
+                    "episode_number": 1,
+                },
+            ),
+        )
+
+    def test_tv_show_without_untracked_events_returns_empty(self):
+        """No fallback URL when the untracked season has no events."""
+        tv_item, tv = self._create_tv_with_completed_season()
+
+        self.assertEqual(app_tags.next_episode_url(tv_item, tv), "")
+
+    def test_flat_mal_anime_links_next_episode_redirect(self):
+        """Flat MAL anime cards link the click-time resolver endpoint."""
+        from app.models import Anime, Status
+
+        anime_item = Item.objects.create(
+            media_id="51553",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Witch Hat Atelier",
+            image="http://example.com/anime.jpg",
+        )
+        anime = Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=3,
+        )
+
+        url = app_tags.next_episode_url(anime_item, anime)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "anime_next_episode",
+                kwargs={"media_id": "51553", "title": "witch-hat-atelier"},
+            ),
+        )
+
+    def _create_tv_with_season_stuck_planning(
+        self,
+        media_id="90210",
+        season_number=1,
+        watched_episodes=5,
+    ):
+        """Return a TV show whose tracked season has real progress but a
+        stale PLANNING status (as left behind by a failed metadata fetch
+        during Episode.save, e.g. a bulk import — see issue #517).
+        """
+        from app.models import TV, Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+
+        tv_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Stuck Planning TV",
+            image="http://example.com/tv.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Stuck Planning TV",
+            image=f"http://example.com/tv-s{season_number}.jpg",
+            season_number=season_number,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        from events.models import Event
+
+        for episode_number in range(1, watched_episodes + 2):
+            Event.objects.create(
+                item=season_item,
+                content_number=episode_number,
+                datetime=timezone.now(),
+            )
+        for episode_number in range(1, watched_episodes + 1):
+            episode_item = Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=season_number,
+                episode_number=episode_number,
+                title=f"Episode {episode_number}",
+                image="",
+            )
+            # Episode.save() tries a provider metadata fetch to sync the
+            # season's status; force it to fail (as it does in production
+            # when the metadata call errors during a bulk import), leaving
+            # the season's raw status untouched at PLANNING despite this
+            # real watch progress.
+            with patch(
+                "app.models.tv.providers.services.get_media_metadata",
+                side_effect=ProviderAPIError("tmdb", Exception("boom")),
+            ):
+                Episode.objects.create(
+                    item=episode_item,
+                    related_season=season,
+                    end_date=timezone.now(),
+                )
+        season.refresh_from_db()
+        self.assertEqual(season.status, Status.PLANNING.value)
+        return tv_item, tv, season_item
+
+    def test_tv_show_uses_derived_status_for_only_season_stuck_planning(self):
+        """A single season with real progress but stale PLANNING status still
+        routes to its own next episode, not the untracked-season fallback.
+        """
+        tv_item, tv, season_item = self._create_tv_with_season_stuck_planning(
+            season_number=1,
+            watched_episodes=5,
+        )
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": season_item.media_id,
+                    "title": "stuck-planning-tv",
+                    "season_number": 1,
+                    "episode_number": 6,
+                },
+            ),
+        )
+
+    def test_tv_show_does_not_skip_to_next_season_when_current_stuck_planning(self):
+        """A completed earlier season shouldn't cause the button to skip past
+        a later, still-in-progress season whose status is stuck at PLANNING.
+        """
+        from app.models import Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+
+        tv_item, tv = self._create_tv_with_completed_season(media_id="90211")
+        season_item = Item.objects.create(
+            media_id="90211",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Untracked Next Season TV",
+            image="http://example.com/tv-s2.jpg",
+            season_number=2,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        from events.models import Event
+
+        for episode_number in range(1, 5):
+            Event.objects.create(
+                item=season_item,
+                content_number=episode_number,
+                datetime=timezone.now(),
+            )
+        for episode_number in (1, 2, 3):
+            episode_item = Item.objects.create(
+                media_id="90211",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=2,
+                episode_number=episode_number,
+                title=f"Episode {episode_number}",
+                image="",
+            )
+            with patch(
+                "app.models.tv.providers.services.get_media_metadata",
+                side_effect=ProviderAPIError("tmdb", Exception("boom")),
+            ):
+                Episode.objects.create(
+                    item=episode_item,
+                    related_season=season,
+                    end_date=timezone.now(),
+                )
+        season.refresh_from_db()
+        self.assertEqual(season.status, Status.PLANNING.value)
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "90211",
+                    "title": "untracked-next-season-tv",
+                    "season_number": 2,
+                    "episode_number": 4,
+                },
+            ),
+        )
+
+    def test_tv_show_uses_next_tracked_season_after_completed_season(self):
+        """A completed season must not produce a nonexistent trailing episode."""
+        from app.models import Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+        from events.models import Event
+
+        tv_item, tv = self._create_tv_with_completed_season(media_id="202851")
+        season_item = Item.objects.create(
+            media_id="202851",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Big Boys",
+            image="http://example.com/tv-s2.jpg",
+            season_number=2,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        for episode_number in (1, 2):
+            Event.objects.create(
+                item=season_item,
+                content_number=episode_number,
+                datetime=timezone.now(),
+            )
+        episode_item = Item.objects.create(
+            media_id="202851",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=2,
+            episode_number=1,
+            title="Big Boys",
+            image="",
+        )
+        with patch(
+            "app.models.tv.providers.services.get_media_metadata",
+            side_effect=ProviderAPIError("tmdb", Exception("boom")),
+        ):
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "202851",
+                    "title": "big-boys",
+                    "season_number": 2,
+                    "episode_number": 2,
+                },
+            ),
+        )
+
+    def test_tv_show_starts_next_planned_season_after_completed_season(self):
+        """Deleting the first play of a tracked next season still shows S1E1."""
+        from app.models import Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+        from events.models import Event
+
+        tv_item, tv = self._create_tv_with_completed_season(media_id="202851")
+        season_item = Item.objects.create(
+            media_id="202851",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Big Boys",
+            image="http://example.com/tv-s2.jpg",
+            season_number=2,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.PLANNING.value,
+        )
+        for episode_number in (1, 2):
+            Event.objects.create(
+                item=season_item,
+                content_number=episode_number,
+                datetime=timezone.now(),
+            )
+        episode_item = Item.objects.create(
+            media_id="202851",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=2,
+            episode_number=1,
+            title="Big Boys",
+            image="",
+        )
+        with patch(
+            "app.models.tv.providers.services.get_media_metadata",
+            side_effect=ProviderAPIError("tmdb", Exception("boom")),
+        ):
+            Episode.objects.create(
+                item=episode_item,
+                related_season=season,
+                end_date=timezone.now(),
+            )
+        Episode.objects.filter(item=episode_item, related_season=season).delete()
+
+        self.assertEqual(
+            app_tags.next_episode_url(tv_item, tv),
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "202851",
+                    "title": "big-boys",
+                    "season_number": 2,
+                    "episode_number": 1,
+                },
+            ),
+        )
+
+    def test_tv_show_does_not_link_past_last_known_episode(self):
+        """A fully watched season without a next event has no Next ep link."""
+        from app.models import TV, Season, Status
+        from events.models import Event
+
+        tv_item, tv, _season_item = self._create_tv_with_season_stuck_planning(
+            media_id="2382",
+            watched_episodes=5,
+        )
+
+        season = Season.objects.get(related_tv=tv)
+        Season.objects.filter(pk=season.pk).update(status=Status.COMPLETED.value)
+        TV.objects.filter(pk=tv.pk).update(status=Status.COMPLETED.value)
+        Event.objects.filter(item=season.item, content_number=6).delete()
+        tv.refresh_from_db()
+        season.refresh_from_db()
+
+        self.assertEqual(app_tags.next_episode_url(tv_item, tv), "")
+
+    def test_tv_show_uses_later_episode_when_only_later_season_is_tracked(self):
+        """The resolver stays on a tracked later season instead of season one."""
+        tv_item, tv, _season_item = self._create_tv_with_season_stuck_planning(
+            media_id="2352",
+            season_number=3,
+            watched_episodes=17,
+        )
+
+        url = app_tags.next_episode_url(tv_item, tv)
+
+        self.assertEqual(
+            url,
+            reverse(
+                "episode_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "2352",
+                    "title": "stuck-planning-tv",
+                    "season_number": 3,
+                    "episode_number": 18,
+                },
+            ),
+        )
+
+    def _create_issue_567_tv(self, media_id, title, seasons):
+        """Create the watched/released episode shape from issue #567."""
+        from app.models import TV, Episode, Season, Status
+        from app.providers.services import ProviderAPIError
+        from events.models import Event
+
+        tv_item = Item.objects.create(
+            media_id=media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title=title,
+            image="",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        for season_number, (watched, available) in seasons.items():
+            season_item = Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title=title,
+                image="",
+                season_number=season_number,
+            )
+            season = Season.objects.create(
+                item=season_item,
+                user=self.user,
+                related_tv=tv,
+                status=Status.PLANNING.value,
+            )
+            for episode_number in range(1, available + 1):
+                Event.objects.create(
+                    item=season_item,
+                    content_number=episode_number,
+                    datetime=timezone.now(),
+                )
+            for episode_number in range(1, watched + 1):
+                episode_item = Item.objects.create(
+                    media_id=media_id,
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.EPISODE.value,
+                    season_number=season_number,
+                    episode_number=episode_number,
+                    title=title,
+                    image="",
+                )
+                with patch(
+                    "app.models.tv.providers.services.get_media_metadata",
+                    side_effect=ProviderAPIError("tmdb", Exception("boom")),
+                ):
+                    Episode.objects.create(
+                        item=episode_item,
+                        related_season=season,
+                        end_date=timezone.now(),
+                    )
+            if watched == available:
+                Season.objects.filter(pk=season.pk).update(
+                    status=Status.COMPLETED.value,
+                )
+
+        return tv_item, tv
+
+    def test_issue_567_examples_resolve_to_expected_next_episode(self):
+        """All six reported examples resolve from the same episode contract."""
+        cases = (
+            ("202851", "Big Boys", {1: (6, 6), 2: (1, 2)}, (2, 2)),
+            ("2352", "The Nanny", {3: (17, 18)}, (3, 18)),
+            ("90282", "The Morning Show", {1: (10, 10), 2: (3, 4)}, (2, 4)),
+            ("69050", "Riverdale", {1: (3, 4)}, (1, 4)),
+            ("2382", "Freaks and Geeks", {1: (5, 5)}, None),
+            (
+                "18202",
+                "Cougar Town",
+                {1: (5, 5), 2: (5, 5), 3: (5, 5), 4: (5, 5), 5: (5, 5), 6: (1, 2)},
+                (6, 2),
+            ),
+        )
+
+        for media_id, title, seasons, expected in cases:
+            with self.subTest(title=title):
+                tv_item, tv = self._create_issue_567_tv(media_id, title, seasons)
+                url = app_tags.next_episode_url(tv_item, tv)
+
+                if expected is None:
+                    self.assertEqual(url, "")
+                    continue
+
+                season_number, episode_number = expected
+                self.assertEqual(
+                    url,
+                    reverse(
+                        "episode_details",
+                        kwargs={
+                            "source": Sources.TMDB.value,
+                            "media_id": media_id,
+                            "title": title.lower().replace(" ", "-"),
+                            "season_number": season_number,
+                            "episode_number": episode_number,
+                        },
+                    ),
+                )

@@ -1,0 +1,20 @@
+<div class="bg-[var(--color-surface)] p-4 rounded-lg mb-4 text-left">
+  <div class="flex items-center justify-between gap-2 mb-2">
+    <h3 class="font-medium text-[var(--color-text-secondary)]">{{ error_report_title|default:"Traceback" }}</h3>
+    <button type="button"
+            class="group flex items-center gap-2 px-3 py-1.5 rounded-md bg-[var(--color-surface-strong)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
+            data-copy-target="#{{ error_report_id|default:'error-report' }}">
+      {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-indigo-400 transition-colors" %}
+      <span>Copy</span>
+    </button>
+  </div>
+  <p class="text-xs text-gray-500 mb-2">
+    {{ error_report_note|default:"Copy this block when opening a ticket so the traceback and request details are preserved." }}
+  </p>
+  <textarea id="{{ error_report_id|default:'error-report' }}"
+            class="w-full h-40 rounded-md bg-[var(--color-page-bg)] border border-[var(--color-surface-strong)] text-xs text-[var(--color-text-secondary)] p-2 font-mono"
+            style="height: 16rem"
+            readonly
+            spellcheck="false"
+            wrap="off">{{ error_report }}</textarea>
+</div>

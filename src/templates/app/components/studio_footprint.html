@@ -1,0 +1,151 @@
+{% comment %}
+  Studio Footprint — self-contained card with its own Time/Plays dropdown
+  (mirrors Taste Signals' pattern) and media-type-filter awareness. Wraps
+  studio_footprint_grid.html in an x-ref so sort/media-type refreshes can
+  swap it in place without a page reload.
+
+  The header (title/subtitle/dropdown) and "Top Studios" sub-header live
+  here (rather than in statistics.html) so this card's structure — and
+  therefore height — matches its row neighbor, Taste Signals.
+
+  Required context: studio_footprint (from stats_cast_crew.get_studio_footprint),
+  studio_sort_by, selected_range_name, start_date_str, end_date_str.
+{% endcomment %}
+<div x-data="{
+       open: false,
+       selectedSort: '{{ studio_sort_by|default:"plays"|escapejs }}',
+       selectedLabel: '',
+       loading: false,
+       currentRangeName: '{{ selected_range_name|default:""|escapejs }}',
+       currentStartDate: '{{ start_date_str|default:""|escapejs }}',
+       currentEndDate: '{{ end_date_str|default:""|escapejs }}',
+       selectedMediaType: 'all',
+       init() {
+         this.selectedLabel = this.selectedSort === 'time' ? 'Time' : 'Plays';
+         this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
+         window.addEventListener('stats-media-type-changed', () => {
+           this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
+           this.refresh();
+         });
+         // The initial server render is always the unfiltered all-types aggregate —
+         // if the page loaded with a media-type already in the URL (reload,
+         // bookmark, browser history), fetch the filtered list immediately
+         // instead of waiting for the user to re-toggle the selector.
+         if (this.selectedMediaType !== 'all') {
+           this.refresh();
+         }
+       },
+       async refresh() {
+         if (this.loading) {
+           return;
+         }
+         const previousSort = this.selectedSort;
+         const previousLabel = this.selectedLabel;
+         this.open = false;
+         this.loading = true;
+         try {
+           const body = new URLSearchParams();
+           body.set('sort_by', this.selectedSort);
+           if (this.currentRangeName) {
+             body.set('range_name', this.currentRangeName);
+           }
+           if (this.currentStartDate) {
+             body.set('start_date', this.currentStartDate);
+           }
+           if (this.currentEndDate) {
+             body.set('end_date', this.currentEndDate);
+           }
+           if (this.selectedMediaType && this.selectedMediaType !== 'all') {
+             body.set('media_type', this.selectedMediaType);
+           }
+           const response = await fetch('{% url 'update_studio_sort' %}', {
+             method: 'POST',
+             headers: {
+               'Content-Type': 'application/x-www-form-urlencoded',
+               'X-CSRFToken': '{{ csrf_token }}',
+               'X-Requested-With': 'XMLHttpRequest'
+             },
+             body: body.toString()
+           });
+           const data = await response.json();
+           if (!response.ok || !data.success) {
+             throw new Error(data.error || 'Failed to save studio sort');
+           }
+           if (data.studio_html && this.$refs.studioFootprintGrid) {
+             this.$refs.studioFootprintGrid.innerHTML = data.studio_html;
+           }
+         } catch (error) {
+           this.selectedSort = previousSort;
+           this.selectedLabel = previousLabel;
+           console.error('Failed to refresh studio footprint:', error);
+         } finally {
+           this.loading = false;
+         }
+       },
+       async setSort(sortBy, label) {
+         if (this.loading || this.selectedSort === sortBy) {
+           this.open = false;
+           return;
+         }
+         this.selectedSort = sortBy;
+         this.selectedLabel = label;
+         await this.refresh();
+       }
+     }">
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div class="flex flex-col space-y-1">
+      <h2 class="text-xl font-semibold text-[var(--color-text)]">Studio Footprint</h2>
+      <p class="text-sm text-[var(--color-text-muted)]">Studios that appear most often.</p>
+    </div>
+
+    <div class="w-full sm:w-auto sm:min-w-32 sm:ml-auto">
+      <div class="relative">
+        <button type="button"
+                @click="open = !open"
+                @click.outside="open = false"
+                class="flex items-center justify-between w-full gap-2 px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+          <span x-text="selectedLabel"></span>
+          <svg xmlns="http://www.w3.org/2000/svg"
+               width="24"
+               height="24"
+               viewBox="0 0 24 24"
+               fill="none"
+               stroke="currentColor"
+               stroke-width="2"
+               stroke-linecap="round"
+               stroke-linejoin="round"
+               class="w-4 h-4 ml-1 text-[var(--color-text-muted)]">
+            <path d="m6 9 6 6 6-6"></path>
+          </svg>
+        </button>
+        <div x-show="open"
+             x-transition:enter="transition ease-out duration-100"
+             x-transition:enter-start="transform opacity-0 scale-95"
+             x-transition:enter-end="transform opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-75"
+             x-transition:leave-start="transform opacity-100 scale-100"
+             x-transition:leave-end="transform opacity-0 scale-95"
+             class="absolute right-0 z-10 mt-2 min-w-full py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden border border-gray-600">
+          <button type="button"
+                  @click="setSort('plays', 'Plays')"
+                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+            Plays
+          </button>
+          <button type="button"
+                  @click="setSort('time', 'Time')"
+                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+            Time
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-2 mb-3">
+    {% include "app/icons/camera.svg" with classes="w-4 h-4 text-indigo-400" %}
+    <span class="text-sm font-semibold text-[var(--color-text)]">Top Studios</span>
+  </div>
+  <div x-ref="studioFootprintGrid">
+    {% include "app/components/studio_footprint_grid.html" %}
+  </div>
+</div>

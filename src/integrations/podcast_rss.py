@@ -5,25 +5,33 @@ public RSS feeds to get the complete episode list, not just what's in
 Pocket Casts history.
 """
 
+import contextlib
 import logging
 import re
-import xml.etree.ElementTree as ET
 from datetime import datetime
+from xml.etree.ElementTree import Element
 
 import requests
+from defusedxml import ElementTree as ET  # noqa: N817  # long-standing alias
 from django.utils import timezone
+
+from app.log_safety import exception_summary, safe_url
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "Yamtrack/1.0 (https://github.com/FuzzyGrim/Yamtrack)"
+USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
+
+# Component counts for duration strings formatted as "MM:SS" or "HH:MM:SS".
+DURATION_PARTS_MM_SS = 2
+DURATION_PARTS_HH_MM_SS = 3
 
 
 def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
     """Fetch show metadata from RSS feed channel.
-    
+
     Args:
         rss_feed_url: URL to the podcast RSS feed
-        
+
     Returns:
         Dict with show metadata:
         - description: Show description
@@ -31,14 +39,16 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
         - author: Show author (optional)
     """
     try:
-        response = requests.get(rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=30)
+        response = requests.get(
+            rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=30
+        )
         response.raise_for_status()
 
         # Parse XML
         try:
             root = ET.fromstring(response.content)
-        except ET.ParseError as e:
-            logger.error("Failed to parse RSS feed XML: %s", e)
+        except ET.ParseError:
+            logger.exception("Failed to parse RSS feed XML")
             return {}
 
         metadata = {}
@@ -53,6 +63,12 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
             channel = root if root.tag == "feed" or root.tag.endswith("}feed") else None
 
         if channel is not None:
+            title_elem = channel.find("title")
+            if title_elem is None:
+                title_elem = channel.find("{http://www.w3.org/2005/Atom}title")
+            if title_elem is not None and title_elem.text:
+                metadata["title"] = title_elem.text.strip()
+
             # Description
             desc_elem = channel.find("description")
             if desc_elem is None:
@@ -70,28 +86,36 @@ def fetch_show_metadata_from_rss(rss_feed_url: str) -> dict:
             if lang_elem is not None and lang_elem.text:
                 metadata["language"] = lang_elem.text.strip()
 
-            # Author (iTunes)
+            # Author, from the iTunes namespace.
             author_elem = channel.find("itunes:author", namespaces)
             if author_elem is not None and author_elem.text:
                 metadata["author"] = author_elem.text.strip()
 
-        return metadata
-
     except requests.RequestException as e:
-        logger.error("Failed to fetch RSS feed %s: %s", rss_feed_url, e)
+        logger.exception(
+            "Failed to fetch RSS feed %s: %s",
+            safe_url(rss_feed_url),
+            exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
+        )
         return {}
     except Exception as e:
-        logger.error("Unexpected error parsing RSS feed %s: %s", rss_feed_url, e, exc_info=True)
+        logger.exception(
+            "Unexpected error parsing RSS feed %s: %s",
+            safe_url(rss_feed_url),
+            exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
+        )
         return {}
+    else:
+        return metadata
 
 
 def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list[dict]:
     """Fetch and parse episodes from RSS feed.
-    
+
     Args:
         rss_feed_url: URL to the podcast RSS feed
         limit: Optional limit on number of episodes to return (None = all)
-        
+
     Returns:
         List of episode dicts with keys:
         - title: Episode title
@@ -104,14 +128,16 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
         - description: Episode description (optional)
     """
     try:
-        response = requests.get(rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=30)
+        response = requests.get(
+            rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=30
+        )
         response.raise_for_status()
 
         # Parse XML - handle both RSS and Atom feeds
         try:
             root = ET.fromstring(response.content)
-        except ET.ParseError as e:
-            logger.error("Failed to parse RSS feed XML: %s", e)
+        except ET.ParseError:
+            logger.exception("Failed to parse RSS feed XML")
             return []
 
         # Determine feed type
@@ -122,18 +148,31 @@ def fetch_episodes_from_rss(rss_feed_url: str, limit: int | None = None) -> list
             # RSS 2.0 feed
             episodes = _parse_rss_feed(root, limit)
 
-        logger.info("Fetched %d episodes from RSS feed %s", len(episodes), rss_feed_url)
-        return episodes
+        logger.info(
+            "Fetched %d episodes from RSS feed %s",
+            len(episodes),
+            safe_url(rss_feed_url),
+        )
 
     except requests.RequestException as e:
-        logger.error("Failed to fetch RSS feed %s: %s", rss_feed_url, e)
+        logger.exception(
+            "Failed to fetch RSS feed %s: %s",
+            safe_url(rss_feed_url),
+            exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
+        )
         return []
     except Exception as e:
-        logger.error("Unexpected error parsing RSS feed %s: %s", rss_feed_url, e, exc_info=True)
+        logger.exception(
+            "Unexpected error parsing RSS feed %s: %s",
+            safe_url(rss_feed_url),
+            exception_summary(e),  # noqa: TRY401  # exception_summary() is the project's sanitised rendering
+        )
         return []
+    else:
+        return episodes
 
 
-def _parse_rss_feed(root: ET.Element, limit: int | None) -> list[dict]:
+def _parse_rss_feed(root: Element, limit: int | None) -> list[dict]:
     """Parse RSS 2.0 format feed."""
     episodes = []
     namespaces = {
@@ -164,11 +203,11 @@ def _parse_rss_feed(root: ET.Element, limit: int | None) -> list[dict]:
         # GUID
         guid_elem = item.find("guid")
         if guid_elem is not None:
-            guid_text = guid_elem.text if guid_elem.text else guid_elem.get("isPermaLink", "")
+            guid_text = guid_elem.text or guid_elem.get("isPermaLink", "")
             if guid_text:
                 episode["guid"] = guid_text.strip()
 
-        # Duration (iTunes)
+        # Duration, from the iTunes namespace.
         duration_elem = item.find("itunes:duration", namespaces)
         if duration_elem is not None and duration_elem.text:
             episode["duration"] = _parse_duration(duration_elem.text.strip())
@@ -183,18 +222,14 @@ def _parse_rss_feed(root: ET.Element, limit: int | None) -> list[dict]:
         # Episode number (iTunes)
         episode_elem = item.find("itunes:episode", namespaces)
         if episode_elem is not None and episode_elem.text:
-            try:
+            with contextlib.suppress(ValueError):
                 episode["episode_number"] = int(episode_elem.text.strip())
-            except ValueError:
-                pass
 
         # Season number (iTunes)
         season_elem = item.find("itunes:season", namespaces)
         if season_elem is not None and season_elem.text:
-            try:
+            with contextlib.suppress(ValueError):
                 episode["season_number"] = int(season_elem.text.strip())
-            except ValueError:
-                pass
 
         # Description
         description_elem = item.find("description")
@@ -210,7 +245,7 @@ def _parse_rss_feed(root: ET.Element, limit: int | None) -> list[dict]:
     return episodes
 
 
-def _parse_atom_feed(root: ET.Element, limit: int | None) -> list[dict]:
+def _parse_atom_feed(root: Element, limit: int | None) -> list[dict]:
     """Parse Atom format feed."""
     episodes = []
     namespaces = {
@@ -252,7 +287,7 @@ def _parse_atom_feed(root: ET.Element, limit: int | None) -> list[dict]:
         if id_elem is not None and id_elem.text:
             episode["guid"] = id_elem.text.strip()
 
-        # Duration (iTunes)
+        # Duration, from the iTunes namespace.
         duration_elem = entry.find("itunes:duration", namespaces)
         if duration_elem is not None and duration_elem.text:
             episode["duration"] = _parse_duration(duration_elem.text.strip())
@@ -272,18 +307,14 @@ def _parse_atom_feed(root: ET.Element, limit: int | None) -> list[dict]:
         # Episode number (iTunes)
         episode_elem = entry.find("itunes:episode", namespaces)
         if episode_elem is not None and episode_elem.text:
-            try:
+            with contextlib.suppress(ValueError):
                 episode["episode_number"] = int(episode_elem.text.strip())
-            except ValueError:
-                pass
 
         # Season number (iTunes)
         season_elem = entry.find("itunes:season", namespaces)
         if season_elem is not None and season_elem.text:
-            try:
+            with contextlib.suppress(ValueError):
                 episode["season_number"] = int(season_elem.text.strip())
-            except ValueError:
-                pass
 
         # Description/Summary
         summary_elem = entry.find("{http://www.w3.org/2005/Atom}summary")
@@ -301,7 +332,7 @@ def _parse_atom_feed(root: ET.Element, limit: int | None) -> list[dict]:
 
 def _parse_date(date_str: str) -> datetime | None:
     """Parse date string from RSS feed.
-    
+
     Handles common formats:
     - RFC 822: "Mon, 01 Jan 2024 12:00:00 GMT"
     - ISO 8601: "2024-01-01T12:00:00Z"
@@ -322,13 +353,14 @@ def _parse_date(date_str: str) -> datetime | None:
 
     for fmt in formats:
         try:
-            dt = datetime.strptime(date_str, fmt)
+            dt = datetime.strptime(date_str, fmt)  # noqa: DTZ007  # date-only value; no timezone applies
             # Make timezone-aware if not already
             if timezone.is_naive(dt):
                 dt = timezone.make_aware(dt)
-            return dt
         except ValueError:
             continue
+        else:
+            return dt
 
     # Try ISO format with fromisoformat
     try:
@@ -337,9 +369,10 @@ def _parse_date(date_str: str) -> datetime | None:
         dt = datetime.fromisoformat(date_str_clean)
         if timezone.is_naive(dt):
             dt = timezone.make_aware(dt)
-        return dt
     except (ValueError, AttributeError):
         pass
+    else:
+        return dt
 
     logger.debug("Failed to parse date: %s", date_str)
     return None
@@ -347,7 +380,7 @@ def _parse_date(date_str: str) -> datetime | None:
 
 def _parse_duration(duration_str: str) -> int | None:
     """Parse duration string to seconds.
-    
+
     Handles formats:
     - "3600" (seconds)
     - "60:00" (MM:SS)
@@ -364,15 +397,15 @@ def _parse_duration(duration_str: str) -> int | None:
 
     # Try MM:SS or HH:MM:SS format
     parts = duration_str.split(":")
-    if len(parts) == 2:
-        # MM:SS
+    if len(parts) == DURATION_PARTS_MM_SS:
+        # Format is minutes then seconds.
         try:
             minutes = int(parts[0])
             seconds = int(parts[1])
             return minutes * 60 + seconds
         except ValueError:
             pass
-    elif len(parts) == 3:
+    elif len(parts) == DURATION_PARTS_HH_MM_SS:
         # HH:MM:SS
         try:
             hours = int(parts[0])
@@ -384,4 +417,3 @@ def _parse_duration(duration_str: str) -> int | None:
 
     logger.debug("Failed to parse duration: %s", duration_str)
     return None
-

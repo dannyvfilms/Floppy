@@ -1,0 +1,32 @@
+{% load app_tags %}
+{% for column in role_leaders.columns %}
+  <div class="{% if not forloop.first %}lg:border-l lg:border-white/10 lg:pl-1.5{% endif %}">
+    <div class="flex items-center gap-2 mb-3">
+      {% if column.bucket == 'actors' %}
+        {% include "app/icons/person.svg" with classes="w-4 h-4 text-blue-400" %}
+        <span class="text-sm font-semibold text-blue-400">{{ column.label }}</span>
+      {% elif column.bucket == 'actresses' %}
+        {% include "app/icons/persons.svg" with classes="w-4 h-4 text-purple-400" %}
+        <span class="text-sm font-semibold text-purple-400">{{ column.label }}</span>
+      {% elif column.bucket == 'directors' %}
+        {% include "app/icons/camera.svg" with classes="w-4 h-4 text-orange-400" %}
+        <span class="text-sm font-semibold text-orange-400">{{ column.label }}</span>
+      {% else %}
+        {% include "app/icons/edit.svg" with classes="w-4 h-4 text-emerald-400" %}
+        <span class="text-sm font-semibold text-emerald-400">{{ column.label }}</span>
+      {% endif %}
+    </div>
+    <div class="overflow-y-auto statistics-card-scroll" style="max-height: 9.5rem;">
+      {% for entry in column.entries %}
+        <button type="button"
+                @click="selectPerson('{{ entry.source }}', '{{ entry.person_id }}')"
+                :class="selectedPersonKey === '{{ entry.source }}:{{ entry.person_id }}' ? 'text-indigo-400' : 'text-[var(--color-text)]'"
+                class="w-full flex items-center gap-1 py-0.5 hover:text-indigo-300 transition-colors cursor-pointer text-left">
+          <span class="text-gray-500 text-xs leading-tight w-5 shrink-0">{{ forloop.counter }}</span>
+          <span class="flex-1 min-w-0 text-xs leading-tight font-medium truncate">{{ entry.name }}</span>
+          <span class="text-xs leading-tight text-[var(--color-text-muted)] shrink-0">{{ entry.display_metric }}</span>
+        </button>
+      {% endfor %}
+    </div>
+  </div>
+{% endfor %}

@@ -1,6 +1,4 @@
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
-from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
 
@@ -80,19 +78,24 @@ class CollectionEntryModelTest(TestCase):
         )
         self.assertEqual(str(entry), f"{self.user.username} - {self.item.title}")
 
-    def test_collection_entry_uniqueness_constraint(self):
-        """Test that uniqueness constraint prevents duplicate entries."""
-        CollectionEntry.objects.create(
+    def test_collection_entry_allows_multiple_entries_per_item(self):
+        """Test that multiple owned copies can be stored for the same item."""
+        first_entry = CollectionEntry.objects.create(
             user=self.user,
             item=self.item,
+            media_type="dvd",
         )
 
-        # Try to create duplicate entry
-        with self.assertRaises(IntegrityError):
-            CollectionEntry.objects.create(
-                user=self.user,
-                item=self.item,
-            )
+        second_entry = CollectionEntry.objects.create(
+            user=self.user,
+            item=self.item,
+            media_type="bluray",
+        )
+
+        self.assertNotEqual(first_entry.id, second_entry.id)
+        self.assertEqual(
+            CollectionEntry.objects.filter(user=self.user, item=self.item).count(), 2
+        )
 
     def test_collection_entry_field_defaults(self):
         """Test that all metadata fields have correct defaults."""
@@ -158,19 +161,27 @@ class CollectionEntryModelTest(TestCase):
 
     def test_collection_entry_field_max_lengths(self):
         """Test that field max lengths are enforced."""
+        media_type_max = CollectionEntry._meta.get_field("media_type").max_length
+        resolution_max = CollectionEntry._meta.get_field("resolution").max_length
+        hdr_max = CollectionEntry._meta.get_field("hdr").max_length
+        audio_codec_max = CollectionEntry._meta.get_field("audio_codec").max_length
+        audio_channels_max = CollectionEntry._meta.get_field(
+            "audio_channels"
+        ).max_length
+
         entry = CollectionEntry.objects.create(
             user=self.user,
             item=self.item,
-            media_type="a" * 20,  # max_length=20
-            resolution="a" * 20,  # max_length=20
-            hdr="a" * 30,  # max_length=30
-            audio_codec="a" * 30,  # max_length=30
-            audio_channels="a" * 20,  # max_length=20
+            media_type="a" * media_type_max,
+            resolution="a" * resolution_max,
+            hdr="a" * hdr_max,
+            audio_codec="a" * audio_codec_max,
+            audio_channels="a" * audio_channels_max,
         )
 
         # Should save successfully
-        self.assertEqual(len(entry.media_type), 20)
-        self.assertEqual(len(entry.resolution), 20)
-        self.assertEqual(len(entry.hdr), 30)
-        self.assertEqual(len(entry.audio_codec), 30)
-        self.assertEqual(len(entry.audio_channels), 20)
+        self.assertEqual(len(entry.media_type), media_type_max)
+        self.assertEqual(len(entry.resolution), resolution_max)
+        self.assertEqual(len(entry.hdr), hdr_max)
+        self.assertEqual(len(entry.audio_codec), audio_codec_max)
+        self.assertEqual(len(entry.audio_channels), audio_channels_max)

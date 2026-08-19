@@ -5,71 +5,86 @@
   <div class="mx-auto max-w-6xl">
     <div class="mb-8">
       <h1 class="text-3xl font-bold">Settings</h1>
-      <p class="text-gray-400 mt-2 text-sm">Configure your account and preferences</p>
+      <p class="text-[var(--color-text-muted)] mt-2 text-sm">Configure your account and preferences</p>
     </div>
     <div class="flex flex-col md:flex-row gap-8">
       <div class="md:w-64 shrink-0">
-        <div class="bg-[#2a2f35] rounded-lg overflow-hidden sticky top-20">
-          <nav class="p-2 space-y-1">
+        <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden sticky top-20">
+          {# hx-boost: swap the body instead of reloading on settings navigation #}
+          <nav class="p-2 space-y-1" hx-boost="true">
             {% url 'account' as account_url %}
             <a href="{{ account_url }}"
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == account_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == account_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/person.svg" with classes="w-5 h-5" %}
               <span>Account</span>
             </a>
 
             {% url 'preferences' as preferences_url %}
             <a href="{{ preferences_url }}"
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == preferences_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == preferences_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5" %}
               <span>Preferences</span>
             </a>
 
             {% url 'notifications' as notifications_url %}
             <a href="{{ notifications_url }}"
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == notifications_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == notifications_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/bell.svg" with classes="w-5 h-5" %}
               <span>Notifications</span>
             </a>
 
             {% url 'sidebar' as sidebar_url %}
             <a href="{{ sidebar_url }}"
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == sidebar_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == sidebar_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/sidebar.svg" with classes="w-5 h-5" %}
               <span>Sidebar</span>
             </a>
 
+            {% url 'home_screen' as home_screen_url %}
+            <a href="{{ home_screen_url }}"
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == home_screen_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/house.svg" with classes="w-5 h-5" %}
+              <span>Home Screen</span>
+            </a>
+
             {% url 'integrations' as integrations_url %}
             <a href="{{ integrations_url }}"
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == integrations_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == integrations_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/database.svg" with classes="w-5 h-5" %}
               <span>Integrations</span>
             </a>
 
+            {% url 'rss_settings' as rss_url %}
+            <a href="{{ rss_url }}"
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == rss_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/rss.svg" with classes="w-5 h-5" %}
+              <span>RSS</span>
+            </a>
+
             {% url 'import_data' as import_url %}
             <a href="{{ import_url }}"
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == import_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == import_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/import.svg" with classes="w-5 h-5" %}
               <span>Import Data</span>
             </a>
 
             {% url 'export_data' as export_url %}
             <a href="{{ export_url }}"
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == export_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == export_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/export.svg" with classes="w-5 h-5" %}
               <span>Export Data</span>
             </a>
 
             {% url 'advanced' as advanced_url %}
             <a href="{{ advanced_url }}"
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == advanced_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == advanced_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/shield-alert.svg" with classes="w-5 h-5" %}
               <span>Advanced</span>
             </a>
 
             {% url 'about' as about_url %}
             <a href="{{ about_url }}"
-               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == about_url %}bg-[#39404b] text-white border-indigo-500{% else %}text-gray-400 border-transparent hover:bg-[#313842] hover:text-white{% endif %}">
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == about_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-indigo-500{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/info.svg" with classes="w-5 h-5" %}
               <span>About</span>
             </a>

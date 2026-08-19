@@ -1,0 +1,43 @@
+{% if suggestions %}
+  <div role="listbox"
+       class="absolute z-50 w-full mt-1 overflow-auto text-[var(--color-text-secondary)] bg-[var(--color-surface)] rounded-md shadow-lg border border-gray-600 max-h-60">
+    {% for suggestion in suggestions %}
+      <a href="{{ suggestion.url }}"
+         role="option"
+         class="flex items-center gap-3 px-3 py-2 text-sm hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] transition-colors duration-150">
+        {% if suggestion.image and suggestion.image != IMG_NONE %}
+          <img src="{{ suggestion.image }}"
+               alt=""
+               loading="lazy"
+               class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+        {% else %}
+          <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
+            {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
+          </span>
+        {% endif %}
+        <span class="flex-1 min-w-0">
+          <span class="block truncate">{{ suggestion.title }}</span>
+          {% if suggestion.subtitle %}
+            <span class="block text-xs text-gray-500 truncate">{{ suggestion.subtitle }}</span>
+          {% endif %}
+        </span>
+      </a>
+    {% endfor %}
+    {# Run the full online search (same as pressing Enter with nothing highlighted). #}
+    <a href="{% url 'search' %}?q={{ query|urlencode }}&media_type={{ media_type|urlencode }}"
+       role="option"
+       data-search-online
+       class="flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-muted)] border-t border-gray-600 hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text-secondary)] transition-colors duration-150">
+      {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4 shrink-0" %}
+      <span class="flex-1 min-w-0 truncate">Search online for &ldquo;{{ query }}&rdquo;</span>
+      <span class="hidden sm:inline-flex items-center shrink-0 text-[11px] text-gray-500 border border-gray-600 rounded px-1.5 py-0.5">Enter</span>
+    </a>
+  </div>
+{% elif query %}
+  <div class="absolute z-50 w-full p-3 mt-1 bg-[var(--color-surface)] rounded-md shadow-lg border border-gray-600">
+    <p class="text-sm text-[var(--color-text-muted)]">
+      Nothing saved matches &ldquo;{{ query }}&rdquo;. Keep typing and press
+      <span class="text-[var(--color-text-secondary)]">Enter</span> to search online.
+    </p>
+  </div>
+{% endif %}

@@ -1,0 +1,158 @@
+{# djlint:off #}
+<div class="relative flex-1 min-w-0"
+     x-data="dateTimePicker({
+       fieldName: '{{ field_name }}',
+       trackTime: {{ track_time|yesno:'true,false' }},
+       initialValue: '{{ field_value|default:""|escapejs }}',
+       suggestionLabel: '{{ suggestion_label|default:""|escapejs }}',
+       suggestionDate: '{{ suggestion_date|default:""|escapejs }}',
+       suggestionRuntimeMinutes: '{{ suggestion_runtime_minutes|default:""|escapejs }}',
+       weekStart: '{{ week_start|default:"monday" }}',
+       use12Hour: {{ use_12_hour|yesno:'true,false' }}
+     })"
+     x-init="init"
+     {% if suggestion_date_expr %}x-effect="suggestionDate = ({{ suggestion_date_expr }}) || ''"{% endif %}
+     @keydown.escape.window="open && closePicker()">
+
+  <div class="flex-1 flex items-stretch border border-gray-600 rounded-md bg-[var(--color-surface-strong)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]">
+    {% if mobile_label %}
+      <span class="sm:hidden text-xs text-[var(--color-text-muted)] pl-2 pr-1 flex items-center whitespace-nowrap">{{ mobile_label }}</span>
+    {% endif %}
+    <input type="hidden"
+           name="{{ field_name }}"
+           id="{{ field_id }}"
+           x-ref="hiddenInput"
+           data-track-time="{{ track_time|yesno:'true,false' }}"
+           :value="value">
+    <button type="button"
+            x-ref="trigger"
+            @click="togglePicker()"
+            aria-haspopup="dialog"
+            :aria-expanded="open"
+            aria-label="{{ field_label|default:'Date' }} picker"
+            class="date-picker-trigger flex-1 flex items-center gap-2 p-2 bg-transparent border-0 outline-none text-white text-sm min-w-0 text-left cursor-pointer">
+      {% include "app/icons/calendar.svg" with classes="w-4 h-4 shrink-0 text-[var(--color-text-muted)]" %}
+      <span class="truncate" x-text="hasValue ? displayText : 'Select date'" :class="hasValue ? '' : 'text-[var(--color-text-muted)]'"></span>
+    </button>
+    <div class="w-px bg-gray-600 self-stretch my-1" x-show="hasValue" x-cloak></div>
+    <button type="button"
+            @click="clear()"
+            x-show="hasValue"
+            x-cloak
+            aria-label="Clear date"
+            class="date-picker-clear-button hidden md:inline-flex items-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
+      {% include "app/icons/x.svg" with classes="w-3.5 h-3.5" %}
+    </button>
+  </div>
+
+  <template x-if="open">
+    <div class="fixed inset-0 bg-black/40 z-60 sm:hidden" @click="closePicker()" x-transition.opacity></div>
+  </template>
+
+  <div x-show="open"
+       x-cloak
+       x-ref="panel"
+       role="dialog"
+       :aria-modal="isMobile ? 'true' : 'false'"
+       aria-label="{{ field_label|default:'Date' }} picker"
+       @keydown.tab="trapFocus($event)"
+       @click.outside="!isMobile && !$refs.trigger.contains($event.target) && closePicker()"
+       :style="popoverStyle"
+       class="date-picker-popover fixed inset-x-0 bottom-0 rounded-t-xl max-h-[85dvh] overflow-y-auto overscroll-contain bg-[var(--color-surface)] border-t border-[var(--color-border)] shadow-2xl p-4 sm:inset-x-auto sm:bottom-auto sm:w-[22rem] sm:rounded-lg sm:border"
+       x-transition:enter="transition ease-out duration-150"
+       x-transition:enter-start="opacity-0 translate-y-2 sm:translate-y-0"
+       x-transition:enter-end="opacity-100 translate-y-0">
+
+    <div class="flex items-center justify-between mb-3 sm:hidden">
+      <span class="text-sm font-medium text-[var(--color-text-secondary)]">{{ field_label|default:"Date" }}</span>
+      <button type="button" @click="closePicker()" aria-label="Close date picker" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1">
+        {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+      </button>
+    </div>
+
+    <div class="flex items-center justify-between mb-2">
+      <button type="button" @click="gotoPrevMonth()" aria-label="Previous month" class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
+        {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
+      </button>
+      <span class="text-sm font-semibold text-[var(--color-text)]" x-text="monthLabel()"></span>
+      <button type="button" @click="gotoNextMonth()" aria-label="Next month" class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
+        {% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}
+      </button>
+    </div>
+
+    <div class="date-picker-calendar-grid mb-1">
+      <template x-for="label in weekdayLabels()" :key="label">
+        <div class="text-center text-xs text-[var(--color-text-muted)] py-1" x-text="label"></div>
+      </template>
+    </div>
+    <template x-for="(week, weekIndex) in calendarWeeks()" :key="weekIndex">
+      <div class="date-picker-calendar-grid mb-1">
+        <template x-for="cell in week" :key="cellKey(cell)">
+          <button type="button"
+                  :data-day-cell="cellKey(cell)"
+                  :tabindex="isFocusedDay(cell) ? 0 : -1"
+                  @click="selectDay(cell)"
+                  @keydown="onDayKeydown($event, cell)"
+                  :aria-selected="isSelectedDay(cell)"
+                  :aria-current="isToday(cell) ? 'date' : null"
+                  class="date-picker-day-cell flex items-center justify-center rounded-md text-sm cursor-pointer transition-colors"
+                  :class="isSelectedDay(cell) ? 'bg-[var(--color-accent)] text-white' : (isToday(cell) ? 'text-[var(--color-accent)] font-semibold hover:bg-[var(--color-surface-muted)]' : (cell.inMonth ? 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]' : 'text-[var(--color-text-muted)] opacity-50 hover:bg-[var(--color-surface-muted)]'))"
+                  x-text="cell.day"></button>
+        </template>
+      </div>
+    </template>
+
+    {% if track_time %}
+      <div class="mt-3 pt-3 border-t border-[var(--color-border)]">
+        <label class="text-xs text-[var(--color-text-muted)] mb-1 block">Time</label>
+        <div class="flex items-center gap-1.5">
+          <select class="date-picker-time-select"
+                  x-ref="hourSelect"
+                  @change="setHour(Number($event.target.value))"
+                  x-effect="const hourValue = String(displayHour()); $nextTick(() => { if ($refs.hourSelect) $refs.hourSelect.value = hourValue })">
+            <template x-for="h in hourOptions()" :key="h">
+              <option :value="h" x-text="formatHourOption(h)"></option>
+            </template>
+          </select>
+          <span class="text-[var(--color-text-muted)]">:</span>
+          <select class="date-picker-time-select"
+                  x-ref="minuteSelect"
+                  @change="setMinute(Number($event.target.value))"
+                  x-effect="const minuteValue = String(minute); $nextTick(() => { if ($refs.minuteSelect) $refs.minuteSelect.value = minuteValue })">
+            <template x-for="m in minuteOptions()" :key="m">
+              <option :value="m" x-text="pad(m)"></option>
+            </template>
+          </select>
+          <span class="text-[var(--color-text-muted)]">:</span>
+          <select class="date-picker-time-select"
+                  x-ref="secondSelect"
+                  @change="setSecond(Number($event.target.value))"
+                  x-effect="const secondValue = String(second); $nextTick(() => { if ($refs.secondSelect) $refs.secondSelect.value = secondValue })">
+            <template x-for="s in minuteOptions()" :key="s">
+              <option :value="s" x-text="pad(s)"></option>
+            </template>
+          </select>
+          <template x-if="use12Hour">
+            <button type="button" @click="toggleMeridiem()" class="date-picker-time-select cursor-pointer" x-text="meridiem()"></button>
+          </template>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="mt-3 pt-3 border-t border-[var(--color-border)]">
+      <div class="date-picker-common-times-row">
+        <button type="button" @click="applyNow()" class="date-picker-common-time-button">
+          {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5" %}
+          Now
+        </button>
+        <template x-if="resolvedSuggestionDate()">
+          <button type="button" @click="applySuggestion()" class="date-picker-common-time-button">
+            {% include "app/icons/calendar.svg" with classes="w-3.5 h-3.5" %}
+            <span x-text="resolvedSuggestionLabel()"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+  </div>
+</div>
+{# djlint:on #}

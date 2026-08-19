@@ -1,0 +1,42 @@
+{% extends "users/onboarding/_layout.html" %}
+{% load static %}
+{% load app_tags %}
+{% load user_tags %}
+
+{% block step_title %}Turn on scrobbling{% endblock step_title %}
+
+{% block step_explanation %}
+  <p>
+    You imported {{ current_source.slug|source_name }}'s history, but that
+    only covers what already happened. To keep tracking automatically
+    going forward, it also needs a webhook set up.
+  </p>
+  <p>
+    This depends on where your library actually lives, so it's a separate,
+    optional step.
+  </p>
+  <p>Don't need it? Skip it — you can always set it up later from Settings &gt; Integrations.</p>
+{% endblock step_explanation %}
+
+{% block step_options %}
+  <div class="flex flex-col items-center text-center gap-4 py-6">
+    {% source_display current_source.slug %}
+    <p class="text-sm text-[var(--color-text-muted)]">
+      Set up a webhook so new plays are tracked as they happen.
+    </p>
+    {% if current_source.integration_tag == "plex" %}
+      {% include "users/onboarding/components/integration_plex.html" %}
+    {% endif %}
+    <form method="post" action="{% url 'onboarding_skip_integration' slug=current_source.slug %}">
+      {% csrf_token %}
+      <button type="submit"
+              class="px-4 py-2 text-sm rounded-md text-[var(--color-text-secondary)] border border-[var(--color-surface-border)] hover:bg-[var(--color-hover-dim)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
+        Skip for now
+      </button>
+    </form>
+  </div>
+{% endblock step_options %}
+
+{% block js %}
+  <script src="{% static 'js/copy-item.js' %}{% get_static_file_mtime 'js/copy-item.js' %}"></script>
+{% endblock js %}

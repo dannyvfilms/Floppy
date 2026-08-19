@@ -4,14 +4,35 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 from django_celery_results.models import TaskResult
 
 from users.models import (
     HomeSortChoices,
+    MediaSortChoices,
+    MediaStatusChoices,
     MediaTypes,
     QuickWatchDateChoices,
+    relabel_end_date_sort_choice,
 )
+
+
+class EndDateSortLabelTests(TestCase):
+    def test_relabels_end_date_for_media_type(self):
+        choices = [(MediaSortChoices.END_DATE, "Last Watched")]
+
+        for media_type, label in {
+            MediaTypes.BOOK.value: "Last Read",
+            MediaTypes.COMIC.value: "Last Read",
+            MediaTypes.MANGA.value: "Last Read",
+            MediaTypes.MUSIC.value: "Last Listened",
+            MediaTypes.PODCAST.value: "Last Listened",
+        }.items():
+            with self.subTest(media_type=media_type):
+                self.assertEqual(
+                    relabel_end_date_sort_choice(media_type, choices),
+                    [(MediaSortChoices.END_DATE, label)],
+                )
 
 
 class UserUpdatePreferenceTests(TestCase):
@@ -81,6 +102,32 @@ class UserUpdatePreferenceTests(TestCase):
         # Should not change the value
         self.user.refresh_from_db()
         self.assertEqual(self.user.home_sort, HomeSortChoices.UPCOMING)
+
+    def test_update_preference_accepts_multiple_statuses(self):
+        """Media-list status preferences accept a comma-separated selection."""
+        value = (
+            f"{MediaStatusChoices.COMPLETED.value},{MediaStatusChoices.DROPPED.value}"
+        )
+
+        result = self.user.update_preference("movie_status", value)
+
+        self.assertEqual(result, value)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.movie_status, value)
+
+    def test_update_preference_rejects_invalid_status_token(self):
+        """One invalid status token rejects the whole preference update."""
+        self.user.movie_status = MediaStatusChoices.COMPLETED.value
+        self.user.save(update_fields=["movie_status"])
+
+        result = self.user.update_preference(
+            "movie_status",
+            f"{MediaStatusChoices.COMPLETED.value},invalid",
+        )
+
+        self.assertEqual(result, MediaStatusChoices.COMPLETED.value)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.movie_status, MediaStatusChoices.COMPLETED.value)
 
     def test_update_preference_boolean_field(self):
         """Test update_preference with a boolean field."""
@@ -189,6 +236,78 @@ class UserUpdatePreferenceTests(TestCase):
         self.assertEqual(self.user.top_talent_sort_by, "plays")
 
 
+class UserColumnPrefsTests(TestCase):
+    """Tests for per-library table column preferences."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="columnprefs",
+            password="12345",
+        )
+
+    def test_update_column_prefs_sets_order_and_hidden(self):
+        self.user.update_column_prefs(
+            media_type=MediaTypes.TV.value,
+            table_type="media",
+            order=["status", "progress"],
+            hidden=["status"],
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(
+            self.user.table_column_prefs[MediaTypes.TV.value]["order"],
+            ["status", "progress"],
+        )
+        self.assertEqual(
+            self.user.table_column_prefs[MediaTypes.TV.value]["hidden"],
+            ["status"],
+        )
+
+    def test_update_column_prefs_overwrites_existing_values(self):
+        self.user.table_column_prefs = {
+            MediaTypes.TV.value: {"order": ["score"], "hidden": ["status"]},
+        }
+        self.user.save(update_fields=["table_column_prefs"])
+
+        self.user.update_column_prefs(
+            media_type=MediaTypes.TV.value,
+            table_type="media",
+            order=["progress", "score"],
+            hidden=[],
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(
+            self.user.table_column_prefs[MediaTypes.TV.value],
+            {"order": ["progress", "score"], "hidden": []},
+        )
+
+    def test_update_column_prefs_scopes_list_prefs_separately(self):
+        self.user.table_column_prefs = {
+            MediaTypes.TV.value: {"order": ["score"], "hidden": ["status"]},
+        }
+        self.user.save(update_fields=["table_column_prefs"])
+
+        self.user.update_column_prefs(
+            media_type=MediaTypes.TV.value,
+            table_type="list",
+            order=["media_type", "status"],
+            hidden=["status"],
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(
+            self.user.table_column_prefs[MediaTypes.TV.value],
+            {
+                "media": {"order": ["score"], "hidden": ["status"]},
+                "list": {
+                    "order": ["media_type", "status"],
+                    "hidden": ["status"],
+                },
+            },
+        )
+
+
 class UserGetImportTasksTests(TestCase):
     """Tests for the User.get_import_tasks method."""
 
@@ -268,6 +387,89 @@ class UserGetImportTasksTests(TestCase):
         self.assertEqual(import_tasks["results"][0]["task"], mock_task)
         self.assertEqual(import_tasks["results"][0]["source"], "myanimelist")
         self.assertEqual(import_tasks["results"][0]["status"], "FAILURE")
+
+    def test_get_import_tasks_renders_a_cancelled_task(self):
+        """A revoked task is history like any other, not a 500 on every poll."""
+        TaskResult.objects.create(
+            task_id="revoked-task",
+            task_name="Import from Trakt",
+            task_kwargs=f"{{'user_id': {self.user.id}, 'username': 'testuser'}}",
+            status="REVOKED",
+            date_done=timezone.now(),
+            result="{}",
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(len(import_tasks["results"]), 1)
+        self.assertEqual(import_tasks["results"][0]["status"], "REVOKED")
+        self.assertEqual(
+            import_tasks["results"][0]["summary"],
+            "This task was cancelled before it finished.",
+        )
+
+    @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_results_includes_grouvee(self, mock_process_task_result):
+        """Test get_import_tasks surfaces Grouvee task results."""
+        mock_task = MagicMock()
+        mock_task.summary = "Imported 3 games"
+        mock_task.errors = []
+        mock_task.mode = "new"
+        mock_process_task_result.return_value = mock_task
+
+        TaskResult.objects.create(
+            task_id="grouvee-task",
+            task_name="Import from Grouvee",
+            task_kwargs=(f"{{'user_id': {self.user.id}}}"),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result="{}",
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(len(import_tasks["results"]), 1)
+        self.assertEqual(import_tasks["results"][0]["source"], "grouvee")
+
+    @patch("users.helpers.process_task_result")
+    @patch("users.helpers.get_next_run_info")
+    def test_get_import_tasks_includes_stremio_results_and_schedule(
+        self,
+        mock_get_next_run_info,
+        mock_process_task_result,
+    ):
+        """Stremio recurring imports should appear in both activity panels."""
+        mock_task = MagicMock()
+        mock_task.summary = "Imported 3 items"
+        mock_task.errors = []
+        mock_process_task_result.return_value = mock_task
+        mock_get_next_run_info.return_value = {
+            "next_run": timezone.now() + timedelta(hours=2),
+            "frequency": "Every 2 hours",
+            "mode": "Only New Items",
+        }
+
+        TaskResult.objects.create(
+            task_id="stremio-task",
+            task_name="Import from Stremio (Recurring)",
+            task_kwargs=f'{{"user_id": {self.user.id}}}',
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result="{}",
+        )
+        PeriodicTask.objects.create(
+            name="Import from Stremio for test (every 2 hours)",
+            task="Import from Stremio (Recurring)",
+            kwargs=f'{{"user_id": {self.user.id}}}',
+            crontab=self.crontab,
+            enabled=True,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(import_tasks["results"][0]["source"], "stremio")
+        self.assertEqual(import_tasks["schedules"][0]["source"], "stremio")
+        self.assertEqual(import_tasks["schedules"][0]["username"], "test")
 
     @patch("users.helpers.get_next_run_info")
     def test_get_import_tasks_schedules(self, mock_get_next_run_info):
@@ -350,6 +552,158 @@ class UserGetImportTasksTests(TestCase):
         self.assertEqual(len(import_tasks["schedules"]), 0)
 
     @patch("users.helpers.process_task_result")
+    @patch("users.helpers.get_next_run_info")
+    def test_get_import_tasks_watchlist_mapping(
+        self,
+        mock_get_next_run_info,
+        mock_process_task_result,
+    ):
+        """Watchlist sync results and schedules should map back to the Plex source."""
+        processed_task = MagicMock()
+        processed_task.summary = "Synced Plex watchlist."
+        processed_task.errors = None
+        mock_process_task_result.return_value = processed_task
+        mock_get_next_run_info.return_value = {
+            "next_run": timezone.now() + timedelta(minutes=15),
+            "frequency": "Every 15 minutes",
+            "mode": "Watchlist Sync",
+        }
+
+        TaskResult.objects.create(
+            task_id="task-watchlist",
+            task_name="Sync Plex Watchlist",
+            task_kwargs=(f"{{'user_id': {self.user.id}, 'mode': 'watchlist'}}"),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result="{}",
+        )
+
+        interval = IntervalSchedule.objects.create(
+            every=15,
+            period=IntervalSchedule.MINUTES,
+        )
+        periodic_task = PeriodicTask.objects.create(
+            name="Sync Plex Watchlist for test (every 15 minutes)",
+            task="Sync Plex Watchlist",
+            kwargs=(f'{{"user_id": {self.user.id}, "mode": "watchlist"}}'),
+            interval=interval,
+            enabled=True,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(len(import_tasks["results"]), 1)
+        self.assertEqual(import_tasks["results"][0]["source"], "plex")
+        self.assertEqual(len(import_tasks["schedules"]), 1)
+        self.assertEqual(import_tasks["schedules"][0]["task"], periodic_task)
+        self.assertEqual(import_tasks["schedules"][0]["source"], "plex")
+        self.assertEqual(import_tasks["schedules"][0]["mode"], "Watchlist Sync")
+
+    @patch("users.helpers.process_task_result")
+    @patch("users.helpers.get_next_run_info")
+    def test_get_import_tasks_maps_arr_results_and_schedules(
+        self,
+        mock_get_next_run_info,
+        mock_process_task_result,
+    ):
+        """Radarr and Sonarr tasks should appear in import history and schedules."""
+        processed_task = MagicMock()
+        processed_task.summary = "Synced collection ownership."
+        processed_task.errors = None
+        mock_process_task_result.return_value = processed_task
+        mock_get_next_run_info.return_value = {
+            "next_run": timezone.now() + timedelta(hours=2),
+            "frequency": "Every 2 hours",
+            "mode": "Only New Items",
+        }
+
+        TaskResult.objects.create(
+            task_id="task-radarr",
+            task_name="Import from Radarr",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="SUCCESS",
+            date_done=timezone.now() - timedelta(minutes=5),
+            result='"Synced collection ownership."',
+        )
+        TaskResult.objects.create(
+            task_id="task-sonarr",
+            task_name="Import from Sonarr",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result='"Synced collection ownership."',
+        )
+
+        PeriodicTask.objects.create(
+            name="Import from Radarr for test (every 2 hours)",
+            task="Import from Radarr (Recurring)",
+            kwargs=(f'{{"user_id": {self.user.id}}}'),
+            crontab=self.crontab,
+            enabled=True,
+        )
+        PeriodicTask.objects.create(
+            name="Import from Sonarr for test (every 2 hours)",
+            task="Import from Sonarr (Recurring)",
+            kwargs=(f'{{"user_id": {self.user.id}}}'),
+            crontab=self.crontab,
+            enabled=True,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(
+            [result["source"] for result in import_tasks["results"]],
+            ["sonarr", "radarr"],
+        )
+        self.assertEqual(
+            [schedule["source"] for schedule in import_tasks["schedules"]],
+            ["radarr", "sonarr"],
+        )
+        self.assertEqual(mock_process_task_result.call_count, 2)
+        self.assertEqual(mock_get_next_run_info.call_count, 2)
+
+    @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_maps_koito_results_and_schedule(
+        self,
+        mock_process_task_result,
+    ):
+        """Koito's one-off import and per-user poll schedule should appear in
+        import history and Active Periodic Imports.
+        """
+        mock_task = MagicMock()
+        mock_task.summary = "Imported 10 Koito listen(s)."
+        mock_task.errors = None
+        mock_process_task_result.return_value = mock_task
+
+        TaskResult.objects.create(
+            task_id="task-koito",
+            task_name="Import from Koito History",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result='"Imported 10 Koito listen(s)."',
+        )
+
+        PeriodicTask.objects.create(
+            name=f"Poll Koito for {self.user.username} (every 15 minutes)",
+            task="Poll Koito for user",
+            kwargs=(f'{{"user_id": {self.user.id}}}'),
+            crontab=self.crontab,
+            enabled=True,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(
+            [result["source"] for result in import_tasks["results"]],
+            ["koito"],
+        )
+        self.assertEqual(
+            [schedule["source"] for schedule in import_tasks["schedules"]],
+            ["koito"],
+        )
+
+    @patch("users.helpers.process_task_result")
     def test_get_import_tasks_unknown_source(self, mock_process_task_result):
         """Test get_import_tasks with an unknown task source."""
         # Create mock processed task
@@ -374,6 +728,278 @@ class UserGetImportTasksTests(TestCase):
 
         # Check results
         self.assertEqual(len(import_tasks["results"]), 0)
+
+    @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_includes_recurring_audiobookshelf_results(
+        self,
+        mock_process_task_result,
+    ):
+        """Both direct and recurring Audiobookshelf task results should appear in history."""
+        mock_task = MagicMock()
+        mock_task.summary = "Imported 1 book"
+        mock_task.errors = None
+        mock_process_task_result.return_value = mock_task
+
+        TaskResult.objects.create(
+            task_id="task-direct",
+            task_name="Import from Audiobookshelf",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result='"Imported 1 book"',
+        )
+        TaskResult.objects.create(
+            task_id="task-recurring",
+            task_name="Import from Audiobookshelf (Recurring)",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="SUCCESS",
+            date_done=timezone.now() - timedelta(minutes=1),
+            result='"Imported 1 book"',
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(len(import_tasks["results"]), 2)
+        self.assertEqual(import_tasks["results"][0]["source"], "audiobookshelf")
+        self.assertEqual(import_tasks["results"][1]["source"], "audiobookshelf")
+        self.assertEqual(mock_process_task_result.call_count, 2)
+
+    @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_maps_goodreads_legacy_and_canonical_results(
+        self,
+        mock_process_task_result,
+    ):
+        """Goodreads results should map correctly across supported task names."""
+        processed_task = MagicMock()
+        processed_task.summary = "Imported 2 books."
+        processed_task.errors = None
+        mock_process_task_result.return_value = processed_task
+
+        task_names = [
+            "Import from Goodreads",
+            "Import from GoodReads",
+            "integrations.tasks.import_goodreads",
+        ]
+        for index, task_name in enumerate(task_names):
+            TaskResult.objects.create(
+                task_id=f"task-goodreads-{index}",
+                task_name=task_name,
+                task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+                status="SUCCESS",
+                date_done=timezone.now() + timedelta(minutes=index),
+                result='"Imported 2 books."',
+            )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(len(import_tasks["results"]), 3)
+        self.assertEqual(
+            [result["source"] for result in import_tasks["results"]],
+            ["goodreads", "goodreads", "goodreads"],
+        )
+        self.assertEqual(mock_process_task_result.call_count, 3)
+
+    @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_maps_lastfm_history_results(
+        self, mock_process_task_result
+    ):
+        """Last.fm history task results should appear under the Last.fm source."""
+        mock_task = MagicMock()
+        mock_task.summary = "Imported 42 Last.fm history scrobbles."
+        mock_task.errors = None
+        mock_process_task_result.return_value = mock_task
+
+        TaskResult.objects.create(
+            task_id="task-lastfm-history",
+            task_name="Import from Last.fm History",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result='"Imported 42 Last.fm history scrobbles."',
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(len(import_tasks["results"]), 1)
+        self.assertEqual(import_tasks["results"][0]["source"], "lastfm")
+        self.assertEqual(
+            import_tasks["results"][0]["summary"],
+            "Imported 42 Last.fm history scrobbles.",
+        )
+        mock_process_task_result.assert_called_once()
+
+    @patch("users.models.AsyncResult")
+    @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_reconciles_stale_pending_result(
+        self,
+        mock_process_task_result,
+        mock_async_result,
+    ):
+        """Pending DB rows should reflect terminal Celery backend states."""
+        processed_task = MagicMock()
+        processed_task.summary = "Imported 3 movies."
+        processed_task.errors = None
+        mock_process_task_result.return_value = processed_task
+
+        backend_result = MagicMock()
+        backend_result.status = "SUCCESS"
+        backend_result.result = "Imported 3 movies."
+        backend_result.traceback = None
+        backend_result.date_done = None
+        mock_async_result.return_value = backend_result
+
+        task_result = TaskResult.objects.create(
+            task_id="task-pending",
+            task_name="Import from Trakt",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="PENDING",
+            result=None,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+        self.assertEqual(len(import_tasks["results"]), 1)
+        self.assertEqual(import_tasks["results"][0]["status"], "SUCCESS")
+
+        task_result.refresh_from_db()
+        self.assertEqual(task_result.status, "SUCCESS")
+        self.assertEqual(task_result.result, "Imported 3 movies.")
+
+    @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_yamtrack_user_id_first_in_kwargs(
+        self, mock_process_task_result
+    ):
+        """CSV import tasks appear in history when user_id precedes the file bytes blob."""
+        processed_task = MagicMock()
+        processed_task.summary = "Imported 5 items."
+        processed_task.errors = None
+        mock_process_task_result.return_value = processed_task
+
+        # Simulate truncated kwargsrepr with user_id first (as produced after fix)
+        TaskResult.objects.create(
+            task_id="task-yamtrack-fix",
+            task_name="Import from Yamtrack",
+            task_kwargs=(f"{{'user_id': {self.user.id}, 'file': b'title,image,...'}}"),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result='"Imported 5 items."',
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(len(import_tasks["results"]), 1)
+        self.assertEqual(import_tasks["results"][0]["source"], "yamtrack")
+
+    @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_maps_hardcover_results(self, mock_process_task_result):
+        """Hardcover import tasks appear in history under the hardcover source."""
+        processed_task = MagicMock()
+        processed_task.summary = "Imported 3 books."
+        processed_task.errors = None
+        mock_process_task_result.return_value = processed_task
+
+        TaskResult.objects.create(
+            task_id="task-hardcover",
+            task_name="Import from Hardcover",
+            task_kwargs=(f"{{'user_id': {self.user.id}}}"),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result='"Imported 3 books."',
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(len(import_tasks["results"]), 1)
+        self.assertEqual(import_tasks["results"][0]["source"], "hardcover")
+        self.assertEqual(import_tasks["results"][0]["summary"], "Imported 3 books.")
+
+    @patch("users.helpers.process_task_result")
+    def test_get_import_tasks_includes_recurring_radarr_sonarr_results(
+        self,
+        mock_process_task_result,
+    ):
+        """Recurring Radarr and Sonarr task results should appear in import history."""
+        processed_task = MagicMock()
+        processed_task.summary = "Synced collection."
+        processed_task.errors = None
+        mock_process_task_result.return_value = processed_task
+
+        TaskResult.objects.create(
+            task_id="task-radarr-recurring",
+            task_name="Import from Radarr (Recurring)",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="SUCCESS",
+            date_done=timezone.now() - timedelta(minutes=5),
+            result='"Synced collection."',
+        )
+        TaskResult.objects.create(
+            task_id="task-sonarr-recurring",
+            task_name="Import from Sonarr (Recurring)",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="SUCCESS",
+            date_done=timezone.now(),
+            result='"Synced collection."',
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        self.assertEqual(
+            [r["source"] for r in import_tasks["results"]],
+            ["sonarr", "radarr"],
+        )
+        self.assertEqual(mock_process_task_result.call_count, 2)
+
+    def test_get_import_tasks_lastfm_periodic_sync_within_7_days(self):
+        """A Last.fm account synced within 7 days should produce a synthetic history entry."""
+        from integrations.models import LastFMAccount
+
+        LastFMAccount.objects.create(
+            user=self.user,
+            lastfm_username="testlistener",
+            last_sync_at=timezone.now() - timedelta(hours=2),
+            connection_broken=False,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        lastfm_results = [r for r in import_tasks["results"] if r["source"] == "lastfm"]
+        self.assertEqual(len(lastfm_results), 1)
+        self.assertEqual(lastfm_results[0]["status"], "SUCCESS")
+        self.assertEqual(
+            lastfm_results[0]["summary"], "Automatic Last.fm sync completed."
+        )
+        self.assertIsNone(lastfm_results[0]["errors"])
+
+    def test_get_import_tasks_lastfm_periodic_sync_older_than_7_days(self):
+        """A Last.fm account synced more than 7 days ago should not appear in history."""
+        from integrations.models import LastFMAccount
+
+        LastFMAccount.objects.create(
+            user=self.user,
+            lastfm_username="testlistener",
+            last_sync_at=timezone.now() - timedelta(days=8),
+            connection_broken=False,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        lastfm_results = [r for r in import_tasks["results"] if r["source"] == "lastfm"]
+        self.assertEqual(len(lastfm_results), 0)
+
+    def test_get_import_tasks_lastfm_no_sync_at_produces_no_synthetic_entry(self):
+        """A Last.fm account with no last_sync_at should not appear in history."""
+        from integrations.models import LastFMAccount
+
+        LastFMAccount.objects.create(
+            user=self.user,
+            lastfm_username="testlistener",
+            last_sync_at=None,
+            connection_broken=False,
+        )
+
+        import_tasks = self.user.get_import_tasks()
+
+        lastfm_results = [r for r in import_tasks["results"] if r["source"] == "lastfm"]
+        self.assertEqual(len(lastfm_results), 0)
 
 
 class UserResolveWatchDateTests(TestCase):

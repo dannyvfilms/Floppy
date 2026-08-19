@@ -4,7 +4,7 @@
 {% load humanize %}
 
 {% block title %}
-  {{ album.title }} - Yamtrack
+  {{ album.title }} - Floppy
 {% endblock title %}
 
 {% block content %}
@@ -14,11 +14,11 @@
       {# Album cover art #}
       {% if album.image and album.image != IMG_NONE %}
         <img alt="{{ album.title }}"
-             class="w-full rounded-lg shadow-lg bg-[#2a2f35] object-cover"
+             class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
              src="{{ album.image }}"
              referrerpolicy="origin">
       {% else %}
-        <div class="w-full aspect-square rounded-lg shadow-lg bg-[#2a2f35] flex items-center justify-center">
+        <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
           {% icon 'music' is_active=False extra_classes="w-24 h-24 text-gray-500" %}
         </div>
       {% endif %}
@@ -58,7 +58,7 @@
     <div class="md:w-3/4">
       {# Artist link (like TV show name on Season page) #}
       {% if album.artist %}
-        <h2 class="text-xl font-semibold cursor-pointer hover:text-rose-400 transition-colors duration-200 mb-2 text-gray-400 text-center md:text-start">
+        <h2 class="text-xl font-semibold cursor-pointer hover:text-rose-400 transition-colors duration-200 mb-2 text-[var(--color-text-muted)] text-center md:text-start">
           <a href="{% url 'artist_detail' album.artist.id %}">{{ album.artist.name }}</a>
         </h2>
       {% endif %}
@@ -73,7 +73,7 @@
           <span class="px-3 py-1 bg-rose-600 text-white rounded-full text-sm">Album</span>
         {% endif %}
         {% if album.release_date %}
-          <span class="px-3 py-1 bg-gray-600 text-white rounded-full text-sm">{{ album.release_date|date:"Y" }}</span>
+          <span class="px-3 py-1 bg-gray-600 text-[var(--color-text)] rounded-full text-sm">{{ album.release_date|date:"Y" }}</span>
         {% endif %}
         {# Collection metadata chips (aggregated from tracks) #}
         {% if collection_metadata.has_collection %}
@@ -103,18 +103,18 @@
 
       {# Stats cards (like scores on Season) #}
       <div class="flex flex-wrap gap-4">
-        <div class="bg-[#2a2f35] p-3 rounded-lg w-[120px]">
-          <h3 class="text-xs font-semibold text-gray-400 mb-1 text-center">TRACKS</h3>
-          <p class="text-lg font-bold text-white text-center">{{ total_tracks }}</p>
+        <div class="bg-[var(--color-surface)] p-3 rounded-lg w-[120px]">
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">TRACKS</h3>
+          <p class="text-lg font-bold text-[var(--color-text)] text-center">{{ total_tracks }}</p>
         </div>
-        <div class="bg-[#2a2f35] p-3 rounded-lg w-[120px]">
-          <h3 class="text-xs font-semibold text-gray-400 mb-1 text-center">IN LIBRARY</h3>
-          <p class="text-lg font-bold text-white text-center">{{ library_track_count }}</p>
+        <div class="bg-[var(--color-surface)] p-3 rounded-lg w-[120px]">
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">IN LIBRARY</h3>
+          <p class="text-lg font-bold text-[var(--color-text)] text-center">{{ library_track_count }}</p>
         </div>
         {% if total_runtime %}
-          <div class="bg-[#2a2f35] p-3 rounded-lg w-[120px]">
-            <h3 class="text-xs font-semibold text-gray-400 mb-1 text-center">RUNTIME</h3>
-            <p class="text-lg font-bold text-white text-center">{{ total_runtime }}</p>
+          <div class="bg-[var(--color-surface)] p-3 rounded-lg w-[120px]">
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">RUNTIME</h3>
+            <p class="text-lg font-bold text-[var(--color-text)] text-center">{{ total_runtime }}</p>
           </div>
         {% endif %}
         {# Your Score card - interactive rating popup #}
@@ -122,27 +122,27 @@
              class="relative">
             <!-- Rating display -->
             <div @click="showRatingPopup = !showRatingPopup"
-                 class="bg-[#2a2f35] p-3 rounded-lg cursor-pointer w-[120px]">
-              <h3 class="text-xs font-semibold text-gray-400 mb-1 text-center">YOUR SCORE</h3>
+                 class="bg-[var(--color-surface)] p-3 rounded-lg cursor-pointer w-[120px]">
+              <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">YOUR SCORE</h3>
               <div class="flex items-center justify-center">
                 {% include "app/icons/star.svg" with classes="w-5 h-5 mr-1.5 text-yellow-400 fill-yellow-400" %}
                 <template x-if="rating">
                   <div class="flex items-baseline">
-                    <span class="text-lg font-bold text-white" x-text="rating"></span>
-                    <span class="text-gray-400 ml-0.5 text-sm">/{{ user|rating_scale_max }}</span>
+                    <span class="text-lg font-bold text-[var(--color-text)]" x-text="rating"></span>
+                    <span class="text-[var(--color-text-muted)] ml-0.5 text-sm">/{{ user|rating_scale_max }}</span>
                   </div>
                 </template>
                 <template x-if="!rating">
-                  <span class="text-lg font-bold text-gray-400">-</span>
+                  <span class="text-lg font-bold text-[var(--color-text-muted)]">-</span>
                 </template>
               </div>
-              <p class="text-xs text-gray-400 mt-0.5 text-center">Click to edit</p>
+              <p class="text-xs text-[var(--color-text-muted)] mt-0.5 text-center">Click to edit</p>
             </div>
 
             <!-- Rating popup -->
             <div x-show="showRatingPopup"
                  @click.outside="showRatingPopup = false; isHovering = false"
-                 class="absolute left-0 top-full mt-2 p-3 bg-[#2a2f35] rounded-lg shadow-lg z-10 w-[250px] border border-gray-700"
+                 class="absolute left-0 top-full mt-2 p-3 bg-[var(--color-surface)] rounded-lg shadow-lg z-10 w-[250px] border border-gray-700"
                  @mouseenter="isHovering = true"
                  @mouseleave="isHovering = false; hoverRating = null">
               <div class="flex justify-between mb-1">
@@ -159,7 +159,7 @@
                       <div :class="{ 'text-yellow-400': {{ rating_value }} <= (isHovering ? hoverRating : rating), 'text-gray-600': {{ rating_value }} > (isHovering ? hoverRating : rating) }">
                         {% include "app/icons/star.svg" with classes="w-5 h-5 hover:scale-110 transition-transform" %}
                       </div>
-                      <span class="text-xs mt-1 text-gray-400">{{ rating_value }}</span>
+                      <span class="text-xs mt-1 text-[var(--color-text-muted)]">{{ rating_value }}</span>
                     </button>
                   {% endfor %}
                 {% endwith %}
@@ -179,23 +179,23 @@
       {% if history_stats.first_listened or history_stats.last_listened or library_track_count > 0 %}
         <h2 class="text-xl font-bold mb-4">Your History</h2>
         <div class="space-y-4 mb-6">
-          <div class="bg-[#2a2f35] p-4 rounded-lg text-center md:text-start">
+          <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
             <div class="@container flex flex-col gap-y-1">
               {% if history_stats.first_listened %}
                 <div class="flex @max-[210px]:flex-col justify-between text-sm">
-                  <span class="text-gray-400">First listened:</span>
-                  <span class="text-gray-200">{{ history_stats.first_listened|user_date_format:user }}</span>
+                  <span class="text-[var(--color-text-muted)]">First listened:</span>
+                  <span class="text-[var(--color-text-secondary)]">{{ history_stats.first_listened|user_date_format:user }}</span>
                 </div>
               {% endif %}
               {% if history_stats.last_listened %}
                 <div class="flex @max-[210px]:flex-col justify-between text-sm">
-                  <span class="text-gray-400">Last listened:</span>
-                  <span class="text-gray-200">{{ history_stats.last_listened|user_date_format:user }}</span>
+                  <span class="text-[var(--color-text-muted)]">Last listened:</span>
+                  <span class="text-[var(--color-text-secondary)]">{{ history_stats.last_listened|user_date_format:user }}</span>
                 </div>
               {% endif %}
               <div class="flex @max-[210px]:flex-col justify-between text-sm">
-                <span class="text-gray-400">Progress:</span>
-                <span class="text-gray-200">{{ library_track_count }} / {{ total_tracks }}</span>
+                <span class="text-[var(--color-text-muted)]">Progress:</span>
+                <span class="text-[var(--color-text-secondary)]">{{ library_track_count }} / {{ total_tracks }}</span>
               </div>
             </div>
           </div>
@@ -204,7 +204,7 @@
 
       {# Actions - matching Season layout #}
       <h2 class="text-xl font-bold mb-4">Actions</h2>
-      <div class="bg-[#2a2f35] p-4 md:p-2 lg:p-4 rounded-lg flex items-center justify-center gap-x-5 md:gap-x-2 lg:gap-x-5 mb-6">
+      <div class="bg-[var(--color-surface)] p-4 md:p-2 lg:p-4 rounded-lg flex items-center justify-center gap-x-5 md:gap-x-2 lg:gap-x-5 mb-6">
         {# Delete all plays (red) #}
         <button type="button"
                 title="Delete all plays for this album"
@@ -246,36 +246,36 @@
 
       {# Details #}
       <h2 class="text-xl font-bold mb-4">Details</h2>
-      <div class="bg-[#2a2f35] p-4 rounded-lg text-center md:text-start">
+      <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-gray-400">FORMAT</h3>
-          <p class="text-gray-200">{{ album_details.format }}</p>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">FORMAT</h3>
+          <p class="text-[var(--color-text-secondary)]">{{ album_details.format }}</p>
         </div>
         
         {% if album.release_date %}
           <div class="mb-4">
-            <h3 class="text-sm font-semibold text-gray-400">RELEASE DATE</h3>
-            <p class="text-gray-200">{{ album.release_date|user_date_format:user }}</p>
+            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">RELEASE DATE</h3>
+            <p class="text-[var(--color-text-secondary)]">{{ album.release_date|user_date_format:user }}</p>
           </div>
         {% endif %}
         
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-gray-400">TRACKS</h3>
-          <p class="text-gray-200">{{ total_tracks }}</p>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">TRACKS</h3>
+          <p class="text-[var(--color-text-secondary)]">{{ total_tracks }}</p>
         </div>
         
         {% if total_runtime %}
           <div class="mb-4">
-            <h3 class="text-sm font-semibold text-gray-400">TOTAL RUNTIME</h3>
-            <p class="text-gray-200">{{ total_runtime }}</p>
+            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">TOTAL RUNTIME</h3>
+            <p class="text-[var(--color-text-secondary)]">{{ total_runtime }}</p>
           </div>
         {% endif %}
         
         {% if album_details.musicbrainz_url %}
           <div>
-            <h3 class="text-sm font-semibold text-gray-400">SOURCE</h3>
+            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">SOURCE</h3>
             <a href="{{ album_details.musicbrainz_url }}"
-               class="text-gray-200 hover:text-indigo-400 transition-colors duration-200"
+               class="text-[var(--color-text-secondary)] hover:text-indigo-400 transition-colors duration-200"
                target="_blank">MusicBrainz</a>
           </div>
         {% endif %}
@@ -288,7 +288,7 @@
       {% if tracks %}
         <div class="space-y-4">
           {% for track_data in tracks %}
-            <div class="bg-[#2a2f35] rounded-lg overflow-hidden shadow-lg">
+            <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg">
               <div class="flex flex-col md:flex-row">
                 {# Track image (album cover thumbnail) - square like album art #}
                 <div class="md:w-32 md:h-32 shrink-0">
@@ -298,7 +298,7 @@
                          class="w-full h-full object-cover"
                          referrerpolicy="origin">
                   {% else %}
-                    <div class="w-full h-full bg-[#1a1d20] flex items-center justify-center">
+                    <div class="w-full h-full bg-[var(--color-sidebar)] flex items-center justify-center">
                       {% icon 'music' is_active=False extra_classes="w-8 h-8 text-gray-600" %}
                     </div>
                   {% endif %}
@@ -309,7 +309,7 @@
                     <div class="flex justify-between items-start mb-2 space-x-2 px-4">
                       <div class="flex-1 min-w-0">
                         <h3 class="text-lg font-semibold mb-1 line-clamp-1">{{ track_data.track.title }}</h3>
-                        <p class="text-sm text-gray-400">
+                        <p class="text-sm text-[var(--color-text-muted)]">
                           {% if track_data.track.track_number %}
                             Track {{ track_data.track.track_number }}
                             {% if track_data.track.disc_number > 1 %} (Disc {{ track_data.track.disc_number }}){% endif %}
@@ -348,7 +348,6 @@
                                     @click="listsOpen = true">
                               {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
                             </button>
-
                             <div x-show="listsOpen"
                                  @keydown.escape.window="listsOpen = false"
                                  class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -386,13 +385,13 @@
                   {# History info (like Episode "Last watched") #}
                   {% if track_data.history %}
                     <p id="track-history-{% if track_data.music %}{{ track_data.music.id }}{% else %}{{ track_data.track.id }}{% endif %}"
-                       class="text-xs text-gray-400 mt-2 px-4">
-                      Last listened: {{ track_data.history.0.end_date|user_date_format:user|default_if_none:"No date provided" }}
+                       class="text-xs text-[var(--color-text-muted)] mt-2 px-4">
+                      Last listened: {{ track_data.history.0.end_date|datetime_format:user|default_if_none:"No date provided" }}
                       {% if track_data.history|length > 1 %}• Listened {{ track_data.history|length }} times{% endif %}
                       {% if track_data.collection_entry and track_data.collection_entry.audio_codec %}• Collected: {{ track_data.collection_entry.audio_codec }}{% endif %}
                     </p>
                   {% elif track_data.collection_entry and track_data.collection_entry.audio_codec %}
-                    <p class="text-xs text-gray-400 mt-2 px-4">
+                    <p class="text-xs text-[var(--color-text-muted)] mt-2 px-4">
                       Collected: {{ track_data.collection_entry.audio_codec }}
                     </p>
                   {% endif %}
@@ -402,8 +401,8 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="bg-[#2a2f35] p-6 rounded-lg text-center">
-          <p class="text-gray-400">
+        <div class="bg-[var(--color-surface)] p-6 rounded-lg text-center">
+          <p class="text-[var(--color-text-muted)]">
             {% if has_mb_identity %}
               No tracks found for this album on MusicBrainz yet. Try syncing metadata or searching for tracks manually.
             {% else %}

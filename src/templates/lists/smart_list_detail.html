@@ -1,0 +1,953 @@
+{% extends base_template %}
+{% load static %}
+{% load app_tags %}
+
+{% block title %}
+  {{ custom_list }} - Floppy
+{% endblock title %}
+
+{# djlint:off #}
+{% block content %}
+  {# Form CSS lives in the content block so boosted navigation keeps it #}
+  {% if form %}{{ form.media.css }}{% endif %}
+  {{ smart_filter_data|json_script:"smart-filter-data" }}
+  {% if column_config %}
+    {{ column_config|json_script:"media-column-config-data" }}
+    {{ default_column_config|json_script:"media-column-default-config-data" }}
+  {% endif %}
+
+  <div x-data="{
+    showModal: false,
+    isOrderEditing: false,
+    canEdit: {% if can_edit %}true{% else %}false{% endif %},
+    editMode: {{ smart_edit_mode|yesno:'true,false' }},
+    itemsCount: {{ items_count }},
+    saveState: 'idle',
+    saveTimer: null,
+    searchMode: false,
+    sort: '{{ current_sort }}',
+    direction: '{{ current_direction|default:'desc' }}',
+    layout: '{{ current_layout }}',
+    renderedLayout: '{{ current_layout }}',
+    query: '{{ active_smart_rules.search|default:''|escapejs }}',
+    statuses: [
+      {% for value in active_smart_rules.status %}
+        '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ],
+    rating: '{{ active_smart_rules.rating|default:'all'|escapejs }}',
+    rating_min: '{{ active_smart_rules.rating_min|default:''|escapejs }}',
+    rating_max: '{{ active_smart_rules.rating_max|default:''|escapejs }}',
+    collection: '{{ active_smart_rules.collection|default:'all'|escapejs }}',
+    genre: '{{ active_smart_rules.genre|default:''|escapejs }}',
+    implied_genre: '{{ active_smart_rules.implied_genre|default:''|escapejs }}',
+    year: '{{ active_smart_rules.year|default:''|escapejs }}',
+    release: '{{ active_smart_rules.release|default:'all'|escapejs }}',
+    release_date_from: '{{ active_smart_rules.release_date_from|default:''|escapejs }}',
+    release_date_to: '{{ active_smart_rules.release_date_to|default:''|escapejs }}',
+    date_added_from: '{{ active_smart_rules.date_added_from|default:''|escapejs }}',
+    date_added_to: '{{ active_smart_rules.date_added_to|default:''|escapejs }}',
+    source: '{{ active_smart_rules.source|default:''|escapejs }}',
+    language: '{{ active_smart_rules.language|default:''|escapejs }}',
+    country: '{{ active_smart_rules.country|default:''|escapejs }}',
+    platform: '{{ active_smart_rules.platform|default:''|escapejs }}',
+    origin: '{{ active_smart_rules.origin|default:''|escapejs }}',
+    format: '{{ active_smart_rules.format|default:''|escapejs }}',
+    provider: '{{ active_smart_rules.provider|default:''|escapejs }}',
+    selectedTags: [
+      {% for value in active_smart_rules.tag %}
+        '{{ value|escapejs }}'{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ],
+    tagMode: '{{ active_smart_rules.tag_mode|default:'or'|escapejs }}',
+    showLanguages: {{ smart_filter_data.show_languages|yesno:'true,false' }},
+    showCountries: {{ smart_filter_data.show_countries|yesno:'true,false' }},
+    showPlatforms: {{ smart_filter_data.show_platforms|yesno:'true,false' }},
+    showOrigins: {{ smart_filter_data.show_origins|yesno:'true,false' }},
+    showFormats: {{ smart_filter_data.show_formats|yesno:'true,false' }},
+    showProviders: {{ smart_filter_data.show_providers|yesno:'true,false' }},
+    availableMediaTypes: [
+      {% for media_type in available_media_types %}
+        { value: '{{ media_type }}', label: '{{ media_type|media_type_readable|escapejs }}' }{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ],
+    selectedTypes: [
+      {% for media_type in active_smart_rules.media_types %}
+        '{{ media_type }}'{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ],
+    statusLabels: {
+      {% for value, label in status_choices %}'{{ value }}': '{{ label }}'{% if not forloop.last %},{% endif %}{% endfor %}
+    },
+    ratingLabels: {
+      'all': 'All',
+      'rated': 'Rated',
+      'not_rated': 'Not Rated'
+    },
+    collectionLabels: {
+      'all': 'All',
+      'collected': 'Collected',
+      'not_collected': 'Not Collected'
+    },
+    releaseLabels: {
+      'all': 'Any',
+      'released': 'Released',
+      'not_released': 'Not Released'
+    },
+    sortLabels: {
+      {% for value, label in sort_choices %}'{{ value }}': '{{ label }}'{% if not forloop.last %},{% endif %}{% endfor %}
+    },
+    defaultDirection(value) {
+      return ['title', 'media_type', 'release_date', 'start_date'].includes(value) ? 'asc' : 'desc';
+    },
+    setSort(value) {
+      if (value === 'custom') {
+        this.sort = value;
+        this.direction = 'asc';
+        this.isOrderEditing = false;
+        if (this.editMode) this.onRuleChange(350);
+        return;
+      }
+      this.direction = (this.sort === value)
+        ? (this.direction === 'asc' ? 'desc' : 'asc')
+        : this.defaultDirection(value);
+      this.sort = value;
+      this.isOrderEditing = false;
+      if (this.editMode) this.onRuleChange(350);
+    },
+    formatRangeLabel(minValue, maxValue) {
+      if (minValue && maxValue) {
+        return `${minValue}-${maxValue}`;
+      }
+      if (minValue) {
+        return `>=${minValue}`;
+      }
+      if (maxValue) {
+        return `<=${maxValue}`;
+      }
+      return '';
+    },
+    formatDateRangeLabel(prefix, fromValue, toValue) {
+      const labelPrefix = prefix ? `${prefix} ` : '';
+      if (!fromValue && !toValue) {
+        return '';
+      }
+      const fromYearMatch = /^(\d{4})-01-01$/.exec(fromValue || '');
+      const toYearMatch = /^(\d{4})-12-31$/.exec(toValue || '');
+      if (fromYearMatch && toYearMatch) {
+        return `${fromYearMatch[1]}-${toYearMatch[1]}`;
+      }
+      if (fromValue && toValue) {
+        return `${labelPrefix}${fromValue}-${toValue}`;
+      }
+      if (fromValue) {
+        return `${labelPrefix}>=${fromValue}`;
+      }
+      return `${labelPrefix}<=${toValue}`;
+    },
+    init() {
+      if (this.selectedTypes.length === 0 && this.availableMediaTypes.length > 0) {
+        this.selectedTypes = this.availableMediaTypes.map((type) => type.value);
+      }
+    },
+    allTypesSelected() {
+      return this.availableMediaTypes.length > 0 && this.selectedTypes.length === this.availableMediaTypes.length;
+    },
+    isTypeSelected(mediaType) {
+      return this.selectedTypes.includes(mediaType);
+    },
+    toggleMediaType(mediaType) {
+      if (this.isTypeSelected(mediaType)) {
+        this.selectedTypes = this.selectedTypes.filter((type) => type !== mediaType);
+        return;
+      }
+      this.selectedTypes = [...this.selectedTypes, mediaType];
+    },
+    toggleAllTypes() {
+      if (this.allTypesSelected()) {
+        this.selectedTypes = [];
+        return;
+      }
+      this.selectedTypes = this.availableMediaTypes.map((type) => type.value);
+    },
+    dropdownLabel() {
+      if (this.allTypesSelected()) {
+        return 'All Types';
+      }
+      if (this.selectedTypes.length === 0) {
+        return 'No Types';
+      }
+      if (this.selectedTypes.length === 1) {
+        const mediaType = this.availableMediaTypes.find((type) => type.value === this.selectedTypes[0]);
+        return mediaType ? mediaType.label : '1 Type';
+      }
+      return `${this.selectedTypes.length} Types`;
+    },
+    selectedTypesForSubmit() {
+      if (this.allTypesSelected()) {
+        return [];
+      }
+      return this.selectedTypes;
+    },
+    isStatusSelected(value) { return this.statuses.includes(value); },
+    toggleStatus(value) {
+      if (this.statuses.includes(value)) {
+        this.statuses = this.statuses.filter((s) => s !== value);
+      } else {
+        this.statuses = [...this.statuses, value];
+      }
+    },
+    isTagSelected(value) { return this.selectedTags.includes(value); },
+    toggleTag(value) {
+      if (this.selectedTags.includes(value)) {
+        this.selectedTags = this.selectedTags.filter((t) => t !== value);
+      } else {
+        this.selectedTags = [...this.selectedTags, value];
+      }
+    },
+    cycleTagMode() {
+      this.tagMode = this.tagMode === 'and' ? 'or' : (this.tagMode === 'or' ? 'not' : 'and');
+    },
+    filterLabel() {
+      const labels = [];
+      if (!this.allTypesSelected()) {
+        labels.push(this.dropdownLabel());
+      }
+      if (this.rating && this.rating !== 'all') {
+        labels.push(this.ratingLabels[this.rating] || 'Rated');
+      }
+      const ratingRangeLabel = this.formatRangeLabel(this.rating_min, this.rating_max);
+      if (ratingRangeLabel) {
+        labels.push(ratingRangeLabel);
+      }
+      if (this.collection && this.collection !== 'all') {
+        labels.push(this.collectionLabels[this.collection] || 'Collected');
+      }
+      if (this.genre) {
+        labels.push(this.genre);
+      }
+      if (this.implied_genre) {
+        labels.push('Implied: ' + this.implied_genre);
+      }
+      if (this.year) {
+        labels.push(this.year === 'unknown' ? 'Unknown Year' : this.year);
+      }
+      if (this.release && this.release !== 'all') {
+        labels.push(this.releaseLabels[this.release] || 'Released');
+      }
+      const releaseDateLabel = this.formatDateRangeLabel('Release', this.release_date_from, this.release_date_to);
+      if (releaseDateLabel) {
+        labels.push(releaseDateLabel);
+      }
+      const dateAddedLabel = this.formatDateRangeLabel('Added', this.date_added_from, this.date_added_to);
+      if (dateAddedLabel) {
+        labels.push(dateAddedLabel);
+      }
+      if (this.source) {
+        labels.push(this.source.toUpperCase());
+      }
+      if (this.showLanguages && this.language) {
+        labels.push(this.language.length <= 3 ? this.language.toUpperCase() : this.language);
+      }
+      if (this.showCountries && this.country) {
+        labels.push(this.country.length <= 3 ? this.country.toUpperCase() : this.country);
+      }
+      if (this.showPlatforms && this.platform) {
+        labels.push(this.platform);
+      }
+      if (this.showOrigins && this.origin) {
+        labels.push(this.origin.length <= 3 ? this.origin.toUpperCase() : this.origin);
+      }
+      if (this.showFormats && this.format) {
+        labels.push(this.format === 'ebook' ? 'eBook' : this.format.charAt(0).toUpperCase() + this.format.slice(1));
+      }
+      if (this.showProviders && this.provider) {
+        labels.push(this.provider);
+      }
+      if (this.selectedTags.length) {
+        const prefix = this.tagMode === 'not' ? '-' : '+';
+        labels.push(prefix + this.selectedTags.join(this.tagMode === 'and' ? ' & ' : ', '));
+      }
+      if (labels.length === 0) {
+        return 'All';
+      }
+      if (labels.length === 1) {
+        return labels[0];
+      }
+      return `${labels[0]} +${labels.length - 1}`;
+    },
+    clearFilters() {
+      this.rating = 'all';
+      this.rating_min = '';
+      this.rating_max = '';
+      this.collection = 'all';
+      this.genre = '';
+      this.implied_genre = '';
+      this.year = '';
+      this.release = 'all';
+      this.release_date_from = '';
+      this.release_date_to = '';
+      this.date_added_from = '';
+      this.date_added_to = '';
+      this.source = '';
+      this.language = '';
+      this.country = '';
+      this.platform = '';
+      this.origin = '';
+      this.format = '';
+      this.provider = '';
+      this.selectedTags = [];
+      this.tagMode = 'or';
+    },
+    itemsCountLabel() {
+      return `${this.itemsCount} item${this.itemsCount === 1 ? '' : 's'}`;
+    },
+    onRuleChange(delay = 350) {
+      if (!this.editMode) {
+        return;
+      }
+      this.saveState = 'saving';
+      if (this.saveTimer) {
+        clearTimeout(this.saveTimer);
+      }
+      this.saveTimer = setTimeout(() => this.saveSmartRules(), delay);
+    },
+    async saveSmartRules() {
+      const payload = {
+        media_types: this.selectedTypesForSubmit(),
+        status: this.statuses,
+        rating: this.rating,
+        rating_min: this.rating_min,
+        rating_max: this.rating_max,
+        collection: this.collection,
+        genre: this.genre,
+        year: this.year,
+        release: this.release,
+        release_date_from: this.release_date_from,
+        release_date_to: this.release_date_to,
+        date_added_from: this.date_added_from,
+        date_added_to: this.date_added_to,
+        source: this.source,
+        language: this.language,
+        country: this.country,
+        platform: this.platform,
+        origin: this.origin,
+        format: this.format,
+        provider: this.provider,
+        tag: this.selectedTags,
+        tag_mode: this.tagMode,
+        search: this.query,
+        sort: this.sort,
+        sort_direction: this.direction,
+      };
+
+      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+      try {
+        const response = await fetch('{% url "list_smart_rules_update" custom_list.id %}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to save smart rules');
+        }
+        const responseData = await response.json().catch(() => ({}));
+        const nextItemsCount = Number(responseData.items_count);
+        if (Number.isFinite(nextItemsCount)) {
+          this.itemsCount = nextItemsCount;
+        }
+
+        this.saveState = 'saved';
+      } catch (error) {
+        console.error(error);
+        this.saveState = 'error';
+      }
+    }
+  }"
+  x-init="
+    init();
+    $refs.itemsView.addEventListener('htmx:afterSwap', () => {
+      renderedLayout = layout;
+      if (isOrderEditing) initListSortable(layout);
+    });
+    $watch('isOrderEditing', v => v ? initListSortable(layout) : destroyListSortable());
+  ">
+
+    <div class="mb-6">
+      <div class="w-full min-w-0">
+        <div class="mb-2 flex flex-wrap items-center gap-3">
+          <h1 class="text-3xl font-bold">{{ custom_list.name }}</h1>
+        </div>
+        <div class="mb-3 text-sm font-medium text-[var(--color-text-muted)]">
+          <div class="flex flex-wrap items-center gap-y-1">
+            <span x-text="itemsCountLabel()">{{ items_count }} item{{ items_count|pluralize }}</span>
+            {% if is_public_view %}
+              <span class="mx-2 text-gray-600">•</span>
+              <a href="{% url 'user_profile' custom_list.owner.username %}"
+                 class="inline-flex items-center text-[var(--color-text-muted)] transition-colors hover:text-indigo-300">
+                {{ custom_list.owner.username }}
+              </a>
+            {% endif %}
+          </div>
+        </div>
+        <div class="mb-5 flex w-full flex-nowrap items-center gap-2 overflow-x-auto pb-1 pr-2 text-sm sm:flex-wrap sm:overflow-visible sm:pb-0 sm:pr-0">
+          <span class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-indigo-400/18 bg-indigo-500/[0.07] pl-0 pr-2.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
+            <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-indigo-400/28 bg-indigo-500/14 sm:h-8 sm:w-8">
+              {% include "app/icons/horizontal-sliders.svg" with classes="w-3 h-3 text-indigo-300" %}
+            </span>
+            <span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm">Smart List</span>
+          </span>
+          {% if custom_list.visibility == "public" %}
+            <span class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-green-400/18 bg-green-500/[0.07] pl-0 pr-2.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
+              <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-green-400/28 bg-green-500/14 sm:h-8 sm:w-8">
+                {% include "app/icons/globe.svg" with classes="w-3 h-3 text-green-400" %}
+              </span>
+              <span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm">Public</span>
+            </span>
+            <div class="relative inline-flex shrink-0" x-data="{ open: false }">
+              <button type="button"
+                      class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-gray-400/18 bg-gray-500/[0.07] pl-0 pr-2.5 text-[12px] text-[var(--color-text)] shadow-sm transition-colors hover:border-gray-300/28 hover:bg-gray-500/[0.11] sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm"
+                      @click="open = !open"
+                      aria-label="List links">
+                <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-gray-400/28 bg-gray-500/14 sm:h-8 sm:w-8">
+                  {% include "app/icons/link.svg" with classes="w-3 h-3 text-[var(--color-text-secondary)]" %}
+                </span>
+                <span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm">Links</span>
+                {% include "app/icons/chevron-down.svg" with classes="w-3 h-3 text-[var(--color-text-muted)]" %}
+              </button>
+              <div class="absolute left-0 top-full mt-2 w-40 overflow-hidden rounded-md border border-gray-700 bg-[var(--color-surface-strong)] py-1 shadow-lg z-10"
+                   x-cloak
+                   x-show="open"
+                   @click.outside="open = false"
+                   x-transition:enter="transition ease-out duration-100"
+                   x-transition:enter-start="transform opacity-0 scale-95"
+                   x-transition:enter-end="transform opacity-100 scale-100"
+                   x-transition:leave="transition ease-in duration-75"
+                   x-transition:leave-start="transform opacity-100 scale-100"
+                   x-transition:leave-end="transform opacity-0 scale-95">
+                <a href="{% url 'list_rss' custom_list.public_reference %}"
+                   class="block px-3 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                   aria-label="RSS feed">
+                  RSS
+                </a>
+                <a href="{% url 'list_json' custom_list.public_reference %}?arr=radarr"
+                   class="block px-3 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                   aria-label="Radarr export">
+                  Radarr
+                </a>
+                <a href="{% url 'list_json' custom_list.public_reference %}?arr=sonarr"
+                   class="block px-3 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                   aria-label="Sonarr export">
+                  Sonarr
+                </a>
+              </div>
+            </div>
+          {% endif %}
+          {% if collaborators_count > 1 %}
+            <span class="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--color-surface-strong)] px-1.5 py-0.5 text-[var(--color-text-secondary)]">
+              <span>{{ collaborators_count }} collaborators</span>
+            </span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if can_edit %}
+        <div class="hidden sm:flex mb-4 items-center gap-2">
+          <div class="relative inline-flex" x-data="{ open: false }" @click.outside="open = false">
+            {% if smart_edit_mode %}
+              <a href="{% url 'list_detail' custom_list.public_reference %}"
+                 class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4" %}
+                <span class="text-sm">Done Editing</span>
+              </a>
+            {% else %}
+              <a href="{% url 'list_detail' custom_list.public_reference %}?edit_smart_rules=1"
+                 class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
+                {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
+                <span class="text-sm">Edit Smart Rules</span>
+              </a>
+            {% endif %}
+            <button @click="open = !open"
+                    class="h-10 inline-flex items-center px-2 bg-indigo-600 text-white rounded-r-md hover:bg-indigo-700 transition-colors cursor-pointer"
+                    aria-label="More list actions"
+                    type="button">
+              {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
+            </button>
+            <div class="absolute right-0 top-full mt-2 py-1 w-60 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden z-50 border border-gray-700"
+                 x-cloak
+                 x-show="open"
+                 x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="transform opacity-0 scale-95"
+                 x-transition:enter-end="transform opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-75"
+                 x-transition:leave-start="transform opacity-100 scale-100"
+                 x-transition:leave-end="transform opacity-0 scale-95">
+              {% if custom_list.can_recommend %}
+                {% if recommendation_count > 0 %}
+                  <a href="{% url 'list_recommendations' custom_list.id %}"
+                     class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                    View Recommendations
+                  </a>
+                  <a href="{% url 'recommend_item' custom_list.id %}"
+                     class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                    Recommend Item
+                  </a>
+                {% else %}
+                  <a href="{% url 'recommend_item' custom_list.id %}"
+                     class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                    Recommend Item
+                  </a>
+                {% endif %}
+              {% endif %}
+              <a href="{% url 'list_activity' custom_list.id %}"
+                 class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                View Activity History
+              </a>
+              <button class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                      @click="open = false; showModal = true"
+                      type="button">
+                Edit List
+              </button>
+              <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+                 class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                Export as CSV
+              </a>
+            </div>
+          </div>
+          {% include "lists/components/media_type_breakdown_button.html" %}
+        </div>
+      {% elif custom_list.can_recommend %}
+        <div class="hidden sm:flex mb-4 items-center gap-2">
+          <div class="relative inline-flex" x-data="{ open: false }" @click.outside="open = false">
+            {% if recommendation_count > 0 %}
+              <a href="{% url 'list_recommendations' custom_list.id %}"
+                 class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
+                {% include "app/icons/bell.svg" with classes="w-4 h-4" %}
+                <span class="text-sm">View Recommendations</span>
+              </a>
+            {% else %}
+              <a href="{% url 'recommend_item' custom_list.id %}"
+                 class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
+                {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
+                <span class="text-sm">Recommend Item</span>
+              </a>
+            {% endif %}
+            <button @click="open = !open"
+                    class="h-10 inline-flex items-center px-2 bg-indigo-600 text-white rounded-r-md hover:bg-indigo-700 transition-colors cursor-pointer"
+                    aria-label="More list actions"
+                    type="button">
+              {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
+            </button>
+            <div class="absolute right-0 top-full mt-2 py-1 w-60 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden z-50 border border-gray-700"
+                 x-cloak
+                 x-show="open"
+                 x-transition:enter="transition ease-out duration-100"
+                 x-transition:enter-start="transform opacity-0 scale-95"
+                 x-transition:enter-end="transform opacity-100 scale-100"
+                 x-transition:leave="transition ease-in duration-75"
+                 x-transition:leave-start="transform opacity-100 scale-100"
+                 x-transition:leave-end="transform opacity-0 scale-95">
+              {% if recommendation_count > 0 %}
+                <a href="{% url 'recommend_item' custom_list.id %}"
+                   class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                  Recommend Item
+                </a>
+              {% else %}
+                <a href="{% url 'list_recommendations' custom_list.id %}"
+                   class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                  View Recommendations
+                </a>
+              {% endif %}
+              <a href="{% url 'list_activity' custom_list.id %}"
+                 class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                View Activity History
+              </a>
+              <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+                 class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                Export as CSV
+              </a>
+            </div>
+          </div>
+          {% include "lists/components/media_type_breakdown_button.html" %}
+        </div>
+      {% else %}
+        <div class="hidden sm:flex mb-4 items-center gap-2">
+          <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+             class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer whitespace-nowrap">
+            {% include "app/icons/export.svg" with classes="w-4 h-4" %}
+            <span class="text-sm">Export as CSV</span>
+          </a>
+          {% if media_type_breakdown %}
+            {% include "lists/components/media_type_breakdown_button.html" %}
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if can_edit %}
+      <div class="mb-4 sm:hidden flex items-center gap-2">
+        <div class="relative inline-flex flex-1 min-w-0" x-data="{ open: false }" @click.outside="open = false">
+          {% if smart_edit_mode %}
+            <a href="{% url 'list_detail' custom_list.public_reference %}"
+               class="h-10 inline-flex flex-1 min-w-0 items-center justify-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
+              {% include "app/icons/checkmark.svg" with classes="w-4 h-4" %}
+              <span class="text-sm">Done Editing</span>
+            </a>
+          {% else %}
+            <a href="{% url 'list_detail' custom_list.public_reference %}?edit_smart_rules=1"
+               class="h-10 inline-flex flex-1 min-w-0 items-center justify-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
+              {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
+              <span class="text-sm">Edit Smart Rules</span>
+            </a>
+          {% endif %}
+          <button @click="open = !open"
+                  class="h-10 inline-flex shrink-0 items-center px-3 bg-indigo-600 text-white rounded-r-md hover:bg-indigo-700 transition-colors cursor-pointer"
+                  aria-label="More list actions"
+                  type="button">
+            {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
+          </button>
+          <div class="absolute right-0 top-full mt-2 py-1 w-60 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden z-50 border border-gray-700"
+               x-cloak
+               x-show="open"
+               x-transition:enter="transition ease-out duration-100"
+               x-transition:enter-start="transform opacity-0 scale-95"
+               x-transition:enter-end="transform opacity-100 scale-100"
+               x-transition:leave="transition ease-in duration-75"
+               x-transition:leave-start="transform opacity-100 scale-100"
+               x-transition:leave-end="transform opacity-0 scale-95">
+            {% if custom_list.can_recommend %}
+              {% if recommendation_count > 0 %}
+                <a href="{% url 'list_recommendations' custom_list.id %}"
+                   class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                  View Recommendations
+                </a>
+                <a href="{% url 'recommend_item' custom_list.id %}"
+                   class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                  Recommend Item
+                </a>
+              {% else %}
+                <a href="{% url 'recommend_item' custom_list.id %}"
+                   class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                  Recommend Item
+                </a>
+              {% endif %}
+            {% endif %}
+            <a href="{% url 'list_activity' custom_list.id %}"
+               class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+              View Activity History
+            </a>
+            <button class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                    @click="open = false; showModal = true"
+                    type="button">
+              Edit List
+            </button>
+            <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+               class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+              Export as CSV
+            </a>
+          </div>
+        </div>
+        {% include "lists/components/media_type_breakdown_button.html" %}
+      </div>
+    {% elif custom_list.can_recommend %}
+      <div class="mb-4 sm:hidden flex items-center gap-2">
+        <div class="relative inline-flex flex-1 min-w-0" x-data="{ open: false }" @click.outside="open = false">
+          {% if recommendation_count > 0 %}
+            <a href="{% url 'list_recommendations' custom_list.id %}"
+               class="h-10 inline-flex flex-1 min-w-0 items-center justify-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
+              {% include "app/icons/bell.svg" with classes="w-4 h-4" %}
+              <span class="text-sm">View Recommendations</span>
+            </a>
+          {% else %}
+            <a href="{% url 'recommend_item' custom_list.id %}"
+               class="h-10 inline-flex flex-1 min-w-0 items-center justify-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
+              {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
+              <span class="text-sm">Recommend Item</span>
+            </a>
+          {% endif %}
+          <button @click="open = !open"
+                  class="h-10 inline-flex shrink-0 items-center px-3 bg-indigo-600 text-white rounded-r-md hover:bg-indigo-700 transition-colors cursor-pointer"
+                  aria-label="More list actions"
+                  type="button">
+            {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
+          </button>
+          <div class="absolute right-0 top-full mt-2 py-1 w-60 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden z-50 border border-gray-700"
+               x-cloak
+               x-show="open"
+               x-transition:enter="transition ease-out duration-100"
+               x-transition:enter-start="transform opacity-0 scale-95"
+               x-transition:enter-end="transform opacity-100 scale-100"
+               x-transition:leave="transition ease-in duration-75"
+               x-transition:leave-start="transform opacity-100 scale-100"
+               x-transition:leave-end="transform opacity-0 scale-95">
+            {% if recommendation_count > 0 %}
+              <a href="{% url 'recommend_item' custom_list.id %}"
+                 class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                Recommend Item
+              </a>
+            {% else %}
+              <a href="{% url 'list_recommendations' custom_list.id %}"
+                 class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+                View Recommendations
+              </a>
+            {% endif %}
+            <a href="{% url 'list_activity' custom_list.id %}"
+               class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+              View Activity History
+            </a>
+            <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+               class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
+              Export as CSV
+            </a>
+          </div>
+        </div>
+        {% include "lists/components/media_type_breakdown_button.html" %}
+      </div>
+    {% else %}
+      <div class="mb-4 sm:hidden flex items-center gap-2">
+        <a href="{% url 'list_export_csv' custom_list.public_reference %}"
+           class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer whitespace-nowrap">
+          {% include "app/icons/export.svg" with classes="w-4 h-4" %}
+          <span class="text-sm">Export as CSV</span>
+        </a>
+        {% if media_type_breakdown %}
+          {% include "lists/components/media_type_breakdown_button.html" %}
+        {% endif %}
+      </div>
+    {% endif %}
+    {% if custom_list.description %}<p class="mb-6 text-[var(--color-text-muted)]">{{ custom_list.description }}</p>{% endif %}
+
+    {% if can_edit %}
+      {% include "lists/components/list_form.html" %}
+    {% endif %}
+
+    {% if smart_edit_mode %}
+      <p class="text-sm text-indigo-300 mb-3">Editing smart rules updates this list automatically.</p>
+    {% endif %}
+
+    {% if can_edit %}
+      {% include "lists/components/smart_rules_summary.html" %}
+    {% endif %}
+
+    {% if can_edit or is_public_view %}
+      {% include "lists/components/smart_rules_builder.html" %}
+    {% endif %}
+
+    <div id="list-results-summary" class="mb-3">
+      {% include "lists/components/list_results_summary.html" %}
+    </div>
+
+    <div id="items-view"
+         x-ref="itemsView"
+         hx-history="false"
+         :class="renderedLayout === 'grid' ? 'media-grid' : ''">
+      {% if current_layout == 'table' %}
+        {% include "lists/components/list_table.html" %}
+      {% else %}
+        {% include "lists/components/media_grid.html" %}
+      {% endif %}
+    </div>
+
+    <div id="loading-indicator" class="htmx-indicator text-center pt-8">
+      <div class="inline-flex justify-center items-center">
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+      </div>
+    </div>
+  </div>
+{% endblock content %}
+{# djlint:on #}
+
+{% block js %}
+  {% if form %}{{ form.media.js }}{% endif %}
+
+  <script>
+    function mediaFilterMenu() {
+      const dataEl = document.getElementById('smart-filter-data');
+      const data = dataEl ? JSON.parse(dataEl.textContent) : {};
+      return {
+        open: false,
+        view: 'root',
+        genreSearch: '',
+        impliedGenreSearch: '',
+        yearSearch: '',
+        sourceSearch: '',
+        languageSearch: '',
+        countrySearch: '',
+        platformSearch: '',
+        originSearch: '',
+        formatSearch: '',
+        providerSearch: '',
+        tagSearch: '',
+        genres: data.genres || [],
+        impliedGenres: data.implied_genres || [],
+        years: data.years || [],
+        sources: data.sources || [],
+        languages: data.languages || [],
+        countries: data.countries || [],
+        platforms: data.platforms || [],
+        origins: data.origins || [],
+        formats: data.formats || [],
+        providers: data.providers || [],
+        tags: data.tags || [],
+        resetSearch() {
+          this.genreSearch = '';
+          this.impliedGenreSearch = '';
+          this.yearSearch = '';
+          this.sourceSearch = '';
+          this.languageSearch = '';
+          this.countrySearch = '';
+          this.platformSearch = '';
+          this.originSearch = '';
+          this.formatSearch = '';
+          this.providerSearch = '';
+          this.tagSearch = '';
+        },
+        filteredGenres() {
+          const term = this.genreSearch.toLowerCase();
+          if (!term) {
+            return this.genres;
+          }
+          return this.genres.filter((genre) => genre.toLowerCase().includes(term));
+        },
+        filteredImpliedGenres() {
+          const term = this.impliedGenreSearch.toLowerCase();
+          if (!term) {
+            return this.impliedGenres;
+          }
+          return this.impliedGenres.filter((genre) => genre.toLowerCase().includes(term));
+        },
+        filteredYears() {
+          const term = this.yearSearch.toLowerCase();
+          if (!term) {
+            return this.years;
+          }
+          return this.years.filter((option) => option.label.toLowerCase().includes(term));
+        },
+        filteredSources() {
+          const term = this.sourceSearch.toLowerCase();
+          if (!term) {
+            return this.sources;
+          }
+          return this.sources.filter((option) => option.label.toLowerCase().includes(term));
+        },
+        filteredLanguages() {
+          const term = this.languageSearch.toLowerCase();
+          if (!term) {
+            return this.languages;
+          }
+          return this.languages.filter((option) => option.label.toLowerCase().includes(term));
+        },
+        filteredCountries() {
+          const term = this.countrySearch.toLowerCase();
+          if (!term) {
+            return this.countries;
+          }
+          return this.countries.filter((option) => option.label.toLowerCase().includes(term));
+        },
+        filteredPlatforms() {
+          const term = this.platformSearch.toLowerCase();
+          if (!term) {
+            return this.platforms;
+          }
+          return this.platforms.filter((option) => option.label.toLowerCase().includes(term));
+        },
+        filteredOrigins() {
+          const term = this.originSearch.toLowerCase();
+          if (!term) {
+            return this.origins;
+          }
+          return this.origins.filter((option) => option.label.toLowerCase().includes(term));
+        },
+        filteredFormats() {
+          const term = this.formatSearch.toLowerCase();
+          if (!term) {
+            return this.formats;
+          }
+          return this.formats.filter((option) => option.label.toLowerCase().includes(term));
+        },
+        filteredProviders() {
+          const term = this.providerSearch.toLowerCase();
+          if (!term) {
+            return this.providers;
+          }
+          return this.providers.filter((option) => option.label.toLowerCase().includes(term));
+        },
+        filteredTags() {
+          const term = this.tagSearch.toLowerCase();
+          if (!term) {
+            return this.tags;
+          }
+          return this.tags.filter((t) => t.toLowerCase().includes(term));
+        },
+      };
+    }
+
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) {
+        window.location.reload();
+      }
+    });
+
+    if (window.htmx) {
+      htmx.config.getCacheBusterParam = true;
+    }
+  </script>
+  {% include "app/components/table_column_config_scripts.html" %}
+
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
+  <script>
+    // var (not let): this script re-executes on boosted navigation
+    var _listSortable = null;
+
+    function initListSortable(layout) {
+      destroyListSortable();
+      const container = layout === 'table'
+        ? document.getElementById('list-table-body')
+        : document.getElementById('items-view');
+      if (!container || typeof Sortable === 'undefined') return;
+      _listSortable = Sortable.create(container, {
+        animation: 150,
+        handle: '.drag-handle',
+        delay: 100,
+        delayOnTouchOnly: true,
+        onEnd() {
+          const els = container.querySelectorAll('[data-item-id]');
+          const ids = Array.from(els).map(el => el.dataset.itemId);
+          const params = new URLSearchParams(ids.map(id => ['item_ids[]', id]));
+          fetch('{% url "list_reorder_all" custom_list.id %}', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+            body: params,
+          });
+        }
+      });
+    }
+
+    function destroyListSortable() {
+      if (_listSortable) { _listSortable.destroy(); _listSortable = null; }
+    }
+
+    function refreshCustomListGrid() {
+      if (!window.htmx) return;
+      const filterForm = document.getElementById('smart-filter-form');
+      const values = filterForm ? htmx.values(filterForm) : {};
+      htmx.ajax('GET', '{% url "list_detail" custom_list.public_reference %}', {
+        source: filterForm || document.body,
+        target: '#items-view',
+        swap: 'innerHTML',
+        values,
+        headers: { 'HX-Request': 'true' },
+      });
+    }
+
+    window.initListSortable = initListSortable;
+    window.destroyListSortable = destroyListSortable;
+    window.refreshCustomListGrid = refreshCustomListGrid;
+  </script>
+  {% include "lists/components/list_toggle_refresh_handler.html" %}
+{% endblock js %}

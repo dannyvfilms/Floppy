@@ -4,10 +4,12 @@ on:
   pull_request:
     paths-ignore:
       - ".github/workflows/**"
+      - "**/*.md"
+      - "docs/**"
   push:
     branches:
-      - main
-      - dev
+      - latest
+      - release
   workflow_dispatch:
 
 permissions:
@@ -20,7 +22,7 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Check for workflow modifications
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
@@ -55,19 +57,26 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
-          playwright install
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.3"
 
-      - name: Ruff
+      - name: Install dependencies
         run: |
-          ruff check src
+          uv sync --locked --no-default-groups --group test
+          uv run --no-sync playwright install
 
       - name: Set environment variables from secrets
         run: |
           if [ -n "${{ secrets.SECRET }}" ]; then echo "SECRET=${{ secrets.SECRET }}" >> $GITHUB_ENV; fi
+          # Pull requests from forks cannot read repository secrets, so this
+          # expands to empty for them and Django then refuses to start. SECRET is
+          # the only variable settings.py treats as mandatory, so fall back to an
+          # ephemeral one: nothing signed during a test run outlives the job.
+          if [ -z "${{ secrets.SECRET }}" ]; then
+            echo "SECRET=$(uv run --no-sync python -c 'import secrets; print(secrets.token_urlsafe(50))')" >> $GITHUB_ENV
+          fi
           if [ -n "${{ secrets.TMDB_API }}" ]; then echo "TMDB_API=${{ secrets.TMDB_API }}" >> $GITHUB_ENV; fi
           if [ -n "${{ secrets.MAL_API }}" ]; then echo "MAL_API=${{ secrets.MAL_API }}" >> $GITHUB_ENV; fi
           if [ -n "${{ secrets.IGDB_ID }}" ]; then echo "IGDB_ID=${{ secrets.IGDB_ID }}" >> $GITHUB_ENV; fi
@@ -77,15 +86,21 @@ jobs:
 
       - name: Run Tests
         run: |
-          coverage run src/manage.py test app users integrations lists events --parallel
+          # Tests tagged "network" call live provider APIs. They are slow and
+          # flaky, and a pull request from a fork cannot read repository secrets,
+          # so they fail there regardless of the change. Run them deliberately
+          # with scripts/test.sh --network.
+          uv run --no-sync coverage run src/manage.py test \
+            app users integrations lists events \
+            --parallel --exclude-tag network
 
       - name: Build Coverage Report
         run: |
-          coverage combine
-          coverage report
-          coverage xml
+          uv run --no-sync coverage combine
+          uv run --no-sync coverage report
+          uv run --no-sync coverage xml
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

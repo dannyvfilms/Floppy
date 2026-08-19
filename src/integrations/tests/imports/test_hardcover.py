@@ -42,12 +42,15 @@ class ImportHardcover(TestCase):
                 ],
             }
 
-        with patch(
-            "integrations.imports.hardcover.services.get_media_metadata",
-            side_effect=mock_get_media_metadata,
-        ), patch(
-            "integrations.imports.hardcover.services.search",
-            side_effect=mock_search,
+        with (
+            patch(
+                "integrations.imports.hardcover.services.get_media_metadata",
+                side_effect=mock_get_media_metadata,
+            ),
+            patch(
+                "integrations.imports.hardcover.services.search",
+                side_effect=mock_search,
+            ),
         ):
             with Path(mock_path / "import_hardcover.csv").open("rb") as file:
                 self.import_results = hardcover.importer(file, self.user, "new")

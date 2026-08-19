@@ -1,0 +1,30 @@
+<script>
+  // The toggle swaps itself with hx-swap="outerHTML", so listen on the
+  // persistent body and replace the prior handler after boosted navigation.
+  (() => {
+    const itemsView = document.getElementById('items-view');
+    if (window.__floppyListToggleRefreshHandler) {
+      document.body.removeEventListener(
+        'htmx:afterRequest',
+        window.__floppyListToggleRefreshHandler,
+      );
+    }
+    window.__floppyListToggleRefreshHandler = (event) => {
+      const requestPath = event.detail && event.detail.pathInfo
+        && event.detail.pathInfo.requestPath;
+      if (
+        itemsView
+        && itemsView.isConnected
+        && event.detail.successful
+        && requestPath
+        && requestPath.endsWith('/list_item_toggle')
+      ) {
+        refreshCustomListGrid();
+      }
+    };
+    document.body.addEventListener(
+      'htmx:afterRequest',
+      window.__floppyListToggleRefreshHandler,
+    );
+  })();
+</script>

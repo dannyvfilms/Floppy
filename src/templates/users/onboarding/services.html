@@ -1,0 +1,44 @@
+{% extends "users/onboarding/_layout.html" %}
+{% load app_tags %}
+{% load user_tags %}
+
+{% block step_title %}
+  {% icon current_media_type is_active=False extra_classes="w-6 h-6 inline align-text-bottom mr-1" %}
+  {{ current_media_type|media_type_readable_plural }}
+{% endblock step_title %}
+
+{% block step_explanation %}
+  <p>Do you use any of these apps for {{ current_media_type|media_type_readable_plural|lower }}?</p>
+  <p>Pick any that apply — we'll walk you through connecting them next. Skip this if you don't use any.</p>
+  <p class="text-xs">Step {{ step_number }} of {{ step_total }}</p>
+{% endblock step_explanation %}
+
+{% block step_options %}
+  <form method="post">
+    {% csrf_token %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {% for source in candidates %}
+        <label class="flex items-center gap-3 p-3 bg-[var(--color-surface-strong)] rounded-lg cursor-pointer hover:bg-[var(--color-surface-border)] transition-colors">
+          <input type="checkbox"
+                 name="sources"
+                 value="{{ source.slug }}"
+                 {% if source.slug in already_selected %}checked{% endif %}
+                 class="w-4 h-4 accent-indigo-600">
+          {% source_display source.slug %}
+        </label>
+      {% empty %}
+        <p class="text-sm text-[var(--color-text-muted)] sm:col-span-2">
+          No dedicated services yet for {{ current_media_type|media_type_readable_plural|lower }} —
+          you can always bring in existing data with a backup/CSV import later.
+        </p>
+      {% endfor %}
+    </div>
+    <div class="mt-6 flex items-center justify-between">
+      <span class="text-xs text-[var(--color-text-muted)]">Shared services stay selected across media types.</span>
+      <button type="submit"
+              class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+        {% if is_last_step %}Continue{% else %}Next{% endif %}
+      </button>
+    </div>
+  </form>
+{% endblock step_options %}

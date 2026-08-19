@@ -3,7 +3,7 @@
 {% load app_tags %}
 
 {% block title %}
-  Forbidden - Yamtrack
+  {{ error_page_title|default:"Forbidden" }} - Floppy
 {% endblock title %}
 
 {% block extra_head %}
@@ -12,14 +12,18 @@
 {% endblock extra_head %}
 
 {% block body %}
-  <div class="min-h-screen bg-[#212529] flex flex-col items-center justify-center text-white p-4">
+  <div class="min-h-screen bg-[var(--color-page-bg)] flex flex-col items-center justify-center text-[var(--color-text)] p-4">
     <div class="text-center max-w-md">
       <div class="mb-6">
-        <div class="text-9xl font-bold text-red-400">403</div>
-        <h1 class="text-3xl font-bold mt-4 mb-2">Access Forbidden</h1>
-        <p class="text-gray-400 mb-3">
-          CSRF verification failed for this request. This usually means the CSRF cookie was missing,
-          expired, or didn't match the form token.
+        <div class="text-9xl font-bold text-red-400">{{ error_status_code|default:"403" }}</div>
+        <h1 class="text-3xl font-bold mt-4 mb-2">{{ error_heading|default:"Access Forbidden" }}</h1>
+        <p class="text-[var(--color-text-muted)] mb-3">
+          {% if error_message %}
+            {{ error_message }}
+          {% else %}
+            CSRF verification failed for this request. This usually means the CSRF cookie was missing,
+            expired, or didn't match the form token.
+          {% endif %}
         </p>
         {% if reason %}
           <p class="text-sm text-amber-200 mb-3">
@@ -27,63 +31,28 @@
           </p>
         {% endif %}
 
-        <div class="bg-[#2a2f35] p-4 rounded-lg mb-4 text-left">
-          <h3 class="font-medium mb-2 text-gray-300">Quick checks</h3>
-          <ul class="text-sm text-gray-400 list-disc list-inside space-y-1">
+        <div class="bg-[var(--color-surface)] p-4 rounded-lg mb-4 text-left">
+          <h3 class="font-medium mb-2 text-[var(--color-text-secondary)]">Quick checks</h3>
+          <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1">
             <li>Reload the page and try again.</li>
             <li>If you're using the iOS PWA, open the site in Safari once to refresh cookies.</li>
             <li>Confirm cookies are allowed and you're not switching between http/https or domains.</li>
-            <li>Admins: verify <code class="bg-[#39404b] px-1 py-0.5 rounded">CSRF_TRUSTED_ORIGINS</code> and <code class="bg-[#39404b] px-1 py-0.5 rounded">URLS</code> match the domain you're using.</li>
+            <li>Admins: verify <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">CSRF_TRUSTED_ORIGINS</code> and <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">URLS</code> match the domain you're using.</li>
           </ul>
         </div>
-        <div class="bg-[#2a2f35] p-4 rounded-lg mb-4 text-left">
-          <h3 class="font-medium mb-2 text-gray-300">Using a Reverse Proxy?</h3>
-          <p class="text-sm text-gray-400">
-            If you're accessing YamTrack through a reverse proxy, you need to set the <code class="bg-[#39404b] px-1 py-0.5 rounded">URLS</code> environment variable to your application URL.
+        <div class="bg-[var(--color-surface)] p-4 rounded-lg mb-4 text-left">
+          <h3 class="font-medium mb-2 text-[var(--color-text-secondary)]">Using a Reverse Proxy?</h3>
+          <p class="text-sm text-[var(--color-text-muted)]">
+            If you're accessing Floppy through a reverse proxy, you need to set the <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">URLS</code> environment variable to your application URL.
           </p>
 
-          <p class="text-sm text-gray-400 mt-2">
-            For example, <code class="bg-[#39404b] px-1 py-0.5 rounded">https://yamtrack.mydomain.com</code>.
+          <p class="text-sm text-[var(--color-text-muted)] mt-2">
+            For example, <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">https://floppy.mydomain.com</code>.
           </p>
         </div>
-        <div class="bg-[#2a2f35] p-4 rounded-lg mb-4 text-left">
-          <div class="flex items-center justify-between gap-2 mb-2">
-            <h3 class="font-medium text-gray-300">Diagnostic details</h3>
-            <button type="button"
-                    class="group flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#39404b] text-sm text-gray-300 hover:bg-[#454d5a] transition-colors"
-                    data-copy-target="#error-details-403-csrf">
-              {% include "app/icons/copy.svg" with classes="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" %}
-              <span>Copy</span>
-            </button>
-          </div>
-          <p class="text-xs text-gray-500 mb-2">
-            Copy this block and share it with an admin so we can troubleshoot the failure.
-          </p>
-          <textarea id="error-details-403-csrf"
-                    class="w-full h-40 rounded-md bg-[#1f2328] border border-[#39404b] text-xs text-gray-200 p-2 font-mono"
-                    readonly>Error: 403 Forbidden
-Type: CSRF verification failed
-Reason: {{ reason|default:"(no reason provided)" }}
-Time (server): {% now "c" %}
-Method: {{ request.method|default:"-" }}
-Path: {{ request.path|default:"-" }}
-Full path: {{ request.get_full_path|default:"-" }}
-URL: {{ request.build_absolute_uri|default:"-" }}
-Host: {{ request.get_host|default:"-" }}
-Scheme: {{ request.scheme|default:"-" }}
-User: {% if user.is_authenticated %}{{ user.username }}{% else %}anonymous{% endif %}
-Authenticated: {% if user.is_authenticated %}yes{% else %}no{% endif %}
-CSRF cookie present: {% if request.COOKIES.csrftoken %}yes{% else %}no{% endif %}
-Session key present: {% if request.session.session_key %}yes{% else %}no{% endif %}
-Origin: {{ request.META.HTTP_ORIGIN|default:"-" }}
-Referer: {{ request.META.HTTP_REFERER|default:"-" }}
-User-Agent: {{ request.META.HTTP_USER_AGENT|default:"-" }}
-Remote-Addr: {{ request.META.REMOTE_ADDR|default:"-" }}
-X-Forwarded-For: {{ request.META.HTTP_X_FORWARDED_FOR|default:"-" }}
-X-Forwarded-Proto: {{ request.META.HTTP_X_FORWARDED_PROTO|default:"-" }}</textarea>
-        </div>
+        {% include "includes/error_report_panel.html" %}
         <p class="text-sm text-gray-500 mb-6">
-          If you believe this was a bug, please <a href="https://github.com/dannyvfilms/Yamtrack/issues"
+          If you believe this was a bug, please <a href="https://github.com/dannyvfilms/Floppy/issues"
     class="text-indigo-400 hover:underline">report the issue.</a>
         </p>
       </div>
@@ -94,7 +63,7 @@ X-Forwarded-Proto: {{ request.META.HTTP_X_FORWARDED_PROTO|default:"-" }}</textar
           <span>Log In</span></a>
 
         <a href="{% url 'home' %}"
-           class="flex items-center justify-center gap-2 px-6 py-3 bg-[#39404b] text-white rounded-md hover:bg-[#454d5a] transition-colors">
+           class="flex items-center justify-center gap-2 px-6 py-3 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
           {% include "app/icons/house.svg" with classes="w-5 h-5" %}
           <span>Back to Home</span></a>
       </div>

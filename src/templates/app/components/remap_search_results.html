@@ -1,0 +1,28 @@
+{% load app_tags %}
+
+{% if not results %}
+  <p class="text-xs text-[var(--color-text-muted)] py-2">
+    {% if provider %}No matches found. Try a different search.{% endif %}
+  </p>
+{% else %}
+  <div class="space-y-2">
+    {% for result in results %}
+      <form method="post"
+            action="{% url 'remap_metadata_provider' source=source media_type=media_type media_id=media_id %}"
+            class="flex items-center gap-3 bg-[var(--color-surface)] hover:bg-[var(--color-surface-strong)] rounded-md p-2 transition-colors">
+        {% csrf_token %}
+        <input type="hidden" name="provider" value="{{ provider }}">
+        <input type="hidden" name="provider_media_id" value="{{ result.media_id }}">
+        <input type="hidden" name="return_url" value="{{ return_url }}">
+        {% if result.image %}
+          <img src="{{ result.image }}" alt="" class="w-8 h-12 object-cover rounded shrink-0">
+        {% endif %}
+        <span class="flex-1 text-sm text-[var(--color-text-secondary)] truncate">{{ result.title }}</span>
+        <button type="submit"
+                class="shrink-0 text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
+          Use this match
+        </button>
+      </form>
+    {% endfor %}
+  </div>
+{% endif %}

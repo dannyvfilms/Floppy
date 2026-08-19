@@ -1,0 +1,551 @@
+import json
+from urllib.parse import urlencode
+
+from django.contrib import messages
+from django.db.models import Count
+from django.http import HttpResponse, HttpResponseBadRequest
+from django.shortcuts import get_object_or_404, render
+from django.template.loader import render_to_string
+from django.urls import reverse
+from django.views.decorators.http import require_GET, require_POST
+
+from app import cache_utils
+from app import statistics as stats
+from app.models import Item, ItemTag, MediaTypes, Tag
+from app.providers import services
+from app.services import metadata_resolution
+from app.templatetags import app_tags
+
+
+def _detail_request_url(request, *, fragment: str | None = None) -> str:
+    """Return the current detail URL with an optional fragment query override."""
+    query = request.GET.copy()
+    query.pop("fragment", None)
+    if fragment:
+        query["fragment"] = fragment
+    querystring = query.urlencode()
+    if not querystring:
+        return request.path
+    return f"{request.path}?{querystring}"
+
+
+def _resolve_detail_tag_genres(media_metadata, item, fallback_genres=None):
+    """Return detail-page genres sourced from stored item data, request state, or metadata.
+
+    Priority: fallback_genres (in-progress edits) → item.genres (backfill-enriched) →
+    metadata genres (live API, may lack provider-specific tags like Anime).
+    """
+    if fallback_genres:
+        return stats._coerce_genre_list(fallback_genres)
+    if item is not None and item.genres:
+        return list(item.genres)
+    if isinstance(media_metadata, dict):
+        details = media_metadata.get("details")
+        genres = stats._coerce_genre_list(
+            media_metadata.get("genres")
+            or (details.get("genres") if isinstance(details, dict) else None)
+            or media_metadata.get("genre")
+            or (details.get("genre") if isinstance(details, dict) else None),
+        )
+        if genres:
+            return genres
+    return []
+
+
+def _resolve_detail_tag_implied_genres(
+    media_metadata,
+    item,
+    fallback_implied_genres=None,
+):
+    """Return implied genres sourced from metadata, request state, or stored item data."""
+    implied_genres = []
+    if isinstance(media_metadata, dict):
+        details = media_metadata.get("details")
+        implied_genres = stats._coerce_genre_list(
+            media_metadata.get("implied_genres")
+            or (details.get("implied_genres") if isinstance(details, dict) else None),
+        )
+    if not implied_genres and fallback_implied_genres:
+        implied_genres = stats._coerce_genre_list(fallback_implied_genres)
+    if not implied_genres and item is not None:
+        implied_genres = list(getattr(item, "implied_genres", None) or [])
+    return implied_genres
+
+
+def _build_detail_tag_sections(
+    media_metadata,
+    item,
+    user,
+    fallback_genres=None,
+    fallback_implied_genres=None,
+    genre_list_media_type=None,
+):
+    """Return grouped genre and tag preview sections for the media detail action row."""
+    sections = []
+
+    genres = _resolve_detail_tag_genres(
+        media_metadata,
+        item,
+        fallback_genres=fallback_genres,
+    )
+
+    if genres:
+        genre_list_url = (
+            reverse("medialist", kwargs={"media_type": genre_list_media_type})
+            if genre_list_media_type
+            else None
+        )
+        sections.append(
+            {
+                "title": "Genres",
+                "entries": [
+                    {
+                        "label": genre,
+                        "chip_classes": "border-violet-400/18 bg-violet-500/[0.07] text-violet-100",
+                        "url": (
+                            f"{genre_list_url}?{urlencode({'genre': genre})}"
+                            if genre_list_url
+                            else None
+                        ),
+                    }
+                    for genre in genres
+                ],
+            }
+        )
+
+    implied_genres = _resolve_detail_tag_implied_genres(
+        media_metadata,
+        item,
+        fallback_implied_genres=fallback_implied_genres,
+    )
+    if implied_genres:
+        sections.append(
+            {
+                "title": "Implied Genres",
+                "entries": [
+                    {
+                        "label": genre,
+                        "chip_classes": "border-slate-400/18 bg-slate-500/[0.07] text-slate-100",
+                    }
+                    for genre in implied_genres
+                ],
+            }
+        )
+
+    themes = []
+    if isinstance(media_metadata, dict):
+        details = media_metadata.get("details") or {}
+        if isinstance(details, dict):
+            themes = [t for t in (details.get("themes") or []) if t]
+    if not themes and item is not None:
+        themes = list(item.themes or [])
+
+    if themes:
+        sections.append(
+            {
+                "title": "Themes",
+                "entries": [
+                    {
+                        "label": theme,
+                        "chip_classes": "border-sky-400/18 bg-sky-500/[0.07] text-sky-100",
+                    }
+                    for theme in themes
+                ],
+            }
+        )
+
+    tag_names = []
+    is_authenticated_user = getattr(user, "is_authenticated", False)
+    if is_authenticated_user and item is not None:
+        tag_names = list(
+            ItemTag.objects.filter(item=item, tag__user=user)
+            .select_related("tag")
+            .order_by("tag__name")
+            .values_list("tag__name", flat=True)
+        )
+
+    if is_authenticated_user:
+        tag_section = {
+            "title": "Tags",
+            "entries": [
+                {
+                    "label": tag_name,
+                    "chip_classes": "border-slate-400/18 bg-slate-500/[0.07] text-slate-100",
+                }
+                for tag_name in tag_names
+            ],
+        }
+        if not tag_names:
+            tag_section["empty_label"] = "Click to add tags"
+
+        sections.append(
+            tag_section,
+        )
+
+    return sections
+
+
+def _parse_detail_tag_preview_genres(raw_value):
+    """Return a normalized genre list from a serialized detail-tag preview payload."""
+    if not raw_value:
+        return []
+    try:
+        parsed_value = json.loads(raw_value)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    return stats._coerce_genre_list(parsed_value)
+
+
+def _user_tags_for_item(user, item):
+    """Return the user's tags annotated with whether they apply to the item."""
+    from django.db import models as db_models
+
+    return (
+        Tag.objects.filter(user=user)
+        .annotate(
+            has_tag=db_models.Exists(
+                ItemTag.objects.filter(
+                    tag_id=db_models.OuterRef("id"),
+                    item=item,
+                ),
+            ),
+        )
+        .order_by("name")
+    )
+
+
+def _render_tag_modal_response(
+    request,
+    item,
+    preview_genres,
+    preview_implied_genres=None,
+):
+    """Render the tag modal plus OOB preview refresh for the current item."""
+    modal_html = render_to_string(
+        "app/components/fill_tags.html",
+        {
+            "item": item,
+            "user_tags": _user_tags_for_item(request.user, item),
+            "preview_genres_json": json.dumps(preview_genres),
+            "preview_implied_genres_json": json.dumps(preview_implied_genres or []),
+        },
+        request=request,
+    )
+    preview_html = render_to_string(
+        "app/components/detail_tag_preview.html",
+        {
+            "preview_id": app_tags.component_id("tag-preview", item),
+            "detail_tag_sections": _build_detail_tag_sections(
+                {},
+                item,
+                request.user,
+                fallback_genres=preview_genres,
+                fallback_implied_genres=preview_implied_genres,
+            ),
+            "swap_oob": True,
+        },
+        request=request,
+    )
+    return HttpResponse(modal_html + preview_html)
+
+
+TAG_INDEX_LINKABLE_MEDIA_TYPES = {
+    MediaTypes.TV.value,
+    MediaTypes.MOVIE.value,
+    MediaTypes.ANIME.value,
+    MediaTypes.MANGA.value,
+    MediaTypes.GAME.value,
+    MediaTypes.BOOK.value,
+    MediaTypes.COMIC.value,
+    MediaTypes.BOARDGAME.value,
+    MediaTypes.MUSIC.value,
+    MediaTypes.PODCAST.value,
+}
+
+
+@require_GET
+def tag_index(request):
+    """Render a page listing the user's tags with per-media-type usage counts."""
+    sort = request.GET.get("sort") or "name"
+
+    tags = list(
+        Tag.objects.filter(user=request.user).annotate(
+            item_count=Count("item_tags", distinct=True),
+        ),
+    )
+    tags_by_id = {tag.id: tag for tag in tags}
+
+    type_counts = (
+        ItemTag.objects.filter(tag__user=request.user)
+        .values("tag_id", "item__media_type")
+        .annotate(count=Count("id"))
+        .order_by()
+    )
+    for tag in tags:
+        tag.type_breakdown = []
+    for row in type_counts:
+        tag = tags_by_id.get(row["tag_id"])
+        if tag is None:
+            continue
+        media_type = row["item__media_type"]
+        if media_type not in TAG_INDEX_LINKABLE_MEDIA_TYPES:
+            continue
+        tag.type_breakdown.append(
+            {
+                "media_type": media_type,
+                "count": row["count"],
+                "url": f"{reverse('medialist', kwargs={'media_type': media_type})}?{urlencode({'tag': tag.name})}",
+            },
+        )
+
+    if sort == "count":
+        tags.sort(key=lambda tag: (-tag.item_count, tag.name.lower()))
+    else:
+        tags.sort(key=lambda tag: tag.name.lower())
+
+    return render(
+        request,
+        "app/tag_index.html",
+        {"tags": tags, "sort": sort},
+    )
+
+
+@require_GET
+def tags_modal(
+    request,
+    source,
+    media_type,
+    media_id,
+    season_number=None,
+    episode_number=None,
+):
+    """Return the modal showing all user tags and allowing to toggle them on an item."""
+    tracking_media_type = metadata_resolution.get_tracking_media_type(
+        media_type,
+        source=source,
+    )
+    lookup = {
+        "media_id": media_id,
+        "source": source,
+        "media_type": tracking_media_type,
+        "season_number": season_number,
+        "episode_number": episode_number,
+    }
+    if metadata_resolution.is_grouped_anime_route(media_type, source=source):
+        lookup["library_media_type"] = MediaTypes.ANIME.value
+
+    try:
+        item = Item.objects.get(**lookup)
+    except Item.MultipleObjectsReturned:
+        item = Item.objects.filter(**lookup).first()
+    except Item.DoesNotExist:
+        metadata = services.get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            [season_number],
+            episode_number,
+        )
+        item = Item.objects.create(
+            media_id=media_id,
+            source=source,
+            media_type=tracking_media_type,
+            season_number=season_number,
+            episode_number=episode_number,
+            library_media_type=metadata.get("library_media_type") or media_type,
+            title=metadata["title"],
+            image=metadata["image"],
+        )
+
+    preview_genres = _parse_detail_tag_preview_genres(
+        request.GET.get("preview_genres_json"),
+    )
+    preview_implied_genres = _parse_detail_tag_preview_genres(
+        request.GET.get("preview_implied_genres_json"),
+    )
+    if not preview_genres:
+        preview_genres = _resolve_detail_tag_genres({}, item)
+    if not preview_implied_genres:
+        preview_implied_genres = _resolve_detail_tag_implied_genres({}, item)
+    item_updates = []
+    if preview_genres and list(item.genres or []) != list(preview_genres):
+        item.genres = list(preview_genres)
+        item_updates.append("genres")
+    if preview_implied_genres and list(
+        getattr(item, "implied_genres", None) or []
+    ) != list(preview_implied_genres):
+        item.implied_genres = list(preview_implied_genres)
+        item_updates.append("implied_genres")
+    if item_updates:
+        item.save(update_fields=item_updates)
+
+    return render(
+        request,
+        "app/components/fill_tags.html",
+        {
+            "item": item,
+            "user_tags": _user_tags_for_item(request.user, item),
+            "preview_genres_json": json.dumps(preview_genres),
+            "preview_implied_genres_json": json.dumps(preview_implied_genres),
+        },
+    )
+
+
+@require_POST
+def tag_item_toggle(request):
+    """Add or remove a tag from an item."""
+    item_id = request.POST["item_id"]
+    tag_id = request.POST["tag_id"]
+
+    item = get_object_or_404(Item, id=item_id)
+    tag = get_object_or_404(Tag, id=tag_id, user=request.user)
+
+    existing = ItemTag.objects.filter(tag=tag, item=item)
+    if existing.exists():
+        existing.delete()
+        has_tag = False
+    else:
+        ItemTag.objects.create(tag=tag, item=item)
+        has_tag = True
+    cache_utils.clear_media_list_cache_for_user(request.user.id)
+
+    preview_genres = _parse_detail_tag_preview_genres(
+        request.POST.get("preview_genres_json"),
+    )
+    preview_implied_genres = _parse_detail_tag_preview_genres(
+        request.POST.get("preview_implied_genres_json"),
+    )
+    preview_sections = _build_detail_tag_sections(
+        {},
+        item,
+        request.user,
+        fallback_genres=preview_genres,
+        fallback_implied_genres=preview_implied_genres,
+    )
+    button_html = render_to_string(
+        "app/components/tag_item_button.html",
+        {
+            "tag": tag,
+            "item": item,
+            "has_tag": has_tag,
+            "preview_genres_json": json.dumps(preview_genres),
+            "preview_implied_genres_json": json.dumps(preview_implied_genres),
+        },
+        request=request,
+    )
+    preview_html = render_to_string(
+        "app/components/detail_tag_preview.html",
+        {
+            "preview_id": app_tags.component_id("tag-preview", item),
+            "detail_tag_sections": preview_sections,
+            "swap_oob": True,
+        },
+        request=request,
+    )
+    return HttpResponse(button_html + preview_html)
+
+
+@require_POST
+def tag_bulk_toggle(request):
+    """Add or remove a tag across multiple items for the current user."""
+    tag_name = (request.POST.get("tag_name") or "").strip()
+    action = request.POST.get("action")
+    item_ids = [value for value in request.POST.getlist("item_ids") if value]
+
+    if not tag_name or action not in {"add", "remove"} or not item_ids:
+        return HttpResponseBadRequest(
+            "tag_name, action, and item_ids are required.",
+        )
+
+    tag = get_object_or_404(Tag, user=request.user, name__iexact=tag_name)
+
+    if action == "add":
+        ItemTag.objects.bulk_create(
+            [ItemTag(tag=tag, item_id=item_id) for item_id in item_ids],
+            ignore_conflicts=True,
+        )
+    else:
+        ItemTag.objects.filter(tag=tag, item_id__in=item_ids).delete()
+    cache_utils.clear_media_list_cache_for_user(request.user.id)
+
+    return HttpResponse(status=204)
+
+
+@require_POST
+def tag_create(request):
+    """Create a new tag for the user and optionally apply it to an item."""
+    name = (request.POST.get("name") or "").strip()
+    item_id = request.POST.get("item_id")
+
+    if not name:
+        return HttpResponseBadRequest("Tag name is required.")
+
+    if Tag.objects.filter(user=request.user, name__iexact=name).exists():
+        messages.error(request, f'Tag "{name}" already exists.')
+    else:
+        tag = Tag.objects.create(user=request.user, name=name)
+        if item_id:
+            try:
+                item = Item.objects.get(id=item_id)
+                ItemTag.objects.get_or_create(tag=tag, item=item)
+            except Item.DoesNotExist:
+                pass
+        cache_utils.clear_media_list_cache_for_user(request.user.id)
+
+    if item_id:
+        try:
+            item = Item.objects.get(id=item_id)
+        except Item.DoesNotExist:
+            return HttpResponseBadRequest("Item not found.")
+
+        preview_genres = _parse_detail_tag_preview_genres(
+            request.POST.get("preview_genres_json"),
+        )
+        preview_implied_genres = _parse_detail_tag_preview_genres(
+            request.POST.get("preview_implied_genres_json"),
+        )
+        return _render_tag_modal_response(
+            request,
+            item,
+            preview_genres,
+            preview_implied_genres,
+        )
+
+    return HttpResponse(status=204)
+
+
+@require_POST
+def tag_delete(request):
+    """Delete a tag owned by the current user and refresh the tag modal."""
+    tag_id = request.POST.get("tag_id")
+    item_id = request.POST.get("item_id")
+
+    if not tag_id:
+        return HttpResponseBadRequest("Tag is required.")
+
+    tag = get_object_or_404(Tag, id=tag_id, user=request.user)
+    tag.delete()
+    cache_utils.clear_media_list_cache_for_user(request.user.id)
+
+    if item_id:
+        try:
+            item = Item.objects.get(id=item_id)
+        except Item.DoesNotExist:
+            return HttpResponseBadRequest("Item not found.")
+
+        preview_genres = _parse_detail_tag_preview_genres(
+            request.POST.get("preview_genres_json"),
+        )
+        preview_implied_genres = _parse_detail_tag_preview_genres(
+            request.POST.get("preview_implied_genres_json"),
+        )
+        return _render_tag_modal_response(
+            request,
+            item,
+            preview_genres,
+            preview_implied_genres,
+        )
+
+    # No item_id: called from a context (e.g. the tag index page) that
+    # swap-removes the tag's own row on any 2xx response.
+    return HttpResponse(status=200)

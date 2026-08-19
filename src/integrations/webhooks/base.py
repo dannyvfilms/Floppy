@@ -1,11 +1,15 @@
 import logging
+import re
 from datetime import UTC, datetime
 
-from django.core.cache import cache
 from django.utils import timezone
 
 import app
-from app.models import MediaTypes, Sources, Status
+from app.log_safety import exception_summary
+from app.models import MediaTypes, ProviderMetadataStatus, Sources, Status
+from app.services.completion import select_preferred_activity_entry
+from integrations import episode_remap
+from integrations.webhooks import anime_mappings
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,10 @@ class BaseWebhookProcessor:
         """Check if media is marked as played."""
         raise NotImplementedError
 
+    def _is_unplayed(self, _payload):
+        """Check if media is marked as unplayed."""
+        return False
+
     def _extract_external_ids(self, payload):
         """Extract external IDs from payload."""
         raise NotImplementedError
@@ -60,7 +68,7 @@ class BaseWebhookProcessor:
 
     def _extract_season_episode_from_payload(self, payload):
         """Extract season and episode numbers from payload.
-        
+
         Override in subclasses if payload structure differs.
         Returns (season_number, episode_number) or (None, None) if not found.
         """
@@ -68,7 +76,7 @@ class BaseWebhookProcessor:
 
     def _extract_series_title(self, payload):
         """Extract TV series title from payload for title-based TMDB search.
-        
+
         Override in subclasses if payload structure differs.
         Returns series title string or None if not found.
         """
@@ -81,8 +89,7 @@ class BaseWebhookProcessor:
             logger.debug("Ignoring unsupported media type")
             return
 
-        title = self._get_media_title(payload)
-        logger.info("Received webhook for %s: %s", media_type, title)
+        logger.info("Received webhook for media_type=%s", media_type)
 
         if media_type == MediaTypes.TV.value:
             self._process_tv(payload, user, ids)
@@ -91,7 +98,7 @@ class BaseWebhookProcessor:
 
     def _process_tv(self, payload, user, ids, season_number=None, episode_number=None):
         """Process TV episode webhook.
-        
+
         Args:
             payload: Webhook payload
             user: User instance
@@ -99,7 +106,46 @@ class BaseWebhookProcessor:
             season_number: Season number from payload (optional, will be extracted if None)
             episode_number: Episode number from payload (optional, will be extracted if None)
         """
-        media_id, found_season, found_episode = self._find_tv_media_id(ids)
+        anidb_id = ids.get("anidb_id")
+        if user.anime_enabled and anidb_id:
+            mapping_data = anime_mappings.fetch_mapping_data()
+            resolved_episode = episode_number
+            if resolved_episode is None:
+                _, resolved_episode = self._extract_season_episode_from_payload(payload)
+            mal_id = None
+            mal_episode_number = None
+            if not resolved_episode:
+                logger.warning(
+                    "No episode number found for AniDB ID: %s",
+                    anidb_id,
+                )
+            else:
+                mal_id, mal_episode_number = anime_mappings.get_mal_id_from_anidb(
+                    mapping_data,
+                    anidb_id,
+                    resolved_episode,
+                )
+            if resolved_episode and not mal_id:
+                logger.info(
+                    "AniDB ID %s not found in mapping, falling through to TV processing",
+                    anidb_id,
+                )
+            elif resolved_episode:
+                logger.info(
+                    "Detected anime via AniDB ID: %s. Matching MAL ID: %s, Episode: %d",
+                    anidb_id,
+                    mal_id,
+                    mal_episode_number,
+                )
+                if self._handle_anime(mal_id, mal_episode_number, payload, user):
+                    return
+
+        series_title = self._extract_series_title(payload)
+        media_id, found_season, found_episode = self._find_tv_media_id(
+            ids,
+            series_title=series_title,
+            allow_title_fallback=True,
+        )
         if not media_id:
             logger.warning("No matching TMDB ID found for TV show")
             return
@@ -116,7 +162,7 @@ class BaseWebhookProcessor:
 
         if season_number is None or episode_number is None:
             logger.warning(
-                "Could not determine season/episode numbers for TMDB ID: %s", media_id,
+                "Could not determine season/episode numbers for webhook payload",
             )
             return
 
@@ -127,10 +173,9 @@ class BaseWebhookProcessor:
             tv_metadata = app.providers.tmdb.tv_with_seasons(media_id, [season_number])
         except Exception as exc:  # pragma: no cover - defensive network guard
             logger.warning(
-                "Failed tmdb.tv_with_seasons for TMDB ID %s (season %s): %s",
-                media_id,
+                "Failed tmdb.tv_with_seasons for season %s: %s",
                 season_number,
-                exc,
+                exception_summary(exc),
             )
 
             # If TMDB lookup failed, try resolving the show via TVDB/IMDB and retry.
@@ -146,20 +191,17 @@ class BaseWebhookProcessor:
                     media_id = fallback_media_id
                     season_number = season_number or alt_season
                     episode_number = episode_number or alt_episode
+                    self._remember_tvdb_override(media_id, ids)
                     try:
                         tv_metadata = app.providers.tmdb.tv_with_seasons(
                             media_id,
                             [season_number],
                         )
-                        logger.info(
-                            "Recovered TMDB lookup using TVDB/IMDB mapping: TMDB show %s",
-                            media_id,
-                        )
+                        logger.info("Recovered TMDB lookup using TVDB/IMDB mapping")
                     except Exception as fallback_exc:  # pragma: no cover - defensive
                         logger.warning(
-                            "Fallback tmdb.tv_with_seasons failed for show %s: %s",
-                            media_id,
-                            fallback_exc,
+                            "Fallback tmdb.tv_with_seasons failed: %s",
+                            exception_summary(fallback_exc),
                         )
                         fallback_media_id = None  # Mark as failed so title search runs
 
@@ -168,59 +210,156 @@ class BaseWebhookProcessor:
                 series_title = self._extract_series_title(payload)
                 if series_title:
                     logger.info(
-                        "Attempting title-based TMDB search for: %s", series_title,
+                        "Attempting title-based TMDB search for webhook payload"
                     )
                     try:
                         search_results = app.providers.tmdb.search(
-                            MediaTypes.TV.value, series_title, page=1,
+                            MediaTypes.TV.value,
+                            series_title,
+                            page=1,
                         )
                         if search_results and search_results.get("results"):
                             top_result = search_results["results"][0]
                             media_id = top_result.get("media_id")
                             if media_id:
                                 tv_metadata = app.providers.tmdb.tv_with_seasons(
-                                    media_id, [season_number],
-                                )
-                                logger.info(
-                                    "Recovered TMDB lookup using title search: %s -> TMDB %s",
-                                    series_title,
                                     media_id,
+                                    [season_number],
                                 )
+                                logger.info("Recovered TMDB lookup using title search")
                     except Exception as search_exc:
                         logger.warning(
-                            "Title-based search failed for %s: %s",
-                            series_title,
-                            search_exc,
+                            "Title-based search failed: %s",
+                            exception_summary(search_exc),
                         )
 
-            if not tv_metadata:
-                logger.warning(
-                    "All TMDB lookup attempts failed for show (original ID: %s)",
-                    ids.get("tmdb_id"),
+        if not tv_metadata:
+            logger.warning("All TMDB lookup attempts failed for webhook show payload")
+            return
+
+        if self._should_recover_tv_show_from_external_ids(
+            payload,
+            ids,
+            media_id,
+            tv_metadata,
+        ):
+            alt_ids = dict(ids)
+            alt_ids["tmdb_id"] = None
+            fallback_media_id, alt_season, alt_episode = self._find_tv_media_id(
+                alt_ids,
+                series_title=series_title,
+                allow_title_fallback=True,
+            )
+            if fallback_media_id:
+                media_id = fallback_media_id
+                season_number = season_number or alt_season
+                episode_number = episode_number or alt_episode
+                self._remember_tvdb_override(media_id, ids)
+                try:
+                    tv_metadata = app.providers.tmdb.tv_with_seasons(
+                        media_id,
+                        [season_number],
+                    )
+                    logger.info(
+                        "Recovered TMDB lookup after suspicious raw TMDB match: TMDB show %s",
+                        media_id,
+                    )
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning(
+                        "Recovery tmdb.tv_with_seasons failed for show %s: %s",
+                        media_id,
+                        exc,
+                    )
+                    return
+        elif (
+            ids.get("tvdb_id")
+            and not self._extract_payload_tmdb_id(payload)
+            and str(tv_metadata.get("tvdb_id") or "") != str(ids["tvdb_id"])
+        ):
+            self._remember_tvdb_override(media_id, ids)
+            try:
+                tv_metadata = app.providers.tmdb.tv_with_seasons(
+                    media_id,
+                    [season_number],
                 )
-                return
+                logger.info(
+                    "Rebuilt TMDB TV metadata using preferred TVDB ID for show %s",
+                    media_id,
+                )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning(
+                    "Preferred TVDB TMDB lookup refresh failed for show %s: %s",
+                    media_id,
+                    exc,
+                )
 
         tvdb_id = tv_metadata.get("tvdb_id") if tv_metadata else None
 
-        if not tvdb_id:
-            logger.warning("No TVDB ID found for TMDB ID: %s", media_id)
-            return
-
         if user.anime_enabled:
-            mapping_data = self._fetch_mapping_data()
-            mal_id, episode_offset = self._get_mal_id_from_tvdb(
-                mapping_data,
-                int(tvdb_id),
-                season_number,
-                episode_number,
-            )
-            if mal_id:
+            link_sources = [
+                (
+                    "stored TMDB",
+                    *self._get_mal_id_from_provider_links(
+                        Sources.TMDB.value,
+                        media_id,
+                        season_number,
+                        episode_number,
+                    ),
+                ),
+                (
+                    "stored TVDB",
+                    *self._get_mal_id_from_provider_links(
+                        Sources.TVDB.value,
+                        tvdb_id,
+                        season_number,
+                        episode_number,
+                    ),
+                ),
+            ]
+            for mapping_source, mal_id, mapped_episode in link_sources:
+                if not mal_id:
+                    continue
                 logger.info(
-                    "Detected anime episode via MAL ID: %s, Episode: %d",
+                    "Detected anime episode via %s mapping: MAL ID %s, Episode: %d",
+                    mapping_source,
                     mal_id,
-                    episode_offset,
+                    mapped_episode,
                 )
-                self._handle_anime(mal_id, episode_offset, payload, user)
+                if self._handle_anime(mal_id, mapped_episode, payload, user):
+                    return
+
+            mapping_data = anime_mappings.fetch_mapping_data()
+            mapping_sources = [
+                (
+                    "TVDB",
+                    *anime_mappings.get_mal_id_from_tvdb(
+                        mapping_data,
+                        tvdb_id,
+                        season_number,
+                        episode_number,
+                    ),
+                ),
+            ]
+            for mapping_source, mal_id, mapped_episode in mapping_sources:
+                if not mal_id:
+                    continue
+                logger.info(
+                    "Detected anime episode via %s mapping: MAL ID %s, Episode: %d",
+                    mapping_source,
+                    mal_id,
+                    mapped_episode,
+                )
+                if self._handle_anime(mal_id, mapped_episode, payload, user):
+                    return
+
+            if self._try_route_tvdb_anime(
+                payload,
+                user,
+                media_id,
+                episode_number,
+                tv_metadata,
+                tvdb_id,
+            ):
                 return
 
         logger.info(
@@ -231,23 +370,276 @@ class BaseWebhookProcessor:
         )
         self._handle_tv_episode(media_id, season_number, episode_number, payload, user)
 
+    def _has_existing_tv_tracking(self, media_id, tvdb_id=None):
+        """Return whether the TMDB/TVDB show is already tracked locally."""
+        media_id = str(media_id)
+
+        if app.models.Item.objects.filter(
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            media_id=media_id,
+        ).exists():
+            return True
+
+        if app.models.ItemProviderLink.objects.filter(
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id=media_id,
+        ).exists():
+            return True
+
+        return bool(
+            tvdb_id not in (None, "")
+            and app.models.ItemProviderLink.objects.filter(
+                provider=Sources.TVDB.value,
+                provider_media_type=MediaTypes.TV.value,
+                provider_media_id=str(tvdb_id),
+            ).exists()
+        )
+
+    def _find_existing_tracked_tv_item(self, user, ids, tmdb_media_id):
+        """Return a TV Item this user already tracks matching an incoming external ID.
+
+        Returns None when nothing matches.
+
+        Checked before creating a new TMDB-sourced item so that users who
+        track a show via TVDB don't end up with a duplicate entry.
+        """
+        from django.db.models import Q
+
+        tvdb_id = ids.get("tvdb_id")
+
+        filters = Q()
+        if tmdb_media_id:
+            filters |= Q(
+                provider=Sources.TMDB.value,
+                provider_media_id=str(tmdb_media_id),
+            )
+        if tvdb_id:
+            filters |= Q(
+                provider=Sources.TVDB.value,
+                provider_media_id=str(tvdb_id),
+            )
+
+        if filters:
+            link = (
+                app.models.ItemProviderLink.objects.filter(
+                    filters,
+                    provider_media_type=MediaTypes.TV.value,
+                    item__media_type=MediaTypes.TV.value,
+                    item__tv__user=user,
+                )
+                .select_related("item")
+                .first()
+            )
+            if link:
+                return link.item
+
+        # Direct match for manually-added TVDB items without a cross-provider link
+        if tvdb_id:
+            direct = app.models.Item.objects.filter(
+                source=Sources.TVDB.value,
+                media_id=str(tvdb_id),
+                media_type=MediaTypes.TV.value,
+                tv__user=user,
+            ).first()
+            if direct:
+                return direct
+
+        return None
+
+    def _try_route_tvdb_anime(
+        self,
+        payload,
+        user,
+        media_id,
+        episode_number,
+        tv_metadata,
+        tvdb_id,
+    ):
+        """Probe TVDB for Anime before falling back to a TV track."""
+        if not user.anime_enabled or not app.providers.tvdb.enabled():
+            return False
+
+        if self._has_existing_tv_tracking(media_id, tvdb_id):
+            return False
+
+        resolved_tvdb_id = tvdb_id or app.providers.tmdb.resolve_tvdb_id_for_tmdb_show(
+            media_id,
+            tv_metadata,
+        )
+        if not resolved_tvdb_id:
+            return False
+
+        if self._has_existing_tv_tracking(media_id, resolved_tvdb_id):
+            return False
+
+        try:
+            tvdb_metadata = app.providers.tvdb.tv(resolved_tvdb_id)
+        except Exception as exc:  # pragma: no cover - defensive network guard
+            logger.warning(
+                "Failed TVDB anime probe for show %s via TVDB ID %s: %s",
+                media_id,
+                resolved_tvdb_id,
+                exception_summary(exc),
+            )
+            return False
+
+        if not app.providers.tvdb.series_has_anime_genre(
+            resolved_tvdb_id,
+            tv_data=tvdb_metadata,
+        ):
+            return False
+
+        mal_id = (tvdb_metadata.get("provider_external_ids") or {}).get("mal_id")
+        if not mal_id:
+            logger.info(
+                "TVDB anime probe matched show %s but no MAL ID was available",
+                media_id,
+            )
+            return False
+
+        logger.info(
+            "Detected anime episode via TVDB genre probe: TVDB ID %s, MAL ID %s, Episode: %s",
+            resolved_tvdb_id,
+            mal_id,
+            episode_number,
+        )
+        return self._handle_anime(mal_id, episode_number, payload, user)
+
+    def _normalize_series_title(self, title):
+        """Normalize series titles for loose webhook-vs-TMDB comparisons."""
+        if not title:
+            return None
+        title_str = str(title)[:500]
+        return re.sub(r"\s*\(\d{4}\)$", "", title_str).strip().casefold()
+
+    def _remember_tvdb_override(self, media_id, ids):
+        """Persist a preferred TVDB ID for a resolved TMDB show when available."""
+        tvdb_id = ids.get("tvdb_id")
+        if not media_id or not tvdb_id:
+            return
+
+        app.providers.tmdb.set_tvdb_id_override(media_id, tvdb_id)
+
+    def _extract_payload_tmdb_id(self, payload):
+        """Extract a raw TMDB ID directly from provider payload GUID fields."""
+        metadata = payload.get("Metadata", {}) or {}
+        guids = metadata.get("Guid", [])
+        if not guids:
+            single_guid = metadata.get("guid")
+            if single_guid:
+                guids = [{"id": single_guid}]
+
+        for guid in guids:
+            guid_value = guid.get("id") if isinstance(guid, dict) else guid
+            if not guid_value:
+                continue
+
+            guid_lower = str(guid_value).lower()
+            if "tmdb" not in guid_lower and "themoviedb" not in guid_lower:
+                continue
+
+            cleaned = str(guid_value).split("?", 1)[0]
+            if "://" in cleaned:
+                cleaned = cleaned.split("://", 1)[1]
+            cleaned = cleaned.lstrip("/")
+            if "/" in cleaned:
+                cleaned = cleaned.split("/", 1)[0]
+
+            match = re.search(r"\d+", cleaned)
+            if match:
+                return match.group(0)
+
+        return None
+
+    def _should_recover_tv_show_from_external_ids(
+        self,
+        payload,
+        ids,
+        media_id,
+        tv_metadata,
+    ):
+        """Detect when a raw Plex TMDB GUID appears to map to the wrong show."""
+        if not tv_metadata:
+            return False
+
+        raw_tmdb_id = self._extract_payload_tmdb_id(payload)
+        if not raw_tmdb_id or str(media_id) != str(raw_tmdb_id):
+            return False
+
+        expected_tvdb_id = ids.get("tvdb_id")
+        actual_tvdb_id = tv_metadata.get("tvdb_id")
+        if (
+            expected_tvdb_id
+            and actual_tvdb_id
+            and str(expected_tvdb_id) != str(actual_tvdb_id)
+        ):
+            logger.info(
+                "TV metadata mismatch for raw TMDB ID %s: expected TVDB %s, got %s",
+                media_id,
+                expected_tvdb_id,
+                actual_tvdb_id,
+            )
+            return True
+
+        expected_title = self._normalize_series_title(
+            self._extract_series_title(payload),
+        )
+        actual_title = self._normalize_series_title(tv_metadata.get("title"))
+        if expected_title and actual_title and expected_title != actual_title:
+            logger.info(
+                "TV metadata mismatch for raw TMDB ID %s: expected title '%s', got '%s'",
+                media_id,
+                expected_title,
+                actual_title,
+            )
+            return True
+
+        return False
+
     def _process_movie(self, payload, user, ids):
         tmdb_id = ids["tmdb_id"]
         imdb_id = ids["imdb_id"]
+        find_response = None
 
         # Try to detect anime first if user has anime enabled
         if user.anime_enabled:
-            mapping_data = self._fetch_mapping_data()
+            mapping_data = anime_mappings.fetch_mapping_data()
             mal_id = None
             source = None
+            resolved_tmdb_id = tmdb_id
 
             if tmdb_id:
-                mal_id = self._get_mal_id_from_tmdb_movie(mapping_data, tmdb_id)
+                mal_id = anime_mappings.get_mal_id_from_tmdb_movie(
+                    mapping_data, tmdb_id
+                )
                 source = "TMDB"
 
             if not mal_id and imdb_id:
-                mal_id = self._get_mal_id_from_imdb(mapping_data, imdb_id)
+                mal_id = anime_mappings.get_mal_id_from_imdb(mapping_data, imdb_id)
                 source = "IMDB"
+
+            if not mal_id and imdb_id and not resolved_tmdb_id:
+                try:
+                    find_response = app.providers.tmdb.find(imdb_id, "imdb_id")
+                except Exception as exc:  # pragma: no cover - defensive network guard
+                    logger.warning(
+                        "Failed TMDB lookup for movie IMDB ID %s: %s",
+                        imdb_id,
+                        exception_summary(exc),
+                    )
+                else:
+                    movie_results = find_response.get("movie_results") or []
+                    if movie_results:
+                        resolved_tmdb_id = str(movie_results[0].get("id") or "")
+                        if resolved_tmdb_id:
+                            mal_id = anime_mappings.get_mal_id_from_tmdb_movie(
+                                mapping_data,
+                                resolved_tmdb_id,
+                            )
+                            source = "IMDB->TMDB"
+                            tmdb_id = resolved_tmdb_id
 
             if mal_id:
                 logger.info(
@@ -255,8 +647,8 @@ class BaseWebhookProcessor:
                     mal_id,
                     source,
                 )
-                self._handle_anime(mal_id, 1, payload, user)
-                return
+                if self._handle_anime(mal_id, 1, payload, user):
+                    return
 
         # Handle as regular movie
         if tmdb_id:
@@ -264,7 +656,15 @@ class BaseWebhookProcessor:
             self._handle_movie(tmdb_id, payload, user)
         elif imdb_id:
             logger.debug("No TMDB ID found, looking up via IMDB ID: %s", imdb_id)
-            response = app.providers.tmdb.find(imdb_id, "imdb_id")
+            try:
+                response = find_response or app.providers.tmdb.find(imdb_id, "imdb_id")
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "Failed IMDB->TMDB lookup for movie %s: %s",
+                    imdb_id,
+                    exception_summary(exc),
+                )
+                return
 
             if response.get("movie_results"):
                 media_id = response["movie_results"][0]["id"]
@@ -278,17 +678,31 @@ class BaseWebhookProcessor:
         else:
             logger.warning("No TMDB or IMDB ID found for movie, skipping processing")
 
-    def _find_tv_media_id(self, ids):
-        """Find TV media ID from external IDs."""
-        # Prioritize TVDB/IMDB lookups as they can properly resolve episode IDs via TMDB's find API
-        # Plex often provides episode-level TMDB IDs which cannot be used directly as show IDs
+    def _find_tv_media_id(
+        self,
+        ids,
+        series_title=None,
+        allow_title_fallback=False,
+        year=None,
+    ):
+        """Find TV media ID from external IDs, with optional title search fallback.
+
+        Args:
+            ids: Dict of external IDs (tmdb_id, tvdb_id, imdb_id, anidb_id).
+            series_title: Show title used for title-search fallback.
+            allow_title_fallback: Enable title-search when all ID lookups fail.
+            year: First-air year used to disambiguate title-search results.
+
+        Returns:
+            tuple: (media_id, season_number, episode_number)
+        """
+        # Prioritize TVDB/IMDB — TMDB find API resolves episode-level IDs to show IDs
         for ext_id, ext_type in [
             (ids["tvdb_id"], "tvdb_id"),
             (ids["imdb_id"], "imdb_id"),
         ]:
             if ext_id:
                 response = app.providers.tmdb.find(ext_id, ext_type)
-                # Check for episode-level results first
                 if response.get("tv_episode_results"):
                     result = response["tv_episode_results"][0]
                     return (
@@ -296,96 +710,168 @@ class BaseWebhookProcessor:
                         result.get("season_number"),
                         result.get("episode_number"),
                     )
-                # Fall back to show-level results if episode-level not available
                 if response.get("tv_results"):
                     result = response["tv_results"][0]
-                    # Return show ID only, season/episode should come from payload
                     return result.get("id"), None, None
 
-        # Fall back to direct TMDB ID usage if TVDB/IMDB are not available
-        # Note: This may fail if the TMDB ID is actually an episode ID, but the fallback
-        # logic in _process_tv will handle it via title search
+        # Jellyfin and other media servers can send a TVDB episode ID here.
+        # TMDB's find endpoint does not resolve every TVDB episode, but TVDB
+        # can map that ID to its series and the series' TMDB ID directly.
+        tvdb_episode_id = ids.get("tvdb_id")
+        if tvdb_episode_id and app.providers.tvdb.enabled():
+            try:
+                tvdb_episode = app.providers.tvdb.episode_by_id(tvdb_episode_id)
+                if tvdb_episode:
+                    media_id = app.providers.tvdb.series_tmdb_id(
+                        tvdb_episode.get("series_id"),
+                    )
+                    if media_id:
+                        logger.info(
+                            "Resolved TVDB episode %s to TMDB show %s",
+                            tvdb_episode_id,
+                            media_id,
+                        )
+                        return (
+                            media_id,
+                            tvdb_episode.get("season_number"),
+                            tvdb_episode.get("episode_number"),
+                        )
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "TVDB episode resolution failed for %s: %s",
+                    tvdb_episode_id,
+                    exception_summary(exc),
+                )
+
+        # Direct TMDB ID fallback (may be episode-level; _process_tv handles that case)
         if ids["tmdb_id"]:
             try:
-                media_id = int(ids["tmdb_id"])
-                # We'll return None for season/episode to indicate they should come from payload
-                return media_id, None, None
+                return str(ids["tmdb_id"]), None, None
             except (ValueError, TypeError):
                 logger.debug("Invalid TMDB ID format: %s", ids["tmdb_id"])
 
+        if not allow_title_fallback or not series_title:
+            return None, None, None
+
+        # Title search fallback when all ID-based resolution fails
+        logger.debug(
+            "TV ID missing; attempting title fallback search for: %s", series_title
+        )
+        try:
+            search_results = app.providers.tmdb.search(
+                MediaTypes.TV.value,
+                series_title,
+                page=1,
+            )
+            results = (search_results or {}).get("results") or []
+            found_id = self._pick_title_search_result(results, year)
+            if found_id:
+                logger.info("Resolved TV entry via title search")
+                return str(found_id), None, None
+
+            # Retry with year stripped from titles like "Show (YYYY)"
+            clean_title = re.sub(r"\s*\(\d{4}\)$", "", series_title[:500])
+            if clean_title != series_title:
+                search_results = app.providers.tmdb.search(
+                    MediaTypes.TV.value,
+                    clean_title,
+                    page=1,
+                )
+                results = (search_results or {}).get("results") or []
+                found_id = self._pick_title_search_result(results, year)
+                if found_id:
+                    logger.info("Resolved TV entry via normalized title search")
+                    return str(found_id), None, None
+        except Exception as exc:
+            logger.warning(
+                "Title search failed during TV resolution: %s",
+                exception_summary(exc),
+            )
+
         return None, None, None
 
-    def _fetch_mapping_data(self):
-        """Fetch anime mapping data with caching."""
-        data = cache.get("anime_mapping_data")
-        if data is None:
-            url = "https://raw.githubusercontent.com/Kometa-Team/Anime-IDs/refs/heads/master/anime_ids.json"
-            data = app.providers.services.api_request("GITHUB", "GET", url)
-            cache.set("anime_mapping_data", data)
-        return data
+    def _pick_title_search_result(self, results, year):
+        """Pick the search result matching the show year, if one was given."""
+        if not results:
+            return None
+        if year is not None:
+            for result in results:
+                result_year = result.get("year")
+                if result_year and str(result_year) == str(year):
+                    return result.get("media_id")
+            return None
+        return results[0].get("media_id")
 
-    def _get_mal_id_from_tvdb(
+    def _get_mal_id_from_provider_links(
         self,
-        mapping_data,
-        tvdb_id,
+        provider,
+        provider_media_id,
         season_number,
         episode_number,
     ):
-        matching_entries = [
-            entry
-            for entry in mapping_data.values()
-            if entry.get("tvdb_id") == tvdb_id
-            and entry.get("tvdb_season") == season_number
-            and "mal_id" in entry
-        ]
-
-        if not matching_entries:
+        """Prefer explicit season-aware anime links before global mapping data."""
+        if (
+            provider_media_id in (None, "")
+            or season_number is None
+            or episode_number is None
+        ):
             return None, None
 
-        matching_entries.sort(key=lambda x: x.get("tvdb_epoffset", 0))
-        for i, entry in enumerate(matching_entries):
-            current_offset = entry.get("tvdb_epoffset", 0)
-            next_offset = (
-                matching_entries[i + 1].get("tvdb_epoffset", float("inf"))
-                if i < len(matching_entries) - 1
-                else float("inf")
+        exact_link = (
+            app.models.ItemProviderLink.objects.filter(
+                provider=provider,
+                provider_media_type=MediaTypes.TV.value,
+                provider_media_id=str(provider_media_id),
+                season_number=season_number,
+                item__source=Sources.MAL.value,
+                item__media_type=MediaTypes.ANIME.value,
+            )
+            .select_related("item")
+            .first()
+        )
+        if exact_link is None:
+            exact_link = (
+                app.models.ItemProviderLink.objects.filter(
+                    provider=provider,
+                    provider_media_type=MediaTypes.TV.value,
+                    provider_media_id=str(provider_media_id),
+                    season_number__isnull=True,
+                    item__source=Sources.MAL.value,
+                    item__media_type=MediaTypes.ANIME.value,
+                )
+                .select_related("item")
+                .first()
             )
 
-            if current_offset < episode_number <= next_offset:
-                mal_id = self._parse_mal_id(entry["mal_id"])
-                return mal_id, episode_number - current_offset
+        if exact_link is None:
+            return None, None
 
-        return None, None
+        mapped_episode = episode_number - int(exact_link.episode_offset or 0)
+        if mapped_episode <= 0:
+            return None, None
 
-    def _get_mal_id_from_tmdb_movie(self, mapping_data, tmdb_movie_id):
-        """Find MAL ID from TMDB movie mapping."""
-        for entry in mapping_data.values():
-            candidate = entry.get("tmdb_movie_id")
-            try:
-                if candidate is not None and int(candidate) == int(tmdb_movie_id) and "mal_id" in entry:
-                    return self._parse_mal_id(entry["mal_id"])
-            except (TypeError, ValueError):
-                continue
-        return None
-
-    def _get_mal_id_from_imdb(self, mapping_data, imdb_id):
-        """Find MAL ID from IMDB ID mapping."""
-        for entry in mapping_data.values():
-            if entry.get("imdb_id") == imdb_id and "mal_id" in entry:
-                return self._parse_mal_id(entry["mal_id"])
-        return None
-
-    def _parse_mal_id(self, mal_id):
-        """Parse MAL ID from potentially comma-separated string.
-
-        mal_id: Either a single ID (int) or comma-separated string of IDs
-        """
-        if isinstance(mal_id, str) and "," in mal_id:
-            return mal_id.split(",")[0].strip()
-        return mal_id
+        return str(exact_link.item.media_id), mapped_episode
 
     def _handle_movie(self, media_id, payload, user):
         """Handle movie playback event."""
+        from app.services import metadata_resolution
+
+        if self._is_unplayed(payload):
+            deleted, _ = app.models.Movie.objects.filter(
+                item__media_id=media_id,
+                item__source=Sources.TMDB.value,
+                item__media_type=MediaTypes.MOVIE.value,
+                user=user,
+            ).delete()
+            if deleted:
+                logger.info("Marked movie as unplayed: %s", media_id)
+            else:
+                logger.debug(
+                    "Movie marked as unplayed but no instance exists: %s",
+                    media_id,
+                )
+            return
+
         movie_metadata = app.providers.tmdb.movie(media_id)
         movie_item, _ = app.models.Item.objects.get_or_create(
             media_id=media_id,
@@ -396,14 +882,30 @@ class BaseWebhookProcessor:
                 "image": movie_metadata["image"],
             },
         )
+        movie_external_ids = self._extract_external_ids(payload)
+        metadata_resolution.upsert_provider_links(
+            movie_item,
+            movie_metadata
+            | {
+                "provider_external_ids": {
+                    **(movie_metadata.get("provider_external_ids") or {}),
+                    "tmdb_id": str(media_id),
+                    "imdb_id": movie_external_ids.get("imdb_id"),
+                    "tvdb_id": movie_external_ids.get("tvdb_id"),
+                },
+            },
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.MOVIE.value,
+        )
 
         movie_instances = app.models.Movie.objects.filter(item=movie_item, user=user)
-        current_instance = movie_instances.first()
+        current_instance = select_preferred_activity_entry(movie_instances)
         movie_played = self._is_played(payload)
 
         progress = 1 if movie_played else 0
         now = self._get_played_at(payload) or timezone.now().replace(
-            second=0, microsecond=0,
+            second=0,
+            microsecond=0,
         )
 
         if current_instance and current_instance.status != Status.COMPLETED.value:
@@ -459,20 +961,24 @@ class BaseWebhookProcessor:
         runtime = None
         try:
             runtime_minutes = int(duration_ms) // 60000 if duration_ms else None
-            runtime = runtime_minutes if runtime_minutes and runtime_minutes > 0 else None
+            runtime = (
+                runtime_minutes if runtime_minutes and runtime_minutes > 0 else None
+            )
         except (TypeError, ValueError):
             runtime = None
 
-        air_date = (
-            metadata.get("originallyAvailableAt")
-            or metadata.get("originally_available_at")
+        air_date = metadata.get("originallyAvailableAt") or metadata.get(
+            "originally_available_at"
         )
 
         return {
             "episode_number": int(episode_number),
             "runtime": runtime,
             "air_date": air_date,
+            "still_path": None,
             "image": tv_metadata.get("image"),
+            "name": metadata.get("title") or f"Episode {episode_number}",
+            "overview": metadata.get("summary") or "",
         }
 
     def _build_fallback_season_metadata(
@@ -483,6 +989,7 @@ class BaseWebhookProcessor:
         tv_metadata,
     ):
         """Build minimal season metadata for missing TMDB seasons."""
+        metadata = payload.get("Metadata", {}) or {}
         try:
             fallback_episode = self._build_fallback_episode_metadata(
                 payload,
@@ -493,10 +1000,216 @@ class BaseWebhookProcessor:
             return None
 
         return {
-            "season_number": season_number,
+            "season_number": int(season_number),
+            "season_title": (
+                "Specials"
+                if int(season_number) == 0
+                else metadata.get("parentTitle") or f"Season {season_number}"
+            ),
+            "synopsis": tv_metadata.get("synopsis") or "No synopsis available.",
             "image": tv_metadata.get("image"),
+            "max_progress": int(episode_number),
             "episodes": [fallback_episode],
+            "details": {
+                "episodes": int(episode_number),
+            },
+            "providers": {},
+            "source_url": tv_metadata.get("external_links", {}).get("TVDB"),
         }
+
+    def _load_tv_metadata_with_required_season(
+        self,
+        media_id,
+        season_number,
+        *,
+        reason,
+    ):
+        """Return TMDB show metadata only when the requested season exists."""
+        try:
+            tv_metadata = app.providers.tmdb.tv_with_seasons(media_id, [season_number])
+        except Exception as exc:  # pragma: no cover - defensive network guard
+            logger.warning(
+                "TV season recovery failed for candidate %s via %s: %s",
+                media_id,
+                reason,
+                exception_summary(exc),
+            )
+            return None
+
+        if f"season/{season_number}" not in tv_metadata:
+            logger.info(
+                "TV season recovery candidate %s via %s still missing season %s",
+                media_id,
+                reason,
+                season_number,
+            )
+            return None
+
+        return tv_metadata
+
+    def _recover_tv_metadata_for_missing_season(
+        self,
+        media_id,
+        season_number,
+        payload,
+        ids,
+    ):
+        """Try one bounded recovery pass when the resolved show lacks the season."""
+        if season_number in (None, 0):
+            return None, None
+
+        seen_media_ids = {str(media_id)}
+        alt_ids = dict(ids)
+        alt_ids["tmdb_id"] = None
+        recovered_media_id, _alt_season, _alt_episode = self._find_tv_media_id(alt_ids)
+        if recovered_media_id and str(recovered_media_id) not in seen_media_ids:
+            recovered_tv_metadata = self._load_tv_metadata_with_required_season(
+                recovered_media_id,
+                season_number,
+                reason="external_ids",
+            )
+            if recovered_tv_metadata is not None:
+                return str(recovered_media_id), recovered_tv_metadata
+            seen_media_ids.add(str(recovered_media_id))
+
+        series_title = self._extract_series_title(payload)
+        if not series_title:
+            return None, None
+
+        try:
+            search_results = app.providers.tmdb.search(
+                MediaTypes.TV.value,
+                series_title,
+                page=1,
+            )
+        except Exception as exc:  # pragma: no cover - defensive network guard
+            logger.warning(
+                "TV title-search recovery failed for '%s': %s",
+                series_title,
+                exception_summary(exc),
+            )
+            return None, None
+
+        for result in (search_results.get("results") or [])[:3]:
+            candidate_media_id = result.get("media_id")
+            if not candidate_media_id or str(candidate_media_id) in seen_media_ids:
+                continue
+            recovered_tv_metadata = self._load_tv_metadata_with_required_season(
+                candidate_media_id,
+                season_number,
+                reason=f"title_search:{series_title}",
+            )
+            if recovered_tv_metadata is not None:
+                return str(candidate_media_id), recovered_tv_metadata
+            seen_media_ids.add(str(candidate_media_id))
+
+        return None, None
+
+    def _fetch_local_season_episode_count(self, user, payload):
+        """Return the media server's episode count for the played season.
+
+        Subclasses whose source exposes this override it; the default means
+        "unknown", which keeps a local-only season conservatively in progress.
+        """
+        return
+
+    def _remap_episode_numbering(
+        self,
+        media_id,
+        season_number,
+        episode_number,
+        tv_metadata,
+        external_ids,
+    ):
+        """Recover TMDB's real (season, episode) for a Plex/TVDB-numbered event.
+
+        Mirrors the Plex importer's remap so live webhooks file the watch under
+        the season TMDB actually has instead of a local-only placeholder.
+
+        Returns:
+            tuple: (season_number, episode_number, season_metadata), or None.
+        """
+
+        def load_season(candidate_season):
+            try:
+                candidate_metadata = app.providers.tmdb.tv_with_seasons(
+                    media_id,
+                    [candidate_season],
+                )
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "Season lookup failed during webhook remap of %s season %s: %s",
+                    media_id,
+                    candidate_season,
+                    exception_summary(exc),
+                )
+                return None
+            return candidate_metadata.get(f"season/{candidate_season}")
+
+        return episode_remap.remap_via_tmdb_find(
+            external_ids,
+            media_id,
+            load_season,
+        ) or episode_remap.remap_via_cumulative_numbering(
+            season_number,
+            episode_number,
+            tv_metadata,
+            load_season,
+        )
+
+    def _resolve_tv_genesis_identity(
+        self,
+        user,
+        media_id,
+        tv_metadata,
+        season_metadata,
+        season_number,
+    ):
+        """Return the identity to track a never-before-seen show under.
+
+        Defaults to the resolved TMDB identity. Switches to TVDB when the
+        user prefers TVDB for TV (issue #387) and a matching TVDB show/season
+        is resolvable; falls back to TMDB on any TVDB lookup failure so
+        genesis never blocks on TVDB availability.
+
+        Returns:
+            tuple: (source, media_id, tv_metadata, season_metadata)
+        """
+        from app.services import metadata_resolution
+
+        show_tvdb_id = tv_metadata.get("tvdb_id")
+        preferred_source = metadata_resolution.metadata_default_source(
+            user,
+            MediaTypes.TV.value,
+        )
+        if (
+            preferred_source == Sources.TVDB.value
+            and show_tvdb_id
+            and app.providers.tvdb.enabled()
+        ):
+            try:
+                tvdb_show_metadata = app.providers.tvdb.tv_with_seasons(
+                    show_tvdb_id,
+                    [season_number],
+                )
+                tvdb_season_metadata = tvdb_show_metadata.get(f"season/{season_number}")
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "TVDB genesis lookup failed for show %s season %s: %s",
+                    show_tvdb_id,
+                    season_number,
+                    exception_summary(exc),
+                )
+            else:
+                if tvdb_season_metadata:
+                    return (
+                        Sources.TVDB.value,
+                        str(show_tvdb_id),
+                        tvdb_show_metadata,
+                        tvdb_season_metadata,
+                    )
+
+        return Sources.TMDB.value, str(media_id), tv_metadata, season_metadata
 
     def _handle_tv_episode(
         self,
@@ -507,15 +1220,180 @@ class BaseWebhookProcessor:
         user,
     ):
         """Handle TV episode playback event."""
+        from app.services import metadata_resolution
+
+        if self._is_unplayed(payload):
+            deleted, _ = app.models.Episode.objects.filter(
+                item__media_id=media_id,
+                item__source=Sources.TMDB.value,
+                item__season_number=season_number,
+                item__episode_number=episode_number,
+                related_season__user=user,
+            ).delete()
+            if deleted:
+                logger.info(
+                    "Marked episode as unplayed: %s S%02dE%02d",
+                    media_id,
+                    season_number,
+                    episode_number,
+                )
+            else:
+                logger.debug(
+                    "Episode marked as unplayed but no instance exists: %s S%02dE%02d",
+                    media_id,
+                    season_number,
+                    episode_number,
+                )
+            return
+
         tv_metadata = app.providers.tmdb.tv_with_seasons(media_id, [season_number])
-        tv_item, _ = app.models.Item.objects.get_or_create(
-            media_id=media_id,
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.TV.value,
-            defaults={
-                "title": tv_metadata["title"],
-                "image": tv_metadata["image"],
-            },
+        external_ids = self._extract_external_ids(payload)
+
+        season_key = f"season/{season_number}"
+        season_metadata = tv_metadata.get(season_key)
+        used_local_only_fallback = False
+
+        # Try remapping before show recovery: the payload's episode-level GUID
+        # is authoritative, while recovery's title search only guesses at a
+        # different show that happens to have a season with this number.
+        if not season_metadata and int(season_number) != 0:
+            remapped = self._remap_episode_numbering(
+                media_id,
+                season_number,
+                episode_number,
+                tv_metadata,
+                external_ids,
+            )
+            if remapped is not None:
+                remapped_season, remapped_episode, season_metadata = remapped
+                logger.info(
+                    "Remapped Plex episode %s S%sE%s to TMDB S%sE%s",
+                    media_id,
+                    season_number,
+                    episode_number,
+                    remapped_season,
+                    remapped_episode,
+                )
+                season_number = remapped_season
+                episode_number = remapped_episode
+                season_key = f"season/{season_number}"
+
+        if not season_metadata and int(season_number) != 0:
+            (
+                recovered_media_id,
+                recovered_tv_metadata,
+            ) = self._recover_tv_metadata_for_missing_season(
+                media_id,
+                season_number,
+                payload,
+                external_ids,
+            )
+            if recovered_media_id and recovered_tv_metadata:
+                media_id = recovered_media_id
+                tv_metadata = recovered_tv_metadata
+                self._remember_tvdb_override(media_id, external_ids)
+                season_metadata = tv_metadata.get(season_key)
+                logger.info(
+                    "Recovered missing season %s using TMDB show %s",
+                    season_number,
+                    media_id,
+                )
+
+        if not season_metadata:
+            logger.warning(
+                "Season %s metadata missing for TMDB ID %s and no remap found "
+                "(episode %s); Plex and TMDB disagree on this show's season "
+                "structure, using payload fallback",
+                season_number,
+                media_id,
+                episode_number,
+            )
+            season_metadata = self._build_fallback_season_metadata(
+                payload,
+                season_number,
+                episode_number,
+                tv_metadata,
+            )
+            if season_metadata and int(season_number) == 0:
+                cached_fallback = app.providers.tmdb.cache_fallback_season_metadata(
+                    media_id,
+                    season_number,
+                    tv_metadata,
+                    season_metadata,
+                )
+                if cached_fallback:
+                    season_metadata = cached_fallback
+            elif season_metadata:
+                used_local_only_fallback = True
+
+        if not season_metadata:
+            logger.warning(
+                "Failed to build fallback season metadata for TMDB ID %s season %s",
+                media_id,
+                season_number,
+            )
+            return
+
+        existing_tv_item = self._find_existing_tracked_tv_item(
+            user,
+            external_ids,
+            media_id,
+        )
+        if existing_tv_item:
+            tv_item = existing_tv_item
+            # `tv_metadata`/`season_metadata` were fetched from TMDB above
+            # regardless of the existing item's own source, so the display
+            # data being upserted here is always TMDB's — tag it as such
+            # even when `tv_item.source` is TVDB (a manually-tracked show).
+            item_source = Sources.TMDB.value
+            item_tv_metadata = tv_metadata
+            item_season_metadata = season_metadata
+            logger.info(
+                "Webhook using existing %s-tracked item for show: %s",
+                tv_item.source,
+                tv_item.title,
+            )
+        else:
+            (
+                item_source,
+                item_media_id,
+                item_tv_metadata,
+                item_season_metadata,
+            ) = self._resolve_tv_genesis_identity(
+                user,
+                media_id,
+                tv_metadata,
+                season_metadata,
+                season_number,
+            )
+            tv_item, _ = app.models.Item.objects.get_or_create(
+                media_id=item_media_id,
+                source=item_source,
+                media_type=MediaTypes.TV.value,
+                defaults={
+                    "title": item_tv_metadata["title"],
+                    "image": item_tv_metadata["image"],
+                },
+            )
+        # `external_ids` describes the EPISODE that triggered this webhook
+        # event, not the show. TVDB/IMDB assign distinct IDs per episode, so
+        # episode-level values must never be written as the show's provider
+        # link (issue #326). Only `tv_metadata.get("tvdb_id")` (the show-level
+        # id, cross-referenced by TMDB itself) is valid here.
+        tv_provider_external_ids = {
+            **(item_tv_metadata.get("provider_external_ids") or {}),
+            metadata_resolution.PROVIDER_EXTERNAL_ID_KEYS[item_source]: str(
+                tv_item.media_id,
+            ),
+        }
+        show_level_tvdb_id = tv_metadata.get("tvdb_id")
+        if show_level_tvdb_id:
+            tv_provider_external_ids["tvdb_id"] = show_level_tvdb_id
+        metadata_resolution.upsert_provider_links(
+            tv_item,
+            item_tv_metadata | {"provider_external_ids": tv_provider_external_ids},
+            provider=item_source,
+            provider_media_type=MediaTypes.TV.value,
         )
 
         tv_instance, tv_created = app.models.TV.objects.get_or_create(
@@ -525,54 +1403,105 @@ class BaseWebhookProcessor:
         )
 
         if tv_created:
-            logger.info("Created new TV instance: %s", tv_metadata["title"])
+            logger.info("Created new TV instance: %s", item_tv_metadata["title"])
         elif tv_instance.status != Status.IN_PROGRESS.value:
             tv_instance.status = Status.IN_PROGRESS.value
             tv_instance.save()
             logger.info(
                 "Updated TV instance status to %s: %s",
                 Status.IN_PROGRESS.value,
-                tv_metadata["title"],
+                item_tv_metadata["title"],
             )
-
-        season_key = f"season/{season_number}"
-        season_metadata = tv_metadata.get(season_key)
-        if not season_metadata:
-            logger.warning(
-                "Season %s metadata missing for TMDB ID %s; using payload fallback",
-                season_number,
-                media_id,
-            )
-            season_metadata = self._build_fallback_season_metadata(
-                payload,
-                season_number,
-                episode_number,
-                tv_metadata,
-            )
-
-        if not season_metadata:
-            logger.warning(
-                "Failed to build fallback season metadata for TMDB ID %s season %s",
-                media_id,
-                season_number,
-            )
-            # Queue collection metadata update for TV show (not episode-specific)
-            self._queue_collection_metadata_update_for_tv(payload, user, tv_item)
-            return
 
         # Use season poster if available, otherwise fallback to TV show poster
-        season_image = season_metadata.get("image") or tv_metadata.get("image")
+        season_image = item_season_metadata.get("image") or item_tv_metadata.get(
+            "image",
+        )
 
-        season_item, _ = app.models.Item.objects.get_or_create(
-            media_id=media_id,
-            source=Sources.TMDB.value,
-            media_type=MediaTypes.SEASON.value,
-            season_number=season_number,
+        # If the user is already tracking this show via the anime pathway (TMDB-based
+        # anime, separate from MAL anime), keep scrobbles in that same bucket so that
+        # anime-scoped Season Items stay separate from TV-scoped ones.
+        #
+        # Decide the bucket from tv_item itself first — it's a single,
+        # already-resolved row for this show, not a global/sticky check (see
+        # issue #326: a DB-wide "does any anime-bucket Item exist for this
+        # media_id" check would permanently mis-route every future call for
+        # this show once any Item anywhere flipped it true). Only fall back
+        # to a user-scoped check for the rare case of un-normalised legacy
+        # data (library_media_type == "").
+        if metadata_resolution.item_uses_grouped_anime(tv_item):
+            season_library_media_type = MediaTypes.ANIME.value
+        elif tv_item.library_media_type == MediaTypes.TV.value:
+            season_library_media_type = MediaTypes.SEASON.value
+        else:
+            uses_anime_tracking = app.models.Item.objects.filter(
+                media_id=tv_item.media_id,
+                source=tv_item.source,
+                media_type=MediaTypes.SEASON.value,
+                library_media_type=MediaTypes.ANIME.value,
+                season__user=user,
+            ).exists()
+            season_library_media_type = (
+                MediaTypes.ANIME.value
+                if uses_anime_tracking
+                else MediaTypes.SEASON.value
+            )
+
+        # No webhook source exposes a season-scoped TVDB/IMDB id — only
+        # per-episode ids are available in the payload, and tv_metadata's
+        # tvdb_id is show-level, not season-level. Attaching either to the
+        # Season item's provider link corrupts ItemProviderLink's unique
+        # constraint over time as different episodes are played (issue #326).
+        # Only tmdb_id (season-identifying via media_id + season_number) is
+        # safe to write here.
+        season_item = metadata_resolution.get_or_create_tracked_season_item(
+            tv_item.media_id,
+            tv_item.source,
+            season_number,
+            provider=item_source,
+            library_media_type=season_library_media_type,
+            metadata=item_season_metadata
+            | {
+                "provider_external_ids": {
+                    **(item_season_metadata.get("provider_external_ids") or {}),
+                    metadata_resolution.PROVIDER_EXTERNAL_ID_KEYS[item_source]: str(
+                        tv_item.media_id,
+                    ),
+                },
+            },
             defaults={
-                "title": tv_metadata["title"],
+                "title": item_tv_metadata["title"],
                 "image": season_image,
+                "provider_metadata_status": (
+                    ProviderMetadataStatus.LOCAL_ONLY_MISSING_SEASON.value
+                    if used_local_only_fallback
+                    else ""
+                ),
             },
         )
+        desired_provider_metadata_status = (
+            ProviderMetadataStatus.LOCAL_ONLY_MISSING_SEASON.value
+            if used_local_only_fallback
+            else ""
+        )
+        # Only a local-only season needs an externally sourced episode count;
+        # once the provider has the season, its own count is authoritative.
+        desired_local_episode_count = (
+            self._fetch_local_season_episode_count(user, payload)
+            or season_item.local_season_episode_count
+            if used_local_only_fallback
+            else None
+        )
+
+        season_item_updates = []
+        if season_item.provider_metadata_status != desired_provider_metadata_status:
+            season_item.provider_metadata_status = desired_provider_metadata_status
+            season_item_updates.append("provider_metadata_status")
+        if season_item.local_season_episode_count != desired_local_episode_count:
+            season_item.local_season_episode_count = desired_local_episode_count
+            season_item_updates.append("local_season_episode_count")
+        if season_item_updates:
+            season_item.save(update_fields=season_item_updates)
 
         season_instance, season_created = app.models.Season.objects.get_or_create(
             item=season_item,
@@ -597,11 +1526,15 @@ class BaseWebhookProcessor:
                 season_number,
             )
 
-        episode_item = season_instance.get_episode_item(episode_number, season_metadata)
+        episode_item = season_instance.get_episode_item(
+            episode_number,
+            item_season_metadata,
+        )
 
         if self._is_played(payload):
             now = self._get_played_at(payload) or timezone.now().replace(
-                second=0, microsecond=0,
+                second=0,
+                microsecond=0,
             )
             latest_episode = (
                 app.models.Episode.objects.filter(
@@ -654,7 +1587,26 @@ class BaseWebhookProcessor:
 
     def _handle_anime(self, media_id, episode_number, payload, user):
         """Handle anime playback event."""
+        from app.services import metadata_resolution
+
         anime_metadata = app.providers.mal.anime(media_id)
+        if not self._is_played(payload):
+            episode_number = max(0, episode_number - 1)
+
+        max_progress = anime_metadata.get("max_progress")
+        if (
+            isinstance(max_progress, int)
+            and max_progress > 0
+            and episode_number > max_progress
+        ):
+            logger.warning(
+                "Skipping anime mapping for MAL ID %s: episode %s exceeds max_progress %s",
+                media_id,
+                episode_number,
+                max_progress,
+            )
+            return False
+
         anime_item, _ = app.models.Item.objects.get_or_create(
             media_id=media_id,
             source=Sources.MAL.value,
@@ -664,12 +1616,56 @@ class BaseWebhookProcessor:
                 "image": anime_metadata["image"],
             },
         )
+        metadata_resolution.upsert_provider_links(
+            anime_item,
+            anime_metadata | {"media_id": str(media_id)},
+            provider=Sources.MAL.value,
+            provider_media_type=MediaTypes.ANIME.value,
+        )
+
+        anibridge_data = anime_mappings.fetch_mapping_data()
+        for mapping_entry in anime_mappings.find_entries_for_mal_id(
+            anibridge_data, media_id
+        ):
+            tmdb_id = mapping_entry.get("tmdb_id")
+            tvdb_id = mapping_entry.get("tvdb_id")
+            season_number = mapping_entry.get("season_number")
+            episode_offset = mapping_entry.get("episode_offset") or 0
+
+            if tmdb_id not in (None, ""):
+                metadata_resolution.upsert_provider_links(
+                    anime_item,
+                    {
+                        "media_id": str(tmdb_id),
+                        "source": Sources.TMDB.value,
+                        "media_type": MediaTypes.ANIME.value,
+                        "identity_media_type": MediaTypes.TV.value,
+                        "provider_external_ids": {"tmdb_id": str(tmdb_id)},
+                    },
+                    provider=Sources.TMDB.value,
+                    provider_media_type=MediaTypes.TV.value,
+                    season_number=season_number,
+                    episode_offset=episode_offset,
+                )
+
+            if tvdb_id not in (None, ""):
+                metadata_resolution.upsert_provider_links(
+                    anime_item,
+                    {
+                        "media_id": str(tvdb_id),
+                        "source": Sources.TVDB.value,
+                        "media_type": MediaTypes.ANIME.value,
+                        "identity_media_type": MediaTypes.TV.value,
+                        "provider_external_ids": {"tvdb_id": str(tvdb_id)},
+                    },
+                    provider=Sources.TVDB.value,
+                    provider_media_type=MediaTypes.TV.value,
+                    season_number=season_number,
+                    episode_offset=episode_offset,
+                )
 
         anime_instances = app.models.Anime.objects.filter(item=anime_item, user=user)
-        current_instance = anime_instances.first()
-
-        if not self._is_played(payload):
-            episode_number = max(0, episode_number - 1)
+        current_instance = select_preferred_activity_entry(anime_instances)
 
         now = timezone.now().replace(second=0, microsecond=0)
         is_completed = episode_number == anime_metadata["max_progress"]
@@ -712,11 +1708,11 @@ class BaseWebhookProcessor:
                 status,
                 episode_number,
             )
+        return True
 
     def _queue_collection_metadata_update(self, payload, user, item):
         """Queue collection metadata update task if media server info is available.
-        
+
         This is a no-op by default. Subclasses should override to implement
         collection metadata extraction for their specific media server.
         """
-        pass

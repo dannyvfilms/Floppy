@@ -1,10 +1,9 @@
 services:
-  yamtrack:
-    container_name: yamtrack
+  floppy:
+    container_name: floppy
     # Image defaults to :latest tag (latest commit on the latest branch)
-    # Use :release or :vX.X.X for stable builds tied to a GitHub Release
-    # Use :dev for the development branch
-    image: ghcr.io/dannyvfilms/yamtrack:latest
+    # Use :release or :vX.X.X for stable builds from the release branch/GitHub Releases
+    image: ghcr.io/dannyvfilms/floppy:latest
     restart: unless-stopped
     depends_on:
       - redis
@@ -13,26 +12,44 @@ services:
       - SECRET=longstring
       - REDIS_URL=redis://redis:6379
       - ADMIN_ENABLED=False
+      # Off by default: otherwise a publicly known demo/demodemo
+      # account is provisioned after migrations.
+      - DEMO_ACCOUNT_ENABLED=False
+      # Keep DEBUG off in production: the debug toolbar slows every request
+      # and disables Django's cached template loader.
+      - DEBUG=False
+      # Web concurrency is sized from the host automatically for a lean
+      # one-worker default. Set
+      # WEB_CONCURRENCY/GUNICORN_THREADS only when you intentionally want to
+      # override the detected resource tier.
     volumes:
-      - ./db:/yamtrack/db
+      - ./db:/floppy/db
     ports:
       - "8000:8000"
     networks:
-      - yamtrack-net
+      - floppy-net
 
   redis:
-    container_name: yamtrack-redis
+    container_name: floppy-redis
     image: redis:8-alpine
     restart: unless-stopped
+    # Persist to disk so a restart doesn't drop the cache wholesale (#386), but
+    # with a memory ceiling: Redis defaults to unlimited growth plus
+    # noeviction, which on a small host ends as an OOM rather than an eviction
+    # (#521). volatile-lru only evicts keys with a TTL, so Floppy's cache is
+    # reclaimable while the Celery queues (which have none) are not. `--save ""`
+    # drops RDB snapshots, since the AOF already covers persistence.
+    # Floppy applies equivalent limits at runtime if this is left off.
+    command: redis-server --appendonly yes --save "" --maxmemory 256mb --maxmemory-policy volatile-lru
     volumes:
       - redis_data:/data
     networks:
-      - yamtrack-net
+      - floppy-net
 
 volumes:
   redis_data:
 
 
 networks:
-  yamtrack-net:
+  floppy-net:
     driver: bridge

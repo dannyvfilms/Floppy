@@ -48,8 +48,17 @@ class Command(BaseCommand):
         # Get items that need runtime data (exclude manual items as they don't have provider data)
         items_to_update = Item.objects.filter(
             runtime_minutes__isnull=True,
-            media_type__in=[MediaTypes.MOVIE.value, MediaTypes.ANIME.value, MediaTypes.EPISODE.value],
-            source__in=["tmdb", "mal", "simkl"],  # Only process items from providers that have runtime data
+            media_type__in=[
+                MediaTypes.MOVIE.value,
+                MediaTypes.ANIME.value,
+                MediaTypes.EPISODE.value,
+            ],
+            source__in=[
+                "tmdb",
+                "tvdb",
+                "mal",
+                "simkl",
+            ],  # Only process items from providers that have runtime data
         ).order_by("id")
 
         total_items = items_to_update.count()
@@ -69,8 +78,10 @@ class Command(BaseCommand):
         error_count = 0
 
         for i in range(0, total_items, batch_size):
-            batch = items_to_update[i:i + batch_size]
-            self.stdout.write(f"Processing batch {i//batch_size + 1} ({len(batch)} items)")
+            batch = items_to_update[i : i + batch_size]
+            self.stdout.write(
+                f"Processing batch {i // batch_size + 1} ({len(batch)} items)"
+            )
 
             for item in batch:
                 try:
@@ -85,9 +96,11 @@ class Command(BaseCommand):
                 except Exception as e:
                     error_count += 1
                     self.stdout.write(f"  ✗ Error updating {item.title}: {e}")
-                    logger.error(f"Error updating runtime for {item.title}: {e}")
+                    logger.exception("Error updating runtime for %s", item.title)
 
-        self.stdout.write(f"\nCompleted! Updated {updated_count} items, {error_count} errors")
+        self.stdout.write(
+            f"\nCompleted! Updated {updated_count} items, {error_count} errors"
+        )
 
     def _update_item_runtime(self, item):
         """Update runtime for a single item."""
@@ -100,28 +113,33 @@ class Command(BaseCommand):
             )
 
             if not metadata:
-                raise ValueError("No metadata returned from provider")
+                msg = "No metadata returned from provider"
+                raise ValueError(msg)  # noqa: TRY301  # raised for the surrounding handler by design
 
             if not metadata.get("details"):
-                raise ValueError("No details in metadata")
+                msg = "No details in metadata"
+                raise ValueError(msg)  # noqa: TRY301  # raised for the surrounding handler by design
 
             if not metadata["details"].get("runtime"):
-                raise ValueError("No runtime data in metadata")
+                msg = "No runtime data in metadata"
+                raise ValueError(msg)  # noqa: TRY301  # raised for the surrounding handler by design
 
             runtime_str = metadata["details"]["runtime"]
 
             # Parse runtime to minutes
             from app.statistics import parse_runtime_to_minutes
+
             runtime_minutes = parse_runtime_to_minutes(runtime_str)
 
             if runtime_minutes is None:
-                raise ValueError(f"Failed to parse runtime '{runtime_str}'")
+                msg = f"Failed to parse runtime '{runtime_str}'"
+                raise ValueError(msg)  # noqa: TRY301  # raised for the surrounding handler by design
 
             # Update the item
             with transaction.atomic():
                 item.runtime_minutes = runtime_minutes
                 item.save()
 
-        except Exception as e:
-            logger.error(f"Failed to update runtime for {item.title}: {e}")
+        except Exception:
+            logger.exception("Failed to update runtime for %s", item.title)
             raise

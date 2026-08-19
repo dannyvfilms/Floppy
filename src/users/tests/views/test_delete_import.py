@@ -1,9 +1,10 @@
-
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.test import TestCase
 from django.urls import reverse
-from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
+
+from integrations.models import LastFMAccount, PlexAccount
 
 
 class DeleteImportScheduleTests(TestCase):
@@ -93,4 +94,90 @@ class DeleteImportScheduleTests(TestCase):
 
         self.assertTrue(PeriodicTask.objects.filter(id=self.other_task.id).exists())
 
+    def test_delete_import_schedule_id_prefix_is_not_ownership(self):
+        """User 1 must not reach the schedules of users 11, 12 and friends."""
+        prefixed_user = get_user_model().objects.create_user(
+            username="prefixed",
+            password="testpass123",
+        )
+        # Ids are sequential, so force the prefix relationship the check has
+        # to survive: "user_id": 1 is a substring of "user_id": 1X.
+        prefixed_task = PeriodicTask.objects.create(
+            name="Import from Trakt for prefixed at daily",
+            task="Import from Trakt",
+            kwargs=f'{{"user_id": {self.user.id}{prefixed_user.id}}}',
+            crontab=self.crontab,
+            enabled=True,
+        )
 
+        response = self.client.post(
+            reverse("delete_import_schedule"),
+            {"task_name": prefixed_task.name},
+        )
+
+        self.assertRedirects(response, reverse("import_data"))
+        messages = list(get_messages(response.wsgi_request))
+        self.assertIn("Import schedule not found", str(messages[0]))
+        self.assertTrue(PeriodicTask.objects.filter(id=prefixed_task.id).exists())
+
+    def test_delete_import_schedule_disables_watchlist_sync(self):
+        """Deleting the Plex watchlist schedule should clear the account flag."""
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="token",
+            plex_username="testuser",
+            watchlist_sync_enabled=True,
+        )
+        watchlist_task = PeriodicTask.objects.create(
+            name="Sync Plex Watchlist for testuser (every 15 minutes)",
+            task="Sync Plex Watchlist",
+            kwargs=f'{{"user_id": {self.user.id}, "mode": "watchlist"}}',
+            crontab=self.crontab,
+            enabled=True,
+        )
+
+        response = self.client.post(
+            reverse("delete_import_schedule"),
+            {"task_name": watchlist_task.name},
+        )
+
+        self.assertRedirects(response, reverse("import_data"))
+        self.assertFalse(PeriodicTask.objects.filter(id=watchlist_task.id).exists())
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.plex_account.watchlist_sync_enabled)
+
+    def test_delete_import_schedule_lastfm_disconnects_account(self):
+        """The shared Last.fm task has no per-user kwargs, so 'deleting' it
+        for one user must disconnect that user's account instead of trying
+        to delete the task other users still rely on.
+        """
+        LastFMAccount.objects.create(user=self.user, lastfm_username="testuser")
+        LastFMAccount.objects.create(user=self.other_user, lastfm_username="otheruser")
+
+        interval = IntervalSchedule.objects.create(
+            every=15,
+            period=IntervalSchedule.MINUTES,
+        )
+        lastfm_task = PeriodicTask.objects.create(
+            name="Poll Last.fm for all users (every 15 minutes)",
+            task="Poll Last.fm for all users",
+            interval=interval,
+            enabled=True,
+        )
+
+        response = self.client.post(
+            reverse("delete_import_schedule"),
+            {"task_name": lastfm_task.name},
+        )
+
+        self.assertRedirects(response, reverse("import_data"))
+
+        messages = list(get_messages(response.wsgi_request))
+        self.assertEqual(len(messages), 1)
+        self.assertIn("Disconnected Last.fm", str(messages[0]))
+
+        self.assertFalse(LastFMAccount.objects.filter(user=self.user).exists())
+        # The shared task and the other user's connection must survive.
+        self.assertTrue(PeriodicTask.objects.filter(id=lastfm_task.id).exists())
+        self.assertTrue(LastFMAccount.objects.filter(user=self.other_user).exists())

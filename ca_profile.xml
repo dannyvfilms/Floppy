@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<CommunityApplications>
+  <Profile>Floppy is a self-hosted, all-in-one media tracker for movies, TV, anime, manga, books, comics, games, board games, music, and podcasts - a broader alternative to Trakt, Letterboxd, and TV Time. This repository publishes the single Floppy Docker template listed here. For support, bug reports, and the full configuration reference, use the links below.</Profile>
+  <Icon>https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/src/static/favicon/android-chrome-512x512.png</Icon>
+  <WebPage>https://github.com/dannyvfilms/Floppy</WebPage>
+  <Forum>https://github.com/dannyvfilms/Floppy/issues</Forum>
+</CommunityApplications>

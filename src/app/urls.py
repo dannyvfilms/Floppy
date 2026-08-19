@@ -1,6 +1,7 @@
 from django.urls import path, register_converter
 
 from app import converters, views
+from app.discover import feeds as discover_feeds
 
 register_converter(converters.MediaTypeChecker, "media_type")
 register_converter(converters.SourceChecker, "source")
@@ -8,12 +9,74 @@ register_converter(converters.SourceChecker, "source")
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("discover", views.discover_page, name="discover"),
+    path("discover/rows", views.discover_rows, name="discover_rows"),
+    path("discover/refresh", views.refresh_discover, name="refresh_discover"),
+    path("discover/action", views.discover_action, name="discover_action"),
+    path(
+        "discover/toggle-hidden",
+        views.discover_toggle_hidden,
+        name="discover_toggle_hidden",
+    ),
+    path(
+        "rss/<str:token>/<media_type:media_type>/<str:row_key>.xml",
+        discover_feeds.discover_row_feed,
+        name="discover_row_feed",
+    ),
+    path(
+        "rss/preview",
+        discover_feeds.discover_row_feed_preview,
+        name="discover_row_feed_preview",
+    ),
     path("medialist/<media_type:media_type>", views.media_list, name="medialist"),
+    path(
+        "medialist/<media_type:media_type>/columns/",
+        views.update_table_columns,
+        name="medialist_columns",
+    ),
+    path("tags", views.tag_index, name="tag_index"),
     path("search", views.media_search, name="search"),
+    path(
+        "search/suggestions",
+        views.search_suggestions,
+        name="search_suggestions",
+    ),
+    path(
+        "details/music/artist/<int:artist_id>/<slug:artist_slug>/",
+        views.music_artist_details,
+        name="music_artist_details",
+    ),
+    path(
+        "details/music/artist/<int:artist_id>/<slug:artist_slug>/album/<int:album_id>/<slug:album_slug>/",
+        views.music_album_details,
+        name="music_album_details",
+    ),
+    path(
+        "details/<source:source>/tv/<str:media_id>/<str:title>/season/<int:season_number>/episode/<int:episode_number>",
+        views.episode_details,
+        name="episode_details",
+    ),
+    path(
+        "details/<source:source>/anime/<str:media_id>/<str:title>/season/<int:season_number>/episode/<int:episode_number>",
+        views.episode_details,
+        kwargs={"parent_media_type": "anime"},
+        name="anime_episode_details",
+    ),
     path(
         "details/<source:source>/tv/<str:media_id>/<str:title>/season/<int:season_number>",
         views.season_details,
         name="season_details",
+    ),
+    path(
+        "details/<source:source>/anime/<str:media_id>/<str:title>/season/<int:season_number>",
+        views.season_details,
+        kwargs={"parent_media_type": "anime"},
+        name="anime_season_details",
+    ),
+    path(
+        "details/mal/anime/<str:media_id>/<str:title>/next-episode",
+        views.anime_next_episode,
+        name="anime_next_episode",
     ),
     path(
         "details/<source:source>/<media_type:media_type>/<path:media_id>/<str:title>",
@@ -26,6 +89,11 @@ urlpatterns = [
         name="update_media_score",
     ),
     path(
+        "update-episode-score/<int:season_id>/<int:episode_number>",
+        views.update_episode_score,
+        name="update_episode_score",
+    ),
+    path(
         "details/sync/<source:source>/<media_type:media_type>/<path:media_id>/<int:season_number>",
         views.sync_metadata,
         name="sync_metadata",
@@ -34,6 +102,46 @@ urlpatterns = [
         "details/sync/<source:source>/<media_type:media_type>/<path:media_id>",
         views.sync_metadata,
         name="sync_metadata",
+    ),
+    path(
+        "details/provider/<source:source>/<media_type:media_type>/<path:media_id>",
+        views.update_metadata_provider_preference,
+        name="update_metadata_provider_preference",
+    ),
+    path(
+        "details/remap-search/<source:source>/<media_type:media_type>/<path:media_id>",
+        views.search_remap_candidates,
+        name="search_remap_candidates",
+    ),
+    path(
+        "details/remap/<source:source>/<media_type:media_type>/<path:media_id>",
+        views.remap_metadata_provider,
+        name="remap_metadata_provider",
+    ),
+    path(
+        "details/hardcover-editions/<path:media_id>",
+        views.list_hardcover_editions,
+        name="list_hardcover_editions",
+    ),
+    path(
+        "details/hardcover-edition/<int:item_id>",
+        views.set_hardcover_edition,
+        name="set_hardcover_edition",
+    ),
+    path(
+        "details/image/<int:item_id>",
+        views.update_item_image,
+        name="update_item_image",
+    ),
+    path(
+        "details/metadata/<int:item_id>",
+        views.update_manual_item_metadata,
+        name="update_manual_item_metadata",
+    ),
+    path(
+        "details/migrate/<source:source>/<media_type:media_type>/<path:media_id>",
+        views.migrate_grouped_anime,
+        name="migrate_grouped_anime",
     ),
     path(
         "track_modal/<source:source>/<media_type:media_type>/<path:media_id>/<int:season_number>",
@@ -53,6 +161,13 @@ urlpatterns = [
     path("media_save", views.media_save, name="media_save"),
     path("media_delete", views.media_delete, name="media_delete"),
     path("episode_save", views.episode_save, name="episode_save"),
+    path("episode_drop", views.episode_drop, name="episode_drop"),
+    path("episode_bulk_save", views.episode_bulk_save, name="episode_bulk_save"),
+    path(
+        "episodes/history-poll/<int:season_id>/",
+        views.episode_history_poll,
+        name="episode_history_poll",
+    ),
     path(
         "history_modal/<source:source>/<media_type:media_type>/<path:media_id>/<int:season_number>/<int:episode_number>",
         views.history_modal,
@@ -83,17 +198,64 @@ urlpatterns = [
     path("statistics", views.statistics, name="statistics"),
     path("statistics/refresh", views.refresh_statistics, name="refresh_statistics"),
     path(
+        "statistics/preferences",
+        views.update_statistics_preferences,
+        name="update_statistics_preferences",
+    ),
+    path(
+        "statistics/compare-mode",
+        views.update_statistics_compare_mode,
+        name="update_statistics_compare_mode",
+    ),
+    path(
+        "statistics/select-featured-person",
+        views.select_featured_person,
+        name="select_featured_person",
+    ),
+    path(
         "statistics/top-talent-sort",
         views.update_top_talent_sort,
         name="update_top_talent_sort",
     ),
+    path(
+        "statistics/genre-sort",
+        views.update_genre_sort,
+        name="update_genre_sort",
+    ),
+    path(
+        "statistics/studio-sort",
+        views.update_studio_sort,
+        name="update_studio_sort",
+    ),
+    path(
+        "statistics/fragments/talent",
+        views.statistics_talent_fragment,
+        name="statistics_talent_fragment",
+    ),
     path("history", views.history, name="history"),
+    path("api/history-genres/", views.history_genres, name="history_genres"),
     path(
         "person/<source:source>/<str:person_id>/<slug:name>",
         views.person_detail,
         name="person_detail",
     ),
+    path(
+        "studio/<source:source>/<str:studio_id>/<slug:name>",
+        views.studio_detail,
+        name="studio_detail",
+    ),
+    path(
+        "api/trakt-series-graph/<str:source>/<str:media_id>/",
+        views.trakt_series_graph_fragment,
+        name="trakt_series_graph_fragment",
+    ),
+    path(
+        "api/active-playback/",
+        views.active_playback_fragment,
+        name="active_playback_fragment",
+    ),
     path("api/cache-status/", views.cache_status, name="cache_status"),
+    path("static/js/date-range.js", views.date_range_script, name="date_range_script"),
     path("serviceworker.js", views.service_worker, name="service_worker"),
     # Music hierarchy navigation
     path("music/artist/<int:artist_id>/", views.artist_detail, name="artist_detail"),
@@ -102,6 +264,22 @@ urlpatterns = [
         views.prefetch_artist_covers,
         name="prefetch_artist_covers",
     ),
+    path(
+        "music/artist/<int:artist_id>/relation-images/",
+        views.prefetch_artist_relation_images,
+        name="prefetch_artist_relation_images",
+    ),
+    path(
+        "home/row/<int:row_id>/artwork/",
+        views.home_row_artwork_refresh,
+        name="home_row_artwork_refresh",
+    ),
+    path(
+        "home/rows/artwork/",
+        views.home_rows_artwork_refresh,
+        name="home_rows_artwork_refresh",
+    ),
+    path("home/rest/", views.home_rest_fragment, name="home_rest_fragment"),
     path(
         "music/artist/<int:artist_id>/update-score/",
         views.update_artist_score,
@@ -112,6 +290,11 @@ urlpatterns = [
         "music/album/<int:album_id>/update-score/",
         views.update_album_score,
         name="update_album_score",
+    ),
+    path(
+        "music/track/<int:music_id>/update-score/",
+        views.update_track_score,
+        name="update_track_score",
     ),
     path(
         "music/artist/<int:artist_id>/sync/",
@@ -154,6 +337,11 @@ urlpatterns = [
         name="song_save",
     ),
     path(
+        "music/bulk_save/",
+        views.music_bulk_save,
+        name="music_bulk_save",
+    ),
+    path(
         "podcast/episode/save/",
         views.podcast_save,
         name="podcast_save",
@@ -185,7 +373,11 @@ urlpatterns = [
         name="create_album_from_search",
     ),
     # Podcast show hierarchy navigation
-    path("podcast/show/<int:show_id>/", views.podcast_show_detail, name="podcast_show_detail"),
+    path(
+        "podcast/show/<int:show_id>/",
+        views.podcast_show_detail,
+        name="podcast_show_detail",
+    ),
     path(
         "podcast/show/<int:show_id>/track_modal/",
         views.podcast_show_track_modal,
@@ -230,13 +422,43 @@ urlpatterns = [
         name="collection_remove",
     ),
     path(
+        "collection/season/<int:season_item_id>/remove/",
+        views.collection_remove_season,
+        name="collection_remove_season",
+    ),
+    path(
         "collection/modal/<source:source>/<media_type:media_type>/<path:media_id>/",
         views.collection_modal,
         name="collection_modal",
+    ),
+    path(
+        "collection/quick-add/<source:source>/<media_type:media_type>/<path:media_id>/",
+        views.collection_quick_add,
+        name="collection_quick_add",
     ),
     path(
         "api/collection-status/<int:item_id>/",
         views.collection_status_api,
         name="collection_status_api",
     ),
+    # Tag endpoints
+    path(
+        "tags_modal/<source:source>/<media_type:media_type>/<path:media_id>/<int:season_number>/<int:episode_number>",
+        views.tags_modal,
+        name="tags_modal",
+    ),
+    path(
+        "tags_modal/<source:source>/<media_type:media_type>/<path:media_id>/<int:season_number>",
+        views.tags_modal,
+        name="tags_modal",
+    ),
+    path(
+        "tags_modal/<source:source>/<media_type:media_type>/<path:media_id>",
+        views.tags_modal,
+        name="tags_modal",
+    ),
+    path("tag_item_toggle", views.tag_item_toggle, name="tag_item_toggle"),
+    path("tag_bulk_toggle", views.tag_bulk_toggle, name="tag_bulk_toggle"),
+    path("tag_create", views.tag_create, name="tag_create"),
+    path("tag_delete", views.tag_delete, name="tag_delete"),
 ]

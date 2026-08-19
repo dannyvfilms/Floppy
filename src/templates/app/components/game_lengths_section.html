@@ -1,0 +1,127 @@
+{% load humanize %}
+
+<style>
+  .game-length-highlight-card {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    min-width: 0;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    background: #2a2f35;
+  }
+  .game-length-highlight-icon {
+    width: 3rem;
+    height: 3rem;
+    flex: 0 0 3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+  }
+  .game-length-highlight-copy {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.125rem;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .game-length-highlight-label {
+    display: flex;
+    align-items: flex-start;
+    min-height: 0;
+    font-size: clamp(0.75rem, 0.68rem + 0.18vw, 0.8125rem);
+    font-weight: 500;
+    line-height: 1.05;
+    color: #9ca3af;
+    white-space: nowrap;
+  }
+  .game-length-highlight-value {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: clamp(1rem, 0.9rem + 0.28vw, 1.125rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+    color: #f9fafb;
+    white-space: nowrap;
+    text-overflow: clip;
+  }
+  .game-length-highlight-meta {
+    min-width: 0;
+    min-height: 0;
+    font-size: clamp(0.75rem, 0.7rem + 0.15vw, 0.8125rem);
+    line-height: 1.05;
+    color: #94a3b8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  @media (min-width: 640px) {
+    .game-length-highlight-card {
+      gap: 1rem;
+      padding: 1.25rem;
+    }
+    .game-length-highlight-icon {
+      width: 3.5rem;
+      height: 3.5rem;
+      flex-basis: 3.5rem;
+    }
+    .game-length-highlight-copy {
+      gap: 0.1875rem;
+    }
+    .game-length-highlight-value {
+      font-size: clamp(1.125rem, 0.98rem + 0.32vw, 1.3125rem);
+    }
+  }
+</style>
+
+<section class="mb-12 md:mb-10">
+  <div class="flex items-center justify-between gap-3 mb-4">
+    <h2 class="text-xl font-bold">Time to Beat</h2>
+    {% if game_lengths and game_lengths.source_label %}
+      {% if game_lengths.source_url %}
+        <a href="{{ game_lengths.source_url }}"
+           target="_blank"
+           rel="noreferrer noopener"
+           class="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold tracking-wide text-indigo-300 transition hover:border-indigo-400/50 hover:bg-indigo-500/15 hover:text-indigo-200">
+          {{ game_lengths.source_label }}
+        </a>
+      {% else %}
+        <span class="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold tracking-wide text-indigo-300">
+          {{ game_lengths.source_label }}
+        </span>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% if game_lengths and game_lengths.available %}
+    <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 mb-4">
+      {% for card in game_lengths.cards %}
+        <div class="game-length-highlight-card">
+          <div class="game-length-highlight-icon"
+               style="background-color: {{ card.icon_background }}; color: {{ card.icon_color }};">
+            {% include card.icon_template with classes="w-5 h-5" %}
+          </div>
+          <div class="game-length-highlight-copy">
+            <h3 class="game-length-highlight-label">{{ card.label }}</h3>
+            <p class="game-length-highlight-value">{{ card.value }}</p>
+            <p class="game-length-highlight-meta">
+              {{ card.count|intcomma }} submission{{ card.count|pluralize }}
+            </p>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% elif game_lengths_pending %}
+    <div class="bg-[var(--color-surface)] p-4 rounded-lg">
+      <p class="text-[var(--color-text-secondary)]">Fetching cached time-to-beat data in the background.</p>
+    </div>
+  {% else %}
+    <div class="bg-[var(--color-surface)] p-4 rounded-lg">
+      <p class="text-[var(--color-text-secondary)]">Time-to-beat data is not available yet.</p>
+    </div>
+  {% endif %}
+</section>

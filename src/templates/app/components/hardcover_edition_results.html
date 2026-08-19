@@ -1,0 +1,70 @@
+{% load app_tags %}
+
+<div role="listbox"
+     class="absolute z-50 w-full mt-1 overflow-auto text-[var(--color-text-secondary)] bg-[var(--color-surface)] rounded-md shadow-lg border border-gray-600 max-h-72">
+  {% if editions %}
+    {% for edition in editions %}
+      {% if item_id %}
+        <form method="post"
+              action="{% url 'set_hardcover_edition' item_id=item_id %}"
+              role="option">
+          {% csrf_token %}
+          <input type="hidden" name="edition_id" value="{{ edition.id }}">
+          <input type="hidden" name="return_url" value="{{ return_url }}">
+          <button type="submit"
+                  class="flex w-full items-center gap-3 px-3 py-2 text-sm text-left hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] transition-colors duration-150 cursor-pointer">
+            {% if edition.image %}
+              <img src="{{ edition.image }}"
+                   alt=""
+                   loading="lazy"
+                   class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+            {% else %}
+              <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
+                {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
+              </span>
+            {% endif %}
+            <span class="flex-1 min-w-0">
+              <span class="block truncate">{{ edition.title }}</span>
+              {% if edition.language or edition.format %}
+                <span class="block text-xs text-gray-500 truncate">
+                  {{ edition.language|default:"" }}
+                  {% if edition.language and edition.format %}·{% endif %}
+                  {{ edition.format|default:"" }}
+                </span>
+              {% endif %}
+            </span>
+          </button>
+        </form>
+      {% else %}
+        <a href="?edition_id={{ edition.id }}"
+           role="option"
+           class="flex items-center gap-3 px-3 py-2 text-sm hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] transition-colors duration-150">
+          {% if edition.image %}
+            <img src="{{ edition.image }}"
+                 alt=""
+                 loading="lazy"
+                 class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+          {% else %}
+            <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
+              {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
+            </span>
+          {% endif %}
+          <span class="flex-1 min-w-0">
+            <span class="block truncate">{{ edition.title }}</span>
+            {% if edition.language or edition.format %}
+              <span class="block text-xs text-gray-500 truncate">
+                {{ edition.language|default:"" }}
+                {% if edition.language and edition.format %}·{% endif %}
+                {{ edition.format|default:"" }}
+              </span>
+            {% endif %}
+          </span>
+        </a>
+      {% endif %}
+    {% endfor %}
+  {% elif query %}
+    <p class="px-3 py-2 text-sm text-[var(--color-text-muted)]">No editions match &ldquo;{{ query }}&rdquo;.</p>
+  {% else %}
+    <p class="px-3 py-2 text-sm text-[var(--color-text-muted)]">No editions found.</p>
+  {% endif %}
+</div>

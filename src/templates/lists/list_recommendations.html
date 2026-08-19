@@ -4,35 +4,35 @@
 {% load user_tags %}
 
 {% block title %}
-    Recommendations - {{ custom_list.name }} - Yamtrack
+    Recommendations - {{ custom_list.name }} - Floppy
 {% endblock title %}
 
 {% block content %}
     <div class="max-w-8xl mx-auto">
         <div class="mb-6">
-            <a href="{% url 'list_detail' custom_list.id %}"
-               class="inline-flex items-center text-gray-400 hover:text-white transition-colors mb-4">
+            <a href="{% url 'list_detail' custom_list.public_reference %}"
+               class="inline-flex items-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors mb-4">
                 {% include "app/icons/chevron-left.svg" with classes="w-4 h-4 mr-1" %}
                 Back to {{ custom_list.name }}
             </a>
             <h1 class="text-3xl font-bold mb-2">Recommendations</h1>
-            <p class="text-gray-400">Review and manage item recommendations for "{{ custom_list.name }}"</p>
+            <p class="text-[var(--color-text-muted)]">Review and manage item recommendations for "{{ custom_list.name }}"</p>
         </div>
 
         {% if recommendations %}
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 lg:gap-3 xl:grid-cols-3">
                 {% for rec in recommendations %}
-                    <div class="bg-[#2a2f35] rounded-lg p-4 space-y-4 lg:max-h-[380px] lg:overflow-hidden lg:p-3 lg:space-y-3">
-                        <div class="flex items-center justify-between text-xs text-gray-400">
+                    <div class="bg-[var(--color-surface)] rounded-lg p-4 space-y-4 lg:max-h-[380px] lg:overflow-hidden lg:p-3 lg:space-y-3">
+                        <div class="flex items-center justify-between text-xs text-[var(--color-text-muted)]">
                             <div class="flex items-center gap-1">
                                 <span>From</span>
-                                <span class="text-gray-200">{{ rec.recommender_display_name }}</span>
+                                <span class="text-[var(--color-text-secondary)]">{{ rec.recommender_display_name }}</span>
                             </div>
                             <span class="text-gray-500">{{ rec.date_recommended|timesince }} ago</span>
                         </div>
                         <div class="grid grid-cols-2 gap-3 items-stretch">
                             <div class="min-w-0">
-                                {% include "app/components/media_card.html" with item=rec.item title=rec.item.title media=None from_grid=True user=user current_sort=None media_type=rec.item.media_type score_chip_mode='conditional' progress_chip_mode='conditional' time_left_chip_mode='conditional' show_progress_chip=False %}
+                                {% include "app/components/media_card.html" with item=rec.item title=rec.item.title media=None from_grid=True user=user current_sort=None card_media_type=rec.item.media_type score_chip_mode='conditional' progress_chip_mode='conditional' time_left_chip_mode='conditional' show_progress_chip=False %}
                             </div>
                             <div class="grid grid-rows-3 gap-2 h-full self-stretch">
                                 <form method="post"
@@ -56,27 +56,27 @@
                                     </button>
                                 </form>
                                 <a href="{{ rec.item|media_url }}"
-                                   class="w-full h-full bg-[#39404b] hover:bg-[#454d5a] text-white rounded-md transition-colors text-sm flex items-center justify-center gap-2 px-3">
+                                   class="w-full h-full bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] rounded-md transition-colors text-sm flex items-center justify-center gap-2 px-3">
                                     {% include "app/icons/external-link.svg" with classes="w-4 h-4" %}
                                     View details
                                 </a>
                             </div>
                         </div>
                         {% if rec.note %}
-                            <div class="p-3 bg-[#39404b] rounded-lg">
-                                <p class="text-sm text-gray-300 italic lg:line-clamp-2">"{{ rec.note }}"</p>
+                            <div class="p-3 bg-[var(--color-surface-strong)] rounded-lg">
+                                <p class="text-sm text-[var(--color-text-secondary)] italic lg:line-clamp-2">"{{ rec.note }}"</p>
                             </div>
                         {% endif %}
                     </div>
                 {% endfor %}
             </div>
         {% else %}
-            <div class="bg-[#2a2f35] rounded-lg py-16 text-center">
-                <div class="bg-[#39404b] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                    {% include "app/icons/bell.svg" with classes="w-8 h-8 text-gray-400" %}
+            <div class="bg-[var(--color-surface)] rounded-lg py-16 text-center">
+                <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                    {% include "app/icons/bell.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
                 </div>
                 <h3 class="text-xl font-semibold mb-2">No recommendations yet</h3>
-                <p class="text-gray-400">When someone recommends an item for this list, it will appear here.</p>
+                <p class="text-[var(--color-text-muted)]">When someone recommends an item for this list, it will appear here.</p>
             </div>
         {% endif %}
     </div>

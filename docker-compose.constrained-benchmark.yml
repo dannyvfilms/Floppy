@@ -1,0 +1,46 @@
+services:
+  # Mirrors the reported #521 stack: 2 vCPU / 2 GB RAM / no swap headroom,
+  # Postgres + Redis co-located on the same constrained box. mem_limit ==
+  # memswap_limit removes swap the same way `swapoff -a` did in the report.
+  floppy:
+    image: ${FLOPPY_BENCHMARK_IMAGE:-floppy:issue521-validation}
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: 2.0
+    environment:
+      SECRET: constrained-benchmark-only-secret
+      REDIS_URL: redis://redis:6379
+      DEBUG: "False"
+      DEMO_ACCOUNT_ENABLED: "False"
+      REGISTRATION: "False"
+      DB_HOST: db
+      DB_NAME: floppy
+      DB_USER: floppy
+      DB_PASSWORD: floppy
+      DB_PORT: "5432"
+    depends_on:
+      redis:
+        condition: service_started
+      db:
+        condition: service_healthy
+    ports:
+      - "18000:8000"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: floppy
+      POSTGRES_USER: floppy
+      POSTGRES_PASSWORD: floppy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U floppy"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:8-alpine
+    # No --maxmemory here on purpose: the reporter's compose file didn't set
+    # one either. The point of this run is to confirm redis_tuning.py applies
+    # its own ceiling for a 2GB/no-swap host at Floppy startup.
+    command: redis-server --appendonly yes

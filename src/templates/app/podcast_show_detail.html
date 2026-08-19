@@ -4,7 +4,7 @@
 {% load humanize %}
 
 {% block title %}
-  {{ show.title }} - Yamtrack
+  {{ show.title }} - Floppy
 {% endblock title %}
 
 {% block content %}
@@ -14,10 +14,10 @@
       {# Show image #}
       {% if show.image and show.image != IMG_NONE %}
         <img alt="{{ show.title }}"
-             class="w-full rounded-lg shadow-lg bg-[#2a2f35] object-cover"
+             class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
              src="{{ show.image }}">
       {% else %}
-        <div class="w-full aspect-square rounded-lg shadow-lg bg-[#2a2f35] flex items-center justify-center">
+        <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
           {% include "app/icons/microphone.svg" with classes="w-24 h-24 text-gray-500" %}
         </div>
       {% endif %}
@@ -59,31 +59,31 @@
       <h1 class="text-3xl font-bold mb-4 text-center md:text-start">{{ show.title }}</h1>
 
       {% if show.author %}
-        <p class="text-gray-400 mb-4 text-center md:text-start">by {{ show.author }}</p>
+        <p class="text-[var(--color-text-muted)] mb-4 text-center md:text-start">by {{ show.author }}</p>
       {% endif %}
 
       {# Stats cards #}
       <div class="flex flex-wrap gap-4 mb-6">
-        <div class="bg-[#2a2f35] p-3 rounded-lg">
-          <h3 class="text-xs font-semibold text-gray-400 mb-1 text-center">EPISODES</h3>
-          <div class="text-lg font-bold text-white text-center">{{ total_episodes }}</div>
+        <div class="bg-[var(--color-surface)] p-3 rounded-lg">
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">EPISODES</h3>
+          <div class="text-lg font-bold text-[var(--color-text)] text-center">{{ total_episodes }}</div>
         </div>
-        <div class="bg-[#2a2f35] p-3 rounded-lg">
-          <h3 class="text-xs font-semibold text-gray-400 mb-1 text-center">LISTENED</h3>
-          <div class="text-lg font-bold text-white text-center">{{ total_listened }}</div>
+        <div class="bg-[var(--color-surface)] p-3 rounded-lg">
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">LISTENED</h3>
+          <div class="text-lg font-bold text-[var(--color-text)] text-center">{{ total_listened }}</div>
         </div>
         {% if total_minutes %}
-          <div class="bg-[#2a2f35] p-3 rounded-lg">
-            <h3 class="text-xs font-semibold text-gray-400 mb-1 text-center">TIME</h3>
-            <div class="text-lg font-bold text-white text-center">{{ total_minutes|intcomma }}m</div>
+          <div class="bg-[var(--color-surface)] p-3 rounded-lg">
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">TIME</h3>
+            <div class="text-lg font-bold text-[var(--color-text)] text-center">{{ total_minutes|intcomma }}m</div>
           </div>
         {% endif %}
         {% if tracker and tracker.score %}
-          <div class="bg-[#2a2f35] p-3 rounded-lg">
-            <h3 class="text-xs font-semibold text-gray-400 mb-1 text-center">YOUR SCORE</h3>
+          <div class="bg-[var(--color-surface)] p-3 rounded-lg">
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">YOUR SCORE</h3>
             <div class="flex items-center justify-center">
               {% include "app/icons/star.svg" with classes="w-5 h-5 mr-1.5 text-yellow-400 fill-yellow-400" %}
-              <span class="text-lg font-bold text-white">{{ tracker.score|score_display:user|floatformat:1 }}</span><span class="text-gray-400 ml-0.5 text-sm">/{{ user|rating_scale_max }}</span>
+              <span class="text-lg font-bold text-[var(--color-text)]">{{ tracker.score|score_display:user|floatformat:1 }}</span><span class="text-[var(--color-text-muted)] ml-0.5 text-sm">/{{ user|rating_scale_max }}</span>
             </div>
           </div>
         {% endif %}
@@ -94,18 +94,18 @@
   {# Episodes list #}
   <div class="mb-8">
     <h2 class="text-2xl font-bold mb-4">Episodes</h2>
-    <div class="bg-[#2a2f35] rounded-lg overflow-hidden">
+    <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden">
       <div class="divide-y divide-gray-700">
         {% for episode in episodes %}
-          <div class="p-4 hover:bg-[#39404b] transition-colors">
+          <div class="p-4 hover:bg-[var(--color-surface-strong)] transition-colors">
             <div class="flex items-center justify-between">
               <div class="flex-1">
-                <h3 class="text-lg font-semibold text-white mb-1">{{ episode.title }}</h3>
+                <h3 class="text-lg font-semibold text-[var(--color-text)] mb-1">{{ episode.title }}</h3>
                 {% if episode.published %}
-                  <p class="text-sm text-gray-400">{{ episode.published|date:"M d, Y" }}</p>
+                  <p class="text-sm text-[var(--color-text-muted)]">{{ episode.published|date:"M d, Y" }}</p>
                 {% endif %}
                 {% if episode.duration %}
-                  <p class="text-sm text-gray-400">{{ episode.duration_formatted }}</p>
+                  <p class="text-sm text-[var(--color-text-muted)]">{{ episode.duration_formatted }}</p>
                 {% endif %}
               </div>
               {% for user_podcast in user_podcasts %}
@@ -120,7 +120,7 @@
             </div>
           </div>
         {% empty %}
-          <div class="p-8 text-center text-gray-400">
+          <div class="p-8 text-center text-[var(--color-text-muted)]">
             <p>No episodes found for this show.</p>
           </div>
         {% endfor %}

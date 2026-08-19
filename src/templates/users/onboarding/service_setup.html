@@ -1,0 +1,65 @@
+{% extends "users/onboarding/_layout.html" %}
+{% load user_tags %}
+
+{% block step_title %}Connect your services{% endblock step_title %}
+
+{% block step_explanation %}
+  <p>{{ remaining_count }} service{{ remaining_count|pluralize }} left to connect.</p>
+  {% if current_source.inline_supported %}
+    <p>Connect right here — once it's done, you'll automatically see the next one.</p>
+  {% else %}
+    <p>
+      Connecting opens the normal Import setup for this service in a focused
+      view. Finish there and you'll come right back here for the next one.
+    </p>
+  {% endif %}
+  <p>Don't have it handy? Skip it — you can always connect it later from Settings &gt; Import.</p>
+{% endblock step_explanation %}
+
+{% block step_options %}
+  <div class="flex flex-col items-center text-center gap-4 py-6">
+    {% source_display current_source.slug %}
+    <p class="text-sm text-[var(--color-text-muted)]">
+      {% if current_source.slug == "trakt" %}
+        Public profile, private profile (OAuth), or a data export file.
+      {% elif current_source.is_oauth %}
+        Connect with your account (OAuth).
+      {% elif current_source.upload_field_name %}
+        Requires uploading an export file.
+      {% elif current_source.setup_kind == "api_key" %}
+        Requires an API key.
+      {% elif current_source.setup_kind == "host_url" %}
+        Requires your server URL and an API key.
+      {% else %}
+        Requires your account credentials.
+      {% endif %}
+    </p>
+    {% if current_source.inline_supported %}
+      {% if current_source.slug == "trakt" %}
+        {% include "users/onboarding/components/connect_trakt.html" %}
+      {% elif current_source.upload_field_name %}
+        {% include "users/onboarding/components/connect_upload.html" %}
+      {% elif current_source.is_oauth %}
+        {% include "users/onboarding/components/connect_oauth.html" %}
+      {% else %}
+        {% include "users/onboarding/components/connect_form.html" %}
+      {% endif %}
+    {% endif %}
+
+    <div class="flex items-center gap-3">
+      <form method="post" action="{% url 'onboarding_skip_service' slug=current_source.slug %}">
+        {% csrf_token %}
+        <button type="submit"
+                class="px-4 py-2 text-sm rounded-md text-[var(--color-text-secondary)] border border-[var(--color-surface-border)] hover:bg-[var(--color-hover-dim)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
+          Skip for now
+        </button>
+      </form>
+      {% if not current_source.inline_supported %}
+        <a href="{% url 'import_data' %}?open={{ current_source.slug }}&onboarding=1"
+           class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+          Connect {{ current_source.slug|source_name }}
+        </a>
+      {% endif %}
+    </div>
+  </div>
+{% endblock step_options %}

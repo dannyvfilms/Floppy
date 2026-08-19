@@ -1,19 +1,18 @@
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.http import HttpRequest
 from django.test import TestCase
+from django.utils import timezone
 
 from app.helpers import (
     enrich_items_with_user_data,
     form_error_messages,
     minutes_to_hhmm,
+    normalize_navigation_url,
     redirect_back,
 )
-from datetime import timedelta
-
-from django.utils import timezone
-
 from app.models import Game, Item, MediaTypes, Movie, Sources, Status
 
 
@@ -65,6 +64,36 @@ class HelpersTest(TestCase):
 
         mock_redirect.assert_called_once_with("home")
         self.assertEqual(result, "home_redirect")
+
+    @patch("app.helpers.url_has_allowed_host_and_scheme")
+    @patch("app.helpers.HttpResponseRedirect")
+    @patch("app.helpers.redirect")
+    def test_redirect_back_uses_post_next(self, _, mock_http_redirect, mock_url_check):
+        """Test redirect_back with a POST-backed 'next' parameter."""
+        mock_url_check.return_value = True
+        mock_http_redirect.return_value = "redirected"
+
+        request = MagicMock()
+        request.GET = {}
+        request.POST = {
+            "next": "/details/tmdb/movie/118340/guardians-of-the-galaxy?page=2"
+        }
+
+        result = redirect_back(request)
+
+        mock_http_redirect.assert_called_once_with(
+            "/details/tmdb/movie/118340/guardians-of-the-galaxy",
+        )
+        self.assertEqual(result, "redirected")
+
+    def test_normalize_navigation_url_decodes_encoded_query_separators(self):
+        """Navigation URLs from modal forms should restore their query separators."""
+        self.assertEqual(
+            normalize_navigation_url(
+                "/medialist/movie%3Fstatus%3DPlanning&sort%3Drelease_date&direction%3Ddesc&layout%3Dgrid",
+            ),
+            "/medialist/movie?status=Planning&sort=release_date&direction=desc&layout=grid",
+        )
 
     @patch("app.helpers.messages")
     def test_form_error_messages(self, mock_messages):
@@ -246,3 +275,62 @@ class EnrichItemsWithUserDataTest(TestCase):
         media = enriched_items[0]["media"]
         self.assertIsNotNone(media)
         self.assertEqual(media.aggregated_progress, 105)
+
+    def test_hide_completed_recommendations_enabled(self):
+        """Completed recommendations should be hidden when preference is enabled."""
+        self.user.hide_completed_recommendations = True
+        self.user.save(update_fields=["hide_completed_recommendations"])
+
+        raw_items = [
+            {
+                "media_id": "238",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "title": "Test Movie",
+                "image": "http://example.com/movie.jpg",
+            },
+            {
+                "media_id": "99999",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "title": "Unknown Movie",
+                "image": "http://example.com/unknown.jpg",
+            },
+        ]
+
+        enriched_items = enrich_items_with_user_data(
+            self.request,
+            raw_items,
+            "recommendations",
+        )
+        self.assertEqual(len(enriched_items), 1)
+        self.assertEqual(enriched_items[0]["item"]["media_id"], "99999")
+
+    def test_hide_completed_recommendations_disabled(self):
+        """Recommendations should include completed items when preference is disabled."""
+        self.user.hide_completed_recommendations = False
+        self.user.save(update_fields=["hide_completed_recommendations"])
+
+        raw_items = [
+            {
+                "media_id": "238",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "title": "Test Movie",
+                "image": "http://example.com/movie.jpg",
+            },
+            {
+                "media_id": "99999",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "title": "Unknown Movie",
+                "image": "http://example.com/unknown.jpg",
+            },
+        ]
+
+        enriched_items = enrich_items_with_user_data(
+            self.request,
+            raw_items,
+            "recommendations",
+        )
+        self.assertEqual(len(enriched_items), 2)

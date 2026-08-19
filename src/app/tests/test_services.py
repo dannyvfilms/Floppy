@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -7,16 +8,28 @@ from django.utils import timezone
 from app.mixins import disable_fetch_releases
 from app.models import (
     TV,
+    Album,
+    AlbumArtist,
+    AlbumTracker,
+    Artist,
     Book,
     Game,
     Item,
     MediaTypes,
     Movie,
+    Music,
     Season,
     Sources,
     Status,
+    Track,
 )
 from app.services.auto_pause import auto_pause_stale_items
+from app.services.music import (
+    canonicalize_album,
+    populate_album_implied_genres,
+    populate_album_tracks,
+    sync_album_artist_credits,
+)
 
 
 class AutoPauseServiceTests(TestCase):
@@ -183,3 +196,187 @@ class AutoPauseServiceTests(TestCase):
         )
         return book
 
+
+class MusicServiceTests(TestCase):
+    """Tests for music service helpers."""
+
+    def test_sync_album_artist_credits_replaces_fallback_credit(self):
+        """Structured MusicBrainz credits replace the legacy single-artist fallback."""
+        artist = Artist.objects.create(
+            name="Brian Eno",
+            musicbrainz_id="ff95eb47-41c4-4f7f-a104-cdc30f02e872",
+        )
+        album = Album.objects.create(
+            title="My Life in the Bush of Ghosts",
+            artist=artist,
+            musicbrainz_release_id="10eaf5b7-e319-42fd-babb-d3686ad347cf",
+        )
+        AlbumArtist.objects.create(album=album, artist=artist)
+
+        sync_album_artist_credits(
+            album,
+            {
+                "artist_credits": [
+                    {
+                        "artist_id": "ff95eb47-41c4-4f7f-a104-cdc30f02e872",
+                        "name": "Brian Eno",
+                        "sort_name": "Eno, Brian",
+                        "join_phrase": "\u2014",
+                    },
+                    {
+                        "artist_id": "641b56b5-6571-43dc-b5b1-2e822f349162",
+                        "name": "David Byrne",
+                        "sort_name": "Byrne, David",
+                        "join_phrase": "",
+                    },
+                ],
+            },
+        )
+
+        credits = list(album.artist_credits.select_related("artist"))
+        self.assertEqual(
+            [credit.artist.name for credit in credits],
+            ["Brian Eno", "David Byrne"],
+        )
+        self.assertEqual([credit.join_phrase for credit in credits], ["\u2014", ""])
+
+    def test_canonicalize_album_merges_cross_artist_duplicate(self):
+        """Shared MusicBrainz albums should use one canonical album row."""
+        user = get_user_model().objects.create_user(
+            username="music_user",
+            password="pass12345",
+        )
+        brian_eno = Artist.objects.create(name="Brian Eno")
+        david_byrne = Artist.objects.create(name="David Byrne")
+        canonical = Album.objects.create(
+            title="My Life in the Bush of Ghosts",
+            artist=brian_eno,
+            musicbrainz_release_group_id="release-group-mbid",
+        )
+        duplicate = Album.objects.create(
+            title="My Life in the Bush of Ghosts",
+            artist=david_byrne,
+            musicbrainz_release_group_id="release-group-mbid",
+        )
+        AlbumArtist.objects.create(album=canonical, artist=brian_eno)
+        AlbumArtist.objects.create(album=duplicate, artist=david_byrne)
+        AlbumTracker.objects.create(
+            user=user,
+            album=canonical,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        result = canonicalize_album(duplicate, user=user)
+
+        self.assertEqual(result, canonical)
+        self.assertFalse(Album.objects.filter(id=duplicate.id).exists())
+        self.assertCountEqual(
+            list(canonical.artist_credits.values_list("artist__name", flat=True)),
+            ["Brian Eno", "David Byrne"],
+        )
+
+    @patch(
+        "app.providers.musicbrainz.get_genre_parents",
+        return_value=["Rock", "Electronic"],
+    )
+    @patch(
+        "app.providers.musicbrainz.get_release_group_genres", return_value=["Krautrock"]
+    )
+    @patch("app.providers.musicbrainz.get_release")
+    def test_populate_album_tracks_falls_back_and_syncs_implied_genres(
+        self,
+        mock_get_release,
+        _mock_release_group_genres,
+        _mock_genre_parents,
+    ):
+        artist = Artist.objects.create(name="Brian Eno")
+        album = Album.objects.create(
+            title="My Life in the Bush of Ghosts",
+            artist=artist,
+            musicbrainz_release_id="release-mbid",
+            musicbrainz_release_group_id="release-group-mbid",
+        )
+        item = Item.objects.create(
+            media_id="track-mbid",
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Track",
+            image="https://example.com/track.jpg",
+        )
+        Music.objects.create(
+            item=item,
+            user=get_user_model().objects.create_user(
+                username="music-item-user",
+                password="pass12345",
+            ),
+            album=album,
+            artist=artist,
+            status=Status.COMPLETED.value,
+        )
+        mock_get_release.return_value = {
+            "artist_credits": [],
+            "genres": [],
+            "tracks": [
+                {
+                    "disc_number": 1,
+                    "track_number": 1,
+                    "title": "America Is Waiting",
+                    "recording_id": "track-mbid",
+                    "duration_ms": 123000,
+                    "genres": [],
+                },
+            ],
+            "image": "https://example.com/album.jpg",
+        }
+
+        created_count = populate_album_tracks(album)
+
+        self.assertEqual(created_count, 1)
+        album.refresh_from_db()
+        item.refresh_from_db()
+        self.assertEqual(album.genres, ["Krautrock"])
+        self.assertEqual(album.implied_genres, ["Rock", "Electronic"])
+        self.assertEqual(item.genres, ["Krautrock"])
+        self.assertEqual(item.implied_genres, ["Rock", "Electronic"])
+        self.assertTrue(
+            Track.objects.filter(
+                album=album, musicbrainz_recording_id="track-mbid"
+            ).exists(),
+        )
+
+    @patch(
+        "app.providers.musicbrainz.get_genre_parents",
+        return_value=["Experimental Rock", "Rock"],
+    )
+    def test_populate_album_implied_genres_excludes_direct_genres(
+        self, _mock_genre_parents
+    ):
+        artist = Artist.objects.create(name="Test Artist")
+        album = Album.objects.create(
+            title="Genre Album",
+            artist=artist,
+            genres=["Krautrock", "Rock"],
+        )
+
+        updated = populate_album_implied_genres(album)
+
+        album.refresh_from_db()
+        self.assertTrue(updated)
+        self.assertEqual(album.implied_genres, ["Experimental Rock"])
+
+    @patch("app.providers.musicbrainz.get_genre_parents", return_value=[])
+    def test_populate_album_implied_genres_capitalizes_existing_direct_genres(
+        self, _mock_genre_parents
+    ):
+        artist = Artist.objects.create(name="Test Artist")
+        album = Album.objects.create(
+            title="Genre Album",
+            artist=artist,
+            genres=["art rock", "post-industrial"],
+        )
+
+        updated = populate_album_implied_genres(album)
+
+        album.refresh_from_db()
+        self.assertTrue(updated)
+        self.assertEqual(album.genres, ["Art Rock", "Post-Industrial"])

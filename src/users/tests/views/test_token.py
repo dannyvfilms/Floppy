@@ -16,7 +16,7 @@ class RegenerateTokenTests(TestCase):
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
 
-        self.user.token = "initial_token"  # noqa: S105
+        self.user.token = "initial_token"
         self.user.save()
 
     def test_regenerate_token(self):
@@ -48,5 +48,3 @@ class RegenerateTokenTests(TestCase):
         messages = list(get_messages(response.wsgi_request))
         self.assertEqual(len(messages), 1)
         self.assertIn("Token regenerated successfully", str(messages[0]))
-
-

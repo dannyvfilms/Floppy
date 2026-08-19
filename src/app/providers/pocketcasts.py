@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 ITUNES_API_BASE = "https://itunes.apple.com/search"
 ITUNES_LOOKUP_BASE = "https://itunes.apple.com/lookup"
-USER_AGENT = "Yamtrack/1.0 (https://github.com/FuzzyGrim/Yamtrack)"
+USER_AGENT = "Floppy/1.0 (https://github.com/dannyvfilms/Floppy)"
 
 
 def handle_error(error):
@@ -64,10 +64,16 @@ def search(query, page):
                 continue
 
             # Get title from collectionName (preferred) or trackName
-            title = item.get("collectionName") or item.get("trackName", "Unknown Podcast")
+            title = item.get("collectionName") or item.get(
+                "trackName", "Unknown Podcast"
+            )
 
             # Get image URL - prefer artworkUrl600, fallback to artworkUrl100
-            image = item.get("artworkUrl600") or item.get("artworkUrl100") or settings.IMG_NONE
+            image = (
+                item.get("artworkUrl600")
+                or item.get("artworkUrl100")
+                or settings.IMG_NONE
+            )
 
             results.append(
                 {
@@ -93,10 +99,10 @@ def search(query, page):
 
 def lookup_by_itunes_id(itunes_collection_id):
     """Look up podcast metadata by iTunes collection ID.
-    
+
     Args:
         itunes_collection_id: iTunes collection ID (string)
-        
+
     Returns:
         Dict with podcast metadata:
         - feed_url: RSS feed URL
@@ -130,7 +136,17 @@ def lookup_by_itunes_id(itunes_collection_id):
         if not results:
             raise services.ProviderAPIError(
                 Sources.POCKETCASTS.value,
-                type("obj", (object,), {"response": type("obj", (object,), {"status_code": 404, "text": "Podcast not found"})()}),
+                type(
+                    "obj",
+                    (object,),
+                    {
+                        "response": type(
+                            "obj",
+                            (object,),
+                            {"status_code": 404, "text": "Podcast not found"},
+                        )()
+                    },
+                ),
                 "Podcast not found in iTunes",
             )
 
@@ -143,7 +159,8 @@ def lookup_by_itunes_id(itunes_collection_id):
 
         data = {
             "feed_url": item.get("feedUrl", ""),
-            "title": item.get("collectionName") or item.get("trackName", "Unknown Podcast"),
+            "title": item.get("collectionName")
+            or item.get("trackName", "Unknown Podcast"),
             "author": item.get("artistName", ""),
             "artwork_url": item.get("artworkUrl600") or item.get("artworkUrl100") or "",
             "description": description,

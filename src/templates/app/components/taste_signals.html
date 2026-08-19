@@ -1,0 +1,163 @@
+{% comment %}
+  Taste Signals — two sortable sub-panels sharing one Time/Plays dropdown in
+  the card header (mirrors Role Leaders' dropdown pattern): Top Genres and
+  Era Spotlight (decades).
+
+  Required context: top_genres_combined, era_spotlight, genre_sort_by,
+  selected_range_name, start_date_str, end_date_str.
+{% endcomment %}
+<div x-data="{
+       open: false,
+       selectedSort: '{{ genre_sort_by|default:"time"|escapejs }}',
+       selectedLabel: '',
+       loading: false,
+       currentRangeName: '{{ selected_range_name|default:""|escapejs }}',
+       currentStartDate: '{{ start_date_str|default:""|escapejs }}',
+       currentEndDate: '{{ end_date_str|default:""|escapejs }}',
+       selectedMediaType: 'all',
+       init() {
+         this.selectedLabel = this.selectedSort === 'plays' ? 'Plays' : 'Time';
+         this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
+         window.addEventListener('stats-media-type-changed', () => {
+           this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
+           this.refresh();
+         });
+         // The initial server render is always the unfiltered all-types aggregate —
+         // if the page loaded with a media-type already in the URL (reload,
+         // bookmark, browser history), fetch the filtered panels immediately
+         // instead of waiting for the user to re-toggle the selector.
+         if (this.selectedMediaType !== 'all') {
+           this.refresh();
+         }
+       },
+       async refresh() {
+         if (this.loading) {
+           return;
+         }
+         const previousSort = this.selectedSort;
+         const previousLabel = this.selectedLabel;
+         this.open = false;
+         this.loading = true;
+         try {
+           const body = new URLSearchParams();
+           body.set('sort_by', this.selectedSort);
+           if (this.currentRangeName) {
+             body.set('range_name', this.currentRangeName);
+           }
+           if (this.currentStartDate) {
+             body.set('start_date', this.currentStartDate);
+           }
+           if (this.currentEndDate) {
+             body.set('end_date', this.currentEndDate);
+           }
+           if (this.selectedMediaType && this.selectedMediaType !== 'all') {
+             body.set('media_type', this.selectedMediaType);
+           }
+           const response = await fetch('{% url 'update_genre_sort' %}', {
+             method: 'POST',
+             headers: {
+               'Content-Type': 'application/x-www-form-urlencoded',
+               'X-CSRFToken': '{{ csrf_token }}',
+               'X-Requested-With': 'XMLHttpRequest'
+             },
+             body: body.toString()
+           });
+           const data = await response.json();
+           if (!response.ok || !data.success) {
+             throw new Error(data.error || 'Failed to save genre sort');
+           }
+           if (data.genres_html && this.$refs.tasteSignalsGenres) {
+             this.$refs.tasteSignalsGenres.innerHTML = data.genres_html;
+           }
+           if (data.decades_html && this.$refs.tasteSignalsDecades) {
+             this.$refs.tasteSignalsDecades.innerHTML = data.decades_html;
+           }
+         } catch (error) {
+           this.selectedSort = previousSort;
+           this.selectedLabel = previousLabel;
+           console.error('Failed to refresh taste signals:', error);
+         } finally {
+           this.loading = false;
+         }
+       },
+       async setSort(sortBy, label) {
+         if (this.loading || this.selectedSort === sortBy) {
+           this.open = false;
+           return;
+         }
+         this.selectedSort = sortBy;
+         this.selectedLabel = label;
+         await this.refresh();
+       }
+     }">
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div class="flex flex-col space-y-1">
+      <h2 class="text-xl font-semibold text-[var(--color-text)]">Taste Signals</h2>
+      <p class="text-sm text-[var(--color-text-muted)]">What your library says about your taste.</p>
+    </div>
+
+    <div class="w-full sm:w-auto sm:min-w-32 sm:ml-auto">
+      <div class="relative">
+        <button type="button"
+                @click="open = !open"
+                @click.outside="open = false"
+                class="flex items-center justify-between w-full gap-2 px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+          <span x-text="selectedLabel"></span>
+          <svg xmlns="http://www.w3.org/2000/svg"
+               width="24"
+               height="24"
+               viewBox="0 0 24 24"
+               fill="none"
+               stroke="currentColor"
+               stroke-width="2"
+               stroke-linecap="round"
+               stroke-linejoin="round"
+               class="w-4 h-4 ml-1 text-[var(--color-text-muted)]">
+            <path d="m6 9 6 6 6-6"></path>
+          </svg>
+        </button>
+        <div x-show="open"
+             x-transition:enter="transition ease-out duration-100"
+             x-transition:enter-start="transform opacity-0 scale-95"
+             x-transition:enter-end="transform opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-75"
+             x-transition:leave-start="transform opacity-100 scale-100"
+             x-transition:leave-end="transform opacity-0 scale-95"
+             class="absolute right-0 z-10 mt-2 min-w-full py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden border border-gray-600">
+          <button type="button"
+                  @click="setSort('time', 'Time')"
+                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+            Time
+          </button>
+          <button type="button"
+                  @click="setSort('plays', 'Plays')"
+                  class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+            Plays
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+    <div>
+      <div class="flex items-center gap-2 mb-3">
+        {% include "app/icons/tag.svg" with classes="w-4 h-4 text-indigo-400" %}
+        <span class="text-sm font-semibold text-[var(--color-text)]">Top Genres</span>
+      </div>
+      <div x-ref="tasteSignalsGenres">
+        {% include "app/components/taste_signals_genres.html" %}
+      </div>
+    </div>
+
+    <div>
+      <div class="flex items-center gap-2 mb-3">
+        {% include "app/icons/clock.svg" with classes="w-4 h-4 text-amber-400" %}
+        <span class="text-sm font-semibold text-[var(--color-text)]">Era Spotlight</span>
+      </div>
+      <div x-ref="tasteSignalsDecades">
+        {% include "app/components/taste_signals_decades.html" %}
+      </div>
+    </div>
+  </div>
+</div>

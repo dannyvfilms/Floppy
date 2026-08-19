@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: dataaxiom/ghcr-cleanup-action@v1
         with:
-          package: yamtrack
+          package: floppy
           dry-run: true
           keep-n-untagged: 15
           delete-ghost-images: true

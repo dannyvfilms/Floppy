@@ -1,0 +1,67 @@
+{
+  "export_format_version": 2,
+  "exported_at": "2026-07-04T13:31:44Z",
+  "site": "https://www.grouvee.com",
+  "account": {"username": "test"},
+  "collection": [
+    {
+      "name": "Dragon Warrior I & II",
+      "shelves": {
+        "Played": {"date_added": "2021-04-04T19:14:05Z"}
+      },
+      "rating": 3,
+      "review": "",
+      "dates": [
+        {"date_started": "2021-04-03", "date_finished": "None", "seconds_played": 3600, "level_of_completion": null},
+        {"date_started": "None", "date_finished": "2021-04-04", "seconds_played": 0, "level_of_completion": "Main Story"}
+      ],
+      "release_date": "1993-12-18",
+      "giantbomb_id": "1164",
+      "igdb_id": 1227
+    },
+    {
+      "name": "RoboCop: Rogue City",
+      "shelves": {
+        "Playing": {"date_added": "2026-06-28T15:46:50Z"}
+      },
+      "rating": null,
+      "review": "",
+      "dates": [
+        {"date_started": "2026-06-28", "date_finished": "None", "seconds_played": 0, "level_of_completion": null}
+      ],
+      "release_date": "2023-11-02",
+      "giantbomb_id": null,
+      "igdb_id": 128167
+    },
+    {
+      "name": "Retro Backlog Game",
+      "shelves": {
+        "Backlog": {"date_added": "2022-01-01T00:00:00Z"},
+        "2-Player Games": {"date_added": "2022-01-01T00:00:00Z"}
+      },
+      "rating": null,
+      "review": "",
+      "dates": [],
+      "release_date": "2005-05-05",
+      "giantbomb_id": null,
+      "igdb_id": 5001
+    },
+    {
+      "name": "No IGDB Match Game",
+      "shelves": {
+        "Wish List": {"date_added": "2023-01-01T00:00:00Z"}
+      },
+      "rating": null,
+      "review": "",
+      "dates": [],
+      "release_date": "2010-01-01",
+      "giantbomb_id": "9999",
+      "igdb_id": null
+    }
+  ],
+  "lists": [],
+  "reviews": [],
+  "play_log": [],
+  "statuses": [],
+  "comments": []
+}

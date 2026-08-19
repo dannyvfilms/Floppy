@@ -15,6 +15,7 @@ from integrations.imports.helpers import MediaImportError, MediaImportUnexpected
 logger = logging.getLogger(__name__)
 
 STEAM_API_BASE_URL = "https://api.steampowered.com"
+IMPORT_NOTE = "Imported from Steam"
 
 
 def importer(steam_id, user, mode):
@@ -38,7 +39,7 @@ class SteamImporter:
         self.user = user
         self.mode = mode
         self.warnings = []
-        self.api_key = getattr(settings, "STEAM_API_KEY", None)
+        self.api_key = settings.STEAM_API_KEY
 
         if not self.api_key:
             msg = "Steam API key not configured in environment variables"
@@ -46,7 +47,8 @@ class SteamImporter:
 
         self.existing_media = helpers.get_existing_media(user)
 
-        self.to_delete = defaultdict(lambda: defaultdict(set))
+        self.to_update = []
+        self.to_update_meta = []
 
         self.bulk_media = defaultdict(list)
 
@@ -67,8 +69,29 @@ class SteamImporter:
         for game_data in owned_games:
             self._process_game(game_data)
 
-        helpers.cleanup_existing_media(self.to_delete, self.user)
         helpers.bulk_create_media(self.bulk_media, self.user)
+
+        # Update existing games
+        if self.to_update:
+            app.models.Game.objects.bulk_update(
+                self.to_update, fields=["progress", "status"]
+            )
+            logger.info(
+                "Updated %d existing games for user %s",
+                len(self.to_update),
+                self.user.username,
+            )
+
+        # Update item metadata
+        if self.to_update_meta:
+            app.models.Item.objects.bulk_update(
+                self.to_update_meta, fields=["title", "image"]
+            )
+            logger.info(
+                "Updated metadata for %d items for user %s",
+                len(self.to_update_meta),
+                self.user.username,
+            )
 
         imported_counts = {
             media_type: len(media_list)
@@ -174,43 +197,69 @@ class SteamImporter:
                 )
                 return
 
-            if not helpers.should_process_media(
-                self.existing_media,
-                self.to_delete,
-                MediaTypes.GAME.value,
-                Sources.IGDB.value,
-                str(igdb_game["media_id"]),
-                self.mode,
-            ):
-                return
+            media_id = str(igdb_game["media_id"])
+            existing = self.existing_media[MediaTypes.GAME.value][
+                Sources.IGDB.value
+            ].get(media_id)
+            if existing:
+                if self.mode == "overwrite":
+                    existing.progress = playtime_forever
+                    # Conscious choice: User manually set status to Completed/Dropped, we should not change it
+                    if existing.status not in {
+                        Status.COMPLETED.value,
+                        Status.DROPPED.value,
+                    }:
+                        existing.status = self._determine_game_status(
+                            playtime_forever, playtime_2weeks
+                        )
+                    self.to_update.append(existing)
 
-            # Use IGDB data if found
-            item, _ = app.models.Item.objects.get_or_create(
-                media_id=str(igdb_game["media_id"]),
-                source=Sources.IGDB.value,
-                media_type=MediaTypes.GAME.value,
-                defaults={
-                    "title": igdb_game["title"],
-                    "image": igdb_game["image"],
-                },
+                item = existing.item
+                item.title = igdb_game["title"]
+                item.image = igdb_game["image"]
+                self.to_update_meta.append(item)
+                # In "new" mode, skip existing games
+            else:
+                item, _ = app.models.Item.objects.get_or_create(
+                    media_id=media_id,
+                    source=Sources.IGDB.value,
+                    media_type=MediaTypes.GAME.value,
+                    defaults={
+                        "title": igdb_game["title"],
+                        "image": igdb_game["image"],
+                    },
+                )
+                game = app.models.Game(
+                    item=item,
+                    user=self.user,
+                    status=self._determine_game_status(
+                        playtime_forever, playtime_2weeks
+                    ),
+                    score=None,
+                    progress=playtime_forever,
+                    notes=IMPORT_NOTE,
+                    start_date=None,
+                    end_date=None,
+                )
+
+                self.bulk_media[MediaTypes.GAME.value].append(game)
+
+        except services.ProviderAPIError as e:
+            msg = str(e).lower()
+            is_not_found = "game with id" in msg and "not found" in msg
+            if not is_not_found:
+                # still raise all other errors
+                raise
+
+            logger.debug(
+                "Skipping Steam game %s (appid: %s) - IGDB not found: %s",
+                name,
+                appid,
+                e,
             )
-
-            # Determine status based on playtime
-            status = self._determine_game_status(playtime_forever, playtime_2weeks)
-
-            # Create game object
-            game = app.models.Game(
-                item=item,
-                user=self.user,
-                status=status,
-                score=None,
-                progress=playtime_forever,
-                notes="Imported from Steam",
-                start_date=None,
-                end_date=None,
+            self.warnings.append(
+                f"{name} ({appid}): Couldn't find a match in {Sources.IGDB.label}"
             )
-
-            self.bulk_media[MediaTypes.GAME.value].append(game)
 
         except (ValueError, KeyError, TypeError) as e:
             logger.warning("Failed to process Steam game %s (%s): %s", name, appid, e)
@@ -239,42 +288,30 @@ class SteamImporter:
 
     def _match_with_igdb(self, game_name, steam_appid):
         """Try to match Steam game with IGDB using External Game endpoint."""
-        try:
-            # Try to find IGDB game by Steam App ID using external_game endpoint
+        # Try to find IGDB game by Steam App ID using external_game endpoint
 
-            igdb_game_id = external_game(steam_appid, ExternalGameSource.STEAM)
+        igdb_game_id = external_game(steam_appid, ExternalGameSource.STEAM)
 
-            if igdb_game_id:
-                # Get the game details using the IGDB ID
-                game_details = services.get_media_metadata(
-                    MediaTypes.GAME.value,
-                    str(igdb_game_id),
-                    Sources.IGDB.value,
-                )
+        if not igdb_game_id:
+            return None
 
-                if game_details:
-                    logger.debug(
-                        "Matched Steam game %s (appid: %s) with IGDB ID %s "
-                        "via external_game",
-                        game_name,
-                        steam_appid,
-                        igdb_game_id,
-                    )
-                    return {
-                        "media_id": igdb_game_id,
-                        "source": Sources.IGDB.value,
-                        "media_type": MediaTypes.GAME.value,
-                        "title": game_details.get("title", game_name),
-                        "image": game_details["image"],
-                    }
+        # Get the game details using the IGDB ID
+        game_details = services.get_media_metadata(
+            MediaTypes.GAME.value,
+            str(igdb_game_id),
+            Sources.IGDB.value,
+        )
 
-        except (ValueError, KeyError, TypeError) as e:
-            logger.debug(
-                "Failed to match Steam game %s (appid: %s) with IGDB "
-                "via external_game: %s",
-                game_name,
-                steam_appid,
-                e,
-            )
-
-        return None
+        logger.debug(
+            "Matched Steam game %s (appid: %s) with IGDB ID %s via external_game",
+            game_name,
+            steam_appid,
+            igdb_game_id,
+        )
+        return {
+            "media_id": igdb_game_id,
+            "source": Sources.IGDB.value,
+            "media_type": MediaTypes.GAME.value,
+            "title": game_details.get("title", game_name),
+            "image": game_details["image"],
+        }

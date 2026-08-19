@@ -1,28 +1,60 @@
-"""Yamtrack base URL Configuration.
+"""Floppy base URL Configuration.
 
 The `urlpatterns` list routes URLs to views. For more information please see:
     https://docs.djangoproject.com/en/stable/topics/http/urls/
 
 """
 
+import re
+
 from allauth.account import views as allauth_account_views
 from allauth.socialaccount import views as allauth_social_account_views
 from allauth.urls import build_provider_urlpatterns
-from decorator_include import decorator_include
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
 from django.contrib.auth.decorators import login_not_required
-from django.urls import include, path
+from django.http import JsonResponse
+from django.urls import include, path, re_path
+from django.views.static import serve
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from health_check.views import MainView
+
+from users.views import CustomSignupView, CustomSocialSignupView
+
+handler400 = "app.error_views.bad_request"
+handler403 = "app.error_views.permission_denied"
+handler404 = "app.error_views.page_not_found"
+handler500 = "app.error_views.server_error"
 
 urlpatterns = [
+    path("api/v1/", include("api.urls")),
+    # ListenBrainz-compatible ingest lives at the root path clients expect.
+    path("apis/listenbrainz/1/", include("api.listenbrainz_urls")),
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path(
+        "api/docs/",
+        SpectacularSwaggerView.as_view(url_name="schema"),
+        name="swagger-ui",
+    ),
     path("", include("app.urls")),
     path("", include("integrations.urls")),
     path("", include("users.urls")),
     path("", include("lists.urls")),
     path("", include("events.urls")),
     path("select2/", include("django_select2.urls")),
-    path("health/", decorator_include(login_not_required, "health_check.urls")),
+    path(
+        "health/",
+        login_not_required(MainView.as_view()),
+        {"subset": "liveness"},
+    ),
+    path(
+        "health/full/",
+        login_not_required(MainView.as_view()),
+    ),
+    path(
+        "ping/",
+        login_not_required(lambda request: JsonResponse({"status": "ok"})),
+    ),
 ]
 
 # Build the accounts URLs
@@ -31,7 +63,7 @@ account_patterns = [
     # login, logout, signup, account_inactive
     path("login/", allauth_account_views.login, name="account_login"),
     path("logout/", allauth_account_views.logout, name="account_logout"),
-    path("signup/", allauth_account_views.signup, name="account_signup"),
+    path("signup/", CustomSignupView.as_view(), name="account_signup"),
     path(
         "account_inactive/",
         allauth_account_views.account_inactive,
@@ -54,7 +86,7 @@ account_patterns = [
                 ),
                 path(
                     "signup/",
-                    allauth_social_account_views.signup,
+                    CustomSocialSignupView.as_view(),
                     name="socialaccount_signup",
                 ),
                 path(
@@ -74,10 +106,18 @@ urlpatterns.append(path("accounts/", include(account_patterns)))
 if settings.ADMIN_ENABLED:
     urlpatterns.append(path("admin/", admin.site.urls))
 
-# Add debug toolbar if in DEBUG mode
-if settings.DEBUG:
+# Add debug toolbar when explicitly enabled for local development
+if settings.ENABLE_DEBUG_TOOLBAR:
     urlpatterns.append(path("__debug__/", include("debug_toolbar.urls")))
 
-# Serve static files in development
-if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=str(settings.STATICFILES_DIRS[0]))
+# Serve static files for local Django commands like runserver even when
+# DEBUG is disabled in the user's .env.
+if not settings.IS_PROD:
+    static_url_pattern = re.escape(settings.STATIC_URL.lstrip("/"))
+    urlpatterns.append(
+        re_path(
+            rf"^{static_url_pattern}(?P<path>.*)$",
+            login_not_required(serve),
+            {"document_root": str(settings.STATICFILES_DIRS[0])},
+        ),
+    )

@@ -10,10 +10,13 @@ from django.utils.dateparse import parse_date
 import app
 from app.models import MediaTypes, Sources, Status
 from app.providers import services
+from integrations import import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
 logger = logging.getLogger(__name__)
+
+RATING_HALF_SCALE_MAX = 5
 
 
 def importer(file, user, mode):
@@ -55,9 +58,11 @@ class HardcoverImporter:
             msg = "Invalid file format. Please upload a CSV file."
             raise MediaImportError(msg) from e
 
-        reader = DictReader(decoded_file)
+        rows = list(DictReader(decoded_file))
+        total = len(rows)
 
-        for row in reader:
+        for i, row in enumerate(rows, start=1):
+            import_progress.report(i, total, "Hardcover")
             try:
                 self._process_row(row)
             except services.ProviderAPIError:
@@ -182,7 +187,10 @@ class HardcoverImporter:
             source=Sources.HARDCOVER.value,
             media_type=media_type,
             defaults={
-                "title": book["title"],
+                **app.models.Item.title_fields_from_metadata(
+                    book,
+                    fallback_title=book["title"],
+                ),
                 "image": book["image"],
             },
         )
@@ -231,7 +239,7 @@ class HardcoverImporter:
 
         if rating <= 0:
             return None
-        if rating <= 5:
+        if rating <= RATING_HALF_SCALE_MAX:
             return round(rating * 2, 1)
         return min(rating, 10)
 

@@ -1,3 +1,10 @@
+import math
+import re
+from datetime import datetime, timedelta
+from datetime import time as datetime_time
+from decimal import Decimal, InvalidOperation
+from uuid import uuid4
+
 from django import forms
 from django.conf import settings
 from django.utils import timezone
@@ -12,6 +19,7 @@ from app.models import (
     Book,
     CollectionEntry,
     Comic,
+    ComicIssue,
     Episode,
     Game,
     Item,
@@ -23,7 +31,10 @@ from app.models import (
     PodcastShowTracker,
     Season,
     Sources,
+    Status,
 )
+
+CHOICE_PAIR_LENGTH = 2
 
 
 def get_form_class(media_type):
@@ -35,39 +46,99 @@ def get_form_class(media_type):
 class CustomDurationField(forms.CharField):
     """Custom form field for duration input that accepts multiple time formats."""
 
+    _UNIT_DURATION_PATTERN = re.compile(
+        r"(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>hours?|hrs?|hr|h|minutes?|mins?|min)"
+    )
+
     def _parse_hours_minutes(self, value):
-        """Parse hours and minutes from various time formats.
+        """Parse and return total minutes from various time formats.
 
         Supported formats:
         - Plain number (hours only): "5"
+        - Plain float number (hours and minutes): "1.5"
         - HH:MM: "5:30"
         - Nh Nmin: "5h 30min"
         - NhNmin: "5h30min"
         - Nmin: "30min"
         - Nh: "5h"
+        - N minutes: "111 minutes"
+        - Decimal hours: "4.3 hours"
         """
-        if value.isdigit():  # hours only
-            return int(value), 0
+        normalized_value = value.strip().lower()
 
-        if ":" in value:  # hh:mm format
-            hours, minutes = value.split(":")
-            return int(hours), int(minutes)
+        if re.fullmatch(r"\d+(?:\.\d+)?", normalized_value):
+            converted_to_float = float(normalized_value)
+            if math.isfinite(converted_to_float) and converted_to_float >= 0:
+                return int(converted_to_float * 60)
 
-        if " " in value:  # [n]h [n]min format
-            hours, minutes = value.split(" ")
-            return int(hours.strip("h")), int(minutes.strip("min"))
+        if normalized_value.isdigit():  # hours only
+            return int(normalized_value) * 60
 
-        if "h" in value and "min" in value:  # [n]h[n]min format
-            hours, minutes = value.split("h")
-            return int(hours), int(minutes.strip("min"))
+        hh_mm_minutes = self._parse_hh_mm_duration(normalized_value)
+        if hh_mm_minutes is not None:
+            return hh_mm_minutes
 
-        if "min" in value:  # [n]min format
-            return 0, int(value.strip("min"))
+        unit_minutes = self._parse_unit_duration(normalized_value)
+        if unit_minutes is not None:
+            return unit_minutes
 
-        if "h" in value:  # [n]h format
-            return int(value.strip("h")), 0
         msg = "Invalid time format"
         raise ValueError(msg)
+
+    def _parse_hh_mm_duration(self, value):
+        """Parse hh:mm input and return total minutes."""
+        if ":" not in value:
+            return None
+
+        chunks = value.split(":")
+        expected_chunk_count = 2
+        if len(chunks) != expected_chunk_count:
+            msg = "Invalid time format"
+            raise ValueError(msg)
+
+        hours_str, minutes_str = chunks
+        if not (hours_str.isdigit() and minutes_str.isdigit()):
+            msg = "Invalid time format"
+            raise ValueError(msg)
+
+        hours = int(hours_str)
+        minutes = int(minutes_str)
+        self._validate_minutes(minutes)
+        return hours * 60 + minutes
+
+    def _parse_unit_duration(self, value):
+        """Parse unit-based duration strings and return total minutes."""
+        matches = list(self._UNIT_DURATION_PATTERN.finditer(value))
+        if not matches:
+            return None
+
+        remainder = self._UNIT_DURATION_PATTERN.sub("", value)
+        if remainder.strip():
+            msg = "Invalid time format"
+            raise ValueError(msg)
+
+        total_minutes = Decimal(0)
+        has_hours_token = any(
+            match.group("unit").startswith(("h", "hr")) for match in matches
+        )
+
+        for match in matches:
+            raw_value = match.group("value")
+            try:
+                amount = Decimal(raw_value)
+            except InvalidOperation as e:
+                msg = "Invalid time format"
+                raise ValueError(msg) from e
+
+            unit = match.group("unit")
+            if unit.startswith(("h", "hr")):
+                total_minutes += amount * 60
+            else:
+                if has_hours_token:
+                    self._validate_minutes(int(amount))
+                total_minutes += amount
+
+        return int(total_minutes)
 
     def _validate_minutes(self, minutes):
         """Validate that minutes are within acceptable range."""
@@ -83,11 +154,12 @@ class CustomDurationField(forms.CharField):
             return 0
 
         try:
-            hours, minutes = self._parse_hours_minutes(cleaned_value)
-            self._validate_minutes(minutes)
-            return hours * 60 + minutes
+            return self._parse_hours_minutes(cleaned_value)
         except ValueError as e:
-            msg = "Invalid time played format. Please use hh:mm, [n]h [n]min or [n]h[n]min format."  # noqa: E501
+            msg = (
+                "Invalid time played format. Please use hh:mm, [n]h [n]min, "
+                "[n]h[n]min, [n] minutes, or [n.n] hours."
+            )
             raise forms.ValidationError(msg) from e
 
 
@@ -178,7 +250,7 @@ class ManualItemForm(forms.ModelForm):
 
         return cleaned_data
 
-    def save(self, commit=True):  # noqa: FBT002
+    def save(self, commit=True):
         """Save the form and handle manual media ID generation."""
         instance = super().save(commit=False)
         instance.source = Sources.MANUAL.value
@@ -191,7 +263,7 @@ class ManualItemForm(forms.ModelForm):
             instance.media_id = parent_season.item.media_id
             instance.season_number = parent_season.item.season_number
         else:
-            instance.media_id = Item.generate_manual_id(instance.media_type)
+            instance.media_id = Item.generate_manual_id()
 
         if commit:
             instance.save()
@@ -202,6 +274,7 @@ class RatingScaleFormMixin:
     """Apply user rating scale preferences to score fields."""
 
     def __init__(self, *args, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
         self._apply_rating_scale()
@@ -218,10 +291,17 @@ class RatingScaleFormMixin:
                 "placeholder": f"0-{scale_max}",
             },
         )
-        if not self.is_bound and self.instance and getattr(self.instance, "score", None) is not None:
-            self.initial["score"] = self.user.scale_score_for_display(self.instance.score)
+        if (
+            not self.is_bound
+            and self.instance
+            and getattr(self.instance, "score", None) is not None
+        ):
+            self.initial["score"] = self.user.scale_score_for_display(
+                self.instance.score
+            )
 
     def clean_score(self):
+        """Validate the score field."""
         score = self.cleaned_data.get("score")
         if score is None or not self.user:
             return score
@@ -233,8 +313,19 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
 
     instance_id = forms.CharField(widget=forms.HiddenInput(), required=False)
     media_type = forms.CharField(widget=forms.HiddenInput(), required=True)
+    identity_media_type = forms.CharField(widget=forms.HiddenInput(), required=False)
+    library_media_type = forms.CharField(widget=forms.HiddenInput(), required=False)
     source = forms.CharField(widget=forms.HiddenInput(), required=True)
     media_id = forms.CharField(widget=forms.HiddenInput(), required=True)
+    image_url = forms.URLField(
+        required=False,
+        label="Image URL",
+        widget=forms.URLInput(
+            attrs={
+                "placeholder": "https://example.com/poster.jpg",
+            },
+        ),
+    )
 
     class Meta:
         """Define fields and input types."""
@@ -252,10 +343,14 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
             ),
             "progress": forms.NumberInput(attrs={"min": 0}),
-            "start_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "start_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
-            "end_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "end_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(
@@ -278,6 +373,28 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
             # Explicitly remove required attribute from widget to prevent HTML5 validation
             self.fields["end_date"].widget.attrs.pop("required", None)
 
+        # status is nullable: blank means the user holds the media (usually an
+        # imported rating) without tracking it. Label it like the list filter
+        # instead of Django's default "---------".
+        if "status" in self.fields:
+            self.fields["status"].choices = [
+                ("", "No Status"),
+                *[
+                    (value, label)
+                    for value, label in self.fields["status"].choices
+                    if value
+                ],
+            ]
+
+        if self.instance and getattr(self.instance, "item", None):
+            current_image = self.instance.item.image
+            if current_image and current_image != settings.IMG_NONE:
+                self.initial.setdefault("image_url", current_image)
+
+    def clean_image_url(self):
+        """Normalize optional image URL input."""
+        return (self.cleaned_data.get("image_url") or "").strip()
+
 
 class MangaForm(MediaForm):
     """Form for manga."""
@@ -288,25 +405,21 @@ class MangaForm(MediaForm):
         model = Manga
         labels = {
             "progress": (
-                f"Progress "
-                f"({config.get_unit(MediaTypes.MANGA.value, short=False)}s)"
+                f"Progress ({config.get_unit(MediaTypes.MANGA.value, short=False)}s)"
             ),
         }
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
-        max_progress = kwargs.pop("max_progress", None)
+        kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
-        
+
         # Adjust progress field for percentage mode
         if self.user and self.user.book_comic_manga_progress_percentage:
             self.fields["progress"].label = "Progress (%)"
-            self.fields["progress"].widget.attrs.update({
-                "min": 0,
-                "max": 100,
-                "step": 0.1,
-                "placeholder": "%"
-            })
+            self.fields["progress"].widget.attrs.update(
+                {"min": 0, "max": 100, "step": 0.1, "placeholder": "%"}
+            )
 
 
 class AnimeForm(MediaForm):
@@ -339,14 +452,35 @@ class GameForm(MediaForm):
 
     progress = CustomDurationField(
         required=False,
-        widget=forms.TextInput(attrs={"placeholder": "hh:mm"}),
+        widget=forms.TextInput(attrs={"placeholder": "hh:mm or 111 minutes"}),
         label="Progress (Time Played)",
     )
+    start_date_cleared = forms.CharField(required=False, widget=forms.HiddenInput())
 
     class Meta(MediaForm.Meta):
         """Bind form to model."""
 
         model = Game
+
+    def clean(self):
+        """Backfill a missing start date from the saved end date and progress."""
+        cleaned_data = super().clean()
+        start_date = cleaned_data.get("start_date")
+        end_date = cleaned_data.get("end_date")
+        progress = cleaned_data.get("progress")
+        start_date_cleared = cleaned_data.get("start_date_cleared") == "1"
+
+        if (
+            not start_date
+            and not start_date_cleared
+            and not self.instance.start_date
+            and isinstance(end_date, datetime)
+            and progress
+            and progress > 0
+        ):
+            cleaned_data["start_date"] = end_date - timedelta(minutes=progress)
+
+        return cleaned_data
 
 
 class BoardgameForm(MediaForm):
@@ -373,25 +507,21 @@ class BookForm(MediaForm):
         model = Book
         labels = {
             "progress": (
-                f"Progress "
-                f"({config.get_unit(MediaTypes.BOOK.value, short=False)}s)"
+                f"Progress ({config.get_unit(MediaTypes.BOOK.value, short=False)}s)"
             ),
         }
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
-        max_progress = kwargs.pop("max_progress", None)
+        kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
-        
+
         # Adjust progress field for percentage mode
         if self.user and self.user.book_comic_manga_progress_percentage:
             self.fields["progress"].label = "Progress (%)"
-            self.fields["progress"].widget.attrs.update({
-                "min": 0,
-                "max": 100,
-                "step": 0.1,
-                "placeholder": "%"
-            })
+            self.fields["progress"].widget.attrs.update(
+                {"min": 0, "max": 100, "step": 0.1, "placeholder": "%"}
+            )
 
 
 class ComicForm(MediaForm):
@@ -403,44 +533,41 @@ class ComicForm(MediaForm):
         model = Comic
         labels = {
             "progress": (
-                f"Progress "
-                f"({config.get_unit(MediaTypes.COMIC.value, short=False)}s)"
+                f"Progress ({config.get_unit(MediaTypes.COMIC.value, short=False)}s)"
             ),
         }
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
-        max_progress = kwargs.pop("max_progress", None)
+        kwargs.pop("max_progress", None)
         super().__init__(*args, **kwargs)
-        
+
         # Adjust progress field for percentage mode
         if self.user and self.user.book_comic_manga_progress_percentage:
             self.fields["progress"].label = "Progress (%)"
-            self.fields["progress"].widget.attrs.update({
-                "min": 0,
-                "max": 100,
-                "step": 0.1,
-                "placeholder": "%"
-            })
+            self.fields["progress"].widget.attrs.update(
+                {"min": 0, "max": 100, "step": 0.1, "placeholder": "%"}
+            )
 
 
-class BoardgameForm(MediaForm):
-    """Form for board games."""
+class ComicissueForm(MediaForm):
+    """Form for individual comic issues."""
 
     class Meta(MediaForm.Meta):
         """Bind form to model."""
 
-        model = BoardGame
-        labels = {
-            "progress": (
-                "Progress "
-                f"({config.get_unit(MediaTypes.BOARDGAME.value, short=False)}s)"
-            ),
-        }
+        model = ComicIssue
 
 
 class TvForm(MediaForm):
     """Form for TV shows."""
+
+    end_date = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "1"})
+        if settings.TRACK_TIME
+        else forms.DateInput(attrs={"type": "date"}),
+    )
 
     class Meta(MediaForm.Meta):
         """Bind form to model."""
@@ -453,6 +580,12 @@ class SeasonForm(MediaForm):
     """Form for seasons."""
 
     season_number = forms.IntegerField(widget=forms.HiddenInput(), required=False)
+    end_date = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "1"})
+        if settings.TRACK_TIME
+        else forms.DateInput(attrs={"type": "date"}),
+    )
 
     class Meta(MediaForm.Meta):
         """Bind form to model."""
@@ -465,36 +598,347 @@ class SeasonForm(MediaForm):
         ]
 
 
-class EpisodeForm(forms.ModelForm):
+class EpisodeForm(RatingScaleFormMixin, forms.ModelForm):
     """Form for episodes."""
 
     instance_id = forms.CharField(widget=forms.HiddenInput(), required=False)
     media_type = forms.CharField(widget=forms.HiddenInput(), required=False)
+    identity_media_type = forms.CharField(widget=forms.HiddenInput(), required=False)
+    library_media_type = forms.CharField(widget=forms.HiddenInput(), required=False)
     source = forms.CharField(widget=forms.HiddenInput(), required=False)
     media_id = forms.CharField(widget=forms.HiddenInput(), required=False)
     season_number = forms.IntegerField(widget=forms.HiddenInput(), required=False)
+    episode_number = forms.IntegerField(widget=forms.HiddenInput(), required=False)
+    watch_operation_id = forms.UUIDField(widget=forms.HiddenInput(), required=False)
 
     class Meta:
         """Bind form to model."""
 
         model = Episode
-        fields = ("end_date",)
+        fields = ("score", "status", "start_date", "end_date", "notes")
         widgets = {
+            "score": forms.NumberInput(
+                attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
+            ),
+            "start_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            if settings.TRACK_TIME
+            else forms.DateInput(attrs={"type": "date"}),
             "end_date": forms.DateInput(attrs={"type": "date"}),
+            "notes": forms.Textarea(
+                attrs={"placeholder": "Add any notes or comments...", "rows": "5"},
+            ),
         }
 
     def __init__(self, *args, **kwargs):
         """Initialize the form."""
         super().__init__(*args, **kwargs)
 
+        if not self.is_bound and self.instance.pk is None:
+            self.initial["watch_operation_id"] = uuid4()
+
         if settings.TRACK_TIME:
+            self.fields["start_date"].widget = forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             self.fields["end_date"].widget = forms.DateTimeInput(
-                attrs={"type": "datetime-local"},
+                attrs={"type": "datetime-local", "step": "1"},
             )
         else:
+            self.fields["start_date"].widget = forms.DateInput(
+                attrs={"type": "date"},
+            )
             self.fields["end_date"].widget = forms.DateInput(
                 attrs={"type": "date"},
             )
+
+        self.fields["start_date"].required = False
+        self.fields["end_date"].required = False
+        self.fields["status"].required = False
+
+    def clean_status(self):
+        """Keep legacy episode-save clients equivalent to adding a watch."""
+        return self.cleaned_data.get("status") or Status.COMPLETED.value
+
+
+class BulkEpisodeTrackForm(forms.Form):
+    """Form for bulk tracking episode plays across a TV/anime range."""
+
+    WRITE_MODE_ADD = "add"
+    WRITE_MODE_REPLACE = "replace"
+    DISTRIBUTION_MODE_EVEN = "even"
+    DISTRIBUTION_MODE_AIR_DATE = "air_date"
+
+    WRITE_MODE_CHOICES = (
+        (WRITE_MODE_ADD, "Add additional plays"),
+        (WRITE_MODE_REPLACE, "Replace all plays"),
+    )
+    DISTRIBUTION_MODE_CHOICES = (
+        (DISTRIBUTION_MODE_AIR_DATE, "Target air date"),
+        (DISTRIBUTION_MODE_EVEN, "Even distribution"),
+    )
+
+    media_id = forms.CharField(widget=forms.HiddenInput(), required=True)
+    source = forms.CharField(widget=forms.HiddenInput(), required=True)
+    media_type = forms.CharField(widget=forms.HiddenInput(), required=True)
+    identity_media_type = forms.CharField(widget=forms.HiddenInput(), required=False)
+    library_media_type = forms.CharField(widget=forms.HiddenInput(), required=False)
+    instance_id = forms.CharField(widget=forms.HiddenInput(), required=False)
+    return_url = forms.CharField(widget=forms.HiddenInput(), required=False)
+    context_kind = forms.CharField(widget=forms.HiddenInput(), required=False)
+    context_id = forms.CharField(widget=forms.HiddenInput(), required=False)
+
+    first_season_number = forms.TypedChoiceField(
+        label="First season",
+        coerce=int,
+        choices=(),
+    )
+    first_episode_number = forms.TypedChoiceField(
+        label="First episode",
+        coerce=int,
+        choices=(),
+    )
+    last_season_number = forms.TypedChoiceField(
+        label="Last season",
+        coerce=int,
+        choices=(),
+    )
+    last_episode_number = forms.TypedChoiceField(
+        label="Last episode",
+        coerce=int,
+        choices=(),
+    )
+    write_mode = forms.ChoiceField(
+        label="Play handling",
+        choices=WRITE_MODE_CHOICES,
+        initial=WRITE_MODE_ADD,
+    )
+    distribution_mode = forms.ChoiceField(
+        label="Distribution",
+        choices=DISTRIBUTION_MODE_CHOICES,
+        initial=DISTRIBUTION_MODE_AIR_DATE,
+    )
+    if settings.TRACK_TIME:
+        start_date = forms.DateTimeField(
+            required=False,
+            widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "1"}),
+        )
+        end_date = forms.DateTimeField(
+            required=False,
+            widget=forms.DateTimeInput(attrs={"type": "datetime-local", "step": "1"}),
+        )
+    else:
+        start_date = forms.DateField(
+            required=False,
+            widget=forms.DateInput(attrs={"type": "date"}),
+        )
+        end_date = forms.DateField(
+            required=False,
+            widget=forms.DateInput(attrs={"type": "date"}),
+        )
+
+    def __init__(self, *args, **kwargs):
+        """Initialize dynamic selector choices from the episode domain."""
+        self.domain = kwargs.pop("domain", None) or {}
+        super().__init__(*args, **kwargs)
+
+        distribution_target_label = (
+            self.domain.get("distribution_target_label") or "air date"
+        )
+        self.fields["distribution_mode"].choices = (
+            (
+                self.DISTRIBUTION_MODE_AIR_DATE,
+                f"Target {distribution_target_label}",
+            ),
+            (
+                self.DISTRIBUTION_MODE_EVEN,
+                "Even distribution",
+            ),
+        )
+
+        seasons = self.domain.get("seasons", [])
+        season_choices = [
+            (season["season_number"], season["season_title"]) for season in seasons
+        ]
+        self.fields["first_season_number"].choices = season_choices
+        self.fields["last_season_number"].choices = season_choices
+
+        for field_name in ("start_date", "end_date"):
+            if field_name in self.fields:
+                self.fields[field_name].required = False
+                self.fields[field_name].widget.attrs.pop("required", None)
+
+        default_first = self.domain.get("default_first") or {}
+        default_last = self.domain.get("default_last") or {}
+        if not self.is_bound:
+            self.initial.setdefault(
+                "first_season_number",
+                default_first.get("season_number"),
+            )
+            self.initial.setdefault(
+                "first_episode_number",
+                default_first.get("episode_number"),
+            )
+            self.initial.setdefault(
+                "last_season_number",
+                default_last.get("season_number"),
+            )
+            self.initial.setdefault(
+                "last_episode_number",
+                default_last.get("episode_number"),
+            )
+
+        self._bind_episode_choices(
+            "first_episode_number",
+            "first_season_number",
+            default_first.get("season_number"),
+        )
+        self._bind_episode_choices(
+            "last_episode_number",
+            "last_season_number",
+            default_last.get("season_number"),
+        )
+
+    def _season_value(self, field_name, fallback_season_number):
+        """Return the selected season number for a dependent episode dropdown."""
+        if self.is_bound:
+            raw_value = self.data.get(self.add_prefix(field_name))
+        else:
+            raw_value = self.initial.get(field_name, fallback_season_number)
+
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError):
+            return fallback_season_number
+
+    def _bind_episode_choices(
+        self,
+        episode_field_name,
+        season_field_name,
+        fallback_season_number,
+    ):
+        """Populate episode choices for the selected season."""
+        season_number = self._season_value(season_field_name, fallback_season_number)
+        season_episode_map = self.domain.get("season_episode_map", {})
+        episode_choices = [
+            (
+                episode["episode_number"],
+                f"E{episode['episode_number']} - {episode['episode_title']}",
+            )
+            for episode in season_episode_map.get(season_number, [])
+        ]
+        self.fields[episode_field_name].choices = episode_choices
+
+    def _normalize_datetime_value(self, value):
+        """Convert date-only values into aware datetimes for downstream services."""
+        if value in (None, ""):
+            return None
+
+        if hasattr(value, "hour"):
+            if timezone.is_naive(value):
+                return timezone.make_aware(
+                    value,
+                    timezone.get_current_timezone(),
+                )
+            return value
+
+        combined = datetime.combine(value, datetime_time.min)
+        return timezone.make_aware(
+            combined,
+            timezone.get_current_timezone(),
+        )
+
+    def clean_start_date(self):
+        """Normalize start dates for both date and datetime inputs."""
+        return self._normalize_datetime_value(self.cleaned_data.get("start_date"))
+
+    def clean_end_date(self):
+        """Normalize end dates for both date and datetime inputs."""
+        return self._normalize_datetime_value(self.cleaned_data.get("end_date"))
+
+    def clean(self):
+        """Validate the selected episode range against the resolved domain."""
+        cleaned_data = super().clean()
+        episode_lookup = self.domain.get("episode_lookup", {})
+        selection_noun = self.domain.get("selection_noun") or "episode"
+        selection_noun_plural = (
+            self.domain.get("selection_noun_plural") or f"{selection_noun}s"
+        )
+        distribution_target_label = (
+            self.domain.get("distribution_target_label") or "air date"
+        )
+        missing_target_date_fallback_distribution = self.domain.get(
+            "missing_target_date_fallback_distribution",
+        )
+
+        first_key = (
+            cleaned_data.get("first_season_number"),
+            cleaned_data.get("first_episode_number"),
+        )
+        last_key = (
+            cleaned_data.get("last_season_number"),
+            cleaned_data.get("last_episode_number"),
+        )
+        first_episode = episode_lookup.get(first_key)
+        last_episode = episode_lookup.get(last_key)
+
+        if first_episode is None:
+            self.add_error(
+                "first_episode_number",
+                f"Select a {selection_noun} that exists in the available range.",
+            )
+        if last_episode is None:
+            self.add_error(
+                "last_episode_number",
+                f"Select a {selection_noun} that exists in the available range.",
+            )
+        if self.errors:
+            return cleaned_data
+
+        if first_episode["order"] > last_episode["order"]:
+            self.add_error(
+                "last_episode_number",
+                f"The last {selection_noun} must come after or match the first {selection_noun}.",
+            )
+            return cleaned_data
+
+        selected_episodes = [
+            episode
+            for episode in self.domain.get("episodes", [])
+            if first_episode["order"] <= episode["order"] <= last_episode["order"]
+        ]
+        cleaned_data["selected_domain_episodes"] = selected_episodes
+
+        distribution_mode = cleaned_data.get("distribution_mode")
+        start_date = cleaned_data.get("start_date")
+        end_date = cleaned_data.get("end_date")
+
+        if not start_date:
+            self.add_error("start_date", "Start date is required.")
+        if not end_date:
+            self.add_error("end_date", "End date is required.")
+        if start_date and end_date and start_date > end_date:
+            self.add_error("end_date", "End date must be on or after the start date.")
+
+        if distribution_mode == self.DISTRIBUTION_MODE_AIR_DATE:
+            missing_air_dates = [
+                episode for episode in selected_episodes if not episode.get("air_date")
+            ]
+            if missing_air_dates:
+                if (
+                    missing_target_date_fallback_distribution
+                    == self.DISTRIBUTION_MODE_EVEN
+                ):
+                    cleaned_data["distribution_mode"] = self.DISTRIBUTION_MODE_EVEN
+                    cleaned_data["missing_target_date_fallback_applied"] = True
+                else:
+                    self.add_error(
+                        "distribution_mode",
+                        "One or more selected "
+                        f"{selection_noun_plural} are missing {distribution_target_label}s. "
+                        "Use even distribution instead.",
+                    )
+
+        return cleaned_data
 
 
 class MusicForm(MediaForm):
@@ -506,8 +950,7 @@ class MusicForm(MediaForm):
         model = Music
         labels = {
             "progress": (
-                f"Progress "
-                f"({config.get_unit(MediaTypes.MUSIC.value, short=False)}s)"
+                f"Progress ({config.get_unit(MediaTypes.MUSIC.value, short=False)}s)"
             ),
         }
 
@@ -521,8 +964,7 @@ class PodcastForm(MediaForm):
         model = Podcast
         labels = {
             "progress": (
-                f"Progress "
-                f"({config.get_unit(MediaTypes.PODCAST.value, short=False)}s)"
+                f"Progress ({config.get_unit(MediaTypes.PODCAST.value, short=False)}s)"
             ),
         }
 
@@ -547,10 +989,14 @@ class ArtistTrackerForm(RatingScaleFormMixin, forms.ModelForm):
             "score": forms.NumberInput(
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
             ),
-            "start_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "start_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
-            "end_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "end_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(
@@ -590,10 +1036,14 @@ class PodcastShowTrackerForm(RatingScaleFormMixin, forms.ModelForm):
             "score": forms.NumberInput(
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
             ),
-            "start_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "start_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
-            "end_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "end_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(
@@ -633,10 +1083,14 @@ class AlbumTrackerForm(RatingScaleFormMixin, forms.ModelForm):
             "score": forms.NumberInput(
                 attrs={"min": 0, "max": 10, "step": 0.1, "placeholder": "0-10"},
             ),
-            "start_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "start_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
-            "end_date": forms.DateTimeInput(attrs={"type": "datetime-local"})
+            "end_date": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
             if settings.TRACK_TIME
             else forms.DateInput(attrs={"type": "date"}),
             "notes": forms.Textarea(
@@ -660,6 +1114,8 @@ class CollectionEntryForm(forms.ModelForm):
     """Form for adding/editing collection entries."""
 
     class Meta:
+        """Model and field configuration."""
+
         model = CollectionEntry
         fields = [
             "item",
@@ -670,6 +1126,8 @@ class CollectionEntryForm(forms.ModelForm):
             "audio_codec",
             "audio_channels",
             "bitrate",
+            "purchase_price",
+            "purchase_location",
         ]
         widgets = {
             "item": forms.HiddenInput(),
@@ -684,15 +1142,26 @@ class CollectionEntryForm(forms.ModelForm):
             ),
             "audio_channels": forms.TextInput(attrs={"placeholder": "5.1, 7.1.2"}),
             "bitrate": forms.NumberInput(attrs={"placeholder": "128, 320, 1411"}),
+            "purchase_price": forms.NumberInput(
+                attrs={"placeholder": "9.99", "step": "0.01", "min": "0"},
+            ),
+            "purchase_location": forms.TextInput(
+                attrs={"placeholder": "Amazon, Steam, Best Buy"},
+            ),
         }
 
     def __init__(self, *args, **kwargs):
+        """Store the extra keyword arguments this form needs."""
         self.user = kwargs.pop("user", None)
         collection_media_type = kwargs.pop("collection_media_type", None)
-        collection_choices_override = kwargs.pop("collection_choices_override", None) or {}
+        collection_choices_override = (
+            kwargs.pop("collection_choices_override", None) or {}
+        )
         super().__init__(*args, **kwargs)
         if settings.TRACK_TIME:
-            collected_widget = forms.DateTimeInput(attrs={"type": "datetime-local"})
+            collected_widget = forms.DateTimeInput(
+                attrs={"type": "datetime-local", "step": "1"},
+            )
         else:
             collected_widget = forms.DateInput(attrs={"type": "date"})
 
@@ -709,6 +1178,8 @@ class CollectionEntryForm(forms.ModelForm):
 
         config_entry = config.get_collection_field_config(collection_media_type)
         self.collection_fields = config_entry.get("fields", [])
+        if self.collection_fields:
+            self.order_fields(self.collection_fields)
 
         labels = config_entry.get("labels", {})
         for field_name, label in labels.items():
@@ -723,7 +1194,10 @@ class CollectionEntryForm(forms.ModelForm):
                 continue
             normalized = []
             for option in choices:
-                if isinstance(option, (tuple, list)) and len(option) == 2:
+                if (
+                    isinstance(option, (tuple, list))
+                    and len(option) == CHOICE_PAIR_LENGTH
+                ):
                     normalized.append((option[0], option[1]))
                 else:
                     normalized.append((option, option))

@@ -4,8 +4,8 @@
 
 <div class="space-y-6">
   {% for day, releases in release_dict.items %}
-    <div class="bg-[#343a40] rounded-lg overflow-hidden">
-      <div class="px-4 py-3 font-medium flex items-center justify-between {% if day == today.day and month == today.month and year == today.year %}bg-indigo-600{% else %}bg-gray-600{% endif %}">
+    <div data-calendar-day class="bg-[var(--color-surface-muted)] rounded-lg overflow-hidden">
+      <div class="px-4 py-3 font-medium flex items-center justify-between text-gray-100 {% if day == today.day and month == today.month and year == today.year %}bg-indigo-600{% else %}bg-gray-600{% endif %}">
         <span>{% day_of_week day month year %}, {{ month_name }} {{ day }}</span>
         {% if day == today.day and month == today.month and year == today.year %}
           <span class="text-sm bg-white text-indigo-600 px-2 py-0.5 rounded-full">Today</span>
@@ -14,15 +14,15 @@
 
       <div class="p-4 space-y-3">
         {% for release in releases %}
-          <a href="{{ release.item|media_url }}" class="block">
-            <div class="flex items-center gap-3 p-2 rounded-md hover:bg-[#454d5a] transition-colors">
+          <a data-release-media-type="{{ release.item.media_type }}" href="{{ release.item|media_url }}" class="block">
+            <div class="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
               <img alt="{{ release }}"
                    class="w-10 h-10 object-cover rounded-md shrink-0"
                    src="{{ release.item.image }}">
               <div class="flex-1 min-w-0">
                 <h4 class="font-medium text-sm line-clamp-1">{{ release.item }}</h4>
                 <div class="flex items-center">
-                  <span class="text-xs text-gray-400 me-2">{{ release.item.media_type|media_type_readable }}</span>
+                  <span class="text-xs text-[var(--color-text-muted)] me-2">{{ release.item.media_type|media_type_readable }}</span>
                   {% if release.readable_content_number %}
                     <span class="text-xs text-indigo-400">{{ release.readable_content_number }} {{ release|user_event_time:user }}</span>
                   {% endif %}
@@ -31,6 +31,7 @@
             </div>
           </a>
         {% endfor %}
+        <div data-empty-state class="hidden text-sm text-[var(--color-text-muted)]">No releases for selected media types.</div>
       </div>
     </div>
   {% endfor %}

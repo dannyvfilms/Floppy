@@ -1,0 +1,33 @@
+{% extends "socialaccount/base_entrance.html" %}
+{% load allauth account %}
+
+{% block head_title %}
+  Complete Sign Up
+{% endblock head_title %}
+
+{% block content_title %}
+  Finish setting up your account
+{% endblock content_title %}
+
+{% block content %}
+
+  <p class="text-[var(--color-text-muted)] mb-6">
+    You signed in with {{ account.get_provider.name }}. Choose a username to finish creating your Floppy account.
+  </p>
+
+  {% url 'socialaccount_signup' as action_url %}
+  {% element form form=form method="post" action=action_url tags="entrance,signup" %}
+    {% slot body %}
+      {% csrf_token %}
+      {% element fields form=form unlabeled=True %}
+      {% endelement %}
+      {{ redirect_field }}
+    {% endslot %}
+    {% slot actions %}
+      {% element button tags="prominent,signup" type="submit" icon='<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path> <circle cx="9" cy="7" r="4"></circle><line x1="19" x2="19" y1="8" y2="14"></line><line x1="22" x2="16" y1="11" y2="11"></line>' %}
+        Complete Sign Up
+      {% endelement %}
+    {% endslot %}
+  {% endelement %}
+
+{% endblock content %}

@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from app.models import (
     Anime,
@@ -91,8 +91,15 @@ class ImportAniList(TestCase):
             datetime(2025, 6, 4, 10, 11, 17, tzinfo=UTC),
         )
 
+    @tag("network")
     def test_user_not_found(self):
-        """Test that an error is raised if the user is not found."""
+        """Test that an error is raised if the user is not found.
+
+        Unlike its neighbours this one does not patch the session, so it asks
+        AniList about a made-up user for real. AniList answers a bare 403 when
+        it feels like it, which surfaces as the wrong exception type and fails
+        the run for reasons that have nothing to do with the change under test.
+        """
         self.assertRaises(
             helpers.MediaImportError,
             anilist.importer,
@@ -101,5 +108,3 @@ class ImportAniList(TestCase):
             "new",
             "fhdsufdsu",
         )
-
-

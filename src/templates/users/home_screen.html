@@ -1,0 +1,801 @@
+{% extends "users/base.html" %}
+
+{% block title %}
+  Home Screen - Floppy
+{% endblock title %}
+
+{% block settings_content %}
+  <div class="bg-[var(--color-surface)] rounded-lg p-6"
+       x-data="homeScreenSettings({
+         sections: JSON.parse('{{ home_screen_sections_json|escapejs }}'),
+         listSearchUrl: '{{ home_screen_list_search_url|escapejs }}',
+         directionChoices: JSON.parse('{{ direction_choices_json|escapejs }}')
+       })"
+       x-init="init()">
+    <form method="post" @submit="prepareSubmit">
+      {% csrf_token %}
+      <input type="hidden" name="home_screen_sections" x-ref="payloadInput">
+
+      <div class="space-y-1" data-home-section-list>
+        <template x-for="section in sections" :key="section.media_type">
+          <section :data-section-media-type="section.media_type">
+            <div class="flex w-full items-center gap-3 rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-2 text-[var(--color-text-secondary)] text-sm transition-colors hover:bg-[var(--color-surface-muted)]">
+              <button type="button"
+                      class="drag-handle hidden shrink-0 items-center justify-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing lg:inline-flex"
+                      @click.stop>
+                {% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}
+              </button>
+              <button type="button"
+                      class="flex flex-1 items-center justify-between gap-3 text-left cursor-pointer"
+                      @click="section.expanded = !section.expanded">
+                <div class="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-text-secondary)]"
+                     x-html="section.icon_svg"></div>
+                <div class="min-w-0 flex-1">
+                  <h3 class="font-medium text-[var(--color-text-secondary)]" x-text="section.label"></h3>
+                </div>
+                <div class="shrink-0 text-[var(--color-text-muted)]">
+                  <span x-show="!section.expanded">{% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}</span>
+                  <span x-show="section.expanded">{% include "app/icons/chevron-up.svg" with classes="w-4 h-4" %}</span>
+                </div>
+              </button>
+            </div>
+
+            <div x-show="section.expanded"
+                 x-cloak
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0 -translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 class="mt-3 border-t border-gray-600 pt-3">
+              <template x-if="!section.rows.length">
+                <div class="mb-3 rounded-md border border-dashed border-gray-600 bg-[var(--color-panel)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
+                  No Home rows configured yet for this library.
+                </div>
+              </template>
+
+              <div x-show="section.rows.length"
+                   x-cloak
+                   class="rounded-md border border-[var(--color-surface-border)]"
+                   :data-home-row-list="section.media_type">
+                <template x-for="row in section.rows" :key="row.client_id">
+                  <article class="relative border-t border-[var(--color-surface-strong)] first:rounded-t-md first:border-t-0 last:rounded-b-md"
+                           x-data="{ openMenu: null, filterView: 'root', filterSearch: '', hovering: false, isDesktop: window.matchMedia('(min-width: 1024px)').matches }"
+                           @mouseenter="hovering = true"
+                           @mouseleave="if (openMenu === null && !row.editorOpen) hovering = false"
+                           @focusin="hovering = true"
+                           @focusout="if (!($el.contains($event.relatedTarget))) { hovering = false }"
+                           @click="hovering = true"
+                           :data-row-client-id="row.client_id">
+                    <div class="h-10 rounded-[inherit] bg-[var(--color-hover-dim)] px-3 transition-colors hover:bg-[var(--color-surface)]">
+                      <div class="flex h-full min-w-0 items-center gap-2">
+                        <button type="button"
+                                class="drag-handle hidden h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-page-bg)] text-slate-400 transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing lg:inline-flex"
+                                @click.stop>
+                          {% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}
+                        </button>
+
+                        <div class="min-w-0 flex-1">
+                          <input type="text"
+                                 x-model="row.custom_title"
+                                 maxlength="100"
+                                 :placeholder="rowAutoTitle(section, row)"
+                                 title="Rename this row"
+                                 @click.stop
+                                 @keydown.enter.prevent="$el.blur()"
+                                 class="w-full truncate whitespace-nowrap rounded border border-transparent bg-transparent px-1 -mx-1 text-sm font-medium text-[var(--color-text)] placeholder:text-[var(--color-text)] hover:border-[var(--color-surface-hover)] focus:border-indigo-500 focus:outline-none focus:placeholder:text-gray-500">
+                        </div>
+
+                        <div x-show="!isDesktop || hovering || openMenu !== null || row.editorOpen"
+                             x-cloak
+                             x-transition:enter="transition ease-out duration-150"
+                             x-transition:enter-start="opacity-0"
+                             x-transition:enter-end="opacity-100"
+                             x-transition:leave="transition ease-in duration-100"
+                             x-transition:leave-start="opacity-100"
+                             x-transition:leave-end="opacity-0"
+                             class="flex shrink-0 items-center gap-1 whitespace-nowrap">
+                          <template x-if="row.row_type === 'library_query'">
+                            <div class="relative filter-control"
+                                 @click.outside="if (openMenu === 'filter') { openMenu = null; filterView = 'root'; filterSearch = ''; }">
+                              <button type="button"
+                                      class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                                      @click.stop="if (openMenu === 'filter') { openMenu = null; filterView = 'root'; filterSearch = ''; } else { openMenu = 'filter'; filterView = 'root'; filterSearch = ''; }">
+                                <span class="block min-w-0 truncate max-w-[10rem] sm:max-w-[14rem]" x-text="rowFilterLabel(section, row)"></span>
+                                <svg xmlns="http://www.w3.org/2000/svg"
+                                     viewBox="0 0 20 20"
+                                     class="w-4 h-4 ml-2"
+                                     aria-hidden="true">
+                                  <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+                                </svg>
+                              </button>
+                              <template x-if="openMenu === 'filter'">
+                                <div class="absolute z-40 mt-2 w-60 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700">
+                                  <div x-show="filterView === 'root'">
+                                    <button type="button"
+                                            class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                                            @click.stop="clearLibraryFilters(section, row); openMenu = null; filterView = 'root'; filterSearch = ''">
+                                      <span>All</span>
+                                      <span class="ml-auto text-xs text-gray-500" x-show="rowFilterLabel(section, row) === 'All'">Active</span>
+                                    </button>
+
+                                    <div class="border-t border-gray-700 my-1"></div>
+                                    <template x-for="field in filterMenuFields(section)" :key="field.key">
+                                      <button type="button"
+                                              class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                                              @click.stop="filterView = field.key; filterSearch = ''">
+                                        <span class="flex-shrink-0 mr-3" x-text="field.label"></span>
+                                        <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                                              x-text="fieldSelectionLabel(section, row, field.key)"></span>
+                                        <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+                                      </button>
+                                    </template>
+                                  </div>
+
+                                  <template x-for="field in filterMenuFields(section)" :key="`${field.key}-menu`">
+                                    <div x-show="filterView === field.key">
+                                      <div class="flex items-center w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] border-b border-gray-700">
+                                        <button type="button"
+                                                class="mr-3 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                                                @click.stop="filterView = 'root'; filterSearch = ''">
+                                          {% include "app/icons/chevron-left.svg" with classes="w-3.5 h-3.5" %}
+                                        </button>
+                                        <span x-text="field.label"></span>
+                                        <button type="button"
+                                                x-show="field.key === 'tag'"
+                                                class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-indigo-300 hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
+                                                @click.stop="cycleRowTagMode(row)"
+                                                x-text="row.filters?.tag_mode || 'or'"></button>
+                                      </div>
+
+                                      <div x-show="shouldShowFieldSearch(field)"
+                                           class="p-2 border-b border-gray-700">
+                                        <input type="text"
+                                               x-model="filterSearch"
+                                               class="w-full rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
+                                               :placeholder="`Search ${field.label.toLowerCase()}...`">
+                                      </div>
+
+                                      <div class="max-h-72 overflow-y-auto py-1">
+                                        <template x-for="option in filteredMenuOptions(field, filterSearch)" :key="`${field.key}-${option.value}`">
+                                          <button type="button"
+                                                  class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                                                  :class="isRowFilterOptionSelected(row, field.key, option.value) ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                                                  @click.stop="selectRowFilter(row, field.key, option.value)"
+                                                  x-text="option.label"></button>
+                                        </template>
+                                      </div>
+                                    </div>
+                                  </template>
+                                </div>
+                              </template>
+                            </div>
+                          </template>
+
+                          <template x-if="row.row_type === 'library_query'">
+                            <div class="relative filter-control" @click.outside="if (openMenu === 'status') openMenu = null">
+                              <button type="button"
+                                      class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                                      @click.stop="openMenu = openMenu === 'status' ? null : 'status'">
+                                <span x-text="statusButtonLabel(section, row)"></span>
+                                <svg xmlns="http://www.w3.org/2000/svg"
+                                     viewBox="0 0 20 20"
+                                     class="w-4 h-4 ml-2"
+                                     aria-hidden="true">
+                                  <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+                                </svg>
+                              </button>
+                              <template x-if="openMenu === 'status'">
+                                <div class="absolute z-40 mt-2 py-1 w-48 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700">
+                                  <template x-for="option in statusFilterOptions(section)" :key="option.value">
+                                    <button type="button"
+                                            class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                                            :class="isRowStatusSelected(row, option.value) ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                                            @click.stop="toggleRowStatus(row, option.value)"
+                                            x-text="option.label"></button>
+                                  </template>
+                                </div>
+                              </template>
+                            </div>
+                          </template>
+
+                          <template x-if="row.row_type !== 'recently_unrated'">
+                            <div class="relative filter-control" @click.outside="if (openMenu === 'sort') openMenu = null">
+                              <button type="button"
+                                      class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                                      @click.stop="openMenu = openMenu === 'sort' ? null : 'sort'">
+                                <span x-text="sortButtonLabel(section, row)"></span>
+                                <svg xmlns="http://www.w3.org/2000/svg"
+                                     viewBox="0 0 20 20"
+                                     class="w-4 h-4 ml-2"
+                                     x-show="row.direction === 'asc'"
+                                     aria-hidden="true">
+                                  <path d="M10 5 L16 15 H4 Z" fill="currentColor"></path>
+                                </svg>
+                                <svg xmlns="http://www.w3.org/2000/svg"
+                                     viewBox="0 0 20 20"
+                                     class="w-4 h-4 ml-2"
+                                     x-show="row.direction !== 'asc'"
+                                     aria-hidden="true">
+                                  <path d="M10 15 L4 5 H16 Z" fill="currentColor"></path>
+                                </svg>
+                              </button>
+                              <template x-if="openMenu === 'sort'">
+                                <div class="absolute z-40 mt-2 py-1 w-48 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700">
+                                  <template x-for="choice in sortChoices(section, row)" :key="choice.value">
+                                    <button type="button"
+                                            class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                                            :class="row.sort_by === choice.value ? 'bg-indigo-600 text-white font-medium' : 'text-gray-300 hover:bg-[var(--color-surface-hover)] hover:text-white'"
+                                            @click.stop="toggleRowSort(row, choice.value); openMenu = null"
+                                            x-text="choice.label"></button>
+                                  </template>
+                                </div>
+                              </template>
+                            </div>
+                          </template>
+
+                          <template x-if="row.row_type === 'custom_list'">
+                            <button type="button"
+                                    class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                                    @click.stop="openMenu = null; row.editorOpen = !row.editorOpen">
+                              <span x-text="row.custom_list_name || 'Choose List'"></span>
+                              <svg xmlns="http://www.w3.org/2000/svg"
+                                   viewBox="0 0 20 20"
+                                   class="w-4 h-4 ml-2"
+                                   aria-hidden="true">
+                                <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+                              </svg>
+                            </button>
+                          </template>
+
+                          <template x-if="row.row_type === 'recently_unrated'">
+                            <div class="px-2 py-2 text-sm text-slate-300">
+                              Recent unrated plays
+                            </div>
+                          </template>
+
+                          <button type="button"
+                                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 hover:text-red-400 hover:bg-red-400/10 transition-opacity duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 cursor-pointer"
+                                  @click.stop="removeRow(section, row.client_id)">
+                            {% include "app/icons/trashcan.svg" with classes="w-5 h-5" %}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <template x-if="row.editorOpen && row.row_type === 'custom_list'">
+                      <div class="border-t border-[var(--color-surface-strong)] bg-[var(--color-sidebar)] px-4 py-4">
+                        <div class="mb-3">
+                          <h5 class="text-sm font-semibold text-[var(--color-text)]">List Selection</h5>
+                          <p class="mt-1 text-sm text-slate-400">Search your owned and collaborator lists. Smart lists are included here too.</p>
+                        </div>
+                        <div class="relative">
+                          <input type="text"
+                                 x-model="row.listQuery"
+                                 @input.debounce.250ms="searchLists(section, row)"
+                                 class="w-full rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-panel)] px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none"
+                                 placeholder="Search lists and smart lists">
+                          <div x-show="row.listResults.length"
+                               class="absolute z-20 mt-2 w-full overflow-hidden rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-panel)] shadow-lg">
+                            <template x-for="result in row.listResults" :key="result.id">
+                              <button type="button"
+                                      class="block w-full border-b border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer last:border-b-0"
+                                      @click="applyListResult(row, result)">
+                                <div class="font-medium" x-text="result.name"></div>
+                                <div class="text-xs text-slate-400" x-text="result.is_smart ? 'Smart list' : 'Manual list'"></div>
+                              </button>
+                            </template>
+                          </div>
+                        </div>
+
+                        <div class="mt-3 rounded-md border border-[var(--color-surface-alt)] bg-[var(--color-panel)] px-3 py-2 text-sm text-slate-200">
+                          <span class="text-slate-400">Selected:</span>
+                          <span x-text="row.custom_list_name || 'No list selected yet'"></span>
+                        </div>
+                      </div>
+                    </template>
+                  </article>
+                </template>
+              </div>
+
+              <div class="mt-4 flex flex-wrap items-center gap-2">
+                <div class="relative" @click.outside="section.addRowMenuOpen = false">
+                  <button type="button"
+                          class="inline-flex items-center rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer"
+                          @click="section.addRowMenuOpen = !section.addRowMenuOpen">
+                    {% include "app/icons/plus.svg" with classes="mr-2 h-4 w-4" %}
+                    Add Row
+                  </button>
+                  <div x-show="section.addRowMenuOpen"
+                       x-cloak
+                       class="absolute left-0 z-20 mt-2 w-52 overflow-hidden rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-panel)] shadow-lg">
+                    <button type="button"
+                            class="flex w-full items-center px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer"
+                            @click="addRow(section, 'library_query'); section.addRowMenuOpen = false">
+                      {% include "app/icons/plus.svg" with classes="mr-2 h-4 w-4" %}
+                      Library Row
+                    </button>
+                    <button type="button"
+                            class="flex w-full items-center border-t border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-slate-200 transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer"
+                            @click="addRow(section, 'recently_unrated'); section.addRowMenuOpen = false"
+                            :disabled="section.rows.some(row => row.row_type === 'recently_unrated')"
+                            :class="{ 'opacity-50 cursor-not-allowed': section.rows.some(row => row.row_type === 'recently_unrated') }">
+                      {% include "app/icons/history.svg" with classes="mr-2 h-4 w-4" %}
+                      Recently Played Row
+                    </button>
+                  </div>
+                </div>
+
+                <button type="button"
+                        class="inline-flex items-center rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer"
+                        @click="addRow(section, 'custom_list')">
+                  {% include "app/icons/list.svg" with classes="mr-2 h-4 w-4" %}
+                  Add List
+                </button>
+              </div>
+            </div>
+          </section>
+        </template>
+      </div>
+
+      <label class="mt-6 flex items-start gap-3 rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-3 cursor-pointer">
+        <input type="checkbox"
+               name="show_media_type_headers"
+               value="1"
+               {% if show_media_type_headers %}checked{% endif %}
+               class="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-500 bg-[var(--color-page-bg)] text-indigo-600 focus:ring-indigo-500">
+        <span class="min-w-0">
+          <span class="block text-sm font-medium text-[var(--color-text-secondary)]">Show media type headers</span>
+          <span class="block text-xs text-[var(--color-text-muted)]">Group rows under a header (icon + media type) on the home screen.</span>
+        </span>
+      </label>
+
+      <div class="mt-6 flex items-center justify-end">
+        <button type="submit"
+                class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 cursor-pointer">
+          {% include "app/icons/save.svg" with classes="mr-2 h-4 w-4" %}
+          Save Home Screen
+        </button>
+      </div>
+    </form>
+  </div>
+{% endblock settings_content %}
+
+{% block js %}
+  <script>
+    function homeScreenSettings({ sections, listSearchUrl, directionChoices }) {
+      return {
+        sections: (sections || []).map(section => ({
+          ...section,
+          addRowMenuOpen: false,
+          expanded: false,
+          rows: (section.rows || []).map(row => ({
+            ...row,
+            enabled: true,
+            custom_title: row.custom_title || '',
+            editorOpen: row.row_type === 'custom_list' && !row.id,
+            filters: { ...(row.filters || {}) },
+            listQuery: row.custom_list_name || '',
+            listResults: []
+          }))
+        })),
+        listSearchUrl,
+        directionChoices: directionChoices || [],
+        sortables: [],
+        sortableLoadPromise: null,
+        nextRowId: 0,
+        init() {
+          window.homeScreenSettingsInstance = this;
+          this.nextRowId = this.sections.reduce((maxId, section) => {
+            return Math.max(
+              maxId,
+              ...section.rows.map(row => Number.parseInt(String(row.id || '0'), 10) || 0)
+            );
+          }, 0) + 1;
+          this.$nextTick(async () => {
+            if (await this.ensureSortable()) {
+              this.initSortables();
+            }
+          });
+        },
+        async ensureSortable() {
+          if (typeof Sortable !== 'undefined') return true;
+          if (!this.sortableLoadPromise) {
+            this.sortableLoadPromise = new Promise(resolve => {
+              const existingScript = document.querySelector('script[data-home-screen-sortable]');
+              if (existingScript) {
+                if (existingScript.dataset.loaded === 'true') {
+                  resolve(true);
+                  return;
+                }
+                existingScript.addEventListener('load', () => resolve(true), { once: true });
+                existingScript.addEventListener('error', () => resolve(false), { once: true });
+                return;
+              }
+
+              const script = document.createElement('script');
+              script.src = 'https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js';
+              script.dataset.homeScreenSortable = 'true';
+              script.addEventListener('load', () => {
+                script.dataset.loaded = 'true';
+                resolve(true);
+              }, { once: true });
+              script.addEventListener('error', () => {
+                console.warn('Home screen drag-and-drop is unavailable because SortableJS could not be loaded.');
+                resolve(false);
+              }, { once: true });
+              document.head.appendChild(script);
+            });
+          }
+
+          const loaded = await this.sortableLoadPromise;
+          if (!loaded) {
+            this.sortableLoadPromise = null;
+          }
+          return loaded;
+        },
+        rowTypeLabel(type) {
+          if (type === 'library_query') return 'Library Row';
+          if (type === 'custom_list') return 'List / Smart List';
+          return 'Recently Played';
+        },
+        rowAutoTitle(section, row) {
+          if (row.row_type === 'custom_list') {
+            return row.custom_list_name || 'List / Smart List';
+          }
+          if (row.row_type === 'recently_unrated') {
+            return 'Recently Played - Not Rated';
+          }
+          return this.describeFilters(section, row);
+        },
+        rowDisplayTitle(section, row) {
+          const custom = (row.custom_title || '').trim();
+          return custom || this.rowAutoTitle(section, row);
+        },
+        activeLibraryFilterCount(row) {
+          return Object.entries(row.filters || {}).filter(([key, value]) => {
+            if (key === 'status' || key === 'tag_mode') return false;
+            if (value === null || typeof value === 'undefined') return false;
+            return Array.isArray(value) ? value.length > 0 : value !== '' && value !== 'all';
+          }).length;
+        },
+        asList(value) {
+          if (Array.isArray(value)) return value;
+          return value === null || typeof value === 'undefined' || value === '' ? [] : [value];
+        },
+        rowStatusValues(row) {
+          return this.asList(row.filters?.status).filter(value => value && value !== 'all');
+        },
+        rowTagValues(row) {
+          return this.asList(row.filters?.tag).filter(value => value);
+        },
+        isRowStatusSelected(row, value) {
+          if (value === 'all' || value === 'All') return this.rowStatusValues(row).length === 0;
+          return this.rowStatusValues(row).includes(value);
+        },
+        toggleRowStatus(row, value) {
+          if (value === 'all' || value === 'All') {
+            row.filters.status = [];
+            return;
+          }
+          const statuses = this.rowStatusValues(row);
+          row.filters.status = statuses.includes(value)
+            ? statuses.filter(status => status !== value)
+            : [...statuses, value];
+        },
+        toggleRowTag(row, value) {
+          const tags = this.rowTagValues(row);
+          row.filters.tag = tags.includes(value)
+            ? tags.filter(tag => tag !== value)
+            : [...tags, value];
+        },
+        cycleRowTagMode(row) {
+          const mode = row.filters?.tag_mode || 'or';
+          row.filters.tag_mode = mode === 'and' ? 'or' : (mode === 'or' ? 'not' : 'and');
+        },
+        isRowFilterOptionSelected(row, key, value) {
+          if (key === 'tag') return this.rowTagValues(row).includes(value);
+          if (key === 'status') return this.isRowStatusSelected(row, value);
+          return this.normalizeFieldValue(value) === this.normalizeFieldValue(row.filters?.[key]);
+        },
+        rowFilterLabel(section, row) {
+          const labels = [];
+          const statuses = this.rowStatusValues(row);
+          if (statuses.length) {
+            const statusLabels = statuses.map(value => this.fieldOptionLabel(section, 'status', value));
+            labels.push(statuses.length === 1 ? statusLabels[0] : `${statuses.length} Statuses`);
+          }
+          for (const key of ['progress', 'rating', 'collection', 'genre', 'year', 'release', 'source', 'language', 'country', 'platform', 'origin', 'format', 'author', 'provider']) {
+            const value = row.filters?.[key];
+            if (!value || value === 'all') continue;
+            labels.push(this.fieldOptionLabel(section, key, value));
+          }
+          const tags = this.rowTagValues(row);
+          if (tags.length) {
+            const separator = (row.filters?.tag_mode || 'or') === 'and' ? ' & ' : ', ';
+            const prefix = row.filters?.tag_mode === 'not' ? 'Not tagged ' : '';
+            labels.push(prefix + tags.join(separator));
+          }
+          if (!labels.length) return 'All';
+          if (labels.length === 1) return labels[0];
+          return `${labels[0]} +${labels.length - 1}`;
+        },
+        statusButtonLabel(section, row) {
+          const statuses = this.rowStatusValues(row);
+          if (statuses.length === 1) {
+            const option = this.statusFilterOptions(section).find(candidate => candidate.value === statuses[0]);
+            return option ? option.label : statuses[0];
+          }
+          return statuses.length ? `${statuses.length} Statuses` : 'Status';
+        },
+        sortButtonLabel(section, row) {
+          const choice = this.sortChoices(section, row).find(candidate => candidate.value === row.sort_by);
+          return choice ? choice.label : 'Sort';
+        },
+        defaultSortDirection(value) {
+          return ['author', 'popularity', 'runtime', 'start_date', 'title', 'time_left', 'time_to_beat'].includes(value) ? 'asc' : 'desc';
+        },
+        toggleRowSort(row, value) {
+          row.direction = (row.sort_by === value) ? (row.direction === 'asc' ? 'desc' : 'asc') : this.defaultSortDirection(value);
+          row.sort_by = value;
+        },
+        describeFilters(section, row) {
+          const statuses = this.rowStatusValues(row);
+          const parts = [];
+          if (statuses.length === 1) parts.push(this.fieldOptionLabel(section, 'status', statuses[0]));
+          else if (statuses.length > 1) parts.push(`${statuses.length} Statuses`);
+          else parts.push('Library');
+
+          if (section.media_type === 'music') {
+            const subview = row.filters?.subview || 'tracks';
+            const subviewField = (section.filter_fields || []).find(field => field.key === 'subview');
+            const subviewOption = (subviewField?.options || []).find(option => option.value === subview);
+            const subviewLabel = subviewOption ? subviewOption.label : subview;
+            if (parts[0] === 'Library') parts[0] = subviewLabel;
+            else parts.splice(1, 0, subviewLabel);
+          }
+
+          const labelFor = (key, value) => {
+            const field = (section.filter_fields || []).find(candidate => candidate.key === key);
+            if (!field) return value;
+            const option = (field.options || []).find(candidate => candidate.value === value);
+            return option ? option.label : value;
+          };
+
+          ['progress', 'rating', 'collection', 'genre', 'year', 'release', 'source', 'language', 'country', 'platform', 'origin', 'format', 'author', 'provider']
+            .forEach(key => {
+              const value = row.filters?.[key];
+              if (!value || value === 'all') return;
+              parts.push(labelFor(key, value));
+            });
+
+          const tags = this.rowTagValues(row);
+          if (tags.length) {
+            const separator = (row.filters?.tag_mode || 'or') === 'and' ? ' & ' : ' or ';
+            const prefix = row.filters?.tag_mode === 'not' ? 'Not tagged ' : '';
+            parts.push(prefix + tags.map(value => labelFor('tag', value)).join(separator));
+          }
+
+          return parts.slice(0, 4).join(' • ');
+        },
+        filterMenuFields(section) {
+          return (section.filter_fields || []).filter(field => field.key !== 'status');
+        },
+        statusFilterOptions(section) {
+          const statusField = (section.filter_fields || []).find(field => field.key === 'status');
+          return statusField?.options || [];
+        },
+        defaultSortValue(section, rowType) {
+          if (rowType === 'recently_unrated') return 'recent';
+          const defaultSortChoices = rowType === 'custom_list'
+            ? (section.sort_choices.custom_list || [])
+            : (section.sort_choices.library_query || []);
+          if (rowType === 'library_query' && ['tv', 'anime'].includes(section.media_type)) {
+            const preferredChoice = defaultSortChoices.find(choice => choice.value === 'next_episode_air_date');
+            if (preferredChoice) return preferredChoice.value;
+          }
+          return defaultSortChoices[0]?.value || 'title';
+        },
+        fieldDefinition(section, key) {
+          return (section.filter_fields || []).find(field => field.key === key) || null;
+        },
+        fieldOptionLabel(section, key, value) {
+          const field = this.fieldDefinition(section, key);
+          const option = field?.options?.find(candidate => this.normalizeFieldValue(candidate.value) === this.normalizeFieldValue(value));
+          if (option) return option.label;
+          return value || 'Any';
+        },
+        fieldSelectionLabel(section, row, key) {
+          const value = row.filters?.[key];
+          if (key === 'status') {
+            const statuses = this.rowStatusValues(row);
+            if (statuses.length === 1) return this.fieldOptionLabel(section, key, statuses[0]);
+            return statuses.length ? `${statuses.length} Statuses` : 'Any';
+          }
+          if (key === 'tag') {
+            const tags = this.rowTagValues(row);
+            return tags.length === 1 ? tags[0] : (tags.length ? `${tags.length} Tags` : 'Any');
+          }
+          if (!value || value === 'all') {
+            const field = this.fieldDefinition(section, key);
+            return field?.options?.[0]?.label || 'Any';
+          }
+          return this.fieldOptionLabel(section, key, value);
+        },
+        shouldShowFieldSearch(field) {
+          return (field?.options || []).length > 8;
+        },
+        filteredMenuOptions(field, search) {
+          const term = String(search || '').trim().toLowerCase();
+          const options = field?.options || [];
+          if (!term) return options;
+          return options.filter(option => {
+            const label = String(option.label || '').toLowerCase();
+            const value = String(option.value || '').toLowerCase();
+            return label.includes(term) || value.includes(term);
+          });
+        },
+        normalizeFieldValue(value) {
+          if (value === null || typeof value === 'undefined') return '';
+          return String(value);
+        },
+        setRowFilter(row, key, value) {
+          row.filters[key] = value;
+        },
+        selectRowFilter(row, key, value) {
+          if (key === 'tag') {
+            this.toggleRowTag(row, value);
+            return;
+          }
+          this.setRowFilter(row, key, value);
+          this.openMenu = null;
+          this.filterView = 'root';
+          this.filterSearch = '';
+        },
+        clearLibraryFilters(section, row) {
+          const defaults = this.defaultFilters(section, 'library_query');
+          for (const [key, value] of Object.entries(defaults)) {
+            if (key === 'status') continue;
+            if (key === 'subview') continue;
+            row.filters[key] = value;
+          }
+        },
+        sortChoices(section, row) {
+          if (row.row_type === 'custom_list') return section.sort_choices.custom_list || [];
+          return section.sort_choices.library_query || [];
+        },
+        addRow(section, rowType) {
+          if (rowType === 'recently_unrated' && section.rows.some(row => row.row_type === 'recently_unrated')) {
+            return;
+          }
+          const defaultSort = this.defaultSortValue(section, rowType);
+          const newRow = {
+            id: null,
+            client_id: `new-row-${this.nextRowId++}`,
+            enabled: true,
+            custom_title: '',
+            row_type: rowType,
+            custom_list_id: null,
+            custom_list_name: '',
+            sort_by: rowType === 'recently_unrated' ? 'recent' : defaultSort,
+            direction: rowType === 'recently_unrated' ? 'desc' : this.defaultSortDirection(defaultSort),
+            filters: this.defaultFilters(section, rowType),
+            editorOpen: rowType === 'custom_list',
+            listQuery: '',
+            listResults: []
+          };
+          section.rows.push(newRow);
+          this.$nextTick(async () => {
+            if (await this.ensureSortable()) {
+              this.initSortables();
+            }
+          });
+        },
+        defaultFilters(section, rowType) {
+          if (rowType !== 'library_query') return {};
+          const defaults = {
+            status: ['In progress'],
+            progress: ['tv', 'anime'].includes(section.media_type) ? 'not_caught_up' : 'all',
+            rating: 'all',
+            collection: 'all',
+            genre: '',
+            year: '',
+            release: 'all',
+            source: '',
+            language: '',
+            country: '',
+            platform: '',
+            origin: '',
+            format: '',
+            author: '',
+            tag: [],
+            tag_mode: 'or'
+          };
+          if (section.media_type === 'music') defaults.subview = 'tracks';
+          return defaults;
+        },
+        removeRow(section, clientId) {
+          section.rows = section.rows.filter(row => row.client_id !== clientId);
+          this.$nextTick(async () => {
+            if (await this.ensureSortable()) {
+              this.initSortables();
+            }
+          });
+        },
+        async searchLists(section, row) {
+          const query = String(row.listQuery || '').trim();
+          if (!query) {
+            row.listResults = [];
+            return;
+          }
+          const response = await fetch(`${this.listSearchUrl}?media_type=${encodeURIComponent(section.media_type)}&q=${encodeURIComponent(query)}`);
+          if (!response.ok) {
+            row.listResults = [];
+            return;
+          }
+          const payload = await response.json();
+          row.listResults = payload.results || [];
+        },
+        applyListResult(row, result) {
+          row.custom_list_id = result.id;
+          row.custom_list_name = result.name;
+          row.listQuery = result.name;
+          row.listResults = [];
+        },
+        prepareSubmit() {
+          const payload = this.sections.map(section => ({
+            media_type: section.media_type,
+            rows: section.rows.map(row => ({
+              id: row.id,
+              enabled: true,
+              custom_title: row.custom_title || '',
+              row_type: row.row_type,
+              custom_list_id: row.custom_list_id,
+              sort_by: row.sort_by,
+              direction: row.direction,
+              filters: row.filters || {}
+            }))
+          }));
+          this.$refs.payloadInput.value = JSON.stringify(payload);
+        },
+        initSortables() {
+          this.sortables.forEach(sortable => sortable.destroy());
+          this.sortables = [];
+          if (typeof Sortable === 'undefined') return;
+
+          this.$el.querySelectorAll('[data-home-row-list]').forEach(container => {
+            const mediaType = container.dataset.homeRowList;
+            this.sortables.push(
+              Sortable.create(container, {
+                animation: 150,
+                handle: '.drag-handle',
+                onEnd: () => {
+                  const section = this.sections.find(entry => entry.media_type === mediaType);
+                  if (!section) return;
+                  const orderedIds = Array.from(container.querySelectorAll('[data-row-client-id]')).map(node => node.dataset.rowClientId);
+                  section.rows = orderedIds
+                    .map(clientId => section.rows.find(row => row.client_id === clientId))
+                    .filter(Boolean);
+                }
+              })
+            );
+          });
+
+          const sectionList = this.$el.querySelector('[data-home-section-list]');
+          if (sectionList) {
+            this.sortables.push(
+              Sortable.create(sectionList, {
+                animation: 150,
+                handle: '.drag-handle',
+                onEnd: () => {
+                  const orderedTypes = Array.from(sectionList.querySelectorAll('[data-section-media-type]')).map(node => node.dataset.sectionMediaType);
+                  this.sections = orderedTypes
+                    .map(mediaType => this.sections.find(section => section.media_type === mediaType))
+                    .filter(Boolean);
+                }
+              })
+            );
+          }
+        }
+      };
+    }
+  </script>
+{% endblock js %}

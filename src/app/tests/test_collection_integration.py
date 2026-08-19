@@ -1,8 +1,10 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from app import config
 from app.helpers import is_item_collected
 from app.models import (
+    TV,
     Anime,
     Book,
     CollectionEntry,
@@ -15,7 +17,6 @@ from app.models import (
     Music,
     Sources,
     Status,
-    TV,
 )
 
 
@@ -38,7 +39,9 @@ class CollectionIntegrationTest(TestCase):
         )
 
         entry = CollectionEntry.objects.create(user=self.user, item=item)
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
 
     def test_collection_entry_tv(self):
         """Test creating collection entry for TV."""
@@ -51,7 +54,9 @@ class CollectionIntegrationTest(TestCase):
         )
 
         entry = CollectionEntry.objects.create(user=self.user, item=item)
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
 
     def test_collection_entry_anime(self):
         """Test creating collection entry for Anime."""
@@ -64,7 +69,9 @@ class CollectionIntegrationTest(TestCase):
         )
 
         entry = CollectionEntry.objects.create(user=self.user, item=item)
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
 
     def test_collection_entry_manga(self):
         """Test creating collection entry for Manga."""
@@ -77,7 +84,9 @@ class CollectionIntegrationTest(TestCase):
         )
 
         entry = CollectionEntry.objects.create(user=self.user, item=item)
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
 
     def test_collection_entry_game(self):
         """Test creating collection entry for Game."""
@@ -90,7 +99,9 @@ class CollectionIntegrationTest(TestCase):
         )
 
         entry = CollectionEntry.objects.create(user=self.user, item=item)
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
 
     def test_collection_entry_book(self):
         """Test creating collection entry for Book."""
@@ -103,7 +114,9 @@ class CollectionIntegrationTest(TestCase):
         )
 
         entry = CollectionEntry.objects.create(user=self.user, item=item)
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
 
     def test_collection_entry_comic(self):
         """Test creating collection entry for Comic."""
@@ -116,7 +129,37 @@ class CollectionIntegrationTest(TestCase):
         )
 
         entry = CollectionEntry.objects.create(user=self.user, item=item)
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
+
+    def test_collection_entry_comic_issue(self):
+        """Test creating collection entry for a ComicIssue, independent of its Comic."""
+        volume_item = Item.objects.create(
+            media_id="comic1",
+            source=Sources.COMICVINE.value,
+            media_type=MediaTypes.COMIC.value,
+            title="Test Comic",
+            image="http://example.com/comic.jpg",
+        )
+        issue_item = Item.objects.create(
+            media_id="issue1",
+            source=Sources.COMICVINE.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Test Comic #1",
+            image="http://example.com/issue.jpg",
+        )
+
+        issue_entry = CollectionEntry.objects.create(user=self.user, item=issue_item)
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=issue_item).exists()
+        )
+        self.assertFalse(
+            CollectionEntry.objects.filter(user=self.user, item=volume_item).exists()
+        )
+
+        config_fields = config.get_collection_field_config(MediaTypes.COMIC_ISSUE.value)
+        self.assertEqual(config_fields, config.COLLECTION_FIELD_CONFIG["books"])
 
     def test_collection_entry_music(self):
         """Test creating collection entry for Music."""
@@ -129,7 +172,9 @@ class CollectionIntegrationTest(TestCase):
         )
 
         entry = CollectionEntry.objects.create(user=self.user, item=item)
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
 
     def test_collection_independent_of_media_tracking(self):
         """Test collection entry doesn't interfere with Media tracking."""
@@ -143,7 +188,9 @@ class CollectionIntegrationTest(TestCase):
 
         # Create collection entry without Media tracking
         collection_entry = CollectionEntry.objects.create(user=self.user, item=item)
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
         self.assertFalse(Movie.objects.filter(user=self.user, item=item).exists())
 
         # Create Media tracking without collection entry
@@ -154,7 +201,9 @@ class CollectionIntegrationTest(TestCase):
         )
         self.assertTrue(Movie.objects.filter(user=self.user, item=item).exists())
         # Collection entry should still exist
-        self.assertTrue(CollectionEntry.objects.filter(user=self.user, item=item).exists())
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
 
     def test_collection_persists_when_media_deleted(self):
         """Test collection entry persists when Media is deleted."""
@@ -195,4 +244,6 @@ class CollectionIntegrationTest(TestCase):
         item.delete()
 
         # Collection entry should be deleted
-        self.assertFalse(CollectionEntry.objects.filter(id=collection_entry.id).exists())
+        self.assertFalse(
+            CollectionEntry.objects.filter(id=collection_entry.id).exists()
+        )

@@ -1,6 +1,8 @@
-from urllib.parse import parse_qsl, urlencode, urlparse
+import re
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse
 
 from django.apps import apps
+from django.conf import settings
 from django.contrib import messages
 from django.db.models import Q
 from django.http import HttpResponseRedirect
@@ -8,7 +10,57 @@ from django.shortcuts import redirect
 from django.utils.encoding import iri_to_uri
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from app.models import BasicMedia, CollectionEntry, MediaTypes
+from app.models import (
+    TV,
+    Anime,
+    BasicMedia,
+    BoardGame,
+    Book,
+    CollectionEntry,
+    Comic,
+    ComicIssue,
+    Game,
+    Manga,
+    MediaTypes,
+    Movie,
+    Music,
+    Status,
+)
+
+MODEL_MAP = {
+    MediaTypes.TV.value: TV,
+    MediaTypes.MOVIE.value: Movie,
+    MediaTypes.ANIME.value: Anime,
+    MediaTypes.MANGA.value: Manga,
+    MediaTypes.GAME.value: Game,
+    MediaTypes.BOOK.value: Book,
+    MediaTypes.COMIC.value: Comic,
+    MediaTypes.BOARDGAME.value: BoardGame,
+    # Fork media types that support manual-source items
+    MediaTypes.MUSIC.value: Music,
+    MediaTypes.COMIC_ISSUE.value: ComicIssue,
+}
+
+_DEFAULT_IMAGE_SENTINEL = object()
+_ENCODED_NAVIGATION_SEPARATOR_PATTERNS = (
+    (re.compile(r"%3F", re.IGNORECASE), "?"),
+    (re.compile(r"%26", re.IGNORECASE), "&"),
+    (re.compile(r"%3D", re.IGNORECASE), "="),
+    (re.compile(r"%23", re.IGNORECASE), "#"),
+)
+
+
+def is_htmx_fragment(request):
+    """Return whether this HTMX request expects a partial fragment response.
+
+    Boosted navigation (hx-boost) and history restores send HX-Request too,
+    but they replace the whole page and need the full template.
+    """
+    return bool(
+        request.headers.get("HX-Request")
+        and not request.headers.get("HX-Boosted")
+        and not request.headers.get("HX-History-Restore-Request"),
+    )
 
 
 def minutes_to_hhmm(total_minutes):
@@ -20,18 +72,72 @@ def minutes_to_hhmm(total_minutes):
     return f"{hours}h {minutes:02d}min"
 
 
+def has_real_image(image):
+    """Return whether the value is a usable artwork URL."""
+    return bool(image and image != settings.IMG_NONE)
+
+
+def first_real_image(*images, default=_DEFAULT_IMAGE_SENTINEL):
+    """Return the first usable artwork URL from the provided candidates."""
+    for image in images:
+        if has_real_image(image):
+            return image
+    if default is not _DEFAULT_IMAGE_SENTINEL:
+        return default
+    return settings.IMG_NONE
+
+
+def resolve_image_with_fallback(primary_image, *fallback_images):
+    """Return a display image plus whether it is primary, fallback, or none."""
+    primary = first_real_image(primary_image, default=None)
+    if primary:
+        return primary, "primary"
+
+    fallback = first_real_image(*fallback_images, default=None)
+    if fallback:
+        return fallback, "fallback"
+
+    return settings.IMG_NONE, "none"
+
+
+def get_tmdb_backdrop_image(media_type, media_id):
+    """Return a TMDB backdrop URL when available."""
+    media_id = str(media_id or "").strip()
+    if not media_id:
+        return None
+
+    try:
+        from lists.models import CustomList
+    except Exception:
+        return None
+
+    try:
+        backdrop = CustomList()._get_tmdb_backdrop(media_type, media_id)
+    except Exception:
+        return None
+
+    return backdrop if has_real_image(backdrop) else None
+
+
 def redirect_back(request):
     """Redirect to the previous page, removing the 'page' parameter if present."""
-    if url_has_allowed_host_and_scheme(request.GET.get("next"), None):
-        next_url = request.GET["next"]
-
+    next_url = normalize_navigation_url(
+        request.GET.get("next") or request.POST.get("next"),
+    )
+    if url_has_allowed_host_and_scheme(next_url, None):
         # Parse the URL
         parsed_url = urlparse(next_url)
 
         # Get the query parameters and remove params we don't want
-        query_params = dict(parse_qsl(parsed_url.query))
+        query_params = {
+            k: v
+            for k, v in parse_qsl(parsed_url.query, keep_blank_values=True)
+            if not k.startswith("org.htmx.")
+        }
         query_params.pop("page", None)
         query_params.pop("load_media_type", None)
+        query_params.pop("load_row", None)
+        query_params.pop("fragment", None)
 
         # Reconstruct the URL
         new_query = urlencode(query_params)
@@ -44,6 +150,18 @@ def redirect_back(request):
         return HttpResponseRedirect(clean_url)
 
     return redirect("home")
+
+
+def normalize_navigation_url(url):
+    """Decode encoded query separators in return/next URLs from modal form posts."""
+    normalized_url = (url or "").strip()
+    if not normalized_url or "%" not in normalized_url:
+        return normalized_url
+
+    for pattern, replacement in _ENCODED_NAVIGATION_SEPARATOR_PATTERNS:
+        normalized_url = pattern.sub(replacement, normalized_url)
+
+    return normalized_url
 
 
 def form_error_messages(form, request):
@@ -66,8 +184,94 @@ def format_search_response(page, per_page, total_results, results):
     }
 
 
-def enrich_items_with_user_data(request, items, user=None):
-    """Enrich a list of items with user tracking data."""
+def is_caught_up_media(media) -> bool:
+    """Return whether watched progress has caught up to released progress."""
+    max_progress = getattr(media, "max_progress", None)
+    if max_progress is None:
+        return False
+
+    try:
+        max_progress_value = int(max_progress)
+    except (TypeError, ValueError):
+        return False
+
+    if max_progress_value <= 0:
+        return False
+
+    try:
+        progress_value = int(getattr(media, "progress", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+
+    # TV rows can keep dropped seasons in their raw progress/max_progress totals.
+    # Mirror time-left behavior by removing dropped-season episodes from both sides
+    # before deciding whether the show is actually caught up.
+    item_media_type = getattr(getattr(media, "item", None), "media_type", None)
+    if item_media_type == MediaTypes.TV.value:
+        breakdown = getattr(media, "released_episode_breakdown", None) or {}
+        seasons_manager = getattr(media, "seasons", None)
+        if (
+            breakdown
+            and seasons_manager is not None
+            and hasattr(seasons_manager, "all")
+        ):
+            seasons = [
+                season
+                for season in seasons_manager.all()
+                if getattr(getattr(season, "item", None), "season_number", 0)
+            ]
+            if seasons:
+                dropped_season_numbers = {
+                    season.item.season_number
+                    for season in seasons
+                    if season.status == Status.DROPPED.value
+                }
+                if dropped_season_numbers:
+                    filtered_breakdown = {
+                        season_num: count
+                        for season_num, count in breakdown.items()
+                        if season_num not in dropped_season_numbers
+                    }
+                    if filtered_breakdown != breakdown:
+                        included_progress = sum(
+                            int(getattr(season, "progress", 0) or 0)
+                            for season in seasons
+                            if season.status != Status.DROPPED.value
+                        )
+                        remaining = max(
+                            sum(filtered_breakdown.values()) - included_progress,
+                            0,
+                        )
+                        return remaining == 0
+
+    return progress_value >= max_progress_value
+
+
+def _needs_image_refresh(item, new_image):
+    """Return True when item.image should be replaced with new_image."""
+    if item is None or not new_image or new_image == settings.IMG_NONE:
+        return False
+    return not item.image or item.image == settings.IMG_NONE
+
+
+def refresh_item_image_if_missing(item, new_image):
+    """Update an Item's stored image when it's missing and a real one is available."""
+    if not _needs_image_refresh(item, new_image):
+        return
+    item.image = new_image
+    item.save(update_fields=["image"])
+
+
+def enrich_items_with_user_data(
+    request, items, section_name=None, user=None, library_media_type=None
+):
+    """Enrich a list of items with user tracking data.
+
+    Args:
+        library_media_type: When provided and media_type is SEASON, only return
+            Season tracking objects whose Item has this library_media_type. Used
+            to isolate anime season tracking from TV season tracking.
+    """
     if not items:
         return []
 
@@ -102,6 +306,11 @@ def enrich_items_with_user_data(request, items, user=None):
 
     q_objects &= Q(user=target_user)
 
+    # For season enrichment, optionally restrict to a specific library_media_type
+    # so anime and TV seasons are tracked independently.
+    if media_type == MediaTypes.SEASON.value and library_media_type is not None:
+        q_objects &= Q(item__library_media_type=library_media_type)
+
     # Bulk fetch all media with prefetch
     model = apps.get_model(app_label="app", model_name=media_type)
     media_queryset = model.objects.filter(q_objects).select_related("item")
@@ -115,7 +324,9 @@ def enrich_items_with_user_data(request, items, user=None):
     # This allows multiple plays of the same episode to be tracked separately in the DB
     # but we show the most recent one in the UI
     if media_type == MediaTypes.PODCAST.value:
-        media_queryset = media_queryset.order_by("item__media_id", "item__source", "-created_at")
+        media_queryset = media_queryset.order_by(
+            "item__media_id", "item__source", "-created_at"
+        )
 
     # Create a lookup dictionary for fast matching
     # For podcasts with multiple entries, keep only the most recent one (first after ordering)
@@ -147,9 +358,18 @@ def enrich_items_with_user_data(request, items, user=None):
         else:
             key = (str(item["media_id"]), item["source"])
 
+        media_item = media_lookup.get(key)
+        if (
+            getattr(target_user, "hide_completed_recommendations", False)
+            and section_name == "recommendations"
+            and media_item
+            and media_item.status == Status.COMPLETED.value
+        ):
+            continue
+
         enriched_item = {
             "item": item,
-            "media": media_lookup.get(key),
+            "media": media_item,
         }
         enriched_items.append(enriched_item)
 
@@ -192,7 +412,7 @@ def extract_release_datetime(metadata):
     }
     for fmt, length in format_lengths.items():
         try:
-            dt = datetime.strptime(date_str[:length], fmt)
+            dt = datetime.strptime(date_str[:length], fmt)  # noqa: DTZ007  # date-only value; no timezone applies
             return dt.replace(tzinfo=ZoneInfo("UTC"))
         except (ValueError, TypeError):
             continue
@@ -216,6 +436,14 @@ def get_user_collection(user, media_type=None):
     return queryset
 
 
+def get_item_collection_entries(user, item):
+    """Return all collection entries for a specific user/item pair."""
+    return CollectionEntry.objects.filter(
+        user=user,
+        item=item,
+    ).order_by("-collected_at", "-id")
+
+
 def is_item_collected(user, item):
     """Check if a specific item is in user's collection.
 
@@ -224,25 +452,22 @@ def is_item_collected(user, item):
         item: Item object to check
 
     Returns:
-        CollectionEntry object if found, None otherwise
+        Most recently collected CollectionEntry object if found, None otherwise
     """
-    try:
-        return CollectionEntry.objects.get(user=user, item=item)
-    except CollectionEntry.DoesNotExist:
-        return None
+    return get_item_collection_entries(user, item).first()
 
 
 def get_album_collection_metadata(user, album):
     """Get aggregated collection metadata for an album from all its tracks.
-    
+
     For music albums, we aggregate collection metadata from all tracks that have
     collection entries. Returns the most common values (or first non-empty value)
     for fields that should be consistent across tracks (like audio_codec, audio_channels).
-    
+
     Args:
         user: Django user object
         album: Album object
-        
+
     Returns:
         Dictionary with collection metadata:
         - audio_codec: Most common audio codec across collected tracks
@@ -252,13 +477,13 @@ def get_album_collection_metadata(user, album):
         - collected_count: Number of tracks with collection entries
     """
     from app.models import Music
-    
+
     # Get all Music entries for this album
     music_entries = Music.objects.filter(
         user=user,
         album=album,
     ).select_related("item")
-    
+
     # Get collection entries for all items in this album
     item_ids = [m.item_id for m in music_entries if m.item_id]
     if not item_ids:
@@ -270,12 +495,12 @@ def get_album_collection_metadata(user, album):
             "bitrate": None,
             "media_type": None,
         }
-    
+
     collection_entries = CollectionEntry.objects.filter(
         user=user,
         item_id__in=item_ids,
     ).select_related("item")
-    
+
     if not collection_entries.exists():
         return {
             "has_collection": False,
@@ -284,29 +509,39 @@ def get_album_collection_metadata(user, album):
             "audio_channels": None,
             "media_type": None,
         }
-    
+
     # Aggregate metadata - find most common values
     audio_codecs = {}
     audio_channels_list = {}
     bitrates = {}
     media_types = {}
-    
+
     for entry in collection_entries:
         if entry.audio_codec:
             audio_codecs[entry.audio_codec] = audio_codecs.get(entry.audio_codec, 0) + 1
         if entry.audio_channels:
-            audio_channels_list[entry.audio_channels] = audio_channels_list.get(entry.audio_channels, 0) + 1
+            audio_channels_list[entry.audio_channels] = (
+                audio_channels_list.get(entry.audio_channels, 0) + 1
+            )
         if entry.bitrate:
             bitrates[entry.bitrate] = bitrates.get(entry.bitrate, 0) + 1
         if entry.media_type:
             media_types[entry.media_type] = media_types.get(entry.media_type, 0) + 1
-    
+
     # Get most common value (or first if tie)
-    audio_codec = max(audio_codecs.items(), key=lambda x: x[1])[0] if audio_codecs else None
-    audio_channels = max(audio_channels_list.items(), key=lambda x: x[1])[0] if audio_channels_list else None
+    audio_codec = (
+        max(audio_codecs.items(), key=lambda x: x[1])[0] if audio_codecs else None
+    )
+    audio_channels = (
+        max(audio_channels_list.items(), key=lambda x: x[1])[0]
+        if audio_channels_list
+        else None
+    )
     bitrate = max(bitrates.items(), key=lambda x: x[1])[0] if bitrates else None
-    media_type = max(media_types.items(), key=lambda x: x[1])[0] if media_types else None
-    
+    media_type = (
+        max(media_types.items(), key=lambda x: x[1])[0] if media_types else None
+    )
+
     return {
         "has_collection": True,
         "collected_count": collection_entries.count(),
@@ -354,31 +589,31 @@ def get_collection_stats(user):
 
 def get_artist_collection_stats(user, artist):
     """Get collection statistics for an artist.
-    
+
     Args:
         user: Django user object
         artist: Artist object
-        
+
     Returns:
         Dictionary with collection statistics:
         - collected_albums: Number of distinct albums with at least one collected track
         - collected_tracks: Total number of collected tracks from this artist
     """
     from app.models import Album, Music
-    
+
     # Get all albums for this artist
     albums = Album.objects.filter(artist=artist)
     total_albums = albums.count()
-    
+
     # Get all music entries (tracks) for these albums
     music_entries = Music.objects.filter(
         user=user,
         album__in=albums,
     ).select_related("item", "album")
-    
+
     # Count total tracks (all tracks from all albums for this artist)
     total_tracks = music_entries.count()
-    
+
     # Get collection entries for all items from this artist
     item_ids = [m.item_id for m in music_entries if m.item_id]
     if not item_ids:
@@ -388,12 +623,12 @@ def get_artist_collection_stats(user, artist):
             "collected_tracks": 0,
             "total_tracks": total_tracks,
         }
-    
+
     collection_entries = CollectionEntry.objects.filter(
         user=user,
         item_id__in=item_ids,
     ).select_related("item")
-    
+
     if not collection_entries.exists():
         return {
             "collected_albums": 0,
@@ -401,18 +636,18 @@ def get_artist_collection_stats(user, artist):
             "collected_tracks": 0,
             "total_tracks": total_tracks,
         }
-    
+
     # Count distinct albums that have at least one collected track
     collected_album_ids = set()
     collected_track_count = 0
-    
+
     for entry in collection_entries:
         # Find which album this track belongs to
         music_entry = music_entries.filter(item_id=entry.item_id).first()
         if music_entry and music_entry.album_id:
             collected_album_ids.add(music_entry.album_id)
         collected_track_count += 1
-    
+
     return {
         "collected_albums": len(collected_album_ids),
         "total_albums": total_albums,
@@ -423,12 +658,12 @@ def get_artist_collection_stats(user, artist):
 
 def get_tv_show_collection_stats(user, tv_item, metadata_episode_count=None):
     """Get collection statistics for a TV show.
-    
+
     Args:
         user: Django user object
         tv_item: Item object with media_type='tv' or 'anime'
         metadata_episode_count: Optional episode count from metadata (e.g., TMDB) to match Details pane
-        
+
     Returns:
         Dictionary with collection statistics:
         - collected_seasons: Number of distinct seasons with at least one collected episode
@@ -436,99 +671,139 @@ def get_tv_show_collection_stats(user, tv_item, metadata_episode_count=None):
         - total_seasons: Total number of seasons for this show
         - total_episodes: Total number of episodes for this show
     """
-    from app.models import TV, Season, Episode, Item, MediaTypes
-    
+    from app.models import Item, MediaTypes
+
     # Always count total seasons and episodes from Item objects (all available, not just tracked)
     # This matches what the Details pane shows
     # Exclude Season 0 (Specials) to match Details pane behavior
-    all_season_items = Item.objects.filter(
-        media_id=tv_item.media_id,
-        source=tv_item.source,
-        media_type__in=[MediaTypes.SEASON.value],
-    ).exclude(season_number=0)  # Exclude Season 0 (Specials)
-    total_seasons = all_season_items.count()
-    
+    all_season_items = list(
+        Item.objects.filter(
+            media_id=tv_item.media_id,
+            source=tv_item.source,
+            media_type=MediaTypes.SEASON.value,
+        ).exclude(season_number=0)
+    )
+    total_seasons = len(all_season_items)
+
     # Exclude episodes from Season 0 to match Details pane
-    all_episode_items = Item.objects.filter(
-        media_id=tv_item.media_id,
-        source=tv_item.source,
-        media_type__in=[MediaTypes.EPISODE.value],
-    ).exclude(season_number=0)  # Exclude Season 0 episodes
-    
+    all_episode_items = list(
+        Item.objects.filter(
+            media_id=tv_item.media_id,
+            source=tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+        ).exclude(season_number=0)
+    )
+
     # Use metadata episode count if provided (matches Details pane), otherwise count from Items
     if metadata_episode_count is not None:
         total_episodes = metadata_episode_count
     else:
-        total_episodes = all_episode_items.count()
-    
+        total_episodes = len(all_episode_items)
+
     # Get collection entries for all seasons and episodes
-    season_item_ids = list(all_season_items.values_list('id', flat=True))
-    episode_item_ids = list(all_episode_items.values_list('id', flat=True))
-    
-    if not season_item_ids and not episode_item_ids:
+    season_item_ids = [item.id for item in all_season_items]
+    episode_item_ids = [item.id for item in all_episode_items]
+
+    # Get collection entries for seasons
+    season_collection_item_ids = (
+        list(
+            CollectionEntry.objects.filter(
+                user=user,
+                item_id__in=season_item_ids,
+            ).values_list("item_id", flat=True)
+        )
+        if season_item_ids
+        else []
+    )
+
+    # Get collection entries for episodes
+    episode_collection_item_ids = (
+        list(
+            CollectionEntry.objects.filter(
+                user=user,
+                item_id__in=episode_item_ids,
+            ).values_list("item_id", flat=True)
+        )
+        if episode_item_ids
+        else []
+    )
+
+    # Match season_details fallback behavior: a show-level collection entry represents
+    # the entire show only when no granular season/episode collection rows exist.
+    if not season_collection_item_ids and not episode_collection_item_ids:
+        if CollectionEntry.objects.filter(user=user, item=tv_item).exists():
+            return {
+                "collected_seasons": total_seasons,
+                "total_seasons": total_seasons,
+                "collected_episodes": total_episodes,
+                "total_episodes": total_episodes,
+            }
+
         return {
             "collected_seasons": 0,
             "total_seasons": total_seasons,
             "collected_episodes": 0,
             "total_episodes": total_episodes,
         }
-    
-    # Get collection entries for seasons
-    season_collection_entries = CollectionEntry.objects.filter(
-        user=user,
-        item_id__in=season_item_ids,
-    ) if season_item_ids else CollectionEntry.objects.none()
-    
-    # Get collection entries for episodes
-    episode_collection_entries = CollectionEntry.objects.filter(
-        user=user,
-        item_id__in=episode_item_ids,
-    ) if episode_item_ids else CollectionEntry.objects.none()
-    
+
     # Count distinct seasons that have at least one collected episode
     # A season is "collected" if either:
     # 1. The season Item itself has a collection entry, OR
     # 2. At least one episode in that season has a collection entry
     collected_season_ids = set()
-    
+    season_by_number = {
+        item.season_number: item
+        for item in all_season_items
+        if item.season_number is not None
+    }
+    season_by_id = {item.id: item for item in all_season_items}
+    episode_by_id = {item.id: item for item in all_episode_items}
+    episode_ids_by_season_number = {}
+    for item in all_episode_items:
+        if item.season_number is None:
+            continue
+        episode_ids_by_season_number.setdefault(item.season_number, set()).add(item.id)
+    collected_episode_ids = set(episode_collection_item_ids)
+
     # Add seasons that have direct collection entries
-    for entry in season_collection_entries:
-        collected_season_ids.add(entry.item_id)
-    
+    collected_season_ids.update(season_collection_item_ids)
+    for season_item_id in season_collection_item_ids:
+        season_item = season_by_id.get(season_item_id)
+        if season_item and season_item.season_number is not None:
+            collected_episode_ids.update(
+                episode_ids_by_season_number.get(season_item.season_number, set())
+            )
+
     # Add seasons that have at least one collected episode
-    # We need to map episode items back to their season items
-    for entry in episode_collection_entries:
-        episode_item = all_episode_items.filter(id=entry.item_id).first()
+    for episode_item_id in episode_collection_item_ids:
+        episode_item = episode_by_id.get(episode_item_id)
         if episode_item and episode_item.season_number is not None:
-            # Find the season item for this episode
-            season_item = all_season_items.filter(
-                season_number=episode_item.season_number,
-            ).first()
+            season_item = season_by_number.get(episode_item.season_number)
             if season_item:
                 collected_season_ids.add(season_item.id)
-    
+
     return {
         "collected_seasons": len(collected_season_ids),
         "total_seasons": total_seasons,
-        "collected_episodes": episode_collection_entries.count(),
+        "collected_episodes": len(collected_episode_ids),
         "total_episodes": total_episodes,
     }
 
 
 def get_season_collection_stats(user, season_item):
     """Get collection statistics for a specific season.
-    
+
     Args:
         user: Django user object
         season_item: Item object with media_type='season'
-        
+
     Returns:
         Dictionary with collection statistics:
         - collected_episodes: Number of collected episodes in this season
         - total_episodes: Total number of episodes in this season
     """
     from app.models import Item, MediaTypes
-    
+
     # Get all episodes for this season
     all_episode_items = Item.objects.filter(
         media_id=season_item.media_id,
@@ -537,24 +812,41 @@ def get_season_collection_stats(user, season_item):
         season_number=season_item.season_number,
     )
     total_episodes = all_episode_items.count()
-    
+
     if total_episodes == 0:
         return {
             "collected_episodes": 0,
             "total_episodes": 0,
         }
-    
+
     # Get collection entries for episodes in this season
-    episode_item_ids = list(all_episode_items.values_list('id', flat=True))
+    episode_item_ids = list(all_episode_items.values_list("id", flat=True))
     episode_collection_entries = CollectionEntry.objects.filter(
         user=user,
         item_id__in=episode_item_ids,
     )
-    
+
     collected_count = episode_collection_entries.count()
-    
-    # If no episode-level entries exist, check if there's a show-level collection entry
-    # This is a heuristic: if the show is marked as collected, consider all episodes collected
+
+    # If no episode-level entries exist, fall back to broader collection rows.
+    # A manual season-level entry represents the whole season in the current UI.
+    if collected_count == 0:
+        season_collection_entry = CollectionEntry.objects.filter(
+            user=user,
+            item=season_item,
+        ).exists()
+        if season_collection_entry:
+            collected_count = total_episodes
+
+    show_has_granular_collection = CollectionEntry.objects.filter(
+        user=user,
+        item__media_id=season_item.media_id,
+        item__source=season_item.source,
+        item__media_type__in=[MediaTypes.SEASON.value, MediaTypes.EPISODE.value],
+    ).exists()
+
+    # If no episode or season-level entries exist anywhere for the show,
+    # a show-level collection entry can still represent the whole season.
     if collected_count == 0:
         try:
             tv_item = Item.objects.get(
@@ -566,13 +858,12 @@ def get_season_collection_stats(user, season_item):
                 user=user,
                 item=tv_item,
             ).exists()
-            
-            # If show-level entry exists and no granular episode entries, consider all episodes collected
-            if show_collection_entry:
+
+            if show_collection_entry and not show_has_granular_collection:
                 collected_count = total_episodes
         except Item.DoesNotExist:
             pass
-    
+
     return {
         "collected_episodes": collected_count,
         "total_episodes": total_episodes,
@@ -581,15 +872,15 @@ def get_season_collection_stats(user, season_item):
 
 def get_season_collection_metadata(user, season_item):
     """Get aggregated collection metadata for a season from all its episodes.
-    
+
     Similar to get_album_collection_metadata, this aggregates collection metadata
     from all episodes in the season that have collection entries. Returns the most
     common values for fields that should be consistent across episodes.
-    
+
     Args:
         user: Django user object
         season_item: Item object with media_type='season'
-        
+
     Returns:
         Dictionary with collection metadata (or None if no episodes are collected):
         - resolution: Most common resolution across collected episodes
@@ -601,9 +892,10 @@ def get_season_collection_metadata(user, season_item):
         - is_3d: True if any episode is 3D
         - collected_at: Earliest collected_at date from all episodes
     """
-    from app.models import Item, MediaTypes
     from django.db.models import Count
-    
+
+    from app.models import Item, MediaTypes
+
     # Get all episodes for this season
     all_episode_items = Item.objects.filter(
         media_id=season_item.media_id,
@@ -611,24 +903,24 @@ def get_season_collection_metadata(user, season_item):
         media_type=MediaTypes.EPISODE.value,
         season_number=season_item.season_number,
     )
-    
+
     if not all_episode_items.exists():
         return None
-    
+
     # Get collection entries for episodes in this season
-    episode_item_ids = list(all_episode_items.values_list('id', flat=True))
+    episode_item_ids = list(all_episode_items.values_list("id", flat=True))
     collected_episodes = CollectionEntry.objects.filter(
         user=user,
         item_id__in=episode_item_ids,
     )
-    
+
     if not collected_episodes.exists():
         # Check if there's a season-level or show-level collection entry
         season_collection_entry = CollectionEntry.objects.filter(
             user=user,
             item=season_item,
         ).first()
-        
+
         if season_collection_entry:
             # Return the season-level entry metadata
             return {
@@ -641,8 +933,14 @@ def get_season_collection_metadata(user, season_item):
                 "is_3d": season_collection_entry.is_3d,
                 "collected_at": season_collection_entry.collected_at,
             }
-        
+
         # Check for show-level entry
+        show_has_granular_collection = CollectionEntry.objects.filter(
+            user=user,
+            item__media_id=season_item.media_id,
+            item__source=season_item.source,
+            item__media_type__in=[MediaTypes.SEASON.value, MediaTypes.EPISODE.value],
+        ).exists()
         try:
             tv_item = Item.objects.get(
                 media_id=season_item.media_id,
@@ -653,8 +951,8 @@ def get_season_collection_metadata(user, season_item):
                 user=user,
                 item=tv_item,
             ).first()
-            
-            if show_collection_entry:
+
+            if show_collection_entry and not show_has_granular_collection:
                 # Return the show-level entry metadata
                 return {
                     "resolution": show_collection_entry.resolution or "",
@@ -668,9 +966,9 @@ def get_season_collection_metadata(user, season_item):
                 }
         except Item.DoesNotExist:
             pass
-        
+
         return None
-    
+
     # Aggregate the most common values for each metadata field
     def get_most_common(queryset, field_name):
         counts = (
@@ -682,14 +980,14 @@ def get_season_collection_metadata(user, season_item):
             .first()
         )
         return counts[field_name] if counts else None
-    
+
     # Get most common values
     resolution = get_most_common(collected_episodes, "resolution")
     hdr = get_most_common(collected_episodes, "hdr")
     audio_codec = get_most_common(collected_episodes, "audio_codec")
     audio_channels = get_most_common(collected_episodes, "audio_channels")
     media_type = get_most_common(collected_episodes, "media_type")
-    
+
     # For bitrate, get the most common non-null value
     bitrate_counts = (
         collected_episodes.exclude(bitrate=None)
@@ -699,14 +997,14 @@ def get_season_collection_metadata(user, season_item):
         .first()
     )
     bitrate = bitrate_counts["bitrate"] if bitrate_counts else None
-    
+
     # For is_3d, check if any episode is 3D
     is_3d = collected_episodes.filter(is_3d=True).exists()
-    
+
     # Get earliest collected_at date
     earliest_collected = collected_episodes.order_by("collected_at").first()
     collected_at = earliest_collected.collected_at if earliest_collected else None
-    
+
     return {
         "resolution": resolution or "",
         "hdr": hdr or "",
@@ -717,3 +1015,33 @@ def get_season_collection_metadata(user, season_item):
         "is_3d": is_3d,
         "collected_at": collected_at,
     }
+
+
+def get_configured_app_url():
+    """Return the configured public application origin, if one is available."""
+    for url in getattr(settings, "URLS", []):
+        if url:
+            return url.rstrip("/")
+
+    base_url = getattr(settings, "BASE_URL", None)
+    parsed_base_url = urlparse(base_url or "")
+    if parsed_base_url.scheme and parsed_base_url.netloc:
+        return base_url.rstrip("/")
+
+    return None
+
+
+def build_absolute_app_url(request, path):
+    """Build an absolute URL using the configured public origin when possible."""
+    parsed_path = urlparse(path)
+    if parsed_path.scheme and parsed_path.netloc:
+        return path
+
+    configured_app_url = get_configured_app_url()
+    if configured_app_url:
+        return urljoin(f"{configured_app_url}/", path.lstrip("/"))
+
+    if request is None:
+        return None
+
+    return request.build_absolute_uri(path)

@@ -2,196 +2,107 @@
 {% load app_tags %}
 
 {% block title %}
-  Home - Yamtrack
+  Home - Floppy
 {% endblock title %}
 
 {% block content %}
-  <div class="flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-4 mb-4 sm:mb-8">
-    <h1 class="text-3xl font-bold text-center w-full sm:w-auto">
-      {% if user.show_planned_on_home == 'combined' %}
-        In Progress and Planned
-      {% else %}
-        In Progress
-      {% endif %}
-    </h1>
-    <div class="relative" x-data="{ open: false }">
-      <button @click="open = !open"
-              @click.outside="open = false"
-              class="flex items-center gap-2 px-4 py-2 bg-[#39404b] hover:bg-[#454d5a] rounded-md transition-colors cursor-pointer">
-        {% include "app/icons/arrows-up-down.svg" with classes="w-4 h-4" %}
-        <span class="text-sm font-medium">{{ current_sort|no_underscore|title }}</span>
-        {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-gray-400" %}
-      </button>
-      <div x-show="open"
-           x-transition:enter="transition ease-out duration-100"
-           x-transition:enter-start="transform opacity-0 scale-95"
-           x-transition:enter-end="transform opacity-100 scale-100"
-           x-transition:leave="transition ease-in duration-75"
-           x-transition:leave-start="transform opacity-100 scale-100"
-           x-transition:leave-end="transform opacity-0 scale-95"
-           class="absolute right-0 mt-2 py-1 w-48 bg-[#39404b] rounded-md shadow-lg overflow-hidden z-10 border border-gray-700">
-        {% for value, label in sort_choices %}
-          <a href="{% url 'home' %}?sort={{ value }}"
-             class="block w-full px-4 py-2 text-left text-sm transition-colors {% if current_sort == value %}bg-indigo-600 text-white font-medium{% else %}text-gray-300 hover:bg-[#454d5a] hover:text-white{% endif %}">
-            {{ label }}
-          </a>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-  <div class="space-y-4 sm:space-y-8">
-    {% for section_key, media_list in list_by_type.items %}
-      <div>
-        {% if media_list.section_title %}
-          <h2 class="text-xl font-semibold mb-2 sm:mb-4">{{ media_list.section_title }}</h2>
-        {% elif media_list.section_label %}
-          {# Separated mode: use explicit section label with media type #}
-          <h2 class="text-xl font-semibold mb-2 sm:mb-4">{{ media_list.section_label }} - {{ media_list.media_type|media_type_readable_plural }}</h2>
-        {% else %}
-          {# Combined or Disabled mode: use section_key as media_type #}
-          <h2 class="text-xl font-semibold mb-2 sm:mb-4">{{ section_key|media_type_readable_plural }}</h2>
-        {% endif %}
-        {% if section_key == 'recently_not_rated' %}
-          {# Split mixed section by aspect ratio: 2:3 first, then 1:1 #}
-          <div id="media-grid-{{ section_key }}">
-            {% with square_types="music,podcast" %}
-              {% with standard_items=media_list.items|exclude_home_media_types:square_types %}
-                {% if standard_items %}
-                  <div class="media-grid">
-                    {% include "app/components/home_grid.html" with media_list_items=standard_items %}
-                  </div>
-                {% endif %}
-              {% endwith %}
-              {% with square_items=media_list.items|filter_home_media_types:square_types %}
-                {% if square_items %}
-                  <div class="media-grid media-grid-square mt-4">
-                    {% include "app/components/home_grid.html" with media_list_items=square_items %}
-                  </div>
-                {% endif %}
-              {% endwith %}
-            {% endwith %}
-          </div>
-        {% elif section_key == 'music' or section_key == 'podcast' %}
-          <div id="media-grid-{{ section_key }}"
-               class="media-grid media-grid-square">
-            {% include "app/components/home_grid.html" %}
-          </div>
-        {% else %}
-          <div id="media-grid-{{ section_key }}"
-               class="media-grid">
-            {% include "app/components/home_grid.html" %}
-          </div>
-        {% endif %}
+  {# Styles live in the content block so boosted navigation keeps them #}
+  <style>
+    @media (max-width: 639.98px) {
+      .home-row-heading {
+        flex-wrap: nowrap;
+        max-width: 100%;
+        min-width: 0;
+      }
 
-        {% if media_list.total > items_limit %}
-          <div class="mt-3 sm:mt-6 flex justify-center">
-            <button hx-get="{% url 'home' %}?sort={{ current_sort }}&load_media_type={{ section_key }}"
-                    hx-target="#media-grid-{{ section_key }}"
-                    hx-swap="beforeend"
-                    hx-indicator="#loading-indicator-{{ section_key }}"
-                    hx-trigger="click"
-                    class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors cursor-pointer"
-                    hx-on:click="this.remove()">Load All ({{ media_list.total }})</button>
-            <div id="loading-indicator-{{ section_key }}"
-                 class="htmx-indicator text-center hidden">
-              <div class="inline-flex justify-center items-center">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-              </div>
-            </div>
+      .home-row-heading-title,
+      .home-row-heading-detail,
+      .home-row-heading-sort-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .home-row-heading-title,
+      .home-row-heading-detail-wrap,
+      .home-row-heading-sort-form,
+      .home-row-heading-sort-button,
+      .home-row-heading-sort-label {
+        min-width: 0;
+      }
+
+      .home-row-heading-detail-wrap,
+      .home-row-heading-sort-form {
+        flex-shrink: 1;
+      }
+
+      .home-row-heading-sort-form,
+      .home-row-heading-sort-button {
+        max-width: 100%;
+      }
+
+      .home-row-heading-sort-form {
+        display: inline-flex;
+      }
+
+      .home-row-heading-separator,
+      .home-row-heading-sort-icon {
+        flex-shrink: 0;
+      }
+    }
+  </style>
+  <div class="space-y-4 sm:space-y-8">
+    <div id="active-playback-container"
+         class="media-grid"
+         {% if not active_playback_card %}style="display:none"{% endif %}
+         hx-get="{% url 'active_playback_fragment' %}"
+         hx-trigger="every 10s"
+         hx-swap="innerHTML"
+         hx-on::after-swap="this.style.display=this.children.length?'':'none'">
+      {% if active_playback_card %}
+        {% include "app/components/active_playback_card.html" %}
+      {% endif %}
+    </div>
+    {% include "app/components/home_groups.html" %}
+    {% if defer_remaining_groups %}
+      {% comment %}
+        Remaining groups hydrate asynchronously so first paint only pays
+        for the first group's rows.
+      {% endcomment %}
+      <div hx-get="{% url 'home_rest_fragment' %}"
+           hx-trigger="load"
+           hx-swap="outerHTML"
+           class="space-y-4 sm:space-y-8">
+        <section class="space-y-4 animate-pulse" aria-hidden="true">
+          <div class="h-6 w-40 bg-gray-700 rounded"></div>
+          <div class="flex gap-4 overflow-hidden">
+            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
           </div>
-        {% endif %}
+        </section>
       </div>
-    {% empty %}
-      <div class="flex flex-col items-center justify-center py-16 sm:py-32 px-3 sm:px-4 bg-[#2a2f35] rounded-lg">
-        <div class="bg-[#39404b] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-          {% include "app/icons/pulse.svg" with classes="w-8 h-8 text-gray-400" %}
+    {% endif %}
+    {% include "app/components/home_artwork_poller.html" with poll_row_ids=artwork_poll_row_ids initial=True %}
+    {% if not home_groups %}
+      <div class="flex flex-col items-center justify-center py-16 sm:py-32 px-3 sm:px-4 bg-[var(--color-surface)] rounded-lg">
+        <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+          {% include "app/icons/pulse.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
         </div>
-        <h3 class="text-xl font-semibold mb-2">No media in progress</h3>
-        <p class="text-gray-400 text-center max-w-md mb-4">Start tracking your progress by marking items as "In Progress".</p>
+        <h3 class="text-xl font-semibold mb-2">Nothing is configured for Home yet</h3>
+        <p class="text-[var(--color-text-muted)] text-center max-w-md mb-4">
+          Add or enable rows from the Home Screen settings page to populate this view.
+        </p>
         <div class="pt-4">
-          <a href="{{ 'tv'|sample_search }}"
-             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Browse Media</a>
+          <a href="{% url 'home_screen' %}"
+             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Open Home Screen Settings</a>
         </div>
       </div>
-    {% endfor %}
+    {% endif %}
   </div>
 {% endblock content %}
 
 {% block js %}
-  <script>
-    const FETCH_URL = '{% url "fetch_release_year" %}';
-    const pendingFetches = new Set();
-    let fetchQueue = [];
-    let isProcessing = false;
-
-    function processQueue() {
-      if (isProcessing || fetchQueue.length === 0) return;
-      isProcessing = true;
-
-      const itemId = fetchQueue.shift();
-      if (!itemId || pendingFetches.has(itemId)) {
-        isProcessing = false;
-        if (fetchQueue.length > 0) {
-          setTimeout(processQueue, 50);
-        }
-        return;
-      }
-
-      pendingFetches.add(itemId);
-
-      fetch(`${FETCH_URL}?item_id=${itemId}`)
-        .then(response => response.json())
-        .then(data => {
-          if (data.year) {
-            document.querySelectorAll(`.release-year-placeholder[data-item-id="${itemId}"]`).forEach(el => {
-              const progressText = el.dataset.progressText;
-              el.textContent = progressText ? `${data.year} • ${progressText}` : data.year;
-              el.classList.remove('release-year-placeholder');
-            });
-          } else {
-            document.querySelectorAll(`.release-year-placeholder[data-item-id="${itemId}"]`).forEach(el => {
-              el.remove();
-            });
-          }
-          if (typeof initMediaCardHover === 'function') {
-            initMediaCardHover();
-          }
-        })
-        .catch(err => {
-          console.warn('Failed to fetch release year for item', itemId, err);
-        })
-        .finally(() => {
-          isProcessing = false;
-          if (fetchQueue.length > 0) {
-            setTimeout(processQueue, 100);
-          }
-        });
-    }
-
-    function queueReleaseYearFetch(itemId) {
-      if (!pendingFetches.has(itemId) && !fetchQueue.includes(itemId)) {
-        fetchQueue.push(itemId);
-        processQueue();
-      }
-    }
-
-    function loadVisibleReleaseYears() {
-      document.querySelectorAll('.release-year-placeholder[data-item-id]').forEach(el => {
-        const itemId = el.dataset.itemId;
-        if (itemId) {
-          queueReleaseYearFetch(itemId);
-        }
-      });
-    }
-
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', loadVisibleReleaseYears);
-    } else {
-      loadVisibleReleaseYears();
-    }
-
-    document.body.addEventListener('htmx:afterSwap', function() {
-      setTimeout(loadVisibleReleaseYears, 50);
-    });
-  </script>
+  {% include "app/components/_scrollable_row_js.html" %}
 {% endblock js %}

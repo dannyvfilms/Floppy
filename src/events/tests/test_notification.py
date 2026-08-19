@@ -1,6 +1,7 @@
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+import apprise
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.test import TestCase, override_settings
@@ -10,12 +11,15 @@ from app.models import TV, Anime, Item, Manga, MediaTypes, Season, Sources, Stat
 from events.models import Event
 from events.notifications import (
     format_notification,
+    format_notification_html,
+    format_premiere_notification_html,
     get_all_user_tracking_data,
     get_tv_tracking_data,
     get_user_releases,
     is_user_tracking_item,
     send_daily_digest,
     send_notifications,
+    send_premiere_digest,
     send_releases,
 )
 
@@ -704,6 +708,15 @@ class NotificationTests(TestCase):
         self.assertIn("event_ids", result)
         self.assertEqual(result["event_count"], 5)
         self.assertEqual(len(result["event_ids"]), 5)
+        self.assertGreaterEqual(mock_instance.notify.call_count, 1)
+
+        for call in mock_instance.notify.call_args_list:
+            self.assertEqual(
+                call.kwargs["body_format"],
+                apprise.NotifyFormat.HTML,
+            )
+            self.assertIn("<ul>", call.kwargs["body"])
+            self.assertIn("Enjoy your media!", call.kwargs["body"])
 
     def test_format_notification(self):
         """Test the format_notification function."""
@@ -731,6 +744,23 @@ class NotificationTests(TestCase):
         self.assertIn("E5", notification_text)
         self.assertNotIn("MANGA", notification_text)
         self.assertNotIn("Test Manga", notification_text)
+
+    def test_format_notification_html(self):
+        """Test the format_notification_html function."""
+        releases = [self.anime_event, self.manga_event, self.season1_event]
+        notification_html = format_notification_html(releases)
+
+        self.assertIn("<ul>", notification_html)
+        self.assertIn("</ul>", notification_html)
+        self.assertIn("ANIME", notification_html)
+        self.assertIn("MANGA", notification_html)
+        self.assertIn("TV Shows", notification_html)
+        self.assertIn("Test Anime", notification_html)
+        self.assertIn("Test Manga", notification_html)
+        self.assertIn("Test TV Show", notification_html)
+        self.assertIn("E5", notification_html)
+        self.assertIn("#10", notification_html)
+        self.assertIn("Enjoy your media!", notification_html)
 
     @patch("events.notifications.send_notifications")
     def test_no_recent_events(self, mock_send_notifications):
@@ -1092,6 +1122,88 @@ class NotificationTests(TestCase):
 
         # Verify the result message
         self.assertEqual(result, "Daily digest sent for 5 releases")
+
+    @patch("events.notifications.send_notifications")
+    def test_send_premiere_digest(self, mock_send_notifications):
+        """Test the send_premiere_digest task picks up show and season premieres."""
+        mock_send_notifications.return_value = {
+            "event_count": 2,
+            "event_ids": [],
+        }
+
+        now = timezone.localtime()
+        today = now.replace(hour=12, minute=0, second=0, microsecond=0)
+
+        # New show premiere: season1_item is season_number=1
+        new_show_event = Event.objects.create(
+            item=self.season1_item,
+            content_number=1,
+            datetime=today,
+            notification_sent=False,
+        )
+
+        # New season premiere: season3_event already has content_number=1
+        self.season3_event.datetime = today
+        self.season3_event.save()
+
+        get_user_model().objects.all().update(premiere_notifications_enabled=True)
+
+        result = send_premiere_digest()
+
+        mock_send_notifications.assert_called_once()
+        call_kwargs = mock_send_notifications.call_args[1]
+        self.assertEqual(call_kwargs["formatter"], format_premiere_notification_html)
+
+        event_ids = {event.id for event in call_kwargs["events"]}
+        self.assertIn(new_show_event.id, event_ids)
+        self.assertIn(self.season3_event.id, event_ids)
+        # Non-premiere events (content_number != 1) must not be included
+        self.assertNotIn(self.season1_event.id, event_ids)
+
+        self.assertEqual(result, "Premiere digest sent for 2 premieres")
+
+    @patch("events.notifications.send_notifications")
+    def test_premiere_digest_no_premieres(self, mock_send_notifications):
+        """Test premiere digest when no premieres are scheduled this week."""
+        # season3_event has content_number=1 by default (setUp); push it
+        # outside the digest window so this test reflects an empty week.
+        self.season3_event.datetime = timezone.now() - timedelta(days=30)
+        self.season3_event.save()
+
+        get_user_model().objects.all().update(premiere_notifications_enabled=True)
+
+        result = send_premiere_digest()
+
+        mock_send_notifications.assert_not_called()
+        self.assertEqual(result, "No premieres scheduled this week")
+
+    @patch("events.notifications.send_notifications")
+    def test_premiere_digest_no_users(self, mock_send_notifications):
+        """Test premiere digest when no users have it enabled."""
+        get_user_model().objects.all().update(premiere_notifications_enabled=False)
+
+        result = send_premiere_digest()
+
+        mock_send_notifications.assert_not_called()
+        self.assertEqual(result, "No users with premiere notifications enabled")
+
+    def test_format_premiere_notification_html(self):
+        """Test format_premiere_notification_html groups shows vs seasons."""
+        new_show_event = Event.objects.create(
+            item=self.season1_item,
+            content_number=1,
+            datetime=timezone.now(),
+            notification_sent=False,
+        )
+
+        releases = [new_show_event, self.season3_event]
+        notification_html = format_premiere_notification_html(releases)
+
+        self.assertIn("New Shows", notification_html)
+        self.assertIn("New Seasons", notification_html)
+        self.assertIn("Test TV Show - Season 1", notification_html)
+        self.assertIn("Test TV Show - Season 3", notification_html)
+        self.assertIn("Enjoy your media!", notification_html)
 
     @patch("events.notifications.send_notifications")
     def test_daily_digest_with_notification_urls(self, mock_send_notifications):

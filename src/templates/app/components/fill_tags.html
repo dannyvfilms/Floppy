@@ -1,0 +1,61 @@
+
+<div class="tag-modal-shell bg-[var(--color-surface)] p-6 rounded-lg max-h-[70svh] overflow-y-auto">
+  <input type="hidden"
+         name="preview_genres_json"
+         value="{{ preview_genres_json|default:'[]'|escape }}">
+  <input type="hidden"
+         name="preview_implied_genres_json"
+         value="{{ preview_implied_genres_json|default:'[]'|escape }}">
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-2xl font-bold text-[var(--color-text)]">Tags</h2>
+    <button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+            @click="tagsOpen = false">{% include "app/icons/x.svg" with classes="w-6 h-6" %}</button>
+  </div>
+  <ul class="space-y-3">
+    {% for tag in user_tags %}
+      <li class="flex items-center justify-between bg-[var(--color-surface-strong)] p-3 rounded-md gap-1">
+        <span class="text-[var(--color-text)]">{{ tag.name }}</span>
+        <div class="flex items-center gap-1.5 shrink-0">
+          {% include "app/components/tag_item_button.html" with has_tag=tag.has_tag %}
+          <button type="button"
+                  hx-post="{% url 'tag_delete' %}"
+                  hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+                  hx-vals='{"tag_id": "{{ tag.id }}", "item_id": "{{ item.id }}", "preview_genres_json": "{{ preview_genres_json|default:'[]'|escapejs }}", "preview_implied_genres_json": "{{ preview_implied_genres_json|default:'[]'|escapejs }}"}'
+                  hx-target="closest .tag-modal-shell"
+                  hx-swap="outerHTML"
+                  hx-confirm="Delete the &quot;{{ tag.name|escape }}&quot; tag from your library? This removes it from every item."
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-md text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500/50 cursor-pointer"
+                  title="Delete tag"
+                  aria-label="Delete {{ tag.name }} tag">
+            {% include "app/icons/trashcan.svg" with classes="w-4 h-4" %}
+          </button>
+        </div>
+      </li>
+    {% empty %}
+      <li class="text-[var(--color-text-secondary)]">No tags yet. Create one below.</li>
+    {% endfor %}
+  </ul>
+  <form hx-post="{% url 'tag_create' %}"
+        hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+        hx-target="closest .tag-modal-shell"
+        hx-swap="outerHTML"
+        class="mt-4 flex gap-2">
+    {% csrf_token %}
+    <input type="hidden" name="item_id" value="{{ item.id }}">
+    <input type="hidden"
+           name="preview_genres_json"
+           value="{{ preview_genres_json|default:'[]'|escape }}">
+    <input type="hidden"
+           name="preview_implied_genres_json"
+           value="{{ preview_implied_genres_json|default:'[]'|escape }}">
+    <input type="text" name="name"
+           placeholder="New tag..."
+           maxlength="50"
+           required
+           class="flex-1 px-3 py-2 rounded-md bg-[var(--color-page-bg)] text-sm text-[var(--color-text-secondary)] placeholder-gray-500 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+    <button type="submit"
+            class="px-3 py-2 bg-violet-600 text-white text-sm rounded-md hover:bg-violet-700 cursor-pointer">
+      Add
+    </button>
+  </form>
+</div>

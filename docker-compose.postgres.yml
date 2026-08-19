@@ -1,9 +1,9 @@
 services:
-  yamtrack:
-    container_name: yamtrack
-    # Image defaults to :latest tag (points to stable release branch)
-    # You can also explicitly use :latest, :release, or :dev
-    image: ghcr.io/dannyvfilms/yamtrack
+  floppy:
+    container_name: floppy
+    # Image defaults to :latest tag (latest commit on the latest branch)
+    # You can also explicitly use :latest, :release, or a version tag
+    image: ghcr.io/dannyvfilms/floppy
     restart: unless-stopped
     depends_on:
       - db
@@ -13,17 +13,29 @@ services:
       - SECRET=longstring
       - REDIS_URL=redis://redis:6379
       - DB_HOST=db
+      # These stay "yamtrack" on purpose: renaming the database, role, or
+      # password against an existing postgres_data volume breaks the stack.
+      # New installs can use any values as long as both services agree.
       - DB_NAME=yamtrack
       - DB_USER=yamtrack
       - DB_PASSWORD=yamtrack
       - DB_PORT=5432
       - ADMIN_ENABLED=False
+      # Off by default: otherwise a publicly known demo/demodemo
+      # account is provisioned after migrations.
+      - DEMO_ACCOUNT_ENABLED=False
+      # Keep DEBUG off in production: the debug toolbar slows every request
+      # and disables Django's cached template loader.
+      - DEBUG=False
+      # Web concurrency is sized from the host automatically. Set
+      # WEB_CONCURRENCY/GUNICORN_THREADS only when you intentionally want to
+      # override the detected resource tier.
     ports:
       - "8000:8000"
 
   db:
     image: postgres:16-alpine
-    container_name: yamtrack-db
+    container_name: floppy-db
     environment:
       - POSTGRES_DB=yamtrack
       - POSTGRES_USER=yamtrack
@@ -33,9 +45,17 @@ services:
     restart: unless-stopped
 
   redis:
-    container_name: yamtrack-redis
+    container_name: floppy-redis
     image: redis:8-alpine
     restart: unless-stopped
+    # Persist to disk so a restart doesn't drop the cache wholesale (#386), but
+    # with a memory ceiling: Redis defaults to unlimited growth plus
+    # noeviction, which on a small host ends as an OOM rather than an eviction
+    # (#521). volatile-lru only evicts keys with a TTL, so Floppy's cache is
+    # reclaimable while the Celery queues (which have none) are not. `--save ""`
+    # drops RDB snapshots, since the AOF already covers persistence.
+    # Floppy applies equivalent limits at runtime if this is left off.
+    command: redis-server --appendonly yes --save "" --maxmemory 256mb --maxmemory-policy volatile-lru
     volumes:
       - redis_data:/data
 

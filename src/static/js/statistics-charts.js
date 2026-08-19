@@ -1,5 +1,30 @@
-document.addEventListener("DOMContentLoaded", function () {
+(function () {
+function initStatisticsCharts() {
+  if (typeof Chart === "undefined") {
+    return;
+  }
   Chart.register(ChartDataLabels);
+
+  // Resolved once per chart-init pass so custom HTML tooltips (built via
+  // inline styles, not Tailwind classes) follow the current light/dark theme.
+  function chartThemeColor(varName, fallback) {
+    var value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    return value || fallback;
+  }
+  var CHART_TOOLTIP_BG = chartThemeColor("--color-panel", "#1f2937");
+  var CHART_TOOLTIP_BORDER = chartThemeColor("--color-surface-border", "rgba(255,255,255,0.1)");
+  var CHART_TOOLTIP_TEXT = chartThemeColor("--color-text", "#f3f4f6");
+
+  // Destroy charts from a previous visit (their canvases were detached by a
+  // boosted body swap) before creating new instances.
+  (window.__floppyStatsCharts || []).forEach(function (chart) {
+    try {
+      chart.destroy();
+    } catch (error) {
+      console.debug("[stats] failed to destroy stale chart", error);
+    }
+  });
+  window.__floppyStatsCharts = [];
 
   // Custom external tooltip for bar charts
   function customBarTooltip(context) {
@@ -10,7 +35,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!tooltipEl) {
       tooltipEl = document.createElement("div");
       tooltipEl.id = "chartjs-tooltip";
-      tooltipEl.innerHTML = "<table></table>";
       document.body.appendChild(tooltipEl);
     }
 
@@ -43,53 +67,28 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       }
 
-      // Get all values for this stack and format to 1 decimal place
-      let tableBody =
-        '<thead><tr><th colspan="2">' +
-        formattedTitle +
-        "</th></tr></thead><tbody>";
-      let stackTotal = 0;
-
       function fmt(v) {
         const n = Number(v) || 0;
         return n.toFixed(1);
       }
 
-      chart.data.datasets.forEach((dataset, i) => {
+      let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">' + formattedTitle + "</div>";
+      chart.data.datasets.forEach((dataset) => {
         const raw = Number(dataset.data[dataIndex]) || 0;
         if (raw > 0) {
-          stackTotal += raw;
           const bgColor = dataset.backgroundColor;
           const label = dataset.label || "";
-          const value = fmt(raw);
-
-          tableBody +=
-            "<tr>" +
-            '<td style="padding-right:15px;"><span style="display:inline-block;width:12px;height:12px;background:' +
+          html +=
+            '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
+            '<span style="width:10px;height:10px;border-radius:2px;background:' +
             bgColor +
-            ';margin-right:8px;border-radius:2px;"></span>' +
-            label +
-            ":</td>" +
-            '<td style="text-align:right;font-weight:bold;">' +
-            value +
-            "</td>" +
-            "</tr>";
+            ';flex-shrink:0"></span>' +
+            "<span>" + label + ": " + fmt(raw) + "</span>" +
+            "</div>";
         }
       });
 
-      // Add total row (formatted)
-      tableBody +=
-        '<tr class="total-row">' +
-        "<td>Total:</td>" +
-        '<td style="text-align:right;font-weight:bold;">' +
-        (stackTotal.toFixed ? stackTotal.toFixed(1) : Number(stackTotal).toFixed(1)) +
-        "</td>" +
-        "</tr>";
-
-      tableBody += "</tbody>";
-
-      const tableRoot = tooltipEl.querySelector("table");
-      tableRoot.innerHTML = tableBody;
+      tooltipEl.innerHTML = html;
     }
 
     // Position and style the tooltip
@@ -104,150 +103,6 @@ document.addEventListener("DOMContentLoaded", function () {
       position.top + window.scrollY + tooltipModel.caretY + "px";
     tooltipEl.style.transform = "translate(-50%, -100%)";
     tooltipEl.style.pointerEvents = "none";
-  }
-
-  // Custom external tooltip for pie charts
-  function customPieTooltip(context) {
-    // External custom tooltip
-    let tooltipEl = document.getElementById("chartjs-pie-tooltip");
-
-    // Create element if it doesn't exist
-    if (!tooltipEl) {
-      tooltipEl = document.createElement("div");
-      tooltipEl.id = "chartjs-pie-tooltip";
-      document.body.appendChild(tooltipEl);
-    }
-
-    // Hide if no tooltip
-    const tooltipModel = context.tooltip;
-    if (tooltipModel.opacity === 0) {
-      tooltipEl.style.opacity = 0;
-      return;
-    }
-
-    // Set Text
-    if (tooltipModel.body) {
-      const dataPoint = tooltipModel.dataPoints[0];
-      const label = dataPoint.label;
-      const value = dataPoint.raw;
-      const { valueLabel, valueSuffix, valueDecimals } = getPieValueConfig(
-        context.chart,
-        dataPoint.datasetIndex
-      );
-      const formattedValue = formatPieValue(value, valueDecimals);
-      const valueText = valueSuffix ? `${formattedValue}${valueSuffix}` : formattedValue;
-
-      // Calculate percentage
-      const dataset = context.chart.data.datasets[dataPoint.datasetIndex];
-      const total = dataset.data.reduce((sum, val) => sum + val, 0);
-      const percentage = Math.round((value / total) * 100);
-
-      // Create tooltip content
-      let tooltipContent = `
-        <div class="pie-label">${label}</div>
-        <div class="pie-value">${valueLabel}: ${valueText}</div>
-        <div class="pie-percent">${percentage}%</div>
-      `;
-
-      tooltipEl.innerHTML = tooltipContent;
-    }
-
-    // Position and style the tooltip
-    const position = context.chart.canvas.getBoundingClientRect();
-
-    // Set tooltip styles
-    tooltipEl.style.opacity = 1;
-    tooltipEl.style.position = "absolute";
-    tooltipEl.style.left =
-      position.left + window.scrollX + tooltipModel.caretX + "px";
-    tooltipEl.style.top =
-      position.top + window.scrollY + tooltipModel.caretY + "px";
-    tooltipEl.style.transform = "translate(-50%, -100%)";
-    tooltipEl.style.pointerEvents = "none";
-  }
-
-  // Common configuration for pie charts
-  const pieChartConfig = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      datalabels: {
-        color: "#D1D5DB",
-        font: { size: 12 },
-        formatter: (value, ctx) => {
-          const total = ctx.dataset.data.reduce((acc, data) => acc + data, 0);
-          const percentage = Math.round((value / total) * 100);
-          const label = ctx.chart.data.labels[ctx.dataIndex];
-          return percentage > 5 ? `${label}\n${percentage}%` : "";
-        },
-        textAlign: "center",
-        textStrokeColor: "rgba(0,0,0,0.5)",
-        textStrokeWidth: 2,
-        textShadowBlur: 5,
-        textShadowColor: "rgba(0,0,0,0.5)",
-        padding: 6,
-      },
-      legend: {
-        position: "bottom",
-        labels: {
-          color: "#D1D5DB",
-          padding: 20,
-          usePointStyle: true,
-          pointStyle: "rectRounded",
-          generateLabels: function (chart) {
-            const original =
-              Chart.overrides.pie.plugins.legend.labels.generateLabels;
-            const labels = original.call(this, chart);
-            const dataset = chart.data.datasets[0] || {};
-            const valueSuffix = dataset.value_suffix || "";
-            const valueDecimals = Number.isFinite(dataset.value_decimals)
-              ? dataset.value_decimals
-              : 0;
-            labels.forEach((label, i) => {
-              const rawValue = chart.data.datasets[0].data[i];
-              const formattedValue = formatPieValue(rawValue, valueDecimals);
-              label.text = `${label.text} (${formattedValue}${valueSuffix})`;
-              label.strokeStyle = "transparent";
-            });
-            return labels;
-          },
-        },
-        margin: { top: 20 },
-      },
-      tooltip: {
-        enabled: false,
-        external: customPieTooltip,
-      },
-    },
-    layout: { padding: { bottom: 10 } },
-    elements: {
-      arc: {
-        borderWidth: 1,
-        borderColor: "#d3d3d3",
-      },
-    },
-  };
-
-  function formatPieValue(value, decimals) {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) {
-      return "0";
-    }
-    if (Number.isFinite(decimals)) {
-      return numeric.toFixed(decimals);
-    }
-    return `${numeric}`;
-  }
-
-  function getPieValueConfig(chart, datasetIndex) {
-    const dataset = chart.data.datasets[datasetIndex] || {};
-    return {
-      valueLabel: dataset.value_label || "Count",
-      valueSuffix: dataset.value_suffix || "",
-      valueDecimals: Number.isFinite(dataset.value_decimals)
-        ? dataset.value_decimals
-        : 0,
-    };
   }
 
   // Common configuration for bar charts
@@ -307,6 +162,7 @@ document.addEventListener("DOMContentLoaded", function () {
       datasets: chartData.datasets
         .map((dataset) => ({
           label: dataset.label,
+          media_type: dataset.media_type,
           data: dataset.data,
           backgroundColor: dataset.background_color,
           borderColor: "rgba(255, 255, 255, 0.1)",
@@ -321,11 +177,13 @@ document.addEventListener("DOMContentLoaded", function () {
   function initializeChartIfExists(elementId, chartType, data, options) {
     const element = document.getElementById(elementId);
     if (element) {
-      return new Chart(element.getContext("2d"), {
+      const chart = new Chart(element.getContext("2d"), {
         type: chartType,
         data: data,
         options: options,
       });
+      window.__floppyStatsCharts.push(chart);
+      return chart;
     }
     return null;
   }
@@ -390,48 +248,6 @@ document.addEventListener("DOMContentLoaded", function () {
     return desiredHeight;
   }
 
-  // Create Media Type Distribution Chart
-  const mediaTypeDistributionElement = document.getElementById(
-    "media_type_distribution"
-  );
-  if (mediaTypeDistributionElement) {
-    const mediaTypeData = JSON.parse(mediaTypeDistributionElement.textContent);
-    initializeChartIfExists(
-      "mediaTypeChart",
-      "pie",
-      mediaTypeData,
-      pieChartConfig
-    );
-  }
-
-  // Create Status Distribution Chart
-  const statusPieChartElement = document.getElementById(
-    "status_pie_chart_data"
-  );
-  if (statusPieChartElement) {
-    const statusPieData = JSON.parse(statusPieChartElement.textContent);
-    initializeChartIfExists(
-      "statusChart",
-      "pie",
-      statusPieData,
-      pieChartConfig
-    );
-  }
-
-  // Create Status Stacked Bar Chart
-  const statusDistributionElement = document.getElementById(
-    "status_distribution"
-  );
-  if (statusDistributionElement) {
-    const statusData = JSON.parse(statusDistributionElement.textContent);
-    initializeChartIfExists(
-      "statusStackedChart",
-      "bar",
-      processBarData(statusData),
-      barChartConfig
-    );
-  }
-
   // Create Score Stacked Bar Chart
   const scoreDistributionElement =
     document.getElementById("score_distribution");
@@ -473,12 +289,6 @@ document.addEventListener("DOMContentLoaded", function () {
       external: customBarTooltip,
     };
 
-    initializeChartIfExists(
-      "scoreStackedChart",
-      "bar",
-      processBarData(scoreData),
-      scoreChartOptions
-    );
     // Ensure copy wrapper is sized to match Activity History BEFORE initializing the copy
     matchScoreCopyHeight();
 
@@ -651,6 +461,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const newLabels = labels.map((k) => formatBucketLabel('day', k, startIso, endIso));
             const newDatasets = dailyData.datasets.map((ds) => ({
               label: ds.label,
+              media_type: ds.media_type,
               data: ds.data.map((v) => Number(v) || 0),
               background_color: ds.background_color || ds.backgroundColor || ds.backgroundColor,
             }));
@@ -682,6 +493,7 @@ document.addEventListener("DOMContentLoaded", function () {
           const newLabels = rawKeys.map((k) => formatBucketLabel(bucket, k, startIso, endIso));
           const newDatasets = dailyData.datasets.map((ds, i) => ({
             label: ds.label,
+            media_type: ds.media_type,
             data: rawKeys.map((k) => bucketMap.get(k)[i] || 0),
             background_color: ds.background_color || ds.backgroundColor || ds.backgroundColor,
           }));
@@ -748,17 +560,10 @@ document.addEventListener("DOMContentLoaded", function () {
     "tvEpisodesByYearChart",
     "tv_episodes_by_year"
   );
+
   initializeSingleSeriesBarChart(
-    "tvEpisodesByMonthChart",
-    "tv_episodes_by_month"
-  );
-  initializeSingleSeriesBarChart(
-    "tvEpisodesByWeekdayChart",
-    "tv_episodes_by_weekday"
-  );
-  initializeSingleSeriesBarChart(
-    "tvEpisodesByTimeChart",
-    "tv_episodes_by_time"
+    "animeEpisodesByYearChart",
+    "anime_episodes_by_year"
   );
 
   initializeSingleSeriesBarChart(
@@ -766,16 +571,40 @@ document.addEventListener("DOMContentLoaded", function () {
     "movie_plays_by_year"
   );
   initializeSingleSeriesBarChart(
-    "moviePlaysByMonthChart",
-    "movie_plays_by_month"
+    "bookFinishedByYearChart",
+    "book_finished_by_year"
   );
   initializeSingleSeriesBarChart(
-    "moviePlaysByWeekdayChart",
-    "movie_plays_by_weekday"
+    "bookReleasedByYearChart",
+    "book_released_by_year"
   );
   initializeSingleSeriesBarChart(
-    "moviePlaysByTimeChart",
-    "movie_plays_by_time"
+    "bookCompletedLengthChart",
+    "book_completed_length"
+  );
+  initializeSingleSeriesBarChart(
+    "comicFinishedByYearChart",
+    "comic_finished_by_year"
+  );
+  initializeSingleSeriesBarChart(
+    "comicReleasedByYearChart",
+    "comic_released_by_year"
+  );
+  initializeSingleSeriesBarChart(
+    "comicCompletedLengthChart",
+    "comic_completed_length"
+  );
+  initializeSingleSeriesBarChart(
+    "mangaFinishedByYearChart",
+    "manga_finished_by_year"
+  );
+  initializeSingleSeriesBarChart(
+    "mangaReleasedByYearChart",
+    "manga_released_by_year"
+  );
+  initializeSingleSeriesBarChart(
+    "mangaCompletedLengthChart",
+    "manga_completed_length"
   );
   initializeSingleSeriesBarChart(
     "gameHoursByYearChart",
@@ -785,27 +614,87 @@ document.addEventListener("DOMContentLoaded", function () {
     "gameHoursByMonthChart",
     "game_hours_by_month"
   );
-  initializeSingleSeriesBarChart(
-    "gameDailyAverageChart",
-    "game_daily_average"
-  );
+  // Custom initialization for gameDailyAverageChart with band-level game tooltip
+  (function initGameDailyAverageChart() {
+    const dataEl = document.getElementById("game_daily_average");
+    if (!dataEl) return;
+    const rawData = JSON.parse(dataEl.textContent || "null");
+    if (!rawData || !rawData.labels || rawData.labels.length === 0) return;
+
+    const topGamesByBand = rawData.top_games_per_band || {};
+
+    function gameDailyAverageTooltip(context) {
+      let tooltipEl = document.getElementById("chartjs-tooltip");
+      if (!tooltipEl) {
+        tooltipEl = document.createElement("div");
+        tooltipEl.id = "chartjs-tooltip";
+        document.body.appendChild(tooltipEl);
+      }
+
+      const tooltipModel = context.tooltip;
+      if (tooltipModel.opacity === 0) {
+        tooltipEl.style.opacity = 0;
+        return;
+      }
+
+      if (tooltipModel.body) {
+        const bandLabel = tooltipModel.title[0] || "";
+        const bandGames = topGamesByBand[bandLabel] || [];
+
+        let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">Avg/day: ' + bandLabel + "</div>";
+        bandGames.forEach(function (game, idx) {
+          html +=
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:4px">' +
+            '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">' +
+            (idx + 1) +
+            ". " +
+            (game.title || "Unknown") +
+            "</span>" +
+            '<span style="font-weight:600;white-space:nowrap">' +
+            (game.formatted_daily_average || "") +
+            "</span>" +
+            "</div>";
+        });
+
+        tooltipEl.innerHTML = html;
+      }
+
+      const position = context.chart.canvas.getBoundingClientRect();
+      tooltipEl.style.opacity = 1;
+      tooltipEl.style.position = "absolute";
+      tooltipEl.style.left =
+        position.left + window.scrollX + tooltipModel.caretX + "px";
+      tooltipEl.style.top =
+        position.top + window.scrollY + tooltipModel.caretY + "px";
+      tooltipEl.style.transform = "translate(-50%, -100%)";
+      tooltipEl.style.pointerEvents = "none";
+    }
+
+    const chartOptions = JSON.parse(JSON.stringify(barChartConfig));
+    chartOptions.scales.x.stacked = false;
+    chartOptions.scales.y.stacked = false;
+    if (chartOptions.plugins && chartOptions.plugins.legend) {
+      chartOptions.plugins.legend.display = false;
+    }
+    chartOptions.plugins.tooltip = {
+      enabled: false,
+      mode: "index",
+      intersect: false,
+      external: gameDailyAverageTooltip,
+    };
+
+    initializeChartIfExists(
+      "gameDailyAverageChart",
+      "bar",
+      processBarData(rawData),
+      chartOptions
+    );
+  })();
 
   // Music consumption charts
   initializeSingleSeriesBarChart(
     "musicPlaysByYearChart",
     "music_plays_by_year"
-  );
-  initializeSingleSeriesBarChart(
-    "musicPlaysByMonthChart",
-    "music_plays_by_month"
-  );
-  initializeSingleSeriesBarChart(
-    "musicPlaysByWeekdayChart",
-    "music_plays_by_weekday"
-  );
-  initializeSingleSeriesBarChart(
-    "musicPlaysByTimeChart",
-    "music_plays_by_time"
   );
 
   // Podcast charts
@@ -813,24 +702,1196 @@ document.addEventListener("DOMContentLoaded", function () {
     "podcastPlaysByYearChart",
     "podcast_plays_by_year"
   );
-  initializeSingleSeriesBarChart(
-    "podcastPlaysByMonthChart",
-    "podcast_plays_by_month"
-  );
-  initializeSingleSeriesBarChart(
-    "podcastPlaysByWeekdayChart",
-    "podcast_plays_by_weekday"
-  );
-  initializeSingleSeriesBarChart(
-    "podcastPlaysByTimeChart",
-    "podcast_plays_by_time"
-  );
+
+  function getCurrentMediaType() {
+    try {
+      return new URL(window.location.href).searchParams.get("media-type") || "all";
+    } catch (_) {
+      return "all";
+    }
+  }
+
+  // Maps the page's media-type filter slug to the readable label used as a
+  // chart "type" key throughout status_distribution / score_distribution /
+  // media_type_distribution payloads (e.g. "tv" -> "TV Show").
+  const MEDIA_SLUG_TO_LABEL = {
+    tv: "TV Show", movie: "Movie", anime: "Anime", music: "Music",
+    podcast: "Podcast", book: "Book", comic: "Comic",
+    boardgame: "Board Game", game: "Game", manga: "Manga",
+  };
+
+  // ─── Activity Rhythm SVG dot matrix ────────────────────────────────────────
+  const weekdayHourEl = document.getElementById("weekday_hour_chart_data");
+  const rhythmContainer = document.getElementById("activityRhythmContainer");
+  if (weekdayHourEl && rhythmContainer) {
+    const rhythmData = JSON.parse(weekdayHourEl.textContent || "{}");
+
+    const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const cellSize = 12;
+    const cellGap = 4;
+    const dotArea = cellSize + cellGap;
+    const maxR = cellSize / 2;
+    const labelW = 30;
+    const labelH = 14;
+    const totalW = labelW + 24 * dotArea;
+    const totalH = labelH + 7 * dotArea;
+
+    // Number of intensity tiers (tier 0 = empty cell, tiers 1..TIERS = non-zero).
+    const TIERS = 6;
+
+    // Tier → dot radius. Empty cells get the smallest dot; non-zero tiers ramp up to maxR.
+    function tierRadius(tier) {
+      return tier === 0 ? 1.5 : 2 + (tier / TIERS) * (maxR - 2);
+    }
+
+    // Tier → fill. Empty cells faint grey; non-zero tiers ramp indigo opacity up.
+    function tierFill(tier) {
+      if (tier === 0) return "rgba(255,255,255,0.05)";
+      const opacity = 0.2 + 0.8 * (tier / TIERS);
+      return `rgba(99,102,241,${opacity.toFixed(2)})`;
+    }
+
+    function drawRhythmChart(mediaType) {
+      const key = mediaType && mediaType !== "all" ? mediaType : "all";
+      const matrix = rhythmData[key] || (key !== "all" ? rhythmData["all"] : null);
+      if (!matrix) {
+        rhythmContainer.innerHTML =
+          '<p class="text-sm text-gray-500 text-center py-6">No activity data for this range.</p>';
+        return;
+      }
+
+      // Quantile bucketing: rank each cell by its percentile within the non-zero values.
+      // This is robust to bulk-import outliers (a single huge day can't crush the scale).
+      const nonZeroVals = [];
+      for (let r = 0; r < 7; r++) {
+        for (let c = 0; c < 24; c++) {
+          const v = (matrix[r] && matrix[r][c]) || 0;
+          if (v > 0) nonZeroVals.push(v);
+        }
+      }
+      nonZeroVals.sort(function (a, b) { return a - b; });
+
+      function tierFor(v) {
+        if (v <= 0 || nonZeroVals.length === 0) return 0;
+        // index of first value >= v → percentile rank
+        let lo = 0;
+        let hi = nonZeroVals.length;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (nonZeroVals[mid] < v) lo = mid + 1;
+          else hi = mid;
+        }
+        const pct = lo / nonZeroVals.length;
+        return Math.min(TIERS, Math.floor(pct * TIERS) + 1);
+      }
+
+      let cells = "";
+      for (let r = 0; r < 7; r++) {
+        const cy = labelH + r * dotArea + cellSize / 2;
+        cells +=
+          `<text x="${labelW - 4}" y="${cy + 3.5}" text-anchor="end" ` +
+          `font-size="9" fill="#6b7280">${DAY_LABELS[r]}</text>`;
+        for (let c = 0; c < 24; c++) {
+          const cx = labelW + c * dotArea + cellSize / 2;
+          const count = (matrix[r] && matrix[r][c]) || 0;
+          const tier = tierFor(count);
+          const radius = tierRadius(tier);
+          const fill = tierFill(tier);
+          const title = count > 0
+            ? `<title>${DAY_LABELS[r]} ${c}:00 — ${count} session${count !== 1 ? "s" : ""}</title>`
+            : "";
+          cells += `<circle cx="${cx}" cy="${cy}" r="${radius.toFixed(1)}" fill="${fill}">${title}</circle>`;
+        }
+      }
+
+      let hourLabels = "";
+      for (const h of [0, 6, 12, 18]) {
+        const cx = labelW + h * dotArea + cellSize / 2;
+        const lbl = h === 0 ? "12a" : h === 12 ? "12p" : h < 12 ? `${h}a` : `${h - 12}p`;
+        hourLabels +=
+          `<text x="${cx}" y="${labelH - 2}" text-anchor="middle" ` +
+          `font-size="9" fill="#6b7280">${lbl}</text>`;
+      }
+
+      // "Low → High" legend rendered into the header container (top-right).
+      const legendEl = document.getElementById("activityRhythmLegend");
+      if (legendEl) {
+        legendEl.innerHTML =
+          '<span style="font-size:9px;color:#6b7280">Low</span>';
+        for (let t = 1; t <= TIERS; t++) {
+          const r = tierRadius(t);
+          const size = (r * 2).toFixed(1) + "px";
+          const dot = document.createElement("span");
+          dot.style.cssText =
+            `display:inline-block;width:${size};height:${size};border-radius:50%;` +
+            `background:${tierFill(t)};flex-shrink:0;`;
+          legendEl.appendChild(dot);
+        }
+        legendEl.insertAdjacentHTML(
+          "beforeend",
+          '<span style="font-size:9px;color:#6b7280">High</span>'
+        );
+      }
+
+      rhythmContainer.innerHTML =
+        `<svg width="100%" viewBox="0 0 ${totalW} ${totalH}" ` +
+        `xmlns="http://www.w3.org/2000/svg" style="overflow:visible;display:block">` +
+        hourLabels + cells + `</svg>`;
+    }
+
+    drawRhythmChart(getCurrentMediaType());
+    window.addEventListener("stats-media-type-changed", function () {
+      drawRhythmChart(getCurrentMediaType());
+    });
+  }
+
+  // ─── Combined Plays charts (by_month / by_weekday / by_time_of_day) ────────
+  const combinedPlaysEl = document.getElementById("combined_plays_charts");
+  if (combinedPlaysEl) {
+    let combinedPlaysData = null;
+    try {
+      combinedPlaysData = JSON.parse(combinedPlaysEl.textContent || "null");
+    } catch (_) {
+      combinedPlaysData = null;
+    }
+
+    const COMBINED_CHART_SPECS = [
+      {
+        key: "by_month",
+        canvasId: "combinedPlaysByMonthChart",
+        containerId: "combinedPlaysByMonthContainer",
+      },
+      {
+        key: "by_weekday",
+        canvasId: "combinedPlaysByWeekdayChart",
+        containerId: "combinedPlaysByWeekdayContainer",
+      },
+      {
+        key: "by_time_of_day",
+        canvasId: "combinedPlaysByTimeChart",
+        containerId: "combinedPlaysByTimeContainer",
+      },
+    ];
+    const combinedChartInstances = {};
+
+    const COMBINED_PLAYS_MEDIA_TYPES = ["movie", "tv", "anime", "music", "podcast"];
+    const COMBINED_PLAYS_TYPE_LABELS = {
+      movie: "Movies",
+      tv: "TV Shows",
+      anime: "Anime",
+      music: "Music",
+      podcast: "Podcasts",
+    };
+
+    function combinedPlaysTooltip(spec) {
+      return function (context) {
+        let tooltipEl = document.getElementById("combinedPlaysTooltip");
+        if (!tooltipEl) {
+          tooltipEl = document.createElement("div");
+          tooltipEl.id = "combinedPlaysTooltip";
+          tooltipEl.style.cssText =
+            "position:absolute;z-index:100;pointer-events:none;opacity:0;transition:opacity 0.2s ease;" +
+            "background:" + CHART_TOOLTIP_BG + ";border:1px solid " + CHART_TOOLTIP_BORDER + ";border-radius:6px;" +
+            "padding:10px 12px;font-size:13px;color:" + CHART_TOOLTIP_TEXT + ";min-width:160px;" +
+            "box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+          document.body.appendChild(tooltipEl);
+        }
+
+        const tooltipModel = context.tooltip;
+        if (tooltipModel.opacity === 0) {
+          tooltipEl.style.opacity = 0;
+          return;
+        }
+
+        if (tooltipModel.body) {
+          const dataIndex = tooltipModel.dataPoints[0].dataIndex;
+          const title = tooltipModel.title[0] || "";
+          const byKey = (combinedPlaysData && combinedPlaysData[spec.key]) || {};
+          const currentMediaType = getCurrentMediaType();
+          const relevantTypes =
+            currentMediaType === "all" ? COMBINED_PLAYS_MEDIA_TYPES : [currentMediaType];
+
+          const rows = relevantTypes
+            .map(function (type) {
+              const typeChart = byKey[type];
+              const ds = typeChart && typeChart.datasets && typeChart.datasets[0];
+              const value = ds ? Number(ds.data[dataIndex]) || 0 : 0;
+              const color = ds ? ds.background_color : "#9ca3af";
+              return {
+                label: COMBINED_PLAYS_TYPE_LABELS[type] || type,
+                value: value,
+                color: color,
+              };
+            })
+            .filter(function (row) {
+              return row.value > 0;
+            })
+            .sort(function (a, b) {
+              return b.value - a.value;
+            });
+
+          function fmtHoursValue(hrs) {
+            return (Number(hrs) || 0).toFixed(1) + "h";
+          }
+
+          let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">' + title + "</div>";
+          rows.forEach(function (row) {
+            html +=
+              '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
+              '<span style="width:10px;height:10px;border-radius:2px;background:' +
+              row.color +
+              ';flex-shrink:0"></span>' +
+              "<span>" + row.label + ": " + fmtHoursValue(row.value) + "</span>" +
+              "</div>";
+          });
+
+          tooltipEl.innerHTML = html;
+        }
+
+        const position = context.chart.canvas.getBoundingClientRect();
+        tooltipEl.style.opacity = 1;
+        tooltipEl.style.left =
+          position.left + window.scrollX + tooltipModel.caretX + "px";
+        tooltipEl.style.top =
+          position.top + window.scrollY + tooltipModel.caretY + "px";
+        tooltipEl.style.transform = "translate(-50%, -100%)";
+      };
+    }
+
+    function drawCombinedChart(spec, mediaType) {
+      const container = document.getElementById(spec.containerId);
+      const byKey = (combinedPlaysData && combinedPlaysData[spec.key]) || {};
+      const chartData = byKey[mediaType] || byKey.all;
+
+      if (!chartData || !chartData.labels || chartData.labels.length === 0) {
+        if (combinedChartInstances[spec.key]) {
+          combinedChartInstances[spec.key].destroy();
+          combinedChartInstances[spec.key] = null;
+        }
+        if (container) {
+          container.innerHTML =
+            '<p class="text-sm text-gray-500 text-center py-8 w-full">No data for this filter.</p>';
+        }
+        return;
+      }
+
+      if (!container.querySelector("canvas")) {
+        container.innerHTML = `<canvas id="${spec.canvasId}"></canvas>`;
+      }
+
+      const chartOptions = JSON.parse(JSON.stringify(barChartConfig));
+      chartOptions.scales.x.stacked = false;
+      chartOptions.scales.y.stacked = false;
+      chartOptions.scales.x.grid = { display: false };
+      chartOptions.scales.y.border = { display: false };
+      if (chartOptions.plugins && chartOptions.plugins.legend) {
+        chartOptions.plugins.legend.display = false;
+      }
+      chartOptions.plugins.tooltip = {
+        enabled: false,
+        mode: "index",
+        intersect: false,
+        external: combinedPlaysTooltip(spec),
+      };
+      const processed = processBarData(chartData);
+
+      if (combinedChartInstances[spec.key]) {
+        combinedChartInstances[spec.key].data = processed;
+        combinedChartInstances[spec.key].update();
+      } else {
+        const chart = new Chart(
+          document.getElementById(spec.canvasId).getContext("2d"),
+          { type: "bar", data: processed, options: chartOptions }
+        );
+        window.__floppyStatsCharts.push(chart);
+        combinedChartInstances[spec.key] = chart;
+      }
+    }
+
+    function drawAllCombinedCharts(mediaType) {
+      COMBINED_CHART_SPECS.forEach(function (spec) {
+        drawCombinedChart(spec, mediaType);
+      });
+    }
+
+    if (combinedPlaysData && typeof combinedPlaysData === "object") {
+      drawAllCombinedCharts(getCurrentMediaType());
+      window.addEventListener("stats-media-type-changed", function () {
+        drawAllCombinedCharts(getCurrentMediaType());
+      });
+    }
+  }
+
+  // ─── Time Across Your Worlds doughnut ───────────────────────────────────────
+  const timeWorldsCanvas = document.getElementById("timeWorldsChart");
+  const timeWorldsLegendEl = document.getElementById("timeWorldsLegend");
+  const timeWorldsCenterEl = document.getElementById("timeWorldsCenter");
+  const timeWorldsInfoEl = document.getElementById("timeWorldsInfo");
+  const distEl = document.getElementById("media_type_distribution");
+
+  if (timeWorldsCanvas && distEl) {
+    const fullDistData = JSON.parse(distEl.textContent || "{}");
+
+    // User's Duration Format preference (mirrors stats_utils._format_hours_minutes).
+    let durationFormat = "hours_minutes";
+    try {
+      const dfEl = document.getElementById("stats_duration_format");
+      if (dfEl) durationFormat = JSON.parse(dfEl.textContent) || "hours_minutes";
+    } catch (_) { /* keep default */ }
+
+    // Format a duration given in hours, respecting the Duration Format preference.
+    // maxParts caps how many units are shown (default 2); pass Infinity for tooltips.
+    function fmtHours(hrs, maxParts) {
+      if (maxParts === undefined) maxParts = 2;
+      let minutes = Math.round(hrs * 60);
+      if (minutes <= 0) return "0h 0min";
+      if (durationFormat === "long_units") {
+        if (minutes < 60) return minutes + "min";
+        if (minutes < 1440) {
+          return Math.floor(minutes / 60) + "h " + (minutes % 60) + "min";
+        }
+        const MONTH = 43800;
+        const DAY = 1440;
+        const HOUR = 60;
+        const mo = Math.floor(minutes / MONTH);
+        let rem = minutes % MONTH;
+        const d = Math.floor(rem / DAY);
+        rem %= DAY;
+        const h = Math.floor(rem / HOUR);
+        const m = rem % HOUR;
+        const parts = [];
+        if (mo) parts.push(mo + "mo");
+        if (d) parts.push(d + "d");
+        if (h) parts.push(h + "h");
+        if (m || !parts.length) parts.push(m + "min");
+        return parts.slice(0, maxParts).join(" ");
+      }
+      return Math.floor(minutes / 60) + "h " + (minutes % 60) + "min";
+    }
+
+    // Palette for genre slices (cycles if there are more genres than colors).
+    const GENRE_PALETTE = [
+      "#6366f1", "#ec4899", "#10b981", "#f59e0b", "#3b82f6",
+      "#8b5cf6", "#ef4444", "#14b8a6", "#f97316", "#a855f7",
+      "#06b6d4", "#84cc16",
+    ];
+
+    // Genre data keyed by media type slug (minutes-based types only).
+    function loadGenreData(slug) {
+      try {
+        const el = document.getElementById(slug + "_top_genres");
+        return el ? JSON.parse(el.textContent || "[]") : [];
+      } catch (_) { return []; }
+    }
+
+    // Actual (non-overlapping) total hours for a media type, mirroring the
+    // fallback used by date-range.js's currentTypeSummary getter. Genre
+    // buckets attribute full hours to every genre a title has, so they can't
+    // be summed for a "total" — this reads the real total instead.
+    function loadTypeTotalHours(slug) {
+      try {
+        const el = document.getElementById("summary_stats_by_type");
+        const all = el ? JSON.parse(el.textContent || "{}") : {};
+        const s = all[slug] || all.all || {};
+        return (s.total_minutes || 0) / 60;
+      } catch (_) { return 0; }
+    }
+    const GENRE_TYPES = { tv: 1, movie: 1, anime: 1, music: 1, game: 1 };
+
+    // Elements for updating the card header.
+    const timeWorldsTitleEl = document.getElementById("timeWorldsTitle");
+    const timeWorldsSubtitleEl = document.getElementById("timeWorldsSubtitle");
+
+    let donutChartInstance = null;
+
+    // External HTML tooltip — lives in <body> so it's never clipped by the canvas.
+    function getOrCreateTooltipEl() {
+      let el = document.getElementById("timeWorldsTooltip");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "timeWorldsTooltip";
+        el.style.cssText =
+          "position:fixed;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.1s;" +
+          "background:" + CHART_TOOLTIP_BG + ";border:1px solid " + CHART_TOOLTIP_BORDER + ";border-radius:6px;" +
+          "padding:8px 10px;font-size:12px;color:" + CHART_TOOLTIP_TEXT + ";white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+        document.body.appendChild(el);
+      }
+      return el;
+    }
+
+    function externalTooltipHandler(context, getTotalHours) {
+      const tooltipEl = getOrCreateTooltipEl();
+      const tooltip = context.tooltip;
+
+      if (tooltip.opacity === 0) {
+        tooltipEl.style.opacity = "0";
+        return;
+      }
+
+      if (tooltip.dataPoints && tooltip.dataPoints.length) {
+        const dp = tooltip.dataPoints[0];
+        const label = dp.label || "";
+        const hrs = dp.raw;
+        const total = getTotalHours();
+        const pct = total > 0 ? Math.round((hrs / total) * 100) : 0;
+        const color = dp.dataset.backgroundColor[dp.dataIndex];
+
+        tooltipEl.innerHTML =
+          '<div style="font-weight:600;margin-bottom:4px;color:' + CHART_TOOLTIP_TEXT + '">' + label + "</div>" +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';flex-shrink:0"></span>' +
+            '<span>' + fmtHours(hrs, Infinity) + " (" + pct + "%)</span>" +
+          "</div>";
+      }
+
+      const rect = timeWorldsCanvas.getBoundingClientRect();
+      const x = rect.left + tooltip.caretX;
+      const y = rect.top + tooltip.caretY;
+
+      // Flip left if near right edge of viewport.
+      const tipW = tooltipEl.offsetWidth || 160;
+      const left = x + 12 + tipW > window.innerWidth ? x - tipW - 12 : x + 12;
+
+      tooltipEl.style.left = left + "px";
+      tooltipEl.style.top = (y - 16) + "px";
+      tooltipEl.style.opacity = "1";
+    }
+
+    function renderDonut(labels, data, colors, getTotalHours) {
+      const externalTooltip = function (ctx) { externalTooltipHandler(ctx, getTotalHours); };
+
+      if (donutChartInstance) {
+        donutChartInstance.data.labels = labels;
+        donutChartInstance.data.datasets[0].data = data;
+        donutChartInstance.data.datasets[0].backgroundColor = colors;
+        donutChartInstance.options.plugins.tooltip.external = externalTooltip;
+        donutChartInstance.update();
+      } else {
+        donutChartInstance = new Chart(timeWorldsCanvas.getContext("2d"), {
+          type: "doughnut",
+          data: { labels: labels, datasets: [{ data: data, backgroundColor: colors }] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: "68%",
+            plugins: {
+              legend: { display: false },
+              datalabels: { display: false },
+              tooltip: { enabled: false, external: externalTooltip },
+            },
+            elements: { arc: { borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" } },
+          },
+        });
+        window.__floppyStatsCharts.push(donutChartInstance);
+      }
+    }
+
+    function renderLegend(labels, data, colors, totalHours) {
+      if (!timeWorldsLegendEl) return;
+      timeWorldsLegendEl.innerHTML = "";
+      const sortedIndices = labels.map(function (_, i) { return i; })
+        .sort(function (a, b) { return data[b] - data[a]; });
+      sortedIndices.forEach(function (i) {
+        const label = labels[i];
+        const hrs = data[i];
+        const color = colors[i];
+        const pct = totalHours > 0 ? Math.round((hrs / totalHours) * 100) : 0;
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:14px;font-size:11px;line-height:1.3;";
+        row.innerHTML =
+          '<div style="flex-shrink:0;display:flex;align-items:center;gap:6px;width:74px">' +
+            '<span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:' + color + '"></span>' +
+            '<span style="flex:1;color:#d1d5db;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + "</span>" +
+          '</div>' +
+          '<div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,0.07);overflow:hidden;min-width:40px">' +
+            '<div style="height:100%;border-radius:3px;background:' + color + ';width:' + pct + '%"></div>' +
+          '</div>' +
+          '<span style="flex-shrink:0;width:34px;text-align:center;color:#d1d5db;font-weight:600">' + pct + "%</span>" +
+          '<span style="flex-shrink:0;min-width:80px;text-align:center;color:#6b7280;font-variant-numeric:tabular-nums;white-space:nowrap">' + fmtHours(hrs) + "</span>";
+        timeWorldsLegendEl.appendChild(row);
+      });
+    }
+
+    function drawTimeWorldsChart(mediaType) {
+      const container = document.getElementById("timeWorldsContainer");
+      const isFiltered = mediaType && mediaType !== "all";
+      const hasGenres = isFiltered && GENRE_TYPES[mediaType];
+      const genres = hasGenres ? loadGenreData(mediaType) : [];
+
+      if (isFiltered && hasGenres && genres.length > 0) {
+        // ── Genre mode ──────────────────────────────────────────────────────
+        const labels = genres.map(function (g) { return g.name; });
+        const data = genres.map(function (g) { return +(g.minutes / 60).toFixed(2); });
+        const colors = genres.map(function (_, i) { return GENRE_PALETTE[i % GENRE_PALETTE.length]; });
+        const totalHours = loadTypeTotalHours(mediaType);
+
+        if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Top Genres";
+        if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = "Where your " + mediaType + " hours go.";
+        if (timeWorldsInfoEl) timeWorldsInfoEl.classList.remove("hidden");
+
+        if (timeWorldsCenterEl) {
+          timeWorldsCenterEl.innerHTML =
+            '<span style="font-size:1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2;text-align:center">' +
+            fmtHours(totalHours) + "</span>" +
+            '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total</span>';
+        }
+
+        renderDonut(labels, data, colors, function () { return totalHours; });
+        renderLegend(labels, data, colors, totalHours);
+        return;
+      }
+
+      // ── Type distribution mode (all, or filtered type with no genre data) ─
+      if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Hours by Media Type";
+      if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = "Where your hours go.";
+      if (timeWorldsInfoEl) timeWorldsInfoEl.classList.add("hidden");
+
+      // Build the filtered view of the distribution data.
+      let labels, data, colors;
+      if (!isFiltered || !fullDistData.labels) {
+        labels = fullDistData.labels || [];
+        const ds = (fullDistData.datasets || [{}])[0] || {};
+        data = ds.data || [];
+        colors = ds.backgroundColor || [];
+      } else {
+        // Single-type filter for a type with no genre breakdown.
+        const targetLabel = MEDIA_SLUG_TO_LABEL[mediaType];
+        const idx = targetLabel ? (fullDistData.labels || []).indexOf(targetLabel) : -1;
+        if (idx >= 0) {
+          const ds = fullDistData.datasets[0];
+          labels = [fullDistData.labels[idx]];
+          data = [ds.data[idx]];
+          colors = [ds.backgroundColor[idx]];
+        } else {
+          labels = []; data = []; colors = [];
+        }
+      }
+
+      if (!labels.length) {
+        if (donutChartInstance) { donutChartInstance.destroy(); donutChartInstance = null; }
+        if (container) {
+          container.innerHTML =
+            '<p class="text-sm text-gray-500 text-center py-8 w-full">No time data available for this filter.</p>';
+        }
+        return;
+      }
+
+      const totalHours = data.reduce(function (a, b) { return a + b; }, 0);
+
+      if (timeWorldsCenterEl) {
+        timeWorldsCenterEl.innerHTML =
+          '<span style="font-size:1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2;text-align:center">' +
+          fmtHours(totalHours) + "</span>" +
+          '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total</span>';
+      }
+
+      renderDonut(labels, data, colors, function () { return totalHours; });
+      renderLegend(labels, data, colors, totalHours);
+    }
+
+    if (fullDistData.labels && fullDistData.labels.length > 0) {
+      drawTimeWorldsChart(getCurrentMediaType());
+      window.addEventListener("stats-media-type-changed", function () {
+        drawTimeWorldsChart(getCurrentMediaType());
+      });
+    } else {
+      const container = document.getElementById("timeWorldsContainer");
+      if (container) {
+        container.innerHTML =
+          '<p class="text-sm text-gray-500 text-center py-8 w-full">No time data available for this range.</p>';
+      }
+    }
+  }
+
+  // ─── Status Composition donut (status_distribution, aggregated or single-type) ──
+  const statusCompositionDataEl = document.getElementById("status_distribution");
+  if (statusCompositionDataEl) {
+    const statusCompositionData = JSON.parse(statusCompositionDataEl.textContent || "{}");
+    let statusCompositionChartInstance = null;
+
+    function getOrCreateStatusCompositionTooltipEl() {
+      let el = document.getElementById("statusCompositionTooltip");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "statusCompositionTooltip";
+        el.style.cssText =
+          "position:fixed;z-index:9999;pointer-events:none;opacity:0;transition:opacity 0.1s;" +
+          "background:" + CHART_TOOLTIP_BG + ";border:1px solid " + CHART_TOOLTIP_BORDER + ";border-radius:6px;" +
+          "padding:8px 10px;font-size:12px;color:" + CHART_TOOLTIP_TEXT + ";white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+        document.body.appendChild(el);
+      }
+      return el;
+    }
+
+    function statusCompositionTooltipHandler(context, canvas, getTotal) {
+      const tooltipEl = getOrCreateStatusCompositionTooltipEl();
+      const tooltip = context.tooltip;
+      if (tooltip.opacity === 0) {
+        tooltipEl.style.opacity = "0";
+        return;
+      }
+      if (tooltip.dataPoints && tooltip.dataPoints.length) {
+        const dp = tooltip.dataPoints[0];
+        const label = dp.label || "";
+        const count = dp.raw;
+        const total = getTotal();
+        const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+        const color = dp.dataset.backgroundColor[dp.dataIndex];
+        tooltipEl.innerHTML =
+          '<div style="font-weight:600;margin-bottom:4px;color:' + CHART_TOOLTIP_TEXT + '">' + label + "</div>" +
+          '<div style="display:flex;align-items:center;gap:6px">' +
+            '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';flex-shrink:0"></span>' +
+            "<span>" + count.toLocaleString() + " (" + pct + "%)</span>" +
+          "</div>";
+      }
+      const rect = canvas.getBoundingClientRect();
+      const x = rect.left + tooltip.caretX;
+      const y = rect.top + tooltip.caretY;
+      const tipW = tooltipEl.offsetWidth || 160;
+      const left = x + 12 + tipW > window.innerWidth ? x - tipW - 12 : x + 12;
+      tooltipEl.style.left = left + "px";
+      tooltipEl.style.top = (y - 16) + "px";
+      tooltipEl.style.opacity = "1";
+    }
+
+    function renderStatusComposition(canvas, legendEl, centerEl, labels, data, colors) {
+      const total = data.reduce(function (a, b) { return a + b; }, 0);
+      const externalTooltip = function (ctx) {
+        statusCompositionTooltipHandler(ctx, canvas, function () { return total; });
+      };
+
+      if (centerEl) {
+        centerEl.innerHTML =
+          '<span style="font-size:1.1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2">' +
+          total.toLocaleString() + "</span>" +
+          '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total items</span>';
+      }
+
+      if (statusCompositionChartInstance) {
+        statusCompositionChartInstance.data.labels = labels;
+        statusCompositionChartInstance.data.datasets[0].data = data;
+        statusCompositionChartInstance.data.datasets[0].backgroundColor = colors;
+        statusCompositionChartInstance.options.plugins.tooltip.external = externalTooltip;
+        statusCompositionChartInstance.update();
+      } else {
+        statusCompositionChartInstance = new Chart(canvas.getContext("2d"), {
+          type: "doughnut",
+          data: { labels: labels, datasets: [{ data: data, backgroundColor: colors }] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: "68%",
+            plugins: {
+              legend: { display: false },
+              datalabels: { display: false },
+              tooltip: { enabled: false, external: externalTooltip },
+            },
+            elements: { arc: { borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" } },
+          },
+        });
+        window.__floppyStatsCharts.push(statusCompositionChartInstance);
+      }
+
+      if (legendEl) {
+        legendEl.innerHTML = "";
+        const sortedIndices = labels.map(function (_, i) { return i; })
+          .sort(function (a, b) { return data[b] - data[a]; });
+        sortedIndices.forEach(function (i) {
+          const label = labels[i];
+          const count = data[i];
+          const color = colors[i];
+          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+          const row = document.createElement("div");
+          row.style.cssText = "display:flex;align-items:center;gap:10px;font-size:11px;";
+          row.innerHTML =
+            '<div style="flex-shrink:0;display:flex;align-items:center;gap:6px;min-width:0;width:84px">' +
+              '<span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:' + color + '"></span>' +
+              '<span style="min-width:0;color:#d1d5db;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + "</span>" +
+            "</div>" +
+            '<div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,0.07);overflow:hidden;min-width:40px">' +
+              '<div style="height:100%;border-radius:3px;background:' + color + ';width:' + pct + '%"></div>' +
+            "</div>" +
+            '<span style="flex-shrink:0;width:34px;text-align:center;color:' + CHART_TOOLTIP_TEXT + ';font-weight:700">' + pct + "%</span>" +
+            '<span style="flex-shrink:0;min-width:60px;text-align:center;color:#6b7280;font-variant-numeric:tabular-nums">' + count.toLocaleString() + "</span>";
+          legendEl.appendChild(row);
+        });
+      }
+    }
+
+    function drawStatusComposition(mediaType) {
+      const container = document.getElementById("statusCompositionContainer");
+      const subtitleEl = document.getElementById("statusCompositionSubtitle");
+      const isFiltered = mediaType && mediaType !== "all";
+      const statusLabels = (statusCompositionData.datasets || []).map(function (ds) { return ds.label; });
+      const statusColors = (statusCompositionData.datasets || []).map(function (ds) { return ds.background_color; });
+
+      let labels = [];
+      let data = [];
+      let colors = [];
+      let targetLabel = null;
+
+      if (!isFiltered) {
+        (statusCompositionData.datasets || []).forEach(function (ds, i) {
+          const total = (ds.data || []).reduce(function (a, b) { return a + (Number(b) || 0); }, 0);
+          if (total > 0) {
+            labels.push(statusLabels[i]);
+            data.push(total);
+            colors.push(statusColors[i]);
+          }
+        });
+      } else {
+        targetLabel = MEDIA_SLUG_TO_LABEL[mediaType];
+        const idx = targetLabel ? (statusCompositionData.labels || []).indexOf(targetLabel) : -1;
+        if (idx >= 0) {
+          (statusCompositionData.datasets || []).forEach(function (ds, i) {
+            const value = Number((ds.data || [])[idx]) || 0;
+            if (value > 0) {
+              labels.push(statusLabels[i]);
+              data.push(value);
+              colors.push(statusColors[i]);
+            }
+          });
+        }
+      }
+
+      if (subtitleEl) {
+        subtitleEl.textContent = isFiltered && targetLabel
+          ? targetLabel + " status breakdown."
+          : "What portion of your library is in each state.";
+      }
+
+      if (!labels.length) {
+        if (statusCompositionChartInstance) { statusCompositionChartInstance.destroy(); statusCompositionChartInstance = null; }
+        if (container) {
+          container.innerHTML =
+            '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this filter.</p>';
+        }
+        return;
+      }
+
+      if (container && !container.querySelector("canvas")) {
+        container.innerHTML =
+          '<div class="relative shrink-0" style="width:150px;height:150px;">' +
+            '<div id="statusCompositionCenter" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center"></div>' +
+            '<canvas id="statusCompositionChart" style="position:relative;z-index:1"></canvas>' +
+          "</div>" +
+          '<div id="statusCompositionLegend" class="flex-1 min-w-0 space-y-1.5"></div>';
+        statusCompositionChartInstance = null;
+      }
+
+      const canvas = document.getElementById("statusCompositionChart");
+      const legendEl = document.getElementById("statusCompositionLegend");
+      const centerEl = document.getElementById("statusCompositionCenter");
+      if (canvas) {
+        renderStatusComposition(canvas, legendEl, centerEl, labels, data, colors);
+      }
+    }
+
+    if (statusCompositionData.labels && statusCompositionData.labels.length > 0) {
+      drawStatusComposition(getCurrentMediaType());
+      window.addEventListener("stats-media-type-changed", function () {
+        drawStatusComposition(getCurrentMediaType());
+      });
+    } else {
+      const container = document.getElementById("statusCompositionContainer");
+      if (container) {
+        container.innerHTML =
+          '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this range.</p>';
+      }
+    }
+  }
+
+  // ─── Rating Distribution (score_distribution, aggregated or single-type) ──
+  const ratingDistributionDataEl = document.getElementById("score_distribution");
+  if (ratingDistributionDataEl) {
+    const ratingDistributionData = JSON.parse(ratingDistributionDataEl.textContent || "{}");
+    let ratingDistributionChartInstance = null;
+
+    function buildRatingDistribution(mediaType) {
+      const isFiltered = mediaType && mediaType !== "all";
+      const labels = ratingDistributionData.labels || [];
+      const datasets = ratingDistributionData.datasets || [];
+      const data = labels.map(function () { return 0; });
+      let totalScored = 0;
+
+      function addDataset(ds) {
+        (ds.data || []).forEach(function (v, i) {
+          const value = Number(v) || 0;
+          data[i] += value;
+          totalScored += value;
+        });
+      }
+
+      let targetLabel = null;
+      if (!isFiltered) {
+        datasets.forEach(addDataset);
+      } else {
+        targetLabel = MEDIA_SLUG_TO_LABEL[mediaType];
+        const match = datasets.find(function (ds) { return ds.label === targetLabel; });
+        if (match) addDataset(match);
+      }
+
+      return { labels: labels, data: data, totalScored: totalScored, targetLabel: targetLabel };
+    }
+
+    function drawRatingDistribution(mediaType) {
+      const container = document.getElementById("ratingDistributionContainer");
+      const subtitleEl = document.getElementById("ratingDistributionSubtitle");
+      const built = buildRatingDistribution(mediaType);
+
+      if (subtitleEl) {
+        const itemsPhrase = built.totalScored.toLocaleString() + " rated" +
+          (built.targetLabel ? " " + built.targetLabel : "") + " item" + (built.totalScored === 1 ? "" : "s");
+        subtitleEl.textContent = "How your " + itemsPhrase + " are distributed.";
+      }
+
+      if (!built.totalScored) {
+        if (ratingDistributionChartInstance) { ratingDistributionChartInstance.destroy(); ratingDistributionChartInstance = null; }
+        if (container) {
+          container.innerHTML =
+            '<p class="text-sm text-gray-500 text-center py-8 w-full">No ratings yet for this filter.</p>';
+        }
+        return;
+      }
+
+      if (container && !container.querySelector("canvas")) {
+        container.innerHTML = '<canvas id="ratingDistributionChart"></canvas>';
+        ratingDistributionChartInstance = null;
+      }
+
+      const canvas = document.getElementById("ratingDistributionChart");
+      if (!canvas) return;
+
+      const chartOptions = JSON.parse(JSON.stringify(barChartConfig));
+      chartOptions.scales.x.stacked = false;
+      chartOptions.scales.y.stacked = false;
+      chartOptions.scales.x.grid = { display: false };
+      chartOptions.scales.y.border = { display: false };
+      // Headroom so the top-of-bar count/percentage datalabel never clips
+      // against the tallest bar. grace is a percentage of the data range, so
+      // it shrinks in pixel terms as the container gets shorter -- pair it
+      // with fixed pixel padding that reserves room for the two-line label
+      // regardless of container height.
+      chartOptions.scales.y.grace = "15%";
+      chartOptions.layout = { padding: { top: 26 } };
+      if (chartOptions.plugins && chartOptions.plugins.legend) {
+        chartOptions.plugins.legend.display = false;
+      }
+      chartOptions.plugins.datalabels = {
+        display: true,
+        anchor: "end",
+        align: "end",
+        color: "#9ca3af",
+        font: { size: 10 },
+        formatter: function (value) {
+          if (!value) return "";
+          const pct = built.totalScored > 0 ? ((value / built.totalScored) * 100).toFixed(1) : "0.0";
+          return value.toLocaleString() + "\n(" + pct + "%)";
+        },
+      };
+      chartOptions.plugins.tooltip = {
+        enabled: false,
+        mode: "index",
+        intersect: false,
+        external: function (context) {
+          let tooltipEl = document.getElementById("ratingDistributionTooltip");
+          if (!tooltipEl) {
+            tooltipEl = document.createElement("div");
+            tooltipEl.id = "ratingDistributionTooltip";
+            tooltipEl.style.cssText =
+              "position:absolute;z-index:100;pointer-events:none;opacity:0;transition:opacity 0.2s ease;" +
+              "background:" + CHART_TOOLTIP_BG + ";border:1px solid " + CHART_TOOLTIP_BORDER + ";border-radius:6px;" +
+              "padding:8px 10px;font-size:12px;color:" + CHART_TOOLTIP_TEXT + ";box-shadow:0 4px 12px rgba(0,0,0,0.4);";
+            document.body.appendChild(tooltipEl);
+          }
+          const tooltipModel = context.tooltip;
+          if (tooltipModel.opacity === 0) {
+            tooltipEl.style.opacity = 0;
+            return;
+          }
+          if (tooltipModel.body) {
+            const dataIndex = tooltipModel.dataPoints[0].dataIndex;
+            const value = built.data[dataIndex] || 0;
+            tooltipEl.innerHTML =
+              '<div style="font-weight:600;color:' + CHART_TOOLTIP_TEXT + '">Rating ' + built.labels[dataIndex] + "</div>" +
+              '<div style="margin-top:4px">' + value.toLocaleString() + (value === 1 ? " item" : " items") + "</div>";
+          }
+          const position = context.chart.canvas.getBoundingClientRect();
+          tooltipEl.style.opacity = 1;
+          tooltipEl.style.left = position.left + window.scrollX + tooltipModel.caretX + "px";
+          tooltipEl.style.top = position.top + window.scrollY + tooltipModel.caretY + "px";
+          tooltipEl.style.transform = "translate(-50%, -100%)";
+        },
+      };
+
+      const chartData = {
+        labels: built.labels,
+        datasets: [{
+          label: "Items",
+          data: built.data,
+          backgroundColor: "#6366f1",
+          borderColor: "rgba(255, 255, 255, 0.1)",
+          borderRadius: 6,
+          borderWidth: 1,
+        }],
+      };
+
+      if (ratingDistributionChartInstance) {
+        ratingDistributionChartInstance.data = chartData;
+        ratingDistributionChartInstance.options = chartOptions;
+        ratingDistributionChartInstance.update();
+      } else {
+        ratingDistributionChartInstance = new Chart(canvas.getContext("2d"), {
+          type: "bar",
+          data: chartData,
+          options: chartOptions,
+        });
+        window.__floppyStatsCharts.push(ratingDistributionChartInstance);
+      }
+    }
+
+    if (ratingDistributionData.labels && ratingDistributionData.labels.length > 0) {
+      drawRatingDistribution(getCurrentMediaType());
+      window.addEventListener("stats-media-type-changed", function () {
+        drawRatingDistribution(getCurrentMediaType());
+      });
+    } else {
+      const container = document.getElementById("ratingDistributionContainer");
+      if (container) {
+        container.innerHTML =
+          '<p class="text-sm text-gray-500 text-center py-8 w-full">No ratings yet.</p>';
+      }
+    }
+  }
+
+  // ─── Status Breakdown (status_distribution, table by media type) ──────────
+  const statusBreakdownDataEl = document.getElementById("status_distribution");
+  if (statusBreakdownDataEl) {
+    const statusBreakdownData = JSON.parse(statusBreakdownDataEl.textContent || "{}");
+
+    // Reverse of MEDIA_SLUG_TO_LABEL (readable label -> slug) so a row's
+    // display name can be matched back to its icon/color in MEDIA_TYPE_VISUALS.
+    const LABEL_TO_MEDIA_SLUG = {};
+    Object.keys(MEDIA_SLUG_TO_LABEL).forEach(function (slug) {
+      LABEL_TO_MEDIA_SLUG[MEDIA_SLUG_TO_LABEL[slug]] = slug;
+    });
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, function (ch) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+      });
+    }
+
+    function drawStatusBreakdown(mediaType) {
+      const container = document.getElementById("statusBreakdownContainer");
+      const isFiltered = mediaType && mediaType !== "all";
+      const targetLabel = isFiltered ? MEDIA_SLUG_TO_LABEL[mediaType] : null;
+      const subtitleText = targetLabel
+        ? targetLabel + " status counts."
+        : "Breakdown by type across all status states.";
+
+      const typeLabels = statusBreakdownData.labels || [];
+      let rowIndices = [];
+      typeLabels.forEach(function (label, i) {
+        if (!isFiltered || label === targetLabel) rowIndices.push(i);
+      });
+
+      // Only show status columns that actually have items, mirroring the
+      // donut/rating-distribution "hide empty series" convention.
+      const statusColumns = (statusBreakdownData.datasets || []).filter(function (ds) {
+        return (ds.total || (ds.data || []).reduce(function (a, b) { return a + (Number(b) || 0); }, 0)) > 0;
+      });
+
+      if (!rowIndices.length || !statusColumns.length) {
+        if (container) {
+          container.innerHTML =
+            '<p class="text-xs text-gray-400 mb-3">' + escapeHtml(subtitleText) + "</p>" +
+            '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this filter.</p>';
+        }
+        return;
+      }
+
+      const totalFor = function (idx) {
+        return statusColumns.reduce(function (sum, ds) { return sum + (Number((ds.data || [])[idx]) || 0); }, 0);
+      };
+      rowIndices = rowIndices.slice().sort(function (a, b) { return totalFor(b) - totalFor(a); });
+
+      const colWidth = function (ds) { return ds.label === "Completed" ? 116 : 84; };
+
+      let html = '<div class="statistics-card-scroll" style="overflow-x:auto;">';
+      html += '<div style="min-width:' + (170 + statusColumns.reduce(function (sum, ds) { return sum + colWidth(ds); }, 0) + 56) + 'px;">';
+
+      // Subtitle + column-header row share a single line.
+      html += '<div class="flex items-center gap-3 pb-2 mb-1 border-b border-gray-700">';
+      html +=
+        '<p class="text-xs text-gray-400 flex-1 min-w-0" style="min-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" ' +
+        'id="statusBreakdownSubtitle" title="' + escapeHtml(subtitleText) + '">' + escapeHtml(subtitleText) + "</p>";
+      html += '<div class="shrink-0 text-right text-xs font-medium text-gray-400" style="width:56px">Total</div>';
+      statusColumns.forEach(function (ds) {
+        html +=
+          '<div class="shrink-0 text-right text-xs font-medium" style="width:' + colWidth(ds) + 'px;color:' + ds.background_color + '">' +
+          escapeHtml(ds.label) + "</div>";
+      });
+      html += "</div>";
+
+      // Data rows.
+      rowIndices.forEach(function (idx) {
+        const typeLabel = typeLabels[idx];
+        const slug = LABEL_TO_MEDIA_SLUG[typeLabel];
+        const visuals = MEDIA_TYPE_VISUALS[slug] || {};
+        const total = totalFor(idx);
+
+        html += '<div class="flex items-center gap-3 py-2 border-b border-gray-700/50 last:border-0">';
+        html +=
+          '<div class="flex items-center gap-2 flex-1 min-w-0" style="min-width:110px">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
+          'class="w-4 h-4 shrink-0" style="color:' + (visuals.color || "#9ca3af") + '">' + (visuals.icon || "") + "</svg>" +
+          '<span class="text-sm text-gray-300 truncate">' + escapeHtml(typeLabel) + "</span>" +
+          "</div>";
+        html +=
+          '<div class="shrink-0 text-sm font-semibold text-white text-right" style="width:56px">' +
+          total.toLocaleString() + "</div>";
+
+        statusColumns.forEach(function (ds) {
+          const value = Number((ds.data || [])[idx]) || 0;
+          if (ds.label === "Completed") {
+            const pct = total > 0 ? Math.max(0, Math.min(100, (value / total) * 100)) : 0;
+            html +=
+              '<div class="shrink-0 flex items-center gap-2" style="width:' + colWidth(ds) + 'px">' +
+              '<div class="rounded-full overflow-hidden shrink-0" style="width:34px;height:4px;background:rgba(255,255,255,0.1)">' +
+              '<div style="height:100%;width:' + pct + '%;background:' + ds.background_color + '"></div>' +
+              "</div>" +
+              '<span class="text-sm text-right flex-1" style="color:' + ds.background_color + '">' + value.toLocaleString() + "</span>" +
+              "</div>";
+          } else {
+            html +=
+              '<div class="shrink-0 text-sm text-right" style="width:' + colWidth(ds) + 'px;color:' + ds.background_color + '">' +
+              value.toLocaleString() + "</div>";
+          }
+        });
+
+        html += "</div>";
+      });
+
+      html += "</div></div>";
+
+      if (container) container.innerHTML = html;
+    }
+
+    if (statusBreakdownData.labels && statusBreakdownData.labels.length > 0) {
+      drawStatusBreakdown(getCurrentMediaType());
+      window.addEventListener("stats-media-type-changed", function () {
+        drawStatusBreakdown(getCurrentMediaType());
+      });
+    } else {
+      const container = document.getElementById("statusBreakdownContainer");
+      if (container) {
+        container.innerHTML =
+          '<p class="text-sm text-gray-500 text-center py-8 w-full">No status data available for this range.</p>';
+      }
+    }
+  }
+
+  // ─── Featured Repeat Player "X% of titles" ring ──────────────────────────
+  (function initFeaturedPersonRing() {
+    let featuredPersonRingChart = null;
+    let featuredPersonRingCanvas = null;
+
+    function readFeaturedPersonPct() {
+      const el = document.getElementById("featured_person_pct");
+      if (!el) return 0;
+      try {
+        return Number(JSON.parse(el.textContent || "0")) || 0;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    window.renderFeaturedPersonRing = function (pct) {
+      const canvas = document.getElementById("featuredPersonRingChart");
+      const centerEl = document.getElementById("featuredPersonRingCenter");
+      if (!canvas) {
+        if (featuredPersonRingChart) {
+          featuredPersonRingChart.destroy();
+        }
+        featuredPersonRingChart = null;
+        featuredPersonRingCanvas = null;
+        return;
+      }
+      const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+      const data = [clamped, Math.max(0, 100 - clamped)];
+      const colors = ["#6366f1", "rgba(255,255,255,0.07)"];
+
+      if (centerEl) {
+        centerEl.innerHTML =
+          '<span style="font-size:1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2">' +
+          clamped.toFixed(1).replace(/\.0$/, "") + "%</span>" +
+          '<span style="font-size:0.6rem;color:#9ca3af;line-height:1.2">of titles</span>';
+      }
+
+      if (featuredPersonRingChart && featuredPersonRingCanvas !== canvas) {
+        featuredPersonRingChart.destroy();
+        featuredPersonRingChart = null;
+        featuredPersonRingCanvas = null;
+      }
+
+      if (featuredPersonRingChart) {
+        featuredPersonRingChart.data.datasets[0].data = data;
+        featuredPersonRingChart.data.datasets[0].backgroundColor = colors;
+        featuredPersonRingChart.update();
+        return;
+      }
+
+      featuredPersonRingChart = new Chart(canvas.getContext("2d"), {
+        type: "doughnut",
+        data: { labels: ["Featured", "Other"], datasets: [{ data: data, backgroundColor: colors }] },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          cutout: "68%",
+          plugins: {
+            legend: { display: false },
+            datalabels: { display: false },
+            tooltip: { enabled: false },
+          },
+          elements: { arc: { borderWidth: 1, borderColor: "rgba(0,0,0,0.15)" } },
+        },
+      });
+      featuredPersonRingCanvas = canvas;
+      window.__floppyStatsCharts.push(featuredPersonRingChart);
+    };
+
+    if (document.getElementById("featuredPersonRingChart")) {
+      window.renderFeaturedPersonRing(readFeaturedPersonPct());
+    }
+  })();
+
+  window.dispatchEvent(new CustomEvent("stats-charts-initialized"));
 
   // Initial sizing and on resize for the copied score chart wrapper
   matchScoreCopyHeight();
-  window.addEventListener("resize", function () {
-    // Debounce-ish
-    clearTimeout(window._scoreCopyResizeTimer);
-    window._scoreCopyResizeTimer = setTimeout(matchScoreCopyHeight, 120);
-  });
-});
+  // Re-bind through a window-level reference so the resize listener is only
+  // attached once but always uses the current page's sizing function.
+  window.__floppyStatsFit = matchScoreCopyHeight;
+  if (!window.__floppyStatsResizeBound) {
+    window.__floppyStatsResizeBound = true;
+    window.addEventListener("resize", function () {
+      // Debounce-ish
+      clearTimeout(window._scoreCopyResizeTimer);
+      window._scoreCopyResizeTimer = setTimeout(function () {
+        if (window.__floppyStatsFit) {
+          window.__floppyStatsFit();
+        }
+      }, 120);
+    });
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initStatisticsCharts, { once: true });
+} else {
+  // Script was injected after DOM load (e.g. boosted navigation swap).
+  initStatisticsCharts();
+}
+})();

@@ -1,0 +1,10 @@
+{% comment %}
+  Renders the featured person's media strip row (poster + rating + hours chip),
+  horizontally scrollable, via _scrollable_row.html + person_media_strip_card.html.
+
+  Required context: person_media_strip_row (dict built by
+  stats_cast_crew.build_media_strip_row — row_id/items/total/loaded_count/...).
+  Rendered both on full statistics page load and by the select_featured_person
+  POST endpoint (as the "strip_html" fragment).
+{% endcomment %}
+{% include "app/components/_scrollable_row.html" with row=person_media_strip_row grid_template="app/components/person_media_strip_card.html" %}

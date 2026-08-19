@@ -3,19 +3,24 @@
 
 {# djlint:off #}
 <!DOCTYPE html>
-<html lang="en" class="scheme-dark bg-[#212529]">
+<html lang="en" class="scheme-dark bg-[var(--color-page-bg)]">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="keywords" content="Yamtrack, Media Tracker">
-    <meta name="description" content="Search and track media on Yamtrack.">
+    <meta name="keywords" content="Floppy, Media Tracker">
+    <meta name="description" content="Search and track media on Floppy.">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-title" content="Yamtrack">
+    <meta name="mobile-web-app-title" content="Floppy">
+    {% comment %}
+      Lets base.html's htmx guard recognize an entrance page that arrived as a
+      fragment response and navigate instead of swapping it in (#386).
+    {% endcomment %}
+    <meta name="floppy-page" content="entrance">
 
     <title>
       {% block title %}
-        Yamtrack
+        Floppy
       {% endblock title %}
     </title>
 
@@ -25,6 +30,14 @@
     <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}{% get_static_file_mtime 'css/main.css' %}">
 
     <script src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
+    <script>
+      // Boosted navigation: never serve history entries from the local
+      // snapshot cache; back/forward instead does a normal full page load.
+      if (window.htmx) {
+        htmx.config.historyCacheSize = 0;
+        htmx.config.refreshOnHistoryMiss = true;
+      }
+    </script>
     <script defer src="{% static 'js/libraries/alpinejs-3.14.9.min.js' %}"></script>
     <script src="{% static 'js/libraries/lazysizes-5.3.2.min.js' %}" async></script>
 
@@ -41,12 +54,19 @@
 
   <body>
     {% block body %}
-      <div class="min-h-screen bg-[#212529] text-gray-100 flex flex-col">
+      <div class="min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)] flex flex-col">
         {# Simple header for public pages #}
-        <header class="bg-[#1a1d20] border-b border-[#2c3136] shadow-md">
+        <header class="bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
           <div class="container mx-auto px-4">
             <div class="h-16 flex items-center justify-between">
-              <h1 class="text-2xl font-semibold text-gray-100">Yamtrack</h1>
+              <h1 class="flex items-center">
+                <img src="{% static 'img/floppy-logo.png' %}"
+                     srcset="{% static 'img/floppy-logo.png' %} 1x, {% static 'img/floppy-logo@2x.png' %} 2x"
+                     alt="Floppy"
+                     width="158"
+                     height="48"
+                     class="h-9 w-auto">
+              </h1>
               {% if REGISTRATION %}
                 <a href="{% url 'account_login' %}"
                    class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors text-sm">
@@ -63,12 +83,12 @@
           {% endblock content %}
         </main>
 
-        <footer class="border-t border-[#2c3136] bg-[#1a1d20]">
+        <footer class="border-t border-[var(--color-border)] bg-[var(--color-sidebar)]">
           <div class="container mx-auto px-4 py-6 space-y-2">
-            <p class="text-sm text-gray-400">
-              Yamtrack is a self-hosted media tracker for books, games, movies, music, podcasts, tv shows, and more.
+            <p class="text-sm text-[var(--color-text-muted)]">
+              Floppy is a self-hosted media tracker for books, games, movies, music, podcasts, tv shows, and more.
             </p>
-            <p class="text-sm text-gray-400">
+            <p class="text-sm text-[var(--color-text-muted)]">
               This fork is maintained by
               {% if FORK_OWNER_URL %}
                 <a class="text-indigo-400 hover:text-indigo-300 underline" href="{{ FORK_OWNER_URL }}" rel="noopener" target="_blank">
@@ -87,7 +107,7 @@
       <div class="fixed top-24 right-0 left-0 z-50 flex justify-center pointer-events-none">
         <div class="w-full max-w-xl px-4 space-y-2 pointer-events-auto">
           {% for message in messages %}
-            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-white toast-{{ message.tags }} opacity-0"
+            <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg text-[var(--color-text)] toast-{{ message.tags }} opacity-0"
               x-data="{
                   init() {
                     // Start entrance animation after a tiny delay
@@ -122,51 +142,8 @@
       </div>
     {% endif %}
 
-    <script>
-      // Media card hover - slide body up to reveal expanded title + year
-      function initMediaCardHover() {
-        document.querySelectorAll('.search-result-card').forEach(card => {
-          if (card.dataset.hoverInit) return;
-          card.dataset.hoverInit = 'true';
-
-          const title = card.querySelector('.media-card-title, .search-result-title');
-          const year = card.querySelector('.media-card-year');
-          const body = card.querySelector('.media-card-body');
-          if (!title || !body) return;
-
-          // Measure expanded state: temporarily expand title to 3 lines and show year
-          title.style.webkitLineClamp = '3';
-          let yearHeight = 0;
-          if (year) {
-            year.style.display = 'block';
-            year.style.opacity = '1';
-            yearHeight = year.offsetHeight;
-          }
-
-          // Force reflow to get accurate measurements
-          const expandedTitleHeight = title.scrollHeight;
-          const initialTitleHeight = title.offsetHeight;
-
-          // Reset
-          title.style.webkitLineClamp = '';
-          if (year) {
-            year.style.display = '';
-            year.style.opacity = '';
-          }
-
-          // Calculate extra height: additional title lines + year
-          const extraTitleHeight = Math.max(0, expandedTitleHeight - initialTitleHeight);
-          const extraHeight = extraTitleHeight + yearHeight;
-
-          card.style.setProperty('--year-height', extraHeight + 'px');
-        });
-      }
-
-      // Init on load and after HTMX swaps
-      document.addEventListener('DOMContentLoaded', initMediaCardHover);
-      document.body.addEventListener('htmx:afterSwap', initMediaCardHover);
-      document.body.addEventListener('htmx:afterSettle', initMediaCardHover);
-    </script>
+    {% block js %}
+    {% endblock js %}
 
     {% block extra_scripts %}
     {% endblock extra_scripts %}

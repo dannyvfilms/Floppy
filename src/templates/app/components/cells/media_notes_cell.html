@@ -1,0 +1,7 @@
+{% if media.notes %}
+  <span class="block max-w-xs truncate" title="{{ media.notes }}">
+    {{ media.notes }}
+  </span>
+{% else %}
+  <span class="text-gray-500">-</span>
+{% endif %}

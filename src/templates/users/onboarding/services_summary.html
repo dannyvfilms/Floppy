@@ -1,0 +1,43 @@
+{% extends "users/onboarding/_layout.html" %}
+{% load user_tags %}
+
+{% block step_title %}Tracking {{ media_type_count }} media type{{ media_type_count|pluralize }}{% endblock step_title %}
+
+{% block step_explanation %}
+  <p>
+    Next we can walk you through connecting the services you picked, one at
+    a time, and kick off an initial import.
+  </p>
+  <p>You can always finish this later from Settings &gt; Import.</p>
+{% endblock step_explanation %}
+
+{% block step_options %}
+  {% if selected_sources %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+      {% for source in selected_sources %}
+        <div class="flex items-center gap-3 p-3 bg-[var(--color-surface-strong)] rounded-lg">
+          {% source_display source.slug %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-sm text-[var(--color-text-muted)] mb-6">
+      You didn't pick any services to connect — that's fine, you can add
+      them anytime from Settings &gt; Import.
+    </p>
+  {% endif %}
+  <form method="post" class="flex items-center justify-between">
+    {% csrf_token %}
+    <button type="submit"
+            name="action"
+            value="later"
+            class="px-4 py-2 text-sm rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
+      Set up later
+    </button>
+    <button type="submit"
+            class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+            {% if not selected_sources %}disabled{% endif %}>
+      Set up now
+    </button>
+  </form>
+{% endblock step_options %}
