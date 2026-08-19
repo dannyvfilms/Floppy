@@ -26,7 +26,8 @@ COMMON=(--parallel --buffer)
 case "${1:-}" in
   --full)
     shift
-    exec uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@"
+    exec env FLOPPY_TEST_ALLOW_NETWORK=1 \
+      uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@"
     ;;
   --slow)
     shift
@@ -34,7 +35,8 @@ case "${1:-}" in
     ;;
   --network)
     shift
-    exec uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag network
+    exec env FLOPPY_TEST_ALLOW_NETWORK=1 \
+      uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag network
     ;;
   "")
     exec uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" \
