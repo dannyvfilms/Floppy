@@ -2,6 +2,10 @@ name: Cleanup Docker Images
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   ghcr-cleanup-image:
     name: ghcr cleanup action
