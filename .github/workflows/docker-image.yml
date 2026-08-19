@@ -2,12 +2,6 @@ name: Docker Image
 
 on:
   workflow_dispatch:
-    inputs:
-      bootstrap_ghcr:
-        description: "Use GHCR_TOKEN once to create the renamed floppy package"
-        required: false
-        default: false
-        type: boolean
   push:
     branches:
       - "release"
@@ -186,14 +180,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # This ensures all tags are fetched for git describe
+          fetch-depth: 0 # Required for version metadata and stable-tag validation.
 
       - name: Get version from git
         id: get-version
         run: |
           VERSION=$(git describe --tags 2>/dev/null || echo "dev")
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Using version: $VERSION"
+
+      - name: Validate stable release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Invalid stable release tag::Expected vX.Y.Z, got $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+          git fetch --no-tags origin release:refs/remotes/origin/release
+          tag_commit=$(git rev-list -n 1 "$GITHUB_REF_NAME")
+          release_commit=$(git rev-parse refs/remotes/origin/release)
+
+          if [[ "$tag_commit" != "$release_commit" ]]; then
+            echo "::error title=Stable release tag is not release HEAD::Tag $GITHUB_REF_NAME resolves to $tag_commit, but release is $release_commit. Create the release tag from the verified release HEAD."
+            exit 1
+          fi
+
+          echo "Stable release tag $GITHUB_REF_NAME is anchored to release HEAD $release_commit"
 
       - name: Setup Docker buildx
         uses: docker/setup-buildx-action@v4
@@ -206,41 +222,40 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           # Dual-publish during the rename grace period: the legacy path keeps
-          # receiving identical tags so pre-rename deployments still get
-          # updates. Drop the second line once traffic to it has died off.
+          # receiving identical approved tags so pre-rename deployments still
+          # get updates. Drop the second line only after that migration is done.
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
             ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}
           tags: |
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/latest' }}
-            type=raw,value=release,enable=${{ github.ref == 'refs/heads/release' || startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/latest' }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=release,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      # Pull requests build both architectures to prove the image still
-      # cross-compiles, but they must never write to the registry. A pr-N tag
-      # has no consumer and lands in the same public package users pull from,
-      # where nothing distinguishes it from a release. Publishing happens on
-      # push to latest/release and on v* tags only.
+      # Publication contract:
+      # - PR: build only, never authenticate or publish (#782/#793).
+      # - latest branch: publish the moving :dev channel only (#797).
+      # - release branch: validate only; a branch update is not a release.
+      # - vX.Y.Z tag at exact release HEAD: publish stable aliases and semver.
+      # - workflow_dispatch: validation only; it is not a publication backdoor.
       - name: Log into registry ${{ env.REGISTRY }}
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/latest' || startsWith(github.ref, 'refs/tags/v'))
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
-          # The one-time bootstrap is needed because floppy was created by a
-          # PAT-based push, while the existing yamtrack package is already
-          # associated with this repository. Normal builds stay on GITHUB_TOKEN.
-          username: ${{ inputs.bootstrap_ghcr == true && 'dannyvfilms' || github.actor }}
-          password: ${{ inputs.bootstrap_ghcr == true && secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
         id: build-and-push
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/latest' || startsWith(github.ref, 'refs/tags/v')) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
