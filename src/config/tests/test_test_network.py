@@ -28,8 +28,10 @@ class TestNetworkIsolationTests(TestCase):
         with self.assertRaisesRegex(
             UnexpectedExternalNetworkAccessError,
             "External HTTP is disabled for ordinary tests",
-        ):
+        ) as error:
             requests.get("https://example.com/provider-fixture", timeout=30)
+
+        self.assertIsInstance(error.exception, requests.ConnectionError)
 
     def test_explicit_network_run_is_detected(self):
         with mock.patch.dict(os.environ, {"FLOPPY_TEST_ALLOW_NETWORK": "1"}):
