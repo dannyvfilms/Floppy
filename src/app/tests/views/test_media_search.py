@@ -60,6 +60,7 @@ class MediaSearchViewTests(TestCase):
             "test",
             1,
             Sources.TMDB.value,
+            user=self.user,
             language="en",
         )
 
@@ -175,6 +176,7 @@ class MediaSearchViewTests(TestCase):
             "Pentatonix",
             1,
             Sources.MUSICBRAINZ.value,
+            user=self.user,
             language="en",
         )
 
@@ -226,5 +228,6 @@ class MediaSearchViewTests(TestCase):
             "chainsaw",
             1,
             Sources.TVDB.value,
+            user=self.user,
             language="en",
         )

@@ -685,7 +685,7 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test Hardcover Book")
 
-        mock_book.assert_called_once_with("1", edition_id=None)
+        mock_book.assert_called_once_with("1", edition_id=None, user=None)
 
     @patch("app.providers.mal.search")
     def test_search_anime(self, mock_search):
@@ -788,7 +788,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(result, [{"title": "Test Hardcover Book"}])
 
-        mock_search.assert_called_once_with("test", 1)
+        mock_search.assert_called_once_with("test", 1, user=None)
 
     @patch("app.providers.openlibrary.search")
     def test_search_openlibrary_book(self, mock_search):
