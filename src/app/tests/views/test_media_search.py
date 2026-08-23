@@ -61,6 +61,7 @@ class MediaSearchViewTests(TestCase):
             1,
             Sources.TMDB.value,
             language="en",
+            user=self.user,
         )
 
     @patch("app.providers.services.search")
@@ -176,6 +177,7 @@ class MediaSearchViewTests(TestCase):
             1,
             Sources.MUSICBRAINZ.value,
             language="en",
+            user=self.user,
         )
 
     @patch("app.providers.services.search")
@@ -227,4 +229,5 @@ class MediaSearchViewTests(TestCase):
             1,
             Sources.TVDB.value,
             language="en",
+            user=self.user,
         )

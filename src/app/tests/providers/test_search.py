@@ -379,7 +379,7 @@ class SearchById(TestCase):
         )
         self.assertIsNotNone(result)
         self.assertEqual(result["results"][0]["title"], "Dune")
-        mock_book.assert_called_once_with(42)
+        mock_book.assert_called_once_with(42, user=None)
 
     def test_non_id_title_query_returns_none(self):
         """search_by_id returns None for a plain-text (non-ID) query."""

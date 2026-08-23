@@ -2170,6 +2170,7 @@ class MediaDetailsViewTests(TestCase):
             "377938",
             Sources.HARDCOVER.value,
             language="en",
+            user=self.user,
         )
 
     @patch("app.providers.services.get_media_metadata")
@@ -2238,6 +2239,7 @@ class MediaDetailsViewTests(TestCase):
             "10193",
             Sources.TMDB.value,
             language="en",
+            user=self.user,
         )
         self.assertContains(response, "media-grid-row-detail-cast", html=False)
         self.assertContains(response, "Tom Hanks")
@@ -2499,6 +2501,8 @@ class MediaDetailsViewTests(TestCase):
             season_numbers=None,
             episode_number=None,
             language=None,
+            edition_id=None,
+            user=None,
         ):
             del media_type, media_id, season_numbers, episode_number, language
             if source == Sources.TMDB.value:
@@ -4103,6 +4107,8 @@ class MediaDetailsViewTests(TestCase):
             season_numbers=None,
             episode_number=None,
             language=None,
+            edition_id=None,
+            user=None,
         ):
             del media_id, episode_number, language
             if media_type == MediaTypes.ANIME.value and source == Sources.TVDB.value:
@@ -4381,6 +4387,8 @@ class MediaDetailsViewTests(TestCase):
             season_numbers=None,
             episode_number=None,
             language=None,
+            edition_id=None,
+            user=None,
         ):
             del media_id, episode_number, language
             if media_type == MediaTypes.ANIME.value and source == Sources.TVDB.value:
@@ -7833,6 +7841,8 @@ class MediaDetailsViewTests(TestCase):
             season_numbers=None,
             episode_number=None,
             language=None,
+            edition_id=None,
+            user=None,
         ):
             del episode_number, language
             self.assertEqual(media_id, "114410")
@@ -8117,6 +8127,8 @@ class MediaDetailsViewTests(TestCase):
             season_numbers=None,
             episode_number=None,
             language=None,
+            edition_id=None,
+            user=None,
         ):
             del episode_number, language
             self.assertEqual(media_id, "76703")
@@ -8509,7 +8521,7 @@ class MediaDetailsViewTests(TestCase):
                 (MediaTypes.TV.value, "1396", Sources.TMDB.value),
             )
             self.assertFalse(args)
-            self.assertEqual(set(kwargs) - {"language"}, set())
+            self.assertEqual(set(kwargs), {"language", "user"})
             detail_call_count["count"] += 1
             if detail_call_count["count"] == 1:
                 return stale_metadata
