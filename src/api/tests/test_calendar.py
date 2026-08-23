@@ -104,9 +104,7 @@ class CalendarTests(FloppyApiTestCase):
             "api_calendar",
             headers=self.auth_headers,
             params={
-                "start_date": (
-                    future_event_date - timezone.timedelta(days=5)
-                ).isoformat()
+                "start_date": future_event_date.isoformat()
             },
         )
         self.assertEqual(response.status_code, 200)
