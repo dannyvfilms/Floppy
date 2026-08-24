@@ -1824,8 +1824,14 @@ def _media_lookup_for_items(
                         primary_entry.promote_to_completed_if_fully_watched(
                             max_progress=getattr(primary_entry, "max_progress", None),
                         )
-                    primary_entry.status = effective_status
-                    primary_entry.aggregated_status = effective_status
+                    if not (
+                        effective_status == Status.COMPLETED.value
+                        and primary_entry.status == Status.IN_PROGRESS.value
+                    ):
+                        primary_entry.status = effective_status
+                        primary_entry.aggregated_status = effective_status
+                    else:
+                        primary_entry.aggregated_status = primary_entry.status
             _annotate_home_card_images(candidate_entries)
 
             for primary_entry in candidate_entries:
