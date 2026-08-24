@@ -27,7 +27,84 @@ logger = logging.getLogger(__name__)
 # user's resolve_watch_date behavior) from an explicit value, including None
 # (blank date deliberately chosen on the completion form).
 _UNSET_END_DATE = object()
+# Marks an open-but-unfilled metadata memo, see `TV._fetch_tv_metadata`.
+_UNSET_TV_METADATA = object()
 MIN_VALID_RELEASE_YEAR = 1900
+
+# How a provider's production status is classified. Only ENDED permits
+# finalizing a tracked show, so UNKNOWN (the provider said something we do not
+# recognize) and ABSENT (it said nothing) are both non-terminal by
+# construction: a renamed, localized or malformed value must never read as
+# "ended" and silently complete a show the user is still watching (#375).
+PRODUCTION_STATUS_ONGOING = "ongoing"
+PRODUCTION_STATUS_ENDED = "ended"
+PRODUCTION_STATUS_UNKNOWN = "unknown"
+PRODUCTION_STATUS_ABSENT = ""
+
+# TMDB, TVDB and the anime providers each spell these differently. Being
+# non-exhaustive here is safe - an unlisted value falls through to UNKNOWN,
+# which blocks completion - so err towards leaving a value out rather than
+# guessing it is terminal.
+ONGOING_PRODUCTION_STATUSES = frozenset(
+    {
+        # TMDB
+        "returning series",
+        "in production",
+        "post production",
+        "planned",
+        "pilot",
+        # TVDB
+        "continuing",
+        "upcoming",
+        # AniList / MAL
+        "releasing",
+        "ongoing",
+        "currently airing",
+        "not yet aired",
+        "not yet released",
+        "hiatus",
+        "on hiatus",
+    },
+)
+
+# The only vocabulary that lets a show be finalized. Keep it conservative:
+# every addition here is a new way for a sync to complete someone's show.
+TERMINAL_PRODUCTION_STATUSES = frozenset(
+    {
+        # TMDB / TVDB
+        "ended",
+        "canceled",
+        "cancelled",
+        # AniList / MAL
+        "finished",
+        "finished airing",
+        "completed",
+        "complete",
+        "concluded",
+        "discontinued",
+    },
+)
+
+
+def classify_production_status(raw_status):
+    """Classify a provider's production status.
+
+    Returns PRODUCTION_STATUS_ONGOING, _ENDED, _UNKNOWN (the provider reported
+    something unrecognized) or _ABSENT (it reported nothing). Callers must
+    treat anything other than _ENDED as "not proven finished" - an allowlist
+    of ongoing values inverted into "ended" would make every unrecognized
+    string terminal.
+    """
+    text = "" if raw_status is None else str(raw_status).strip()
+    if not text:
+        return PRODUCTION_STATUS_ABSENT
+
+    normalized = text.casefold().replace("_", " ")
+    if normalized in ONGOING_PRODUCTION_STATUSES:
+        return PRODUCTION_STATUS_ONGOING
+    if normalized in TERMINAL_PRODUCTION_STATUSES:
+        return PRODUCTION_STATUS_ENDED
+    return PRODUCTION_STATUS_UNKNOWN
 
 
 class RewatchAlreadyCompleteError(Exception):
@@ -541,6 +618,65 @@ class TV(Media):
                 fields=["status"],
             )
 
+    def _fetch_tv_metadata(self):
+        """Return this show's provider metadata, or None if unreachable.
+
+        None means the provider could not be reached, which callers must not
+        confuse with "the provider answered and carries no status". Reuses the
+        value fetched earlier in the same completion pass when one is open (see
+        `_handle_completed_season`); outside such a pass it always refetches,
+        so a later operation on the same instance can't read stale metadata.
+        """
+        cached = getattr(self, "_tv_metadata_cache", _UNSET_TV_METADATA)
+        if cached is not _UNSET_TV_METADATA:
+            return cached
+
+        try:
+            metadata = providers.services.get_media_metadata(
+                self.item.media_type,
+                self.item.media_id,
+                self.item.source,
+            )
+        except Exception:
+            logger.exception(
+                "Could not fetch metadata for %s (%s, %s)",
+                self.item.title,
+                self.item.media_id,
+                self.item.source,
+            )
+            metadata = None
+
+        if hasattr(self, "_tv_metadata_cache"):
+            self._tv_metadata_cache = metadata
+        return metadata
+
+    def resolve_production_status(self):
+        """Return the provider's production status text for this show.
+
+        None means the provider could not be reached, so a caller deciding
+        whether to finalize a status can tell "we don't know" apart from "the
+        provider carries no status" - guessing "ended" during an outage is
+        exactly the clobbering #375 is about. An empty string means the
+        provider answered but reports no status.
+        """
+        metadata = self._fetch_tv_metadata()
+        if metadata is None:
+            return None
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        details = metadata.get("details")
+        if not isinstance(details, dict):
+            details = {}
+
+        raw_status = (
+            details.get("status")
+            or metadata.get("status")
+            or getattr(self.item, "status", "")
+            or ""
+        )
+        return str(raw_status).strip()
+
     def _start_next_available_season(
         self,
         min_season_number=0,
@@ -560,19 +696,32 @@ class TV(Media):
 
         if not next_unwatched_season:
             # If all existing seasons are watched, get the next available season
-            tv_metadata = providers.services.get_media_metadata(
-                self.item.media_type,
-                self.item.media_id,
-                self.item.source,
+            tv_metadata = self._fetch_tv_metadata()
+
+            if not isinstance(tv_metadata, dict):
+                tv_metadata = {}
+
+            related = (
+                tv_metadata.get("related")
+                if isinstance(tv_metadata.get("related"), dict)
+                else {}
             )
-            related_seasons = tv_metadata.get("related", {}).get("seasons", [])
+            related_seasons = (
+                related.get("seasons")
+                if isinstance(related.get("seasons"), list)
+                else []
+            )
 
             existing_season_numbers = set(
                 all_seasons.values_list("item__season_number", flat=True),
             )
 
             for season_data in related_seasons:
-                season_number = season_data["season_number"]
+                if not isinstance(season_data, dict):
+                    continue
+                season_number = season_data.get("season_number")
+                if season_number is None:
+                    continue
                 if (
                     season_number > min_season_number
                     and season_number not in existing_season_numbers
@@ -635,6 +784,23 @@ class TV(Media):
         completed_season_number,
     ):
         """Start the next season, or complete the TV show if no seasons remain."""
+        # Both halves of this decision - "is there a next season" and "has the
+        # show ended" - need the same provider payload, and this runs once per
+        # season inside the home-screen loop. Open a memo for the pass so it is
+        # fetched once, and close it after so nothing later reads it stale.
+        self._tv_metadata_cache = _UNSET_TV_METADATA
+        try:
+            self._handle_completed_season_inner(completed_season_number)
+        finally:
+            # pop, not del: a nested completion on the same instance closes the
+            # memo first, and the outer teardown must not then raise.
+            self.__dict__.pop("_tv_metadata_cache", None)
+
+    def _handle_completed_season_inner(
+        self,
+        completed_season_number,
+    ):
+        """Body of `_handle_completed_season`, run with a metadata memo open."""
         if self._start_next_available_season(
             completed_season_number,
         ):
@@ -650,13 +816,47 @@ class TV(Media):
             .exists()
         )
 
-        if not incomplete_seasons_exist and self.status != Status.COMPLETED.value:
-            self.status = Status.COMPLETED.value
-            bulk_update_with_history(
-                [self],
-                TV,
-                fields=["status"],
-            )
+        if not incomplete_seasons_exist:
+            production_status = self.resolve_production_status()
+
+            if production_status is None:
+                # The provider is unreachable, so we cannot tell whether the
+                # show has ended. Leave the status alone: defaulting to
+                # Completed here would overwrite a status the user set, for a
+                # reason they can never see (#375).
+                return
+
+            classification = classify_production_status(production_status)
+
+            if classification == PRODUCTION_STATUS_ONGOING:
+                # The show is still running, so finishing its current seasons
+                # does not finish the show. This holds whatever the user set:
+                # Paused and Dropped are their choices too, and completing a
+                # still-airing show over them is the same clobbering as #375.
+                return
+
+            if classification == PRODUCTION_STATUS_UNKNOWN:
+                # The provider reported a status we don't recognize. It may
+                # well mean "still running" - a renamed, localized or new
+                # value - so treat it as indeterminate rather than guessing
+                # the show is over.
+                logger.warning(
+                    "Unrecognized production status %r for %s (%s, %s);"
+                    " leaving status untouched",
+                    production_status,
+                    self.item.title,
+                    self.item.media_id,
+                    self.item.source,
+                )
+                return
+
+            if self.status != Status.COMPLETED.value:
+                self.status = Status.COMPLETED.value
+                bulk_update_with_history(
+                    [self],
+                    TV,
+                    fields=["status"],
+                )
 
 
 class Season(Media):
