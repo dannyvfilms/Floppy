@@ -470,7 +470,11 @@ def ensure_item_metadata(
     if not item.format and format_type:
         item.format = format_type
         update_fields.append("format")
-    if not item.status and status:
+    # Production status is the one field here that legitimately changes over an
+    # item's life (a returning series ends), so refresh it instead of keeping
+    # whatever it was first tracked as - a stale "Returning Series" would stop
+    # the show from ever auto-completing.
+    if status and item.status != status:
         item.status = status
         update_fields.append("status")
     if not item.studios and studios:
