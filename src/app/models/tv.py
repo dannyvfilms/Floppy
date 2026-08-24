@@ -182,6 +182,7 @@ class TV(Media):
         """
         from app.models.media import BasicMedia  # avoid a module-load cycle
 
+        is_explicit_start = started_at is not None
         started_at = started_at or timezone.now()
         all_seasons = [
             season
@@ -201,7 +202,8 @@ class TV(Media):
         skipped = [
             season
             for season in seasons
-            if season._would_be_immediately_complete(
+            if is_explicit_start
+            and season._would_be_immediately_complete(
                 started_at,
                 getattr(season, "max_progress", None),
             )
@@ -962,7 +964,12 @@ class Season(Media):
             return False
 
         self.status = Status.COMPLETED.value
-        bulk_update_with_history([self], Season, fields=["status"])
+        update_fields = ["status"]
+        if self.rewatch_started_at is not None:
+            self.rewatch_started_at = None
+            self._invalidate_episode_stats()
+            update_fields.append("rewatch_started_at")
+        bulk_update_with_history([self], Season, fields=update_fields)
         self.related_tv._handle_completed_season(self.item.season_number)
         return True
 
@@ -1047,6 +1054,7 @@ class Season(Media):
         """
         if self.rewatch_started_at is not None:
             return
+        is_explicit_start = started_at is not None
         started_at = started_at or timezone.now()
         if max_progress is None:
             from app.models.media import BasicMedia  # avoid a module-load cycle
@@ -1054,7 +1062,7 @@ class Season(Media):
             BasicMedia.objects.annotate_max_progress([self], MediaTypes.SEASON.value)
             max_progress = getattr(self, "max_progress", None)
 
-        if self._would_be_immediately_complete(started_at, max_progress):
+        if is_explicit_start and self._would_be_immediately_complete(started_at, max_progress):
             already_complete_msg = "Every episode is already watched from that date."
             raise RewatchAlreadyCompleteError(already_complete_msg)
 
