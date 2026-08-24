@@ -1703,8 +1703,12 @@ def get_cast_credits(credits_data, is_aggregate=False):
     """Return normalized cast entries."""
     cast_entries = []
     cast_list = credits_data.get("cast", []) if isinstance(credits_data, dict) else []
+    if not isinstance(cast_list, list):
+        cast_list = []
 
     for cast in cast_list:
+        if not isinstance(cast, dict):
+            continue
         role_value = cast.get("character", "")
         episode_count = None
         if is_aggregate:
@@ -1714,31 +1718,59 @@ def get_cast_credits(credits_data, is_aggregate=False):
             # unwraps exactly one level: a role element that is itself a list
             # is iterated, anything else is treated as a single role. Deeper
             # nesting is not a real TMDB shape and is dropped by the dict
-            # filter below.
+            # filter below. A bare dict (rather than a list) is accepted too.
+            raw_roles = cast.get("roles") or []
+            if isinstance(raw_roles, dict):
+                raw_roles = [raw_roles]
             roles = [
                 role
-                for inner in (cast.get("roles") or [])
+                for inner in raw_roles
                 for role in (inner if isinstance(inner, list) else [inner])
                 if isinstance(role, dict)
             ]
             if roles:
-                top_role = max(roles, key=lambda role: role.get("episode_count") or 0)
-                role_value = top_role.get("character") or role_value
+                # episode_count is not always numeric; comparing a string
+                # against an int in max() raises, so rank on the numeric ones
+                # and only fall back to the raw list if none qualify.
+                valid_roles = [
+                    role
+                    for role in roles
+                    if isinstance(role.get("episode_count"), (int, float))
+                ]
+                top_role = max(
+                    valid_roles or roles,
+                    key=lambda role: (
+                        role.get("episode_count")
+                        if isinstance(role.get("episode_count"), (int, float))
+                        else 0
+                    ),
+                )
+                role_char = top_role.get("character")
+                # Only a non-empty role replaces the outer `character`: a blank
+                # or zero aggregate role must not erase the fallback.
+                if role_char and not isinstance(role_char, (dict, list)):
+                    role_value = (
+                        role_char if isinstance(role_char, str) else str(role_char)
+                    )
             # episode_count is the person's total appearances across all their
             # roles in this show, not episodes as the selected top_role only.
-            total_eps = sum(r.get("episode_count") or 0 for r in roles)
+            total_eps = sum(
+                role.get("episode_count") or 0
+                for role in roles
+                if isinstance(role.get("episode_count"), (int, float))
+            )
             episode_count = total_eps if total_eps > 0 else None
 
         cast_entries.append(
             {
                 "person_id": str(cast.get("id")),
-                "name": cast.get("name", ""),
+                "name": cast.get("name", "") if isinstance(cast.get("name"), str) else str(cast.get("name") or ""),
                 "image": get_profile_image_url(cast.get("profile_path")),
-                "known_for_department": cast.get("known_for_department", ""),
+                "known_for_department": cast.get("known_for_department", "") if isinstance(cast.get("known_for_department"), str) else "",
                 "gender": get_gender(cast.get("gender")),
-                "department": cast.get("known_for_department", "Acting"),
-                "role": role_value or "",
-                "order": cast.get("order"),
+                "department": cast.get("known_for_department", "Acting") if isinstance(cast.get("known_for_department"), str) else "Acting",
+                "role": str(role_value or ""),
+                "order": cast.get("order") if isinstance(cast.get("order"), (int, float)) else None,
                 "episode_count": episode_count,
             },
         )
@@ -1756,43 +1788,57 @@ def get_crew_credits(credits_data, is_aggregate=False):
     """Return normalized crew entries."""
     crew_entries = []
     crew_list = credits_data.get("crew", []) if isinstance(credits_data, dict) else []
+    if not isinstance(crew_list, list):
+        crew_list = []
 
     for crew in crew_list:
-        department = crew.get("department", "")
+        if not isinstance(crew, dict):
+            continue
+        department = crew.get("department", "") if isinstance(crew.get("department"), str) else ""
 
         if is_aggregate:
-            jobs = crew.get("jobs", []) or []
+            raw_jobs = crew.get("jobs", [])
+            if isinstance(raw_jobs, list):
+                jobs = [job for job in raw_jobs if isinstance(job, dict)]
+            elif isinstance(raw_jobs, dict):
+                jobs = [raw_jobs]
+            else:
+                jobs = []
+
             if not jobs:
                 crew_entries.append(
                     {
                         "person_id": str(crew.get("id")),
-                        "name": crew.get("name", ""),
+                        "name": crew.get("name", "") if isinstance(crew.get("name"), str) else str(crew.get("name") or ""),
                         "image": get_profile_image_url(crew.get("profile_path")),
-                        "known_for_department": crew.get("known_for_department", ""),
+                        "known_for_department": crew.get("known_for_department", "") if isinstance(crew.get("known_for_department"), str) else "",
                         "gender": get_gender(crew.get("gender")),
                         "department": department,
                         "role": "",
-                        "order": crew.get("order"),
+                        "order": crew.get("order") if isinstance(crew.get("order"), (int, float)) else None,
                     },
                 )
                 continue
 
             seen_jobs = set()
             for job_data in jobs:
-                job_name = (job_data.get("job") or "").strip()
+                if not isinstance(job_data, dict):
+                    continue
+                job_name = (str(job_data.get("job") or "")).strip()
                 if not job_name or job_name.lower() in seen_jobs:
                     continue
                 seen_jobs.add(job_name.lower())
+                job_dept = job_data.get("department", "") if isinstance(job_data.get("department"), str) else ""
                 crew_entries.append(
                     {
                         "person_id": str(crew.get("id")),
-                        "name": crew.get("name", ""),
+                        "name": crew.get("name", "") if isinstance(crew.get("name"), str) else str(crew.get("name") or ""),
                         "image": get_profile_image_url(crew.get("profile_path")),
-                        "known_for_department": crew.get("known_for_department", ""),
+                        "known_for_department": crew.get("known_for_department", "") if isinstance(crew.get("known_for_department"), str) else "",
                         "gender": get_gender(crew.get("gender")),
-                        "department": department or job_data.get("department", ""),
+                        "department": department or job_dept,
                         "role": job_name,
-                        "order": crew.get("order"),
+                        "order": crew.get("order") if isinstance(crew.get("order"), (int, float)) else None,
                     },
                 )
             continue
@@ -1800,13 +1846,13 @@ def get_crew_credits(credits_data, is_aggregate=False):
         crew_entries.append(
             {
                 "person_id": str(crew.get("id")),
-                "name": crew.get("name", ""),
+                "name": crew.get("name", "") if isinstance(crew.get("name"), str) else str(crew.get("name") or ""),
                 "image": get_profile_image_url(crew.get("profile_path")),
-                "known_for_department": crew.get("known_for_department", ""),
+                "known_for_department": crew.get("known_for_department", "") if isinstance(crew.get("known_for_department"), str) else "",
                 "gender": get_gender(crew.get("gender")),
                 "department": department,
-                "role": crew.get("job", "") or "",
-                "order": crew.get("order"),
+                "role": crew.get("job", "") if isinstance(crew.get("job"), str) else str(crew.get("job") or ""),
+                "order": crew.get("order") if isinstance(crew.get("order"), (int, float)) else None,
             },
         )
 
