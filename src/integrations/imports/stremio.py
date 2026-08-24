@@ -28,6 +28,7 @@ import app
 import app.providers.mal
 import app.providers.trakt
 from app.models import MediaTypes, Sources, Status
+from app.models.tv import PRODUCTION_STATUS_ENDED, classify_production_status
 from app.providers import services
 from integrations import anime_mapping, import_progress
 from integrations.imports import helpers
@@ -443,6 +444,22 @@ class StremioImporter:
             status = Status.PLANNING.value
         return status, watched
 
+    @staticmethod
+    def _show_has_definitely_ended(tv_instance):
+        """Return whether the provider positively reports the show as finished.
+
+        False when the provider is unreachable, carries no status, or reports
+        one we don't recognize, so a recurring sync never finalizes a show on
+        missing or unfamiliar information.
+        """
+        production_status = tv_instance.resolve_production_status()
+        if production_status is None:
+            return False
+        return (
+            classify_production_status(production_status)
+            == PRODUCTION_STATUS_ENDED
+        )
+
     def _advance_status_in_place(self, instance, new_status, **field_updates):
         """Advance an already-tracked instance's status forward-only.
 
@@ -455,6 +472,19 @@ class StremioImporter:
         old_rank = _STATUS_RANK.get(instance.status)
         new_rank = _STATUS_RANK.get(new_status)
         if old_rank is None or new_rank is None or new_rank <= old_rank:
+            return False
+
+        if (
+            isinstance(instance, app.models.TV)
+            and new_status == Status.COMPLETED.value
+            and not self._show_has_definitely_ended(instance)
+        ):
+            # A background sync only ever sees the episodes Cinemeta happens to
+            # list, so "everything watched" is not evidence a show is over.
+            # Completing it here overwrites a status the user set (#375), so
+            # require positive evidence from the provider instead - and require
+            # it whether the row is Planning or In progress, so the two can't
+            # disagree.
             return False
 
         instance.status = new_status
