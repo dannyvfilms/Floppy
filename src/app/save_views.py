@@ -257,11 +257,18 @@ def media_save(request):
                 isinstance(media, Season)
                 and old_status == Status.COMPLETED.value
                 and media.status == Status.IN_PROGRESS.value
-                and media.rewatch_started_at is None
             ):
                 # The status dropdown is the only "reopen" affordance there
                 # is - treat it as starting a rewatch pass so a season with
                 # historical repeat plays can still complete normally, see #929.
+                # Deliberately bypasses start_rewatch's "a pass is already
+                # open" no-op: an explicit Completed -> In progress reopen is
+                # the user asking for a new pass from now, so the cutoff has to
+                # move. Only reachable from that transition - any future caller
+                # reaching this with an open pass would strand plays logged
+                # against the original cutoff as pre-cutoff history.
+                if media.rewatch_started_at is not None:
+                    media.rewatch_started_at = None
                 with contextlib.suppress(RewatchAlreadyCompleteError):
                     media.start_rewatch()
         else:
