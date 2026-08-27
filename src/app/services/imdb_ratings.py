@@ -171,21 +171,29 @@ def sync_season_ratings() -> int:
 
     Returns the number of Items updated.
     """
-    show_keys = set(
+    show_keys = (
         Item.objects.filter(
             media_type=MediaTypes.EPISODE.value,
             imdb_rating_count__isnull=False,
-        ).values_list("media_id", "source"),
+        )
+        .values_list("media_id", "source", "library_media_type")
+        .distinct()
     )
     if not show_keys:
         return 0
 
     updated = []
-    for media_id, source in show_keys:
+    for media_id, source, library_media_type in show_keys:
+        season_library_media_type = (
+            MediaTypes.SEASON.value
+            if library_media_type == MediaTypes.EPISODE.value
+            else library_media_type
+        )
         episode_ratings = Item.objects.filter(
             media_id=media_id,
             source=source,
             media_type=MediaTypes.EPISODE.value,
+            library_media_type=library_media_type,
             season_number__isnull=False,
             imdb_rating__isnull=False,
             imdb_rating_count__isnull=False,
@@ -210,6 +218,7 @@ def sync_season_ratings() -> int:
                 media_id=media_id,
                 source=source,
                 media_type=MediaTypes.SEASON.value,
+                library_media_type=season_library_media_type,
                 season_number__in=totals_by_season.keys(),
             )
         }

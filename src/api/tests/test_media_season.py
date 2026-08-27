@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from django.db.utils import OperationalError
 
-from api.serializers import EpisodeSerializer
+from api.serializers import CompleteMediaSerializer, EpisodeSerializer
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources
 
 from .base import FloppyApiTestCase
@@ -1877,3 +1877,176 @@ class EpisodeSerializerAirDateTests(FloppyApiTestCase):
         self.assertTrue(
             str(result["item"]["release_datetime"]).startswith("2023-01-22"),
         )
+
+    def test_existing_untracked_item_uses_provider_still_without_losing_rating(self):
+        """An existing image-less Item keeps its ratings and gets a response-only still."""
+        item = Item.objects.create(
+            media_id="air-date-show-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Provider title",
+            season_number=1,
+            episode_number=2,
+            imdb_rating=8.7,
+            imdb_rating_count=123,
+        )
+        instance = {
+            "show_id": "air-date-show-1",
+            "season_number": 1,
+            "episode_number": 2,
+            "name": "Provider title",
+            "still_path": "/episode-still.jpg",
+        }
+
+        result = EpisodeSerializer(
+            context={
+                "source": Sources.TMDB.value,
+                "existing_items_by_episode": {2: item},
+            },
+        ).to_representation(instance)
+
+        self.assertEqual(result["item"]["imdb_rating"], 8.7)
+        self.assertEqual(result["item"]["imdb_rating_count"], 123)
+        self.assertEqual(
+            result["item"]["image"],
+            "https://image.tmdb.org/t/p/original/episode-still.jpg",
+        )
+        item.refresh_from_db()
+        self.assertIsNone(item.image)
+
+    def test_existing_untracked_item_image_takes_precedence_over_provider_still(self):
+        """Stored episode artwork remains authoritative over provider metadata."""
+        item = Item.objects.create(
+            media_id="air-date-show-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Stored title",
+            image="https://example.test/stored-still.jpg",
+            season_number=1,
+            episode_number=2,
+        )
+        instance = {
+            "show_id": "air-date-show-1",
+            "season_number": 1,
+            "episode_number": 2,
+            "name": "Provider title",
+            "still_path": "/provider-still.jpg",
+        }
+
+        result = EpisodeSerializer(
+            context={
+                "source": Sources.TMDB.value,
+                "existing_items_by_episode": {2: item},
+            },
+        ).to_representation(instance)
+
+        self.assertEqual(result["item"]["image"], "https://example.test/stored-still.jpg")
+
+    def test_existing_untracked_tvdb_item_uses_provider_image(self):
+        """TVDB episode images are already normalized instead of a still path."""
+        item = Item.objects.create(
+            media_id="air-date-show-1",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Provider title",
+            season_number=1,
+            episode_number=2,
+        )
+        instance = {
+            "show_id": "air-date-show-1",
+            "season_number": 1,
+            "episode_number": 2,
+            "name": "Provider title",
+            "still_path": None,
+            "image": "https://artworks.thetvdb.com/episode-still.jpg",
+        }
+
+        result = EpisodeSerializer(
+            context={
+                "source": Sources.TVDB.value,
+                "existing_items_by_episode": {2: item},
+            },
+        ).to_representation(instance)
+
+        self.assertEqual(
+            result["item"]["image"],
+            "https://artworks.thetvdb.com/episode-still.jpg",
+        )
+
+    def test_untracked_episode_lookup_excludes_anime_bucket_by_default(self):
+        """TV detail must not reuse a same-coordinate grouped-anime Item."""
+        Item.objects.create(
+            media_id="air-date-show-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Anime episode",
+            image="https://example.test/anime.jpg",
+            season_number=1,
+            episode_number=2,
+            imdb_rating=1.0,
+        )
+        Item.objects.create(
+            media_id="air-date-show-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="TV episode",
+            season_number=1,
+            episode_number=2,
+            imdb_rating=8.5,
+        )
+        metadata = {
+            "media_id": "air-date-show-1",
+            "source": Sources.TMDB.value,
+            "season_number": 1,
+            "episodes": [
+                {
+                    "show_id": "air-date-show-1",
+                    "season_number": 1,
+                    "episode_number": 2,
+                    "name": "TV episode",
+                    "still_path": "/tv.jpg",
+                },
+            ],
+        }
+
+        CompleteMediaSerializer()._process_episodes(metadata)
+
+        episode = metadata["related"]["episodes"][0]
+        self.assertEqual(episode["item"]["imdb_rating"], 8.5)
+        self.assertEqual(
+            episode["item"]["image"],
+            "https://image.tmdb.org/t/p/original/tv.jpg",
+        )
+
+    def test_existing_untracked_season_uses_provider_image(self):
+        """Existing image-less season Items keep ratings and get response artwork."""
+        item = Item.objects.create(
+            media_id="air-date-show-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Season 2",
+            season_number=2,
+            imdb_rating=8.2,
+        )
+        metadata = {
+            "media_id": "air-date-show-1",
+            "source": Sources.TMDB.value,
+            "related": {
+                "seasons": [
+                    {
+                        "season_number": 2,
+                        "title": "Season 2",
+                        "image": "https://example.test/season-2.jpg",
+                    },
+                ],
+            },
+        }
+
+        CompleteMediaSerializer()._process_seasons(metadata)
+
+        season = metadata["related"]["seasons"][0]
+        self.assertEqual(season["item"]["imdb_rating"], 8.2)
+        self.assertEqual(season["item"]["image"], "https://example.test/season-2.jpg")
+        item.refresh_from_db()
+        self.assertIsNone(item.image)

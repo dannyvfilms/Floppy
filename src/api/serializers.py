@@ -232,13 +232,23 @@ class CompleteMediaSerializer(serializers.Serializer):
         # FORK: look up already-synced season Items (e.g. IMDb ratings) for
         # untracked seasons instead of always building an ephemeral in-memory
         # Item, one batched query for the whole show rather than per-season.
+        existing_items = Item.objects.filter(
+            media_id=str(media_metadata.get("media_id") or ""),
+            source=media_metadata.get("source"),
+            media_type=MediaTypes.SEASON.value,
+        )
+        library_media_type = media_metadata.get("library_media_type")
+        if library_media_type:
+            existing_items = existing_items.filter(
+                library_media_type=library_media_type,
+            )
+        else:
+            existing_items = existing_items.exclude(
+                library_media_type=MediaTypes.ANIME.value,
+            )
         existing_items_by_season = {
             existing_item.season_number: existing_item
-            for existing_item in Item.objects.filter(
-                media_id=str(media_metadata.get("media_id") or ""),
-                source=media_metadata.get("source"),
-                media_type=MediaTypes.SEASON.value,
-            )
+            for existing_item in existing_items
         }
 
         processed_seasons = []
@@ -262,6 +272,10 @@ class CompleteMediaSerializer(serializers.Serializer):
                     image=season.get("image") or settings.IMG_NONE,
                     season_number=season_number,
                 )
+            elif not app_helpers.has_real_image(item.image):
+                image = app_helpers.first_real_image(season.get("image"), default=None)
+                if image:
+                    item.image = image
 
             if tracked_season is None:
                 tracked_season = type(
@@ -301,14 +315,24 @@ class CompleteMediaSerializer(serializers.Serializer):
         # FORK: look up already-synced episode Items (e.g. IMDb ratings) for
         # untracked episodes instead of always building an ephemeral in-memory
         # Item, one batched query for the whole season rather than per-episode.
+        existing_items = Item.objects.filter(
+            media_id=str(media_metadata.get("media_id") or ""),
+            source=media_metadata.get("source"),
+            media_type=MediaTypes.EPISODE.value,
+            season_number=media_metadata.get("season_number"),
+        )
+        library_media_type = media_metadata.get("library_media_type")
+        if library_media_type:
+            existing_items = existing_items.filter(
+                library_media_type=library_media_type,
+            )
+        else:
+            existing_items = existing_items.exclude(
+                library_media_type=MediaTypes.ANIME.value,
+            )
         existing_items_by_episode = {
             existing_item.episode_number: existing_item
-            for existing_item in Item.objects.filter(
-                media_id=str(media_metadata.get("media_id") or ""),
-                source=media_metadata.get("source"),
-                media_type=MediaTypes.EPISODE.value,
-                season_number=media_metadata.get("season_number"),
-            )
+            for existing_item in existing_items
         }
         serializer = EpisodeSerializer(
             context={
@@ -470,16 +494,20 @@ class EpisodeSerializer(serializers.ModelSerializer):
         if hasattr(episode, "item"):
             item = getattr(episode, "item", None)
         else:
+            image = app_helpers.first_real_image(
+                (
+                    "https://image.tmdb.org/t/p/original" + instance["still_path"]
+                    if instance.get("still_path")
+                    else None
+                ),
+                instance.get("image"),
+                default=None,
+            )
             # FORK: reuse an already-synced episode Item (e.g. IMDb ratings)
             # instead of always building an ephemeral in-memory Item.
             existing_items_by_episode = context.get("existing_items_by_episode", {})
             item = existing_items_by_episode.get(episode_number)
             if item is None:
-                image = (
-                    "https://image.tmdb.org/t/p/original" + instance.get("still_path")
-                    if instance.get("still_path")
-                    else None
-                )
                 item = Item(
                     media_id=media_id,
                     source=context.get("source"),
@@ -492,6 +520,9 @@ class EpisodeSerializer(serializers.ModelSerializer):
                         {"release_date": instance.get("air_date")},
                     ),
                 )
+            elif not app_helpers.has_real_image(item.image) and image:
+                # Enrich the response without saving provider metadata here.
+                item.image = image
 
         if hasattr(episode, "lists"):
             lists = episode.lists

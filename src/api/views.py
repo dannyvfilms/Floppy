@@ -1211,6 +1211,8 @@ class MediaDetailView(drf_views.APIView):
             )
 
         library_media_type = request.query_params.get("library_media_type")
+        if library_media_type:
+            media_metadata["library_media_type"] = library_media_type
         try:
             user_medias = BasicMedia.objects.filter_media_prefetch(
                 user,
@@ -1269,7 +1271,12 @@ class MediaDetailView(drf_views.APIView):
             game_length_item = (
                 user_medias[0].item
                 if user_medias
-                else resolve_item_queryset(media_id, source, media_type).first()
+                else resolve_item_queryset(
+                    media_id,
+                    source,
+                    media_type,
+                    library_media_type=library_media_type,
+                ).first()
             )
             if game_length_item is None and source == Sources.IGDB.value:
                 try:
@@ -1315,7 +1322,12 @@ class MediaDetailView(drf_views.APIView):
             top_level_item = (
                 user_medias[0].item
                 if user_medias
-                else resolve_item_queryset(media_id, source, media_type).first()
+                else resolve_item_queryset(
+                    media_id,
+                    source,
+                    media_type,
+                    library_media_type=library_media_type,
+                ).first()
             )
 
         data = {
@@ -2424,6 +2436,8 @@ class MediaSeasonDetailView(drf_views.APIView):
             )
 
         library_media_type = request.query_params.get("library_media_type")
+        if library_media_type:
+            media_metadata["library_media_type"] = library_media_type
         try:
             user_medias = BasicMedia.objects.filter_media_prefetch(
                 user,
@@ -2485,6 +2499,7 @@ class MediaSeasonDetailView(drf_views.APIView):
                 source,
                 MediaTypes.SEASON.value,
                 season_number=season_number,
+                library_media_type=library_media_type,
             ).first()
         )
 
@@ -2694,6 +2709,7 @@ class MediaSeasonEpisodesView(drf_views.APIView):
     def get(self, request, media_type, source, media_id, season_number):
         """Retrieve the episodes for a specific season of a tv serie."""
         user = request.user
+        library_media_type = request.query_params.get("library_media_type")
         limit, offset, err = parse_limit_offset(request)
         if err:
             return err
@@ -2773,7 +2789,7 @@ class MediaSeasonEpisodesView(drf_views.APIView):
                 source,
                 season_number=season_number,
                 episode_numbers=episode_numbers,
-                library_media_type=request.query_params.get("library_media_type"),
+                library_media_type=library_media_type,
             )
             for tracked in tracked_episodes:
                 item = getattr(tracked, "item", None)
@@ -3565,6 +3581,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
         """Retrieve details of a specific episode for the authenticated user."""
         user = request.user
         episode = None
+        library_media_type = request.query_params.get("library_media_type")
 
         if not check_valid_type(media_type):
             return Response(
@@ -3594,7 +3611,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
             source,
             season_number,
             episode_number,
-            library_media_type=request.query_params.get("library_media_type"),
+            library_media_type=library_media_type,
         )
         if coordinate_error:
             return coordinate_error
@@ -3609,7 +3626,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 source,
                 season_number=season_number,
                 episode_number=episode_number,
-                library_media_type=request.query_params.get("library_media_type"),
+                library_media_type=library_media_type,
             )
         except Exception:
             logger.exception("An error occurred while fetching user media.")
@@ -3642,6 +3659,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
                 MediaTypes.EPISODE.value,
                 season_number=season_number,
                 episode_number=episode_number,
+                library_media_type=library_media_type,
             ).first()
         )
 

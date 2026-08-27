@@ -12,6 +12,7 @@ from app.models import (
     Person,
     Sources,
 )
+from app.services.imdb_ratings import sync_season_ratings
 from app.tasks_backfill_state import _record_backfill_success
 from app.tasks_imdb import (
     backfill_imdb_game_person_profiles,
@@ -182,3 +183,48 @@ class SyncImdbRatingsTaskTests(TestCase):
                 "seasons_updated": 1,
             },
         )
+
+    def test_season_ratings_stay_within_their_library_bucket(self):
+        """TV and grouped-anime rows with shared IDs must not be combined."""
+        common = {
+            "media_id": "tmdb-shared",
+            "source": Sources.TMDB.value,
+            "season_number": 1,
+        }
+        tv_episode = Item.objects.create(
+            **common,
+            media_type=MediaTypes.EPISODE.value,
+            title="TV episode",
+            episode_number=1,
+            imdb_rating=8.0,
+            imdb_rating_count=100,
+        )
+        tv_season = Item.objects.create(
+            **common,
+            media_type=MediaTypes.SEASON.value,
+            title="TV season",
+        )
+        anime_episode = Item.objects.create(
+            **common,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Anime episode",
+            episode_number=1,
+            imdb_rating=6.0,
+            imdb_rating_count=10,
+        )
+        anime_season = Item.objects.create(
+            **common,
+            media_type=MediaTypes.SEASON.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Anime season",
+        )
+
+        self.assertEqual(sync_season_ratings(), 2)
+
+        for item in (tv_episode, tv_season, anime_episode, anime_season):
+            item.refresh_from_db()
+        self.assertEqual(tv_season.imdb_rating, 8.0)
+        self.assertEqual(tv_season.imdb_rating_count, 100)
+        self.assertEqual(anime_season.imdb_rating, 6.0)
+        self.assertEqual(anime_season.imdb_rating_count, 10)
