@@ -1,10 +1,12 @@
 {% load static %}
 {% load app_tags %}
+{% load user_tags %}
 {% load i18n %}
 
 <!DOCTYPE html>
 <html lang="{{ LANGUAGE_CODE }}"
-      class="{% if user.is_authenticated and user.theme == 'light' %}light{% elif user.is_authenticated and user.theme == 'dark' %}dark{% endif %} bg-[var(--color-page-bg)]">
+      class="{% if user.is_authenticated and user.theme == 'light' %}light{% elif user.is_authenticated and user.theme == 'dark' %}dark{% endif %} bg-[var(--color-page-bg)]"
+      style="{% custom_theme_style user %}">
   <head>
     {# Required meta tags #}
     <meta charset="UTF-8">
@@ -189,22 +191,8 @@
           <aside class="fixed top-0 left-0 z-40 h-screen w-64 bg-[var(--color-sidebar)] transform transition-transform duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
                  :class="isMobileMenuOpen ? 'translate-x-0' : ''">
             <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
-              <h1 class="flex items-center">
-                {% if user.is_authenticated and user.logo_style == 'monochrome' %}
-                  <img src="{% static 'img/floppy-logo-white.png' %}"
-                       alt="Floppy"
-                       width="158"
-                       height="48"
-                       class="h-9 w-[158px] object-cover object-center">
-                {% else %}
-                <img src="{% static 'img/floppy-logo.png' %}"
-                     srcset="{% static 'img/floppy-logo.png' %} 1x,
-                             {% static 'img/floppy-logo@2x.png' %} 2x"
-                     alt="Floppy"
-                     width="158"
-                     height="48"
-                     class="h-9 w-auto">
-                {% endif %}
+              <h1 class="sidebar-brand-slot flex w-full items-center justify-center">
+                {% include "users/components/brand_logo.html" %}
               </h1>
             </div>
             {# hx-boost: swap the body instead of reloading on sidebar navigation #}
@@ -526,7 +514,7 @@
                 {% endif %}
 
                 {# Mobile: theme toggle as a flex item so it can't overlap the search/media-type controls #}
-                {% if user.is_authenticated %}
+                {% if user.is_authenticated and user.theme|is_basic_theme %}
                   <button type="button"
                           onclick="floppyToggleTheme()"
                           class="lg:hidden shrink-0 p-2 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] transition-colors duration-200 cursor-pointer"
@@ -539,7 +527,7 @@
               </div>
             </div>
 
-            {% if user.is_authenticated %}
+            {% if user.is_authenticated and user.theme|is_basic_theme %}
               <button type="button"
                       onclick="floppyToggleTheme()"
                       class="hidden lg:block absolute right-4 top-1/2 -translate-y-1/2 shrink-0 p-2 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] transition-colors duration-200 cursor-pointer"
@@ -615,7 +603,7 @@
     {% block js %}
     {% endblock js %}
 
-    {% if user.is_authenticated %}
+    {% if user.is_authenticated and user.theme|is_basic_theme %}
       <script>
       function floppyToggleTheme() {
         function getCsrfCookie() {
@@ -624,12 +612,16 @@
         }
 
         const html = document.documentElement;
+        const explicitThemes = "{% explicit_theme_classes %}".split(" ");
+        const hasExplicitTheme = explicitThemes.some((theme) =>
+          html.classList.contains(theme),
+        );
         const systemPrefersLight = window.matchMedia("(prefers-color-scheme: light)").matches;
         const currentlyLight = html.classList.contains("light")
-          || (!html.classList.contains("dark") && systemPrefersLight);
+          || (!hasExplicitTheme && systemPrefersLight);
         const next = currentlyLight ? "dark" : "light";
 
-        html.classList.remove("light", "dark");
+        html.classList.remove(...explicitThemes);
         html.classList.add(next);
 
         fetch("{% url 'preferences' %}", {
@@ -798,5 +790,6 @@
     <script src="{% static 'js/collectionCustomFields.js' %}{% get_static_file_mtime 'js/collectionCustomFields.js' %}"></script>
     <script src="{% static 'js/searchShortcut.js' %}{% get_static_file_mtime 'js/searchShortcut.js' %}"></script>
     <script src="{% static 'js/searchAutocomplete.js' %}{% get_static_file_mtime 'js/searchAutocomplete.js' %}"></script>
+    <script src="{% static 'js/modalPortal.js' %}{% get_static_file_mtime 'js/modalPortal.js' %}"></script>
   </body>
 </html>

@@ -28,6 +28,14 @@
               <span>Preferences</span>
             </a>
 
+            {% url 'appearance' as appearance_url %}
+            <a href="{{ appearance_url }}"
+               {% if request.path == appearance_url %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == appearance_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/sun.svg" with classes="w-5 h-5" %}
+              <span>Appearance</span>
+            </a>
+
             {% url 'notifications' as notifications_url %}
             <a href="{{ notifications_url }}"
                {% if request.path == notifications_url %}aria-current="page"{% endif %}

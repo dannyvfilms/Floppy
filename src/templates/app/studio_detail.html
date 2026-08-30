@@ -61,6 +61,7 @@
 
       <div
         class="bg-[var(--color-surface)] p-4 rounded-lg mb-6"
+        {% detail_section_attrs user "studio" "hero" "overview" %}
         x-data="{ isExpanded: false, isClamped: false, checkClamp() { const element = this.$refs.bioText; this.isClamped = element.scrollHeight > element.clientHeight; } }"
         x-init="$nextTick(() => checkClamp())">
         <p
@@ -110,7 +111,7 @@
     </div>
   </div>
 
-  <section>
+  <section {% detail_section_attrs user "studio" "content" "works" %}>
     <div class="flex items-end justify-between gap-3 mb-4">
       <h2 class="text-xl font-bold">
         {% if credited_media_type %}{{ credited_media_type|media_type_readable_plural }}{% else %}Titles{% endif %}

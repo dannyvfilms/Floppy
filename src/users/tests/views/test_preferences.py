@@ -31,25 +31,14 @@ class PreferencesViewTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.theme, "light")
 
-    def test_preferences_post_persists_logo_style(self):
-        """POSTing a supported logo style should persist to the DB."""
-        response = self.client.post(
-            reverse("preferences"),
-            {"logo_style": "monochrome"},
-        )
-        self.assertRedirects(response, reverse("preferences"))
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.logo_style, "monochrome")
+    def test_hidden_logo_keeps_an_accessible_home_link(self):
+        self.user.logo_style = "hidden"
+        self.user.save(update_fields=["logo_style"])
 
-    def test_preferences_post_rejects_invalid_logo_style(self):
-        """POSTing an invalid logo style should be ignored."""
-        response = self.client.post(
-            reverse("preferences"),
-            {"logo_style": "neon"},
-        )
-        self.assertRedirects(response, reverse("preferences"))
-        self.user.refresh_from_db()
-        self.assertEqual(self.user.logo_style, "colorful")
+        response = self.client.get(reverse("preferences"))
+
+        self.assertContains(response, 'data-brand-mode="hidden"')
+        self.assertContains(response, 'aria-label="Floppy home"')
 
     def test_preferences_post_rejects_invalid_theme(self):
         """POSTing an invalid theme value should be ignored, not persisted."""
@@ -62,8 +51,7 @@ class PreferencesViewTests(TestCase):
         """The display cards expose the simplified labels and logo choice."""
         response = self.client.get(reverse("preferences"))
 
-        self.assertContains(response, 'name="logo_style"')
-        self.assertContains(response, "Colorful")
+        self.assertNotContains(response, 'name="logo_style"')
         self.assertContains(response, "System default — Aug 12, 2025 / 12 Aug 2025")
         self.assertContains(response, "System default — 6:45 PM / 18:45")
         self.assertNotContains(response, "System default (locale)")

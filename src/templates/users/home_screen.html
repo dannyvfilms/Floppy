@@ -66,15 +66,15 @@
                            @focusout="if (!($el.contains($event.relatedTarget))) { hovering = false }"
                            @click="hovering = true"
                            :data-row-client-id="row.client_id">
-                    <div class="h-10 rounded-[inherit] bg-[var(--color-hover-dim)] px-3 transition-colors hover:bg-[var(--color-surface)]">
-                      <div class="flex h-full min-w-0 items-center gap-2">
+                    <div class="min-h-10 rounded-[inherit] bg-[var(--color-hover-dim)] px-3 py-1 transition-colors hover:bg-[var(--color-surface)]">
+                      <div class="flex min-h-8 min-w-0 flex-wrap items-center gap-2">
                         <button type="button"
                                 class="drag-handle hidden h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-page-bg)] text-slate-400 transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing lg:inline-flex"
                                 @click.stop>
                           {% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}
                         </button>
 
-                        <div class="min-w-0 flex-1">
+                        <div class="min-w-24 flex-1">
                           <input type="text"
                                  x-model="row.custom_title"
                                  maxlength="100"
@@ -93,7 +93,7 @@
                              x-transition:leave="transition ease-in duration-100"
                              x-transition:leave-start="opacity-100"
                              x-transition:leave-end="opacity-0"
-                             class="flex shrink-0 items-center gap-1 whitespace-nowrap">
+                             class="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1 whitespace-nowrap">
                           <template x-if="row.row_type === 'library_query'">
                             <div class="relative filter-control"
                                  @click.outside="if (openMenu === 'filter') { openMenu = null; filterView = 'root'; filterSearch = ''; }">

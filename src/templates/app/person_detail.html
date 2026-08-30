@@ -58,7 +58,8 @@
         {% endif %}
       </div>
 
-      <div class="bg-[var(--color-surface)] p-4 rounded-lg mb-6">
+      <div class="bg-[var(--color-surface)] p-4 rounded-lg mb-6"
+           {% detail_section_attrs user "person" "hero" "biography" %}>
         {% if person.biography %}
           <div
             x-data="{ isExpanded: false, isClamped: false, checkClamp() { const element = this.$refs.bioText; this.isClamped = element.scrollHeight > element.clientHeight; } }"
@@ -120,7 +121,8 @@
     </div>
   </div>
 
-  <div x-data="{
+  <div {% detail_section_attrs user "person" "content" "filmography" %}
+       x-data="{
     mediaListUrl: '{{ person_detail_url }}',
     sort: '{{ current_sort|escapejs }}',
     direction: '{{ current_direction|escapejs }}',

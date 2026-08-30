@@ -272,7 +272,9 @@
 </div>
 
 <div class="flex flex-col md:flex-row gap-12 md:gap-10">
-  <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0">
+  <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0"
+       style="display: flex; flex-direction: column;">
+    <div {% detail_section_attrs user "music_album" "sidebar" "details" %}>
     <h2 class="text-xl font-bold mb-4">Details</h2>
     <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
       <div class="mb-4">
@@ -297,6 +299,9 @@
       {% endif %}
     </div>
 
+    </div>
+
+    <div {% detail_section_attrs user "music_album" "sidebar" "collection" %}>
     <h2 class="text-xl font-bold mb-4 mt-6">Collection</h2>
     <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
       {% if album_collection_metadata.has_collection %}
@@ -332,14 +337,18 @@
         <p class="text-[var(--color-text-muted)] text-sm">No collection data available</p>
       {% endif %}
     </div>
+    </div>
   </div>
 
-  <div class="w-full md:w-3/4">
+  <div class="w-full md:w-3/4"
+       style="display: flex; flex-direction: column;">
     {% if notes_entry %}
-      {% include "app/components/detail_notes_section.html" %}
+      <div {% detail_section_attrs user "music_album" "content" "notes" %}>
+        {% include "app/components/detail_notes_section.html" %}
+      </div>
     {% endif %}
 
-    <section class="mb-8">
+    <section class="mb-8" {% detail_section_attrs user "music_album" "content" "tracks" %}>
       <h2 class="text-xl font-bold mb-4">Tracks</h2>
       {% if tracks %}
         <div class="space-y-4">

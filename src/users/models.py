@@ -204,8 +204,18 @@ class ThemeChoices(models.TextChoices):
     """Choices for UI theme preference."""
 
     SYSTEM = "system", "System default"
-    DARK = "dark", "Dark"
     LIGHT = "light", "Light"
+    DARK = "dark", "Dark"
+    CATPPUCCIN_MOCHA = "catppuccin_mocha", "Catppuccin Mocha"
+    DRACULA = "dracula", "Dracula"
+    NORD = "nord", "Nord"
+    GRUVBOX = "gruvbox", "Gruvbox"
+    OLED = "oled", "OLED"
+    GLASS = "glass", "Glass cinema"
+    PLEX = "plex", "Plex inspired"
+    PROJECTOR = "projector", "Projector"
+    VIDEO_STORE = "video_store", "Video store"
+    CUSTOM = "custom", "Custom palette"
 
 
 class UiLanguageChoices(models.TextChoices):
@@ -219,8 +229,35 @@ class UiLanguageChoices(models.TextChoices):
 class LogoStyleChoices(models.TextChoices):
     """Choices for the Floppy logo style preference."""
 
-    COLORFUL = "colorful", "Colorful"
+    COLORFUL = "colorful", "Original color"
     MONOCHROME = "monochrome", "Monochrome"
+    TEXT = "text", "Text"
+    CUSTOM = "custom", "Custom image"
+    HIDDEN = "hidden", "Hidden"
+
+
+class LogoTextFontChoices(models.TextChoices):
+    """Safe local font stacks available to text wordmarks."""
+
+    DISPLAY = "display", "Floppy display"
+    SANS = "sans", "Clean sans"
+    SERIF = "serif", "Editorial serif"
+    MONO = "mono", "Technical mono"
+
+
+class LogoTextWeightChoices(models.IntegerChoices):
+    """Font weights available to text wordmarks."""
+
+    REGULAR = 400, "Regular"
+    MEDIUM = 500, "Medium"
+    SEMIBOLD = 600, "Semibold"
+    BOLD = 700, "Bold"
+    EXTRABOLD = 800, "Extra bold"
+    BLACK = 900, "Black"
+
+
+LOGO_TEXT_SIZES = tuple(range(16, 41))
+LOGO_TEXT_SPACINGS = tuple(range(-2, 7))
 
 
 class TimeFormatChoices(models.TextChoices):
@@ -1010,9 +1047,21 @@ class User(AbstractUser):
     )
 
     theme = models.CharField(
-        max_length=10,
+        max_length=20,
         default=ThemeChoices.SYSTEM,
         choices=ThemeChoices.choices,
+    )
+
+    custom_theme = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Validated custom application color palette",
+    )
+
+    detail_page_layouts = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Visible and ordered sections for each detail page family",
     )
 
     ui_language = models.CharField(
@@ -1027,6 +1076,43 @@ class User(AbstractUser):
         default=LogoStyleChoices.COLORFUL,
         choices=LogoStyleChoices.choices,
         help_text="Preferred Floppy logo style",
+    )
+
+    logo_text = models.CharField(
+        max_length=32,
+        default="Floppy",
+        help_text="Short navigation wordmark",
+    )
+
+    logo_text_font = models.CharField(
+        max_length=12,
+        default=LogoTextFontChoices.DISPLAY,
+        choices=LogoTextFontChoices.choices,
+        help_text="Font family used by the navigation wordmark",
+    )
+
+    logo_text_size = models.PositiveSmallIntegerField(
+        default=23,
+        choices=[(value, f"{value}px") for value in LOGO_TEXT_SIZES],
+        help_text="Font size used by the navigation wordmark",
+    )
+
+    logo_text_weight = models.PositiveSmallIntegerField(
+        default=LogoTextWeightChoices.EXTRABOLD,
+        choices=LogoTextWeightChoices.choices,
+        help_text="Font weight used by the navigation wordmark",
+    )
+
+    logo_text_spacing = models.SmallIntegerField(
+        default=-1,
+        choices=[(value, f"{value}px") for value in LOGO_TEXT_SPACINGS],
+        help_text="Letter spacing used by the navigation wordmark",
+    )
+
+    custom_logo_data = models.TextField(
+        blank=True,
+        default="",
+        help_text="Normalized custom navigation logo",
     )
 
     time_format = models.CharField(

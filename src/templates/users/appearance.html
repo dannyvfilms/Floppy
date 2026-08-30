@@ -1,0 +1,364 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}
+  Appearance - Floppy
+{% endblock title %}
+
+{% block settings_content %}
+  {{ detail_layout_families_json|json_script:"detail-layout-families" }}
+  {{ detail_layouts_json|json_script:"detail-layout-values" }}
+  {{ custom_theme_json|json_script:"custom-theme-values" }}
+
+  <form method="post"
+        enctype="multipart/form-data"
+        class="space-y-8"
+        x-data="appearanceEditor()"
+        x-init="init()">
+    {% csrf_token %}
+    <input type="hidden" name="theme" :value="theme">
+    <input type="hidden" name="logo_style" :value="logoStyle">
+    <input type="hidden" name="custom_theme" :value="JSON.stringify(palette)">
+    <input type="hidden" name="detail_layouts" :value="JSON.stringify(layouts)">
+
+    <section class="preferences-section">
+      <div class="preferences-section-header">
+        <div class="preferences-section-icon">{% include "app/icons/sun.svg" with classes="w-5 h-5" %}</div>
+        <div>
+          <h2>Theme</h2>
+          <p>Choose a starting point, then make it yours.</p>
+        </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {% for value, preset in theme_presets.items %}
+          <button type="button"
+                  @click="theme = '{{ value }}'"
+                  :aria-pressed="(theme === '{{ value }}').toString()"
+                  :class="theme === '{{ value }}' ? 'border-[var(--color-accent)] ring-2 ring-[var(--color-accent)]/30' : 'border-[var(--color-surface-border)] hover:border-[var(--color-text-muted)]'"
+                  class="flex items-center gap-3 rounded-xl border bg-[var(--color-surface)] p-4 text-left transition-colors cursor-pointer">
+            <span class="theme-swatch theme-swatch-{{ value }}" aria-hidden="true"></span>
+            <span class="font-medium">{{ preset.label }}</span>
+          </button>
+        {% endfor %}
+      </div>
+
+      <div x-show="theme === 'custom'"
+           x-cloak
+           class="mt-5 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-panel)] p-4">
+        <h3 class="mb-4 font-semibold">Custom palette</h3>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {% for key, color in custom_theme_colors.items %}
+            <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--color-surface)] p-3">
+              <span class="text-sm text-[var(--color-text-secondary)]">{{ color.label }}</span>
+              <span class="flex items-center gap-2">
+                <input type="color"
+                       x-model="palette.{{ key }}"
+                       class="h-9 w-11 cursor-pointer rounded border-0 bg-transparent p-0"
+                       aria-label="{{ color.label }} color">
+                <code class="text-xs text-[var(--color-text-muted)]"
+                      x-text="palette.{{ key }}"></code>
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+        <div class="mt-5 grid gap-4 lg:grid-cols-3">
+          {% for key, effect in custom_theme_effects.items %}
+            <label class="rounded-lg bg-[var(--color-surface)] p-3">
+              <span class="mb-2 flex items-center justify-between gap-3 text-sm">
+                <span class="text-[var(--color-text-secondary)]">{{ effect.label }}</span>
+                <output class="font-mono text-xs text-[var(--color-text-muted)]"
+                        x-text="palette.{{ key }} + '{{ effect.unit }}'"></output>
+              </span>
+              <input type="range"
+                     min="{{ effect.min }}"
+                     max="{{ effect.max }}"
+                     step="{{ effect.step }}"
+                     x-model.number="palette.{{ key }}"
+                     class="w-full accent-[var(--color-accent)]"
+                     aria-label="{{ effect.label }}">
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="preferences-section">
+      <div class="preferences-section-header">
+        <div class="preferences-section-icon">{% include "app/icons/image.svg" with classes="w-5 h-5" %}</div>
+        <div>
+          <h2>Branding</h2>
+          <p>Choose what appears at the top of the sidebar.</p>
+        </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {% for value, label in logo_style_choices %}
+          <button type="button"
+                  @click="logoStyle = '{{ value }}'"
+                  :aria-pressed="(logoStyle === '{{ value }}').toString()"
+                  :class="logoStyle === '{{ value }}' ? 'border-[var(--color-accent)] ring-2 ring-[var(--color-accent)]/30' : 'border-[var(--color-surface-border)] hover:border-[var(--color-text-muted)]'"
+                  class="rounded-xl border bg-[var(--color-surface)] px-4 py-3 text-left text-sm font-medium transition-colors cursor-pointer">
+            {{ label }}
+          </button>
+        {% endfor %}
+      </div>
+
+      <div class="mt-5 grid gap-5 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-panel)] p-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,1fr)]">
+        <div class="flex min-h-24 items-center justify-center rounded-xl bg-[var(--color-sidebar)] px-6">
+          <img x-show="logoStyle === 'colorful'"
+               x-cloak
+               src="{% static 'img/floppy-logo.png' %}"
+               alt="Floppy preview"
+               class="brand-built-in-image">
+          <img x-show="logoStyle === 'monochrome'"
+               x-cloak
+               src="{% static 'img/floppy-logo-white.png' %}"
+               alt="Floppy preview"
+               class="brand-built-in-image">
+          <span x-show="logoStyle === 'text'"
+                x-cloak
+                class="brand-wordmark"
+                :data-brand-font="logoTextFont"
+                :style="{ '--brand-font-size': logoTextSize + 'px', '--brand-font-weight': logoTextWeight, '--brand-letter-spacing': logoTextSpacing + 'px' }"
+                x-text="logoText || 'Floppy'"></span>
+          {% if user.custom_logo_data %}
+            <img x-show="logoStyle === 'custom'"
+                 x-cloak
+                 src="{{ user.custom_logo_data }}"
+                 alt="Custom logo preview"
+                 class="brand-custom-image">
+          {% else %}
+            <span x-show="logoStyle === 'custom'"
+                  x-cloak
+                  class="text-sm text-[var(--color-text-muted)]">Choose an image to preview it.</span>
+          {% endif %}
+          <span x-show="logoStyle === 'hidden'"
+                x-cloak
+                class="text-sm text-[var(--color-text-muted)]">The logo will be hidden.</span>
+        </div>
+
+        <div class="space-y-4">
+          <label x-show="logoStyle === 'text' || logoStyle === 'custom'"
+                 x-cloak
+                 class="block">
+            <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Logo text</span>
+            <input type="text"
+                   name="logo_text"
+                   maxlength="32"
+                   x-model="logoText"
+                   class="w-full rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30">
+          </label>
+          <div x-show="logoStyle === 'text'"
+               x-cloak
+               class="grid gap-4 sm:grid-cols-2">
+            <label class="block">
+              <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Font</span>
+              <select name="logo_text_font"
+                      x-model="logoTextFont"
+                      class="w-full rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30">
+                {% for value, label in logo_text_font_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-2 flex items-center justify-between gap-3 text-sm font-medium text-[var(--color-text-secondary)]">
+                <span>Size</span>
+                <output class="font-mono text-xs text-[var(--color-text-muted)]"
+                        x-text="logoTextSize + 'px'"></output>
+              </span>
+              <input type="range"
+                     name="logo_text_size"
+                     min="16"
+                     max="40"
+                     step="1"
+                     x-model.number="logoTextSize"
+                     class="w-full accent-[var(--color-accent)]">
+            </label>
+            <label class="block">
+              <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Weight</span>
+              <select name="logo_text_weight"
+                      x-model.number="logoTextWeight"
+                      class="w-full rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30">
+                {% for value, label in logo_text_weight_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-2 flex items-center justify-between gap-3 text-sm font-medium text-[var(--color-text-secondary)]">
+                <span>Letter spacing</span>
+                <output class="font-mono text-xs text-[var(--color-text-muted)]"
+                        x-text="logoTextSpacing + 'px'"></output>
+              </span>
+              <input type="range"
+                     name="logo_text_spacing"
+                     min="-2"
+                     max="6"
+                     step="1"
+                     x-model.number="logoTextSpacing"
+                     class="w-full accent-[var(--color-accent)]">
+            </label>
+          </div>
+          <label x-show="logoStyle === 'custom'" x-cloak class="block">
+            <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Custom image</span>
+            <input type="file"
+                   name="logo_upload"
+                   accept="image/png,image/jpeg,image/webp"
+                   class="block w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-accent)] file:px-4 file:py-2.5 file:font-medium file:text-white file:cursor-pointer">
+            <span class="mt-2 block text-xs text-[var(--color-text-muted)]">
+              PNG, JPEG or WebP, up to 2 MB.
+              {% if user.custom_logo_data %}Your current image stays until you replace it.{% endif %}
+            </span>
+          </label>
+          <p x-show="logoStyle === 'hidden'"
+             x-cloak
+             class="text-sm text-[var(--color-text-muted)]">
+            The accessible Home link remains available for keyboard and screen-reader users.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="preferences-section">
+      <div class="preferences-section-header">
+        <div class="preferences-section-icon">{% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5" %}</div>
+        <div>
+          <h2>Detail pages</h2>
+          <p>Keep useful sections visible and place them where you expect them.</p>
+        </div>
+      </div>
+
+      <label class="block md:hidden">
+        <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Page type</span>
+        <select x-model="selectedFamily"
+                class="w-full rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text)]">
+          <template x-for="(family, familyKey) in families" :key="familyKey">
+            <option :value="familyKey" x-text="family.label"></option>
+          </template>
+        </select>
+      </label>
+
+      <div class="hidden flex-wrap gap-2 md:flex"
+           role="tablist"
+           aria-label="Detail page family">
+        <template x-for="(family, familyKey) in families" :key="familyKey">
+          <button type="button"
+                  role="tab"
+                  @click="selectedFamily = familyKey"
+                  :aria-selected="(selectedFamily === familyKey).toString()"
+                  :class="selectedFamily === familyKey ? 'bg-[var(--color-accent)] text-white' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'"
+                  class="rounded-full px-4 py-2 text-sm font-medium transition-colors cursor-pointer"
+                  x-text="family.label"></button>
+        </template>
+      </div>
+
+      <template x-if="selectedFamily">
+        <div class="mt-5 grid gap-5 lg:grid-cols-2">
+          <template x-for="(zone, zoneKey) in families[selectedFamily].zones"
+                    :key="zoneKey">
+            <div class="rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-panel)] p-4">
+              <h3 class="mb-3 font-semibold" x-text="zone.label"></h3>
+              <div class="space-y-2">
+                <template x-for="section in orderedSections(selectedFamily, zoneKey)"
+                          :key="section.key">
+                  <div class="flex items-center gap-3 rounded-lg bg-[var(--color-surface)] p-3">
+                    <input type="checkbox"
+                           :checked="isEnabled(selectedFamily, zoneKey, section.key)"
+                           @change="toggleSection(selectedFamily, zoneKey, section.key)"
+                           class="size-4 rounded border-[var(--color-surface-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]">
+                    <span class="min-w-0 flex-1 text-sm" x-text="section.label"></span>
+                    <div class="flex gap-1">
+                      <button type="button"
+                              @click="moveSection(selectedFamily, zoneKey, section.key, -1)"
+                              :disabled="!canMove(selectedFamily, zoneKey, section.key, -1)"
+                              class="rounded p-1.5 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] disabled:opacity-25 cursor-pointer disabled:cursor-default"
+                              aria-label="Move up">↑</button>
+                      <button type="button"
+                              @click="moveSection(selectedFamily, zoneKey, section.key, 1)"
+                              :disabled="!canMove(selectedFamily, zoneKey, section.key, 1)"
+                              class="rounded p-1.5 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] disabled:opacity-25 cursor-pointer disabled:cursor-default"
+                              aria-label="Move down">↓</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </section>
+
+    <div class="preferences-actions">
+      <div>
+        <p class="font-medium">Appearance</p>
+        <p class="text-sm text-[var(--color-text-muted)]">Changes apply after saving.</p>
+      </div>
+      <button type="submit"
+              class="rounded-lg bg-[var(--color-accent)] px-5 py-2.5 font-medium text-white transition-[filter] hover:brightness-110 cursor-pointer">
+        Save appearance
+      </button>
+    </div>
+  </form>
+
+  <script>
+    function appearanceEditor() {
+      return {
+        theme: '{{ appearance_theme|escapejs }}',
+        logoStyle: '{{ user.logo_style|escapejs }}',
+        logoText: '{{ user.logo_text|escapejs }}',
+        logoTextFont: '{{ user.logo_text_font|escapejs }}',
+        logoTextSize: {{ user.logo_text_size }},
+        logoTextWeight: {{ user.logo_text_weight }},
+        logoTextSpacing: {{ user.logo_text_spacing }},
+        palette: {},
+        families: {},
+        layouts: {},
+        selectedFamily: '',
+
+        init() {
+          this.palette = JSON.parse(document.getElementById('custom-theme-values').textContent);
+          this.families = JSON.parse(document.getElementById('detail-layout-families').textContent);
+          this.layouts = JSON.parse(document.getElementById('detail-layout-values').textContent);
+          this.selectedFamily = Object.keys(this.families)[0] || '';
+        },
+
+        enabledKeys(familyKey, zoneKey) {
+          return this.layouts[familyKey]?.[zoneKey] || [];
+        },
+
+        isEnabled(familyKey, zoneKey, sectionKey) {
+          return this.enabledKeys(familyKey, zoneKey).includes(sectionKey);
+        },
+
+        orderedSections(familyKey, zoneKey) {
+          const sections = this.families[familyKey].zones[zoneKey].sections;
+          const order = this.enabledKeys(familyKey, zoneKey);
+          return [...sections].sort((left, right) => {
+            const leftIndex = order.indexOf(left.key);
+            const rightIndex = order.indexOf(right.key);
+            return (leftIndex < 0 ? 999 : leftIndex) - (rightIndex < 0 ? 999 : rightIndex);
+          });
+        },
+
+        toggleSection(familyKey, zoneKey, sectionKey) {
+          const keys = this.enabledKeys(familyKey, zoneKey);
+          this.layouts[familyKey][zoneKey] = keys.includes(sectionKey)
+            ? keys.filter(key => key !== sectionKey)
+            : [...keys, sectionKey];
+        },
+
+        canMove(familyKey, zoneKey, sectionKey, direction) {
+          const keys = this.enabledKeys(familyKey, zoneKey);
+          const index = keys.indexOf(sectionKey);
+          return index >= 0 && index + direction >= 0 && index + direction < keys.length;
+        },
+
+        moveSection(familyKey, zoneKey, sectionKey, direction) {
+          if (!this.canMove(familyKey, zoneKey, sectionKey, direction)) return;
+          const keys = [...this.enabledKeys(familyKey, zoneKey)];
+          const index = keys.indexOf(sectionKey);
+          [keys[index], keys[index + direction]] = [keys[index + direction], keys[index]];
+          this.layouts[familyKey][zoneKey] = keys;
+        },
+      };
+    }
+  </script>
+{% endblock settings_content %}

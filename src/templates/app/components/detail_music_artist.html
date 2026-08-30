@@ -241,7 +241,9 @@
 </div>
 
 <div class="flex flex-col md:flex-row gap-12 md:gap-10">
-  <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0">
+  <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0"
+       style="display: flex; flex-direction: column;">
+    <div {% detail_section_attrs user "music_artist" "sidebar" "details" %}>
     <h2 class="text-xl font-bold mb-4">Details</h2>
     <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
       {% if music_artist_metadata.type %}
@@ -274,6 +276,9 @@
       </div>
     </div>
 
+    </div>
+
+    <div {% detail_section_attrs user "music_artist" "sidebar" "collection" %}>
     <h2 class="text-xl font-bold mb-4 mt-6">Collection</h2>
     <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
       <div class="mb-4">
@@ -299,16 +304,22 @@
         </p>
       </div>
     </div>
+    </div>
   </div>
 
-  <div class="w-full md:w-3/4">
+  <div class="w-full md:w-3/4"
+       style="display: flex; flex-direction: column;">
     {% if notes_entry %}
-      {% include "app/components/detail_notes_section.html" %}
+      <div {% detail_section_attrs user "music_artist" "content" "notes" %}>
+        {% include "app/components/detail_notes_section.html" %}
+      </div>
     {% endif %}
 
-    {% include "app/components/artist_relations_container.html" with artist=artist band_members=band_members member_of_bands=member_of_bands missing_relation_image_count=missing_relation_image_count poll_for_relation_images=poll_for_relation_images user=user only %}
+    <div {% detail_section_attrs user "music_artist" "content" "relations" %}>
+      {% include "app/components/artist_relations_container.html" with artist=artist band_members=band_members member_of_bands=member_of_bands missing_relation_image_count=missing_relation_image_count poll_for_relation_images=poll_for_relation_images user=user only %}
+    </div>
 
-    <section class="mb-8">
+    <section class="mb-8" {% detail_section_attrs user "music_artist" "content" "discography" %}>
       <h2 class="text-xl font-bold mb-4">Discography</h2>
       {% if discography_groups %}
         {% include "app/components/artist_discography_container.html" with discography_groups=discography_groups artist=artist missing_cover_count=missing_cover_count poll_for_covers=poll_for_covers user=user only %}

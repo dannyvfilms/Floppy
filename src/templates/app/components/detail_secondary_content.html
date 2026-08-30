@@ -2,12 +2,15 @@
 {% load user_tags %}
 {% load humanize %}
 {% load static %}
+{% detail_layout_family media_type as detail_family %}
 
   <div id="detail-secondary-content" class="flex flex-col-reverse md:flex-row gap-0 md:gap-10">
     {# Details Column #}
 
-    <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0">
+    <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0"
+         style="display: flex; flex-direction: column;">
       {# Your History #}
+      <div {% detail_section_attrs user detail_family "sidebar" "history" %}>
       {% if not public_view|default:False and current_instance and user_medias %}
         {% if media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value %}
           {% if user_medias|length > 1 %}
@@ -119,6 +122,7 @@
           {% endif %}
         {% endif %}
       {% endif %}
+      </div>
 
       {% if migrated_grouped_item and not current_instance and media_type == MediaTypes.ANIME.value %}
       <div class="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 mb-6">
@@ -131,6 +135,7 @@
       {% endif %}
 
       {# Media Details #}
+      <div {% detail_section_attrs user detail_family "sidebar" "details" %}>
       <h2 class="text-xl font-bold mb-4">Details</h2>
       {% if watch_provider_region != "UNSET" and watch_providers is not None %}
         <div class="bg-[var(--color-surface)] p-4 rounded-lg my-4">
@@ -206,8 +211,10 @@
           <div class="text-[var(--color-text-secondary)]">No details available</div>
         {% endif %}
       </div>
+      </div>
 
       {% if media.genres %}
+        <div {% detail_section_attrs user detail_family "sidebar" "genres" %}>
         {% url 'medialist' media_type=parent_media_type|default:media_type as genre_list_url %}
         <h2 class="text-xl font-bold mb-4 mt-6">Genres</h2>
         <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
@@ -218,9 +225,11 @@
             {% endfor %}
           </div>
         </div>
+        </div>
       {% endif %}
 
       {% if studios_linked %}
+        <div {% detail_section_attrs user detail_family "sidebar" "studios" %}>
         <h2 class="text-xl font-bold mb-4 mt-6">Studios</h2>
         <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
           <div class="flex flex-col gap-1">
@@ -232,10 +241,12 @@
             {% endfor %}
           </div>
         </div>
+        </div>
       {% endif %}
 
       {# Collection #}
       {% if not public_view and media_type != MediaTypes.PODCAST.value %}
+        <div {% detail_section_attrs user detail_family "sidebar" "collection" %}>
         <div class="flex items-center justify-between mb-4 mt-6">
           <h2 class="text-xl font-bold">Collection</h2>
           <div x-data="{ collectionOpen: false }">
@@ -321,6 +332,7 @@
             <p class="text-[var(--color-text-muted)] text-sm">No collection data available</p>
           {% endif %}
         </div>
+        </div>
       {% endif %}
 
     </div>
@@ -328,13 +340,17 @@
     {# Related Media #}
     {% if media_type != MediaTypes.PODCAST.value %}
       {% if show_notes|default:False or media.related or media.cast or media.crew or media_type == MediaTypes.GAME.value or media.episodes %}
-        <div class="w-full md:w-3/4">
+        <div class="w-full md:w-3/4"
+             style="display: flex; flex-direction: column;">
         {# Rendered even with no notes yet: the empty section is the anchor the #}
         {# post-save OOB swap replaces, so it must pre-exist in the DOM. #}
         {% if show_notes|default:False %}
-          {% include "app/components/detail_notes_section.html" %}
+          <div {% detail_section_attrs user detail_family "content" "notes" %}>
+            {% include "app/components/detail_notes_section.html" %}
+          </div>
         {% endif %}
         {% if media.related %}
+          <div {% detail_section_attrs user detail_family "content" "related" %}>
           {% for name, related_items in media.related.items %}
             {% if name != "seasons" and name != "recommendations" and related_items %}
               <section class="mb-8"
@@ -357,15 +373,19 @@
               </section>
             {% endif %}
           {% endfor %}
+          </div>
         {% endif %}
 
         {% if media.related.seasons %}
-          {% include "app/components/seasons_grid.html" %}
+          <div {% detail_section_attrs user detail_family "content" "seasons" %}>
+            {% include "app/components/seasons_grid.html" %}
+          </div>
         {% endif %}
 
         {# Episodes List #}
         {% if media.episodes %}
           <div class="w-full mb-8"
+               {% detail_section_attrs user detail_family "content" "episodes" %}
                x-data="{
                  get epLayout() { return $store.epLayout || 'grid'; },
                  setLayout(v) { $store.epLayout = v; localStorage.setItem('ep-layout', v); },
@@ -447,6 +467,7 @@
           </div>
         {% elif media_type == MediaTypes.ANIME.value and identity_provider == Sources.MAL.value %}
           <div class="w-full mb-8"
+               {% detail_section_attrs user detail_family "content" "episodes" %}
                x-data="{ open: localStorage.getItem('detail-episodes-open') !== 'false' }"
                x-init="$watch('open', v => localStorage.setItem('detail-episodes-open', v))">
             <div class="flex items-center justify-between mb-4">
@@ -490,25 +511,27 @@
         {% endif %}
 
         {% if cast_row.total %}
-          <section class="mb-8">
+          <section class="mb-8" {% detail_section_attrs user detail_family "content" "cast" %}>
             {% include "app/components/_scrollable_row.html" with row=cast_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-cast-open" %}
           </section>
         {% endif %}
 
         {% if crew_row.total %}
-          <section class="mb-8">
+          <section class="mb-8" {% detail_section_attrs user detail_family "content" "crew" %}>
             {% include "app/components/_scrollable_row.html" with row=crew_row grid_template="app/components/detail_cast_grid.html" collapse_key="detail-crew-open" %}
           </section>
         {% endif %}
 
         {% if media.related.recommendations %}
-          <section class="mb-8">
+          <section class="mb-8" {% detail_section_attrs user detail_family "content" "recommendations" %}>
             {% include "app/components/_scrollable_row.html" with row=recommendations_row grid_template="app/components/home_grid.html" collapse_key="detail-recommendations-open" %}
           </section>
         {% endif %}
 
         {% if media_type == MediaTypes.GAME.value %}
-          {% include "app/components/game_lengths_section.html" %}
+          <div {% detail_section_attrs user detail_family "content" "game_lengths" %}>
+            {% include "app/components/game_lengths_section.html" %}
+          </div>
         {% endif %}
 
         </div>
@@ -539,8 +562,9 @@
     {% endif %}
 
     {% if media_type == MediaTypes.PODCAST.value and episodes %}
-      <div class="w-full md:w-3/4">
-        <div class="w-full">
+      <div class="w-full md:w-3/4"
+           style="display: flex; flex-direction: column;">
+        <div class="w-full" {% detail_section_attrs user detail_family "content" "episodes" %}>
           <h2 class="text-xl font-bold mb-4">Episodes</h2>
           <div id="episodes-list">
             {% include "app/components/podcast_episode_list.html" with episodes=paginated_episodes|default:episodes user=user show=podcast_show IMG_NONE=IMG_NONE TRACK_TIME=TRACK_TIME has_more=has_more|default:has_more_episodes|default:False next_page=next_page|default:2 show_id=show_id request=request csrf_token=csrf_token only %}
@@ -550,7 +574,7 @@
     {% endif %}
 
     {% if media_type == MediaTypes.PODCAST.value and show_notes|default:False and notes_entry %}
-      <div class="w-full">
+      <div class="w-full" {% detail_section_attrs user detail_family "content" "notes" %}>
         {% include "app/components/detail_notes_section.html" %}
       </div>
     {% endif %}

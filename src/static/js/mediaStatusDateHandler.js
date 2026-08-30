@@ -153,12 +153,23 @@ function trackModalFindStateTarget(target) {
         node.getAttribute("x-show"),
       );
       if (stateKey) {
+        if (node._modalStateHost) {
+          return { data: Alpine.$data(node._modalStateHost), stateKey };
+        }
+
+        const stackData = (node._modalDataStack ?? node._x_dataStack)?.find(
+          (data) => data && stateKey in data,
+        );
+        if (stackData) {
+          return { data: stackData, stateKey };
+        }
+
         let host = node;
         while (host && !host.hasAttribute?.("x-data")) {
           host = host.parentElement;
         }
         if (host) {
-          return { host, stateKey };
+          return { data: Alpine.$data(host), stateKey };
         }
       }
     }
@@ -172,13 +183,13 @@ function trackModalFindStateTarget(target) {
         const data = Alpine.$data(node);
         if (data) {
           if (Object.prototype.hasOwnProperty.call(data, "createTrackOpen")) {
-            return { host: node, stateKey: "createTrackOpen" };
+            return { data, stateKey: "createTrackOpen" };
           }
           if (Object.prototype.hasOwnProperty.call(data, "editTrackOpen")) {
-            return { host: node, stateKey: "editTrackOpen" };
+            return { data, stateKey: "editTrackOpen" };
           }
           if (Object.prototype.hasOwnProperty.call(data, "trackOpen")) {
-            return { host: node, stateKey: "trackOpen" };
+            return { data, stateKey: "trackOpen" };
           }
         }
       } catch {
@@ -192,21 +203,35 @@ function trackModalFindStateTarget(target) {
 }
 
 function trackModalSetOpen(target, isOpen) {
+  const element = trackModalResolveElement(target);
+  const overlay = element?.closest(".fixed.inset-0");
   const stateTarget = trackModalFindStateTarget(target);
-  if (!stateTarget || !window.Alpine) {
-    return false;
+  let stateUpdated = false;
+
+  if (stateTarget && window.Alpine) {
+    try {
+      if (stateTarget.data && stateTarget.stateKey in stateTarget.data) {
+        stateTarget.data[stateTarget.stateKey] = isOpen;
+        stateUpdated = true;
+      }
+    } catch {
+      stateUpdated = false;
+    }
   }
 
-  try {
-    const data = Alpine.$data(stateTarget.host);
-    if (!data || !(stateTarget.stateKey in data)) {
-      return false;
+  if (!isOpen && overlay) {
+    if (overlay._modalOriginParent?.isConnected) {
+      Alpine.mutateDom(() => {
+        overlay._modalOriginParent.appendChild(overlay);
+        overlay.style.display = "none";
+      });
+    } else {
+      overlay.remove();
     }
-    data[stateTarget.stateKey] = isOpen;
     return true;
-  } catch {
-    return false;
   }
+
+  return stateUpdated;
 }
 
 function trackModalOpenWhenReady(formId, attempt = 0) {

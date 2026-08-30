@@ -2,7 +2,7 @@ from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from django.db import models
+from django.db import migrations, models
 from django.test import SimpleTestCase
 
 migration_0043 = import_module(
@@ -13,6 +13,9 @@ migration_0067 = import_module(
 )
 migration_0090 = import_module(
     "users.migrations.0090_homescreenrow",
+)
+migration_0129 = import_module(
+    "users.migrations.0129_user_appearance",
 )
 
 
@@ -214,7 +217,6 @@ class Migration0090HomeScreenSeedTests(SimpleTestCase):
         self.assertEqual(rows[1].filters["status"], "Planning")
         self.assertEqual(rows[1].sort_by, "completion")
         self.assertEqual(rows[1].direction, "desc")
-
     def test_default_rows_skip_planning_when_legacy_preference_was_disabled(self):
         user = SimpleNamespace(
             id=9,
@@ -246,3 +248,26 @@ class Migration0090HomeScreenSeedTests(SimpleTestCase):
         self.assertEqual(rows[0].direction, "asc")
         self.assertEqual(rows[1].sort_by, "recent")
         self.assertEqual(rows[1].direction, "desc")
+
+
+class Migration0129AppearanceTests(SimpleTestCase):
+    def test_adds_all_appearance_fields_in_one_migration(self):
+        added_fields = {
+            operation.name
+            for operation in migration_0129.Migration.operations
+            if isinstance(operation, migrations.AddField)
+        }
+
+        self.assertEqual(
+            added_fields,
+            {
+                "custom_theme",
+                "detail_page_layouts",
+                "logo_text",
+                "custom_logo_data",
+                "logo_text_font",
+                "logo_text_size",
+                "logo_text_weight",
+                "logo_text_spacing",
+            },
+        )

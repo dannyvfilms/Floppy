@@ -5,9 +5,27 @@ from django.templatetags.static import static
 from django.utils import formats, timezone
 from django.utils.html import format_html
 
+from users.appearance import (
+    BASIC_THEME_KEYS,
+    THEME_PRESETS,
+    custom_theme_css,
+    resolved_detail_layouts,
+)
 from users.models import DateFormatChoices, TimeFormatChoices
 
 register = template.Library()
+
+
+@register.simple_tag
+def explicit_theme_classes():
+    """Return the authoritative set of classes replaced by the theme toggle."""
+    return " ".join(theme for theme in THEME_PRESETS if theme != "system")
+
+
+@register.filter
+def is_basic_theme(theme):
+    """Return whether the compact light/dark switcher may change this theme."""
+    return theme in BASIC_THEME_KEYS
 
 
 @register.filter
@@ -183,12 +201,46 @@ def date_format_display(format_value):
 @register.filter
 def theme_display(theme_value):
     """Display the human-readable name for theme values."""
-    theme_display_map = {
-        "system": "System default",
-        "dark": "Dark",
-        "light": "Light",
-    }
-    return theme_display_map.get(theme_value, theme_value)
+    preset = THEME_PRESETS.get(theme_value)
+    return preset["label"] if preset else theme_value
+
+
+@register.simple_tag
+def custom_theme_style(user):
+    """Return validated inline theme tokens for the custom preset."""
+    if not getattr(user, "is_authenticated", False) or user.theme != "custom":
+        return ""
+    return custom_theme_css(user.custom_theme)
+
+
+@register.simple_tag
+def detail_section_attrs(user, family, zone, section):
+    """Return safe server-rendered visibility and order attributes."""
+    layouts = resolved_detail_layouts(
+        getattr(user, "detail_page_layouts", {}) if user.is_authenticated else {}
+    )
+    section_order = layouts.get(family, {}).get(zone, [])
+    if section not in section_order:
+        return format_html('data-detail-section="{}" hidden', section)
+    return format_html(
+        'data-detail-section="{}" style="order: {}"',
+        section,
+        section_order.index(section),
+    )
+
+
+@register.simple_tag
+def detail_layout_family(media_type):
+    """Map generic media types to their shared detail layout family."""
+    if media_type in {"tv", "anime", "season"}:
+        return "series"
+    if media_type in {"game", "boardgame"}:
+        return "game"
+    if media_type == "comic":
+        return "comic"
+    if media_type == "podcast":
+        return "podcast"
+    return "media"
 
 
 @register.filter

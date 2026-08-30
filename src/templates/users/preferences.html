@@ -80,56 +80,6 @@
           </div>
         </div>
 
-        <!-- Logo -->
-        <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mb-4">
-          <div class="flex items-center justify-between mb-2">
-            <label class="text-[var(--color-text-secondary)] text-sm font-medium">Logo</label>
-            <span class="text-[var(--color-text-muted)] text-xs">Floppy logo style.</span>
-          </div>
-          <div class="relative"
-               x-data="{ open: false, selectedValue: '{{ user.logo_style|default:'colorful' }}', selectedLabel: '' }"
-               x-init="selectedLabel = selectedValue === 'monochrome' ? 'Monochrome' : 'Colorful'">
-            <button type="button"
-                    @click="open = !open"
-                    @click.outside="open = false"
-                    class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
-              <span x-text="selectedLabel"></span>
-              <svg xmlns="http://www.w3.org/2000/svg"
-                   width="24"
-                   height="24"
-                   viewBox="0 0 24 24"
-                   fill="none"
-                   stroke="currentColor"
-                   stroke-width="2"
-                   stroke-linecap="round"
-                   stroke-linejoin="round"
-                   class="w-4 h-4 text-[var(--color-text-muted)]">
-                <path d="m6 9 6 6 6-6"></path>
-              </svg>
-            </button>
-            <div x-show="open"
-                 x-transition:enter="transition ease-out duration-100"
-                 x-transition:enter-start="transform opacity-0 scale-95"
-                 x-transition:enter-end="transform opacity-100 scale-100"
-                 x-transition:leave="transition ease-in duration-75"
-                 x-transition:leave-start="transform opacity-100 scale-100"
-                 x-transition:leave-end="transform opacity-0 scale-95"
-                 class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
-              <button type="button"
-                      @click="selectedValue = 'colorful'; selectedLabel = 'Colorful'; open = false"
-                      class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                Colorful
-              </button>
-              <button type="button"
-                      @click="selectedValue = 'monochrome'; selectedLabel = 'Monochrome'; open = false"
-                      class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                Monochrome
-              </button>
-            </div>
-            <input type="hidden" name="logo_style" x-bind:value="selectedValue">
-          </div>
-        </div>
-
         <!-- Date Format -->
         <div class="p-3 bg-[var(--color-surface-strong)] rounded-md mb-4">
           <div class="flex items-center justify-between mb-2">
