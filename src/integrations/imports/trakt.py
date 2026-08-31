@@ -435,6 +435,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         return set(
             app.models.Episode.objects.filter(
                 related_season__user=self.user,
+                item__source=Sources.TMDB.value,
                 end_date__isnull=False,
             ).values_list(
                 "item__media_id",
@@ -447,8 +448,12 @@ class TraktImporter(TraktMetadataResolverMixin):
     def _get_existing_episode_play_times(self):
         """Return existing episode play end_dates keyed by (tmdb_id, season, episode)."""
         play_times = defaultdict(list)
+        # Scoped to the source this importer resolves against: an episode
+        # tracked from another provider can share a media_id with a TMDB one,
+        # and matching across them would skip a play that was never imported.
         rows = app.models.Episode.objects.filter(
             related_season__user=self.user,
+            item__source=Sources.TMDB.value,
             end_date__isnull=False,
         ).values_list(
             "item__media_id",
@@ -465,6 +470,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         play_times = defaultdict(list)
         rows = app.models.Movie.objects.filter(
             user=self.user,
+            item__source=Sources.TMDB.value,
             end_date__isnull=False,
         ).values_list("item__media_id", "end_date")
         for media_id, end_date in rows:
