@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC
 
 from django.conf import settings
 from django.core.validators import (
@@ -995,11 +996,36 @@ class Season(Media):
 
     def play_counts_for_pass(self, episode):
         """Return whether a play belongs to the season's current pass."""
-        started_on = self.pass_started_on
-        if started_on is None:
+        if self.rewatch_started_at is None:
             return True
         played_at = episode.end_date or episode.created_at
-        return played_at is not None and played_at >= started_on
+        if played_at is None:
+            return True
+        rewatch_started = self.rewatch_started_at
+        if timezone.is_naive(played_at):
+            played_at = timezone.make_aware(played_at, UTC)
+        if timezone.is_naive(rewatch_started):
+            rewatch_started = timezone.make_aware(rewatch_started, UTC)
+        if played_at >= rewatch_started:
+            return True
+        started_on = self.pass_started_on
+        if started_on is None:
+            return False
+        if timezone.is_naive(started_on):
+            started_on = timezone.make_aware(started_on, UTC)
+        if played_at < started_on:
+            return False
+        # Date-only plays are stored at local midnight, so compare in the same
+        # local zone `pass_started_on` was built in. Reading the raw UTC value
+        # here would see a non-UTC deployment's local midnight as the previous
+        # day's 22:00Z and drop the play from its own pass.
+        local_played_at = timezone.localtime(played_at)
+        return (
+            local_played_at.hour == 0
+            and local_played_at.minute == 0
+            and local_played_at.second == 0
+            and local_played_at.microsecond == 0
+        )
 
     def _invalidate_episode_stats(self):
         """Drop cached episode stats after the pass or its plays changed."""
@@ -1451,14 +1477,28 @@ class Season(Media):
         """Return episodes needed to complete a season."""
         plays = Episode.objects.filter(related_season=self)
         started_on = self.pass_started_on
-        if started_on is not None:
+        if started_on is None:
+            latest_watched_ep_num = plays.aggregate(
+                latest_watched_ep_num=Max("item__episode_number"),
+            )["latest_watched_ep_num"]
+        else:
+            # Narrow in SQL, then apply `play_counts_for_pass` so the plays
+            # treated as watched here are exactly the ones that count toward
+            # the pass's progress. Any divergence between the two leaves a
+            # season unable to ever reach max_progress.
             plays = plays.filter(
                 models.Q(end_date__gte=started_on)
                 | models.Q(end_date__isnull=True, created_at__gte=started_on),
+            ).select_related("item")
+            latest_watched_ep_num = max(
+                (
+                    play.item.episode_number
+                    for play in plays
+                    if play.item.episode_number is not None
+                    and self.play_counts_for_pass(play)
+                ),
+                default=None,
             )
-        latest_watched_ep_num = plays.aggregate(
-            latest_watched_ep_num=Max("item__episode_number"),
-        )["latest_watched_ep_num"]
 
         if latest_watched_ep_num is None:
             latest_watched_ep_num = 0
