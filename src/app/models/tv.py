@@ -470,24 +470,53 @@ class TV(Media):
             # Use season poster if available, otherwise fallback to TV show poster
             season_image = season_metadata.get("image") or self.item.image
 
-            item, _ = Item.objects.get_or_create(
-                media_id=self.item.media_id,
-                source=self.item.source,
-                media_type=MediaTypes.SEASON.value,
-                library_media_type=(
-                    MediaTypes.ANIME.value
-                    if self.item.library_media_type == MediaTypes.ANIME.value
-                    else MediaTypes.SEASON.value
-                ),
-                season_number=season_number,
-                defaults={
-                    **Item.title_fields_from_metadata(
-                        season_metadata,
-                        fallback_title=self.item.title,
-                    ),
-                    "image": season_image,
-                },
+            # Imported seasons inherit the parent show's bucket ('tv'), while
+            # this path used to key get_or_create on the 'season' bucket alone.
+            # The miss created a second season + episode set dated today and
+            # orphaned the user's real watch dates. Search compatible buckets in
+            # priority order, and keep get_or_create for the create path so two
+            # concurrent completions can't race to insert the same identity.
+            target_bucket = (
+                MediaTypes.ANIME.value
+                if self.item.library_media_type == MediaTypes.ANIME.value
+                else MediaTypes.SEASON.value
             )
+            season_identity = {
+                "media_id": self.item.media_id,
+                "source": self.item.source,
+                "media_type": MediaTypes.SEASON.value,
+                "season_number": season_number,
+            }
+            # Never cross normal-TV and anime parent identities (see #623).
+            allowed_buckets = [self.item.library_media_type]
+            if target_bucket not in allowed_buckets:
+                allowed_buckets.append(target_bucket)
+
+            item = None
+            for bucket in allowed_buckets:
+                item = (
+                    Item.objects.filter(
+                        **season_identity,
+                        library_media_type=bucket,
+                    )
+                    .order_by("id")
+                    .first()
+                )
+                if item is not None:
+                    break
+
+            if item is None:
+                item, _ = Item.objects.get_or_create(
+                    **season_identity,
+                    library_media_type=target_bucket,
+                    defaults={
+                        **Item.title_fields_from_metadata(
+                            season_metadata,
+                            fallback_title=self.item.title,
+                        ),
+                        "image": season_image,
+                    },
+                )
             try:
                 season_instance = Season.objects.get(
                     item=item,
@@ -1272,7 +1301,6 @@ class Season(Media):
             ).values_list("item__episode_number", flat=True),
         )
         episode_numbers.discard(None)
-        max_watched = max(episode_numbers) if episode_numbers else 0
 
         # Best local hint for total episodes: release events in the DB
         total_eps = (
@@ -1284,24 +1312,28 @@ class Season(Media):
             or 0
         )
 
-        desired_status = None
+        # Release events are only populated once the calendar task has run, and
+        # imported libraries often have none, so fall back to the media-server
+        # episode count before assuming a season is unfinished.
+        local_total = getattr(self.item, "local_season_episode_count", None) or 0
+        known_total = total_eps or local_total or None
 
-        if total_eps > 0 and max_watched >= total_eps:
-            # We know how many have released and we've logged them all.
-            # Respect a manual IN_PROGRESS override (rewatch) rather than
-            # forcing back to Completed.
-            desired_status = (
-                Status.IN_PROGRESS.value
-                if self.status == Status.IN_PROGRESS.value
-                else Status.COMPLETED.value
-            )
-        elif max_watched > 0 and total_eps == 0:
-            # No release data, but we have watches — stay in progress
-            desired_status = Status.IN_PROGRESS.value
-        elif max_watched > 0:
-            desired_status = Status.IN_PROGRESS.value
-        else:
+        if not episode_numbers:
+            # Nothing logged (e.g. the last episode was just unwatched).
             desired_status = Status.PLANNING.value
+        else:
+            # Reuse the canonical rule so this path can't drift from the rest of
+            # the model. It counts DISTINCT completed episodes rather than the
+            # highest position, so E10 alone can't complete a 10-episode season.
+            desired_status = self.derived_status_from_episode_progress(
+                max_progress=known_total,
+            )
+            if (
+                desired_status == Status.COMPLETED.value
+                and self.status == Status.IN_PROGRESS.value
+            ):
+                # Preserve a deliberate rewatch override.
+                desired_status = Status.IN_PROGRESS.value
 
         season_updates = []
         if desired_status and self.status != desired_status:
