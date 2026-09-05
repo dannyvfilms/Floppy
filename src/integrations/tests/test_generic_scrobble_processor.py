@@ -14,6 +14,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.services.grouped_anime import GroupedAnimeMatch
 from integrations.webhooks.generic_scrobble import GenericScrobbleProcessor
 
 
@@ -231,8 +232,13 @@ class GenericScrobbleProcessPayloadTests(TestCase):
         )
 
     def test_episode_stop_with_anidb_id_tracks_the_mapped_mal_cour(self):
-        """An anidb id resolves the exact MAL entry without a TMDB round-trip."""
+        """An anidb id resolves the exact MAL entry without a TMDB round-trip.
+
+        The user's Anime Provider is MAL, so a flat row is the shape their
+        library uses; the anidb id only decides *which* cour.
+        """
         self.user.anime_enabled = True
+        self.user.anime_metadata_source_default = Sources.MAL.value
         self.user.save()
 
         with (
@@ -272,6 +278,242 @@ class GenericScrobbleProcessPayloadTests(TestCase):
         self.assertEqual(anime.progress, 1)
         # The MAL route is terminal: no parallel TV row is opened for the show.
         self.assertFalse(TV.objects.filter(user=self.user).exists())
+
+    @patch("app.services.grouped_anime.classify_tv_metadata")
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data")
+    @patch("app.providers.mal.anime")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_anidb_id_does_not_override_the_anime_provider_shape(
+        self,
+        mock_find,
+        mock_tv_with_seasons,
+        mock_mal_anime,
+        mock_fetch_mapping_data,
+        mock_classify,
+    ):
+        """An anidb id names the cour; the Anime Provider decides the shape.
+
+        Both routes are available: the anidb id maps to a MAL cour and the
+        classifier returns a positive grouped verdict. Which one wins must be
+        the user's Anime Provider, not the fact that the payload happened to
+        carry an anidb id.
+        """
+        self.user.anime_enabled = True
+        self.user.save()
+
+        mock_find.return_value = {"tv_episode_results": [], "tv_results": []}
+        mock_tv_with_seasons.return_value = {
+            "media_id": "12345",
+            "title": "Genesis Show",
+            "image": "https://example.com/show.jpg",
+            "tvdb_id": "402474",
+            # Two episodes so marking the first does not complete the season
+            # and fan out into a next-season metadata fetch.
+            "season/1": {"episodes": [{"episode_number": 1}, {"episode_number": 2}]},
+        }
+        mock_fetch_mapping_data.return_value = {
+            "anidb:3651:R": {"mal:46569": {"1-": "1-"}},
+        }
+        mock_mal_anime.return_value = {
+            "media_id": "46569",
+            "title": "Genesis Show",
+            "image": "https://example.com/anime.jpg",
+            "max_progress": 12,
+        }
+        mock_classify.return_value = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_match",
+            tmdb_id="12345",
+            tvdb_id="402474",
+            mal_ids=("46569",),
+        )
+
+        payload = {
+            "media_type": "episode",
+            "ids": {"tmdb": "12345", "tvdb": "402474", "anidb": "3651"},
+            "series_title": "Genesis Show",
+            "season_number": 1,
+            "episode_number": 1,
+            "completed": True,
+        }
+
+        for provider, expected_shape in (
+            (Sources.MAL.value, "flat"),
+            (Sources.TMDB.value, "grouped"),
+        ):
+            with self.subTest(provider=provider):
+                Episode.objects.all().delete()
+                Season.objects.all().delete()
+                TV.objects.all().delete()
+                Anime.objects.all().delete()
+                Item.objects.all().delete()
+
+                self.user.anime_metadata_source_default = provider
+                self.user.save(update_fields=["anime_metadata_source_default"])
+
+                with patch("app.services.metadata_resolution.upsert_provider_links"):
+                    self.processor.process_payload(payload, self.user)
+
+                if expected_shape == "flat":
+                    self.assertEqual(Anime.objects.filter(user=self.user).count(), 1)
+                    self.assertEqual(TV.objects.filter(user=self.user).count(), 0)
+                else:
+                    self.assertEqual(
+                        Anime.objects.filter(user=self.user).count(),
+                        0,
+                        "an anidb id forced a flat MAL row against the "
+                        "user's Anime Provider",
+                    )
+                    tv = TV.objects.get(user=self.user)
+                    self.assertEqual(
+                        tv.item.library_media_type,
+                        MediaTypes.ANIME.value,
+                    )
+
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data")
+    @patch("app.providers.mal.anime")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_anidb_id_does_not_open_a_flat_row_beside_a_grouped_home(
+        self,
+        mock_find,
+        mock_tv_with_seasons,
+        mock_mal_anime,
+        mock_fetch_mapping_data,
+    ):
+        """Routing stays sticky: a grouped home keeps every later episode.
+
+        Without this the show accrues progress in both libraries, which is the
+        duplication the "Repair duplicated anime libraries" task cleans up.
+        """
+        self.user.anime_enabled = True
+        self.user.save()
+
+        mock_find.return_value = {"tv_episode_results": [], "tv_results": []}
+        mock_tv_with_seasons.return_value = {
+            "media_id": "12345",
+            "title": "Grouped Show",
+            "image": "https://example.com/show.jpg",
+            "tvdb_id": "402474",
+            "season/1": {"episodes": [{"episode_number": 1}, {"episode_number": 2}]},
+        }
+        mock_fetch_mapping_data.return_value = {
+            "anidb:3651:R": {"mal:46569": {"1-": "1-"}},
+        }
+        mock_mal_anime.return_value = {
+            "media_id": "46569",
+            "title": "Grouped Show",
+            "image": "https://example.com/anime.jpg",
+            "max_progress": 12,
+        }
+
+        grouped_item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Grouped Show",
+            image="https://example.com/show.jpg",
+        )
+        TV.objects.create(
+            item=grouped_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        with patch("app.services.metadata_resolution.upsert_provider_links"):
+            self.processor.process_payload(
+                {
+                    "media_type": "episode",
+                    "ids": {"tmdb": "12345", "tvdb": "402474", "anidb": "3651"},
+                    "series_title": "Grouped Show",
+                    "season_number": 1,
+                    "episode_number": 2,
+                    "completed": True,
+                },
+                self.user,
+            )
+
+        self.assertEqual(
+            Anime.objects.filter(user=self.user).count(),
+            0,
+            "an anidb id opened a flat MAL row beside an existing grouped home",
+        )
+        self.assertEqual(TV.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(
+            TV.objects.get(user=self.user).item_id,
+            grouped_item.id,
+        )
+
+    @patch("app.services.grouped_anime.classify_tv_metadata")
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data")
+    @patch("app.providers.mal.anime")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_anidb_episode_refused_by_mal_is_not_dropped_silently(
+        self,
+        mock_find,
+        mock_tv_with_seasons,
+        mock_mal_anime,
+        mock_fetch_mapping_data,
+        mock_classify,
+    ):
+        """An episode past the MAL cour's end falls through instead of vanishing.
+
+        `_handle_anime` returns a sentinel here, not a boolean; treating it as
+        success dropped the scrobble with no warning and no second chance.
+        """
+        self.user.anime_enabled = True
+        self.user.anime_metadata_source_default = Sources.MAL.value
+        self.user.save()
+
+        mock_find.return_value = {"tv_episode_results": [], "tv_results": []}
+        mock_tv_with_seasons.return_value = {
+            "media_id": "12345",
+            "title": "Split Cour Show",
+            "image": "https://example.com/show.jpg",
+            "tvdb_id": "402474",
+            "season/1": {
+                "episodes": [{"episode_number": n} for n in range(1, 15)],
+            },
+        }
+        mock_fetch_mapping_data.return_value = {
+            "anidb:3651:R": {"mal:46569": {"1-": "1-"}},
+        }
+        # The first cour ends at 12, so episode 13 is past its end.
+        mock_mal_anime.return_value = {
+            "media_id": "46569",
+            "title": "Split Cour Show",
+            "image": "https://example.com/anime.jpg",
+            "max_progress": 12,
+        }
+        mock_classify.return_value = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_match",
+            tmdb_id="12345",
+            tvdb_id="402474",
+            mal_ids=("46569",),
+        )
+
+        with patch("app.services.metadata_resolution.upsert_provider_links"):
+            self.processor.process_payload(
+                {
+                    "media_type": "episode",
+                    "ids": {"tmdb": "12345", "tvdb": "402474", "anidb": "3651"},
+                    "series_title": "Split Cour Show",
+                    "season_number": 1,
+                    "episode_number": 13,
+                    "completed": True,
+                },
+                self.user,
+            )
+
+        # No MAL entry accepted it, so the grouped fallback keeps it in the
+        # Anime library rather than losing it.
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 0)
+        tv = TV.objects.get(user=self.user)
+        self.assertEqual(tv.item.library_media_type, MediaTypes.ANIME.value)
 
     def test_movie_resolution_failure_propagates(self):
         """A provider failure during resolution is not swallowed here."""
