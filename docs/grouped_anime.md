@@ -34,6 +34,15 @@ Shows on the next and accrue progress in both. The scheduled **Repair
 duplicated anime libraries** task folds any such pairs back into one row; a
 pair it cannot resolve safely is reported and left untouched.
 
+An anime-native id in the payload - an AniDB id from Plex/HAMA or from a
+scrobble client - selects *which entry* the episode belongs to. It never selects
+the shape. When such a payload carries no TMDB or TVDB id, the franchise
+identity is derived from the pinned mapping first, so the rule above still
+decides where the episode lands. The one case that has no choice is a MAL entry
+the mapping gives no TMDB or TVDB identity for: nothing can be resolved or
+classified, so the flat row is the only shape available and the reason is
+logged.
+
 `anime_library_mode` is a display setting on top of this. It decides which
 library surfaces grouped anime - Anime, TV Shows, or both - and never changes
 where a scrobble is stored.

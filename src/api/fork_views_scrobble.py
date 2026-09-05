@@ -167,7 +167,10 @@ class ScrobbleView(drf_views.APIView):
                                 "on its own. When the user's Anime library "
                                 "stores flat MyAnimeList rows, this names the "
                                 "exact cour instead of inferring one from the "
-                                "season and episode numbers.",
+                                "season and episode numbers. It selects the "
+                                "entry, not the library shape: that follows "
+                                "the user's Anime Provider and stays with the "
+                                "show once it is tracked.",
                             },
                         },
                     },
