@@ -4,12 +4,15 @@ import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
 import apprise
+from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app import history_cache, statistics_cache
 from app.models import Item
 from users.forms import NotificationSettingsForm
+from users.models import PLAYBACK_WEBHOOK_SECRET_MAX_LENGTH
 from users.views import SIDEBAR_MEDIA_TYPES
 
 logger = logging.getLogger(__name__)
@@ -45,6 +48,40 @@ _BOOLEAN_PREFERENCE_FIELDS = (
     "home_show_media_type_headers",
 )
 
+# Free-text preferences a client may write but that are not choices or booleans.
+#
+# Both belong to the outgoing playback webhook. They are here so a client can
+# configure its own delivery — the iOS app enrols with its push relay and then
+# writes the URL and secret the relay issued, rather than making the reader copy
+# two generated strings into the web UI by hand.
+_TEXT_PREFERENCE_FIELDS = (
+    "playback_webhook_url",
+    "playback_webhook_secret",
+)
+
+# Writable but never read back.
+#
+# `_serialize_preferences` echoes every listed field on GET, and the web form
+# renders this one with `render_value=False` precisely so the page never shows
+# it. Serializing it here would hand the secret to any client holding an API
+# token — a new exposure, and a wider one than the settings page it was kept
+# off. Writable, never returned.
+_WRITE_ONLY_PREFERENCE_FIELDS = frozenset({"playback_webhook_secret"})
+
+# Longest value each text preference accepts. `playback_webhook_secret` is
+# stored encrypted in an unbounded column, so its cap cannot be read off the
+# model field the way the URL's can — the limit belongs to the plaintext the
+# client sends, and matches the one the settings form enforces.
+_TEXT_PREFERENCE_MAX_LENGTHS = {
+    "playback_webhook_secret": PLAYBACK_WEBHOOK_SECRET_MAX_LENGTH,
+}
+
+# Only http(s) reaches an outbound webhook, and the value must be a URL at all.
+# Without this the API would accept what the settings form rejects: a client
+# could store "garbage", and every playback event from then on would queue a
+# task that fails in the worker, where the client never sees it.
+_validate_webhook_url = URLValidator(schemes=["http", "https"])
+
 # Fields whose change requires the web view's statistics-cache refresh.
 _STATS_SENSITIVE_FIELDS = {
     "rating_scale",
@@ -61,7 +98,12 @@ def _field_choices(user, field_name):
 
 def _serialize_preferences(user):
     payload = {}
-    for field in _CHOICE_PREFERENCE_FIELDS + _BOOLEAN_PREFERENCE_FIELDS:
+    readable = (
+        _CHOICE_PREFERENCE_FIELDS + _BOOLEAN_PREFERENCE_FIELDS + _TEXT_PREFERENCE_FIELDS
+    )
+    for field in readable:
+        if field in _WRITE_ONLY_PREFERENCE_FIELDS:
+            continue
         payload[field] = getattr(user, field)
     return payload
 
@@ -121,6 +163,52 @@ class UserPreferencesView(drf_views.APIView):
                     {"detail": f"{field} must be a boolean."},
                     status=HTTP.BAD_REQUEST,
                 )
+            if getattr(user, field) != value:
+                setattr(user, field, value)
+                fields_to_update.append(field)
+                changed.add(field)
+
+        for field in _TEXT_PREFERENCE_FIELDS:
+            if field not in request.data:
+                continue
+            value = request.data[field]
+            # `None` clears it, which is how a client turns the webhook off
+            # without having to send an empty string.
+            if value is None:
+                value = ""
+            if not isinstance(value, str):
+                return Response(
+                    {"detail": f"{field} must be a string."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            value = value.strip()
+            max_length = _TEXT_PREFERENCE_MAX_LENGTHS.get(
+                field,
+                user._meta.get_field(field).max_length,
+            )
+            if max_length and len(value) > max_length:
+                return Response(
+                    {"detail": f"{field} is too long."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            if field == "playback_webhook_url" and value:
+                try:
+                    _validate_webhook_url(value)
+                except ValidationError:
+                    return Response(
+                        {"detail": f"{field} must be an http(s) URL."},
+                        status=HTTP.BAD_REQUEST,
+                    )
+            if field == "playback_webhook_secret":
+                # Stored encrypted, so a plaintext comparison against the column
+                # would always differ and rewrite the row on every PATCH. Compare
+                # against what the column decrypts to instead.
+                if user.get_playback_webhook_secret() == value:
+                    continue
+                user.set_playback_webhook_secret(value)
+                fields_to_update.append(field)
+                changed.add(field)
+                continue
             if getattr(user, field) != value:
                 setattr(user, field, value)
                 fields_to_update.append(field)

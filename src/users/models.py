@@ -17,6 +17,11 @@ from app.models import Item, MediaTypes, Sources, Status
 from integrations import import_progress
 from users import helpers
 
+# Longest playback webhook secret accepted on input. The column itself is
+# unbounded because it holds ciphertext, so the cap has to be enforced where
+# the plaintext arrives — the settings form and the preferences API.
+PLAYBACK_WEBHOOK_SECRET_MAX_LENGTH = 128
+
 EXCLUDED_SEARCH_TYPES = [MediaTypes.SEASON.value, MediaTypes.EPISODE.value]
 
 VALID_SEARCH_TYPES = [
@@ -960,6 +965,30 @@ class User(AbstractUser):
         blank=True,
         null=True,
         help_text="When the API token was regenerated (update webhook URLs)",
+    )
+    playback_webhook_url = models.URLField(
+        blank=True,
+        default="",
+        max_length=500,
+        help_text=(
+            "Outgoing webhook POSTed the live playback state whenever it "
+            "changes. Blank disables it, which is the default."
+        ),
+    )
+    # Stored as Fernet ciphertext, the same way every other credential this
+    # app keeps reaches the database (`tmdb_proxy_url`, provider credentials,
+    # the Trakt refresh token). Never read this attribute directly — go through
+    # `get_playback_webhook_secret` / `set_playback_webhook_secret`. TextField
+    # rather than a bounded CharField because the ciphertext is roughly twice
+    # the plaintext; the input length cap lives with the form and the API.
+    playback_webhook_secret = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Encrypted shared secret for the playback webhook. When set, each "
+            "request carries an X-Floppy-Signature header holding the "
+            "HMAC-SHA256 of the exact body sent."
+        ),
     )
     jellyfin_mark_played_enabled = models.BooleanField(
         default=False,
@@ -2027,6 +2056,32 @@ class User(AbstractUser):
     def has_authenticator_configured(self):
         """Return whether this user has a confirmed authenticator setup."""
         return self.authenticator_enabled and bool(self.authenticator_secret)
+
+    def get_playback_webhook_secret(self):
+        """Return the decrypted playback webhook secret, or "" when unset.
+
+        A secret that will not decrypt — the usual cause is a changed
+        SECRET_KEY — is treated as absent rather than raised: the webhook then
+        sends unsigned, which a receiver rejects, instead of every playback
+        event dying in the worker.
+        """
+        if not self.playback_webhook_secret:
+            return ""
+
+        from cryptography.fernet import InvalidToken
+
+        from integrations.imports.helpers import decrypt
+
+        try:
+            return decrypt(self.playback_webhook_secret)
+        except (InvalidToken, ValueError):
+            return ""
+
+    def set_playback_webhook_secret(self, raw_secret):
+        """Encrypt and store a playback webhook secret; blank clears it."""
+        from integrations.imports.helpers import encrypt
+
+        self.playback_webhook_secret = encrypt(raw_secret) if raw_secret else ""
 
     def get_or_create_authenticator_secret(self):
         """Return existing authenticator secret or create one."""

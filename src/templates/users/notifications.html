@@ -15,7 +15,9 @@
         <h2 class="text-xl font-semibold">Notifications</h2>
       </div>
 
-      <p class="text-[var(--color-text-muted)] mb-5 text-sm">Configure how you want to receive notifications about your media.</p>
+      <p class="text-[var(--color-text-muted)] mb-5 text-sm">
+        Configure how you want to receive notifications about your media.
+      </p>
 
       <form class="space-y-6" method="post">
         {% csrf_token %}
@@ -23,7 +25,8 @@
         {# Notification URLS #}
         <div x-data="{ showInfo: false }">
           <div class="flex items-center justify-between mb-2">
-            <label for="apprise-urls" class="block text-sm font-medium text-[var(--color-text-secondary)]">Apprise URLs</label>
+            <label for="apprise-urls"
+                   class="block text-sm font-medium text-[var(--color-text-secondary)]">Apprise URLs</label>
             <button type="button"
                     class="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] cursor-pointer"
                     @click="showInfo = !showInfo">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</button>
@@ -64,6 +67,26 @@
         </div>
 
         <div>
+          <h3 class="text-sm font-medium text-[var(--color-text-secondary)] mb-2">Playback Webhook</h3>
+          <div class="bg-[var(--color-surface-strong)] p-4 rounded-md">
+            {{ form.playback_webhook_url|add_class:"w-full p-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-[var(--color-border)] focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" }}
+            <p class="mt-1 text-xs text-[var(--color-text-muted)]">
+              POSTs the live playback state to this URL whenever it changes — the same body
+              <code class="bg-[var(--color-surface)] px-1 py-0.5 rounded">/api/v1/playback/now-playing/</code>
+              returns. For home automation or a client that wants playback pushed to it rather than polled.
+              Leave blank to send nothing.
+            </p>
+            {{ form.playback_webhook_secret|add_class:"w-full mt-3 p-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-[var(--color-border)] focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" }}
+            <p class="mt-1 text-xs text-[var(--color-text-muted)]">
+              Optional shared secret. When set, each request carries
+              <code class="bg-[var(--color-surface)] px-1 py-0.5 rounded">X-Floppy-Signature: sha256=&lt;hmac&gt;</code>
+              over the exact body sent, so the receiver can verify it came from you.
+              Leave blank to keep the current secret; clear the URL above to turn the webhook off.
+            </p>
+          </div>
+        </div>
+
+        <div>
           <h3 class="text-sm font-medium text-[var(--color-text-secondary)] mb-2">Notification Settings</h3>
 
           {# Notification Settings #}
@@ -97,7 +120,9 @@
                   {% include "app/icons/bell-ringing.svg" with classes="w-4 h-4 mr-2 text-[var(--color-link)]" %}
                   Receive notifications for recently released media
                 </label>
-                <p class="text-xs text-[var(--color-text-muted)] mt-1 ml-6">Get notified when new episodes, chapters, or other media are released</p>
+                <p class="text-xs text-[var(--color-text-muted)] mt-1 ml-6">
+                  Get notified when new episodes, chapters, or other media are released
+                </p>
               </div>
 
               <label class="relative inline-flex items-center cursor-pointer">
@@ -118,7 +143,9 @@
                   {% include "app/icons/calendar.svg" with classes="w-4 h-4 mr-2 text-[var(--color-link)]" %}
                   Enable Premiere Digest
                 </label>
-                <p class="text-xs text-[var(--color-text-muted)] mt-1 ml-6">Receive a weekly digest of new show and season premieres</p>
+                <p class="text-xs text-[var(--color-text-muted)] mt-1 ml-6">
+                  Receive a weekly digest of new show and season premieres
+                </p>
               </div>
 
               <label class="relative inline-flex items-center cursor-pointer">

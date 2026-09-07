@@ -501,6 +501,83 @@ def resolve_playback_image(user_id: int):
     live_playback.resolve_state_image(user_id)
 
 
+@shared_task(name="Post playback webhook", ignore_result=True)
+def post_playback_webhook(user_id: int):
+    """POST the user's live playback state to their configured webhook.
+
+    Its own task, not part of the webhook that triggered it: a slow or dead
+    endpoint must not delay or fail the playback state write that just
+    succeeded. Nothing retries — a now-playing push is superseded by the next
+    event, so a stale redelivery is worse than a miss.
+    """
+    import hashlib
+    import hmac
+    import json
+
+    import requests
+
+    from api.fork_views_playback import build_now_playing_payload
+    from users.models import User
+
+    user = User.objects.filter(pk=user_id).first()
+    if not user or not user.playback_webhook_url:
+        return
+
+    payload = build_now_playing_payload(user) or {"active": False}
+
+    # Serialised once, here, and sent as raw bytes. Signing a payload and then
+    # letting `requests` re-encode it with `json=` is the classic way to ship a
+    # signature the receiver cannot reproduce: the bytes on the wire have to be
+    # the bytes that were signed.
+    body = json.dumps(payload, separators=(",", ":")).encode()
+    headers = {"Content-Type": "application/json"}
+    secret = user.get_playback_webhook_secret()
+    if secret:
+        signature = hmac.new(
+            secret.encode(),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+        # `sha256=<hex>`, the GitHub webhook convention, so existing receiver
+        # code and libraries verify it without a bespoke parser. Nothing here
+        # defends against replay: a redelivered state is superseded by the next
+        # event, which for a now-playing push is the whole lifetime of the fact.
+        headers["X-Floppy-Signature"] = f"sha256={signature}"
+
+    try:
+        response = requests.post(
+            user.playback_webhook_url,
+            data=body,
+            headers=headers,
+            # (connect, read). A host that blackholes the SYN would otherwise
+            # hold a worker for the full read timeout on every playback event.
+            timeout=(3.05, 10),
+            # The URL is user-supplied, so a redirect is a redirect the server
+            # follows on that user's behalf — the one hop that could reach a
+            # host they could not have named directly. `image_cache` refuses
+            # them for the same reason; a webhook has no use for one.
+            allow_redirects=False,
+        )
+        if response.is_redirect:
+            # A 3xx is not an error status, so `raise_for_status` would call
+            # this delivered. Nothing received the body.
+            logger.warning(
+                "Playback webhook for %s redirected, which is not followed",
+                user.username,
+            )
+            return
+        response.raise_for_status()
+    except requests.RequestException as error:
+        # `exception_summary`, never `str(error)`: a requests exception
+        # stringifies with the full URL in it, which would put the webhook's
+        # bearer path straight into the log.
+        logger.warning(
+            "Playback webhook failed for %s: %s",
+            user.username,
+            exception_summary(error),
+        )
+
+
 @shared_task(name="Build statistics day caches")
 def build_statistics_days_task(user_id: int, start_token: str, end_token: str):
     """Build missing per-day statistics caches for an arbitrary date range.
