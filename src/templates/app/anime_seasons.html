@@ -49,7 +49,7 @@
     {% elif not cards %}
       <div class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-6 text-[var(--color-text-secondary)]">No anime found for these filters.</div>
     {% else %}
-      <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+      <div class="media-grid">
         {% for card in cards %}
           <div>
             {% include "app/components/media_card.html" with item=card.item media=card.media title=card.title from_grid=True card_media_type="anime" track_action_title="Plan to Watch" create_tracking_entry=True %}

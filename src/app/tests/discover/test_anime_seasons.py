@@ -59,6 +59,7 @@ class AnimeSeasonsViewTests(TestCase):
         self.assertContains(response, "/details/mal/anime/1/movie-first")
         self.assertContains(response, "Plan to Watch")
         self.assertContains(response, "Recommendations")
+        self.assertContains(response, '<div class="media-grid">')
         mock_seasonal_anime.assert_called_once_with(2026, "winter")
 
     @patch("app.discover_views.credentials.is_configured", return_value=True)
