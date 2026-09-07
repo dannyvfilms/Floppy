@@ -52,7 +52,7 @@
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
         {% for card in cards %}
           <div>
-            {% include "app/components/media_card.html" with item=card.item media=card.media from_grid=True card_media_type="anime" track_action_title="Plan to Watch" create_tracking_entry=True %}
+            {% include "app/components/media_card.html" with item=card.item media=card.media title=card.title from_grid=True card_media_type="anime" track_action_title="Plan to Watch" create_tracking_entry=True %}
             <div class="mt-2 flex items-center justify-between gap-2 text-xs text-[var(--color-text-muted)]">
               <span>{{ card.format|upper }}</span>
               {% if card.score %}<span>{{ card.score|floatformat:1 }}</span>{% endif %}

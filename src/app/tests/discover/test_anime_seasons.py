@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import requests
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from app.models import Anime, Item, MediaTypes, Sources, Status
@@ -84,7 +84,7 @@ class AnimeSeasonsViewTests(TestCase):
         response = self.client.get(reverse("anime_seasons"))
 
         self.assertEqual(response.context["cards"][0]["media"], tracked)
-        self.assertContains(response, Status.PLANNING.label)
+        self.assertContains(response, 'id="media-status-chip-1"')
 
     @patch("app.discover_views.credentials.is_configured", return_value=True)
     @patch("app.discover_views.mal.seasonal_anime")
@@ -98,6 +98,21 @@ class AnimeSeasonsViewTests(TestCase):
         response = self.client.get(reverse("anime_seasons"))
 
         self.assertContains(response, '"is_create": "1"')
+
+    @override_settings(DEBUG=True)
+    @patch("app.discover_views.credentials.is_configured", return_value=True)
+    @patch("app.discover_views.mal.seasonal_anime")
+    def test_untracked_card_renders_in_debug_mode(
+        self,
+        mock_seasonal_anime,
+        _mock_is_configured,
+    ):
+        mock_seasonal_anime.return_value = [self._anime(1, "Untracked Anime")]
+
+        response = self.client.get(reverse("anime_seasons"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'alt="Untracked Anime"')
 
     @patch("app.discover_views.credentials.is_configured", return_value=False)
     def test_missing_credentials_render_useful_empty_state(self, _mock_is_configured):
