@@ -485,6 +485,31 @@ class AppTagsTests(TestCase):
             content,
         )
 
+    def test_media_card_title_does_not_enable_create_mode(self):
+        item = Item.objects.create(
+            media_id="anime-card-1",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Anime Card",
+        )
+        request = self.request_factory.get("/library")
+        request.user = self.user
+
+        content = render_to_string(
+            "app/components/media_card.html",
+            {
+                "item": item,
+                "media": None,
+                "user": self.user,
+                "title": item.title,
+                "track_action_title": "Plan to Watch",
+            },
+            request=request,
+        )
+
+        self.assertIn('"instance_id": ""', content)
+        self.assertNotIn('"is_create"', content)
+
     def _render_book_card(self, *, status, progress, percentage=False, audiobook=False):
         """Render media_card.html for a book and return its markup."""
         item = Item.objects.create(
