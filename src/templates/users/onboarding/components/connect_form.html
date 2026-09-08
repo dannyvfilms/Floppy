@@ -21,6 +21,6 @@
           :disabled="connecting"
           class="px-4 py-2 text-sm rounded-md transition-colors cursor-pointer"
           :class="connecting ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'">
-    <span x-text="connecting ? 'Connecting…' : 'Connect'"></span>
+    <span x-text="connecting ? gettext('Connecting…') : gettext('Connect')"></span>
   </button>
 </form>

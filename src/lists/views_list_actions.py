@@ -18,6 +18,7 @@ from django.db.models import Q
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
@@ -256,7 +257,9 @@ def edit(request):
                 activity_type=ListActivityType.LIST_EDITED,
             )
     else:
-        messages.error(request, "You do not have permission to edit this list.")
+        messages.error(
+            request, gettext("You do not have permission to edit this list.")
+        )
     return helpers.redirect_back(request)
 
 
@@ -306,7 +309,7 @@ def delete(request):
         logger.info("%s list deleted successfully.", custom_list)
         return redirect("lists")
 
-    messages.error(request, "You do not have permission to delete this list.")
+    messages.error(request, gettext("You do not have permission to delete this list."))
     return helpers.redirect_back(request)
 
 
@@ -315,11 +318,11 @@ def import_list_csv(request):
     """Import a single custom list from an uploaded CSV file."""
     csv_file = request.FILES.get("csv_file")
     if not csv_file:
-        messages.error(request, "Select a CSV file to import.")
+        messages.error(request, gettext("Select a CSV file to import."))
         return redirect("lists")
 
     list_tasks.import_list_csv_task.delay(request.user.id, csv_file.read(), "new")
-    messages.info(request, "List import started in the background.")
+    messages.info(request, gettext("List import started in the background."))
     return redirect("lists")
 
 

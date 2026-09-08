@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -16,7 +18,7 @@
         {% if person.episode_count %}
           <span class="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity
                        bg-gray-900/90 text-white text-[11px] font-medium px-2 py-1 rounded-md shadow-md pointer-events-none">
-            {{ person.episode_count }} ep{{ person.episode_count|pluralize }}
+            {% blocktranslate trimmed with value_1=person.episode_count count count=person.episode_count %}{{ value_1 }} ep{% plural %}{{ value_1 }} eps{% endblocktranslate %}
           </span>
         {% endif %}
       </div>

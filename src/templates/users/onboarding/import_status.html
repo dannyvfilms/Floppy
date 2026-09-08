@@ -1,14 +1,15 @@
 {% extends "users/onboarding/_layout.html" %}
+{% load i18n %}
+
 {% load user_tags %}
 
-{% block step_title %}You're all set{% endblock step_title %}
+{% block step_title %}{% translate "You're all set" %}{% endblock step_title %}
 
 {% block step_explanation %}
   <p>
-    Your connected services are queued to import. This can take a few
-    minutes depending on how much history they have.
+    {% translate "Your connected services are queued to import. This can take a few minutes depending on how much history they have." %}
   </p>
-  <p>You can check progress and history anytime from Settings &gt; Import.</p>
+  <p>{% translate "You can check progress and history anytime from Settings > Import." %}</p>
 {% endblock step_explanation %}
 
 {% block step_options %}
@@ -24,11 +25,11 @@
               {% elif run.status == "running" %}text-blue-400 bg-blue-400/10
               {% elif run.status == "failed" %}text-red-400 bg-red-400/10
               {% else %}text-gray-400 bg-gray-400/10{% endif %}">
-              {% if not run %}Queued
-              {% elif run.status == "completed" %}Done
-              {% elif run.status == "running" %}Importing…
-              {% elif run.status == "failed" %}Failed
-              {% else %}Cancelled{% endif %}
+              {% if not run %}{% translate "Queued" %}
+              {% elif run.status == "completed" %}{% translate "Done" %}
+              {% elif run.status == "running" %}{% translate "Importing…" %}
+              {% elif run.status == "failed" %}{% translate "Failed" %}
+              {% else %}{% translate "Cancelled" %}{% endif %}
             </span>
           {% endwith %}
         </div>
@@ -36,15 +37,14 @@
     </div>
   {% else %}
     <p class="text-sm text-[var(--color-text-muted)] mb-6">
-      No services connected yet — you can connect one anytime from
-      Settings &gt; Import.
+      {% translate "No services connected yet — you can connect one anytime from Settings > Import." %}
     </p>
   {% endif %}
   <form method="post" class="flex justify-end">
     {% csrf_token %}
     <button type="submit"
             class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-      Continue
+      {% translate "Continue" %}
     </button>
   </form>
 {% endblock step_options %}

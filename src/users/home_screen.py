@@ -16,6 +16,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.translation import gettext
 
 from app.helpers import is_caught_up_media
 from app.models import (
@@ -372,31 +373,31 @@ def get_home_configurable_media_types(
 def get_allowed_sort_choices(media_type: str, row_type: str) -> list[dict]:
     """Return sort options for a home row."""
     sort_choices: list[tuple[str, str]] = [
-        (MediaSortChoices.SCORE, "Rating"),
-        (MediaSortChoices.TITLE, "Title"),
-        (MediaSortChoices.PROGRESS, "Progress"),
-        (MediaSortChoices.RELEASE_DATE, "Release Date"),
-        (MediaSortChoices.NEXT_EPISODE_AIR_DATE, "Episode Air Date"),
-        (MediaSortChoices.DATE_ADDED, "Date Added"),
-        (MediaSortChoices.START_DATE, "Start Date"),
-        (MediaSortChoices.END_DATE, "Last Watched"),
+        (MediaSortChoices.SCORE, gettext("Rating")),
+        (MediaSortChoices.TITLE, gettext("Title")),
+        (MediaSortChoices.PROGRESS, gettext("Progress")),
+        (MediaSortChoices.RELEASE_DATE, gettext("Release Date")),
+        (MediaSortChoices.NEXT_EPISODE_AIR_DATE, gettext("Episode Air Date")),
+        (MediaSortChoices.DATE_ADDED, gettext("Date Added")),
+        (MediaSortChoices.START_DATE, gettext("Start Date")),
+        (MediaSortChoices.END_DATE, gettext("Last Watched")),
     ]
 
     if media_type in CRITIC_RATING_MEDIA_TYPES:
-        sort_choices.append((MediaSortChoices.CRITIC_RATING, "Critic Rating"))
+        sort_choices.append((MediaSortChoices.CRITIC_RATING, gettext("Critic Rating")))
     if media_type in AUTHOR_MEDIA_TYPES:
-        sort_choices.append((MediaSortChoices.AUTHOR, "Author"))
+        sort_choices.append((MediaSortChoices.AUTHOR, gettext("Author")))
     if media_type in POPULARITY_MEDIA_TYPES:
-        sort_choices.append((MediaSortChoices.POPULARITY, "Popularity"))
+        sort_choices.append((MediaSortChoices.POPULARITY, gettext("Popularity")))
     if media_type in RUNTIME_MEDIA_TYPES:
-        sort_choices.append((MediaSortChoices.RUNTIME, "Runtime"))
-        sort_choices.append((MediaSortChoices.TIME_WATCHED, "Time Watched"))
+        sort_choices.append((MediaSortChoices.RUNTIME, gettext("Runtime")))
+        sort_choices.append((MediaSortChoices.TIME_WATCHED, gettext("Time Watched")))
     if media_type in PLAYS_MEDIA_TYPES:
-        sort_choices.append((MediaSortChoices.PLAYS, "Plays"))
+        sort_choices.append((MediaSortChoices.PLAYS, gettext("Plays")))
     if media_type == MediaTypes.GAME.value:
-        sort_choices.append((MediaSortChoices.TIME_TO_BEAT, "Time to Beat"))
+        sort_choices.append((MediaSortChoices.TIME_TO_BEAT, gettext("Time to Beat")))
     if media_type == MediaTypes.TV.value:
-        sort_choices.append((MediaSortChoices.TIME_LEFT, "Time Left"))
+        sort_choices.append((MediaSortChoices.TIME_LEFT, gettext("Time Left")))
     if (
         media_type not in HOME_PROGRESS_MEDIA_TYPES
         and media_type != MediaTypes.SEASON.value
@@ -410,15 +411,15 @@ def get_allowed_sort_choices(media_type: str, row_type: str) -> list[dict]:
     if row_type == HomeScreenRowTypeChoices.LIBRARY_QUERY:
         sort_choices.extend(
             [
-                (HomeSortChoices.UPCOMING, "Upcoming"),
-                (HomeSortChoices.RECENT, "Recent"),
-                (HomeSortChoices.COMPLETION, "Completion"),
-                (HomeSortChoices.EPISODES_LEFT, "Episodes Left"),
+                (HomeSortChoices.UPCOMING, gettext("Upcoming")),
+                (HomeSortChoices.RECENT, gettext("Recent")),
+                (HomeSortChoices.COMPLETION, gettext("Completion")),
+                (HomeSortChoices.EPISODES_LEFT, gettext("Episodes Left")),
             ],
         )
 
     sort_choices = relabel_end_date_sort_choice(media_type, sort_choices)
-    sort_choices.append((HomeSortChoices.RANDOM, "Random"))
+    sort_choices.append((HomeSortChoices.RANDOM, gettext("Random")))
 
     deduped: list[dict] = []
     seen = set()

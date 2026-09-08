@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
   <div id="custom-fields-{{ item.id }}"
        x-data="collectionCustomFields({
@@ -14,19 +16,19 @@
     {% csrf_token %}
     <div class="flex items-center justify-between mb-3">
       <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
-        Custom Fields
+        {% translate "Custom Fields" %}
       </h3>
       <button type="button"
               @click="manageFields = !manageFields"
               class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
-              title="Manage custom fields">
+              title="{% translate "Manage custom fields" %}">
         {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
       </button>
     </div>
 
     <div x-show="!manageFields">
       {% if not custom_field_groups %}
-        <p class="text-sm text-[var(--color-text-muted)]">No custom fields for this media type yet.</p>
+        <p class="text-sm text-[var(--color-text-muted)]">{% translate "No custom fields for this media type yet." %}</p>
       {% endif %}
       {% for group in custom_field_groups %}
         <div class="mb-5">
@@ -38,7 +40,7 @@
               {% with current_value=entry_custom_field_values|dict_get:field.id %}
                 <div class="mb-5">
                   <label class="block text-sm font-medium mb-1 text-[var(--color-text-secondary)]"
-                         for="custom_field_{{ field.id }}">{{ field.label }}</label>
+                         for="custom_field_{{ field.id }}">{% translate field.label %}</label>
                   <div class="relative">
                     {% if field.field_type == "checkbox" %}
                       <label class="flex items-center gap-2 text-[var(--color-text-secondary)]">
@@ -48,7 +50,7 @@
                                form="collection-add-form"
                                {% if current_value %}checked{% endif %}
                                class="h-4 w-4 rounded border-gray-600 bg-[var(--color-surface-strong)] text-indigo-500 focus:ring-[var(--color-accent)]">
-                        <span>Yes</span>
+                        <span>{% translate "Yes" %}</span>
                       </label>
                     {% elif field.field_type == "select" %}
                       <div class="relative overflow-visible"
@@ -115,8 +117,8 @@
                 <input type="text"
                        x-model="group.name"
                        maxlength="100"
-                       placeholder="Group name"
-                       title="Rename this group"
+                       placeholder="{% translate "Group name" %}"
+                       title="{% translate "Rename this group" %}"
                        @click.stop
                        @keydown.enter.prevent="$el.blur()"
                        class="w-full truncate rounded border border-transparent bg-transparent px-1 -mx-1 text-sm font-medium text-[var(--color-text)] hover:border-[var(--color-surface-hover)] focus:border-indigo-500 focus:outline-none">
@@ -142,8 +144,8 @@
                       <input type="text"
                              x-model="field.label"
                              maxlength="100"
-                             placeholder="Field name"
-                             title="Rename this field"
+                             placeholder="{% translate "Field name" %}"
+                             title="{% translate "Rename this field" %}"
                              @click.stop
                              @keydown.enter.prevent="$el.blur()"
                              class="w-full truncate rounded border border-transparent bg-transparent px-1 -mx-1 text-sm text-[var(--color-text-secondary)] hover:border-[var(--color-surface-hover)] focus:border-indigo-500 focus:outline-none">
@@ -209,7 +211,7 @@
                   </div>
 
                   <div x-show="field.field_type === 'select'" x-cloak class="px-3 pb-2 pl-12">
-                    <textarea x-model="field.optionsText" rows="2" placeholder="One option per line"
+                    <textarea x-model="field.optionsText" rows="2" placeholder="{% translate "One option per line" %}"
                               class="w-full rounded-md border border-gray-600 bg-[var(--color-panel)] p-2 text-sm text-[var(--color-text)]"></textarea>
                   </div>
                 </div>
@@ -219,7 +221,7 @@
             <button type="button"
                     @click="addField(group)"
                     class="flex w-full items-center px-3 py-2 pl-9 text-left text-xs text-[var(--color-accent)] hover:text-[var(--color-text)] cursor-pointer">
-              {% include "app/icons/plus.svg" with classes="mr-2 h-3.5 w-3.5" %} Add field
+              {% include "app/icons/plus.svg" with classes="mr-2 h-3.5 w-3.5" %} {% translate "Add field" %}
             </button>
           </div>
         </template>
@@ -228,26 +230,26 @@
       <button type="button"
               @click="addGroup()"
               class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-panel)] px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer">
-        {% include "app/icons/plus.svg" with classes="mr-2 h-4 w-4" %} Add group
+        {% include "app/icons/plus.svg" with classes="mr-2 h-4 w-4" %} {% translate "Add group" %}
       </button>
 
       <p x-show="error" x-cloak x-text="error" class="text-sm text-red-400"></p>
 
       <div class="flex items-center justify-end gap-3">
-        <span x-show="dirty" x-cloak class="text-xs text-[var(--color-text-muted)]">Unsaved changes</span>
+        <span x-show="dirty" x-cloak class="text-xs text-[var(--color-text-muted)]">{% translate "Unsaved changes" %}</span>
         <button type="button"
                 x-show="dirty"
                 x-cloak
                 @click="resetFields()"
                 class="rounded-md border border-gray-600 px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] cursor-pointer">
-          Discard
+          {% translate "Discard" %}
         </button>
         <button type="button"
                 @click="saveFields()"
                 :disabled="saving"
                 :class="saving ? 'opacity-60 cursor-not-allowed' : 'hover:bg-indigo-700 cursor-pointer'"
                 class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors">
-          <span x-text="saving ? 'Saving…' : 'Save Fields'"></span>
+          {% translate "Saving…" as media_i18n_63 %}{% translate "Save Fields" as media_i18n_64 %}<span x-text="saving ? '{{ media_i18n_63|escapejs }}' : '{{ media_i18n_64|escapejs }}'"></span>
         </button>
       </div>
     </div>

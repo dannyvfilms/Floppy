@@ -1,3 +1,5 @@
+
+{% load i18n %}
 <div id="discover-tab-content"
      x-data="{
        open: false,
@@ -5,8 +7,8 @@
        selectedValue: '{% if is_hidden_from_discover %}hidden{% else %}visible{% endif %}'
      }">
   <div class="mb-6">
-    <h3 class="text-lg font-medium text-[var(--color-text-secondary)] mb-2">Discover Visibility</h3>
-    <p class="text-[var(--color-text-muted)] text-sm mb-4">Control whether this item appears in your Discover recommendations.</p>
+    <h3 class="text-lg font-medium text-[var(--color-text-secondary)] mb-2">{% translate "Discover Visibility" %}</h3>
+    <p class="text-[var(--color-text-muted)] text-sm mb-4">{% translate "Control whether this item appears in your Discover recommendations." %}</p>
 
     <form hx-post="{% url 'discover_toggle_hidden' %}"
           hx-target="#discover-tab-content"
@@ -18,8 +20,8 @@
 
       <div class="p-4 bg-[var(--color-surface-strong)] rounded-md space-y-4">
         <div class="flex items-center justify-between gap-3">
-          <label class="text-[var(--color-text-secondary)] text-sm font-medium">Status</label>
-          <span class="text-[var(--color-text-muted)] text-xs">Currently {% if is_hidden_from_discover %}hidden{% else %}visible{% endif %} in Discover.</span>
+          <label class="text-[var(--color-text-secondary)] text-sm font-medium">{% translate "Status" %}</label>
+          <span class="text-[var(--color-text-muted)] text-xs">{% translate "Currently" %} {% if is_hidden_from_discover %}{% translate "hidden" %}{% else %}{% translate "visible" %}{% endif %} {% translate "in Discover." %}</span>
         </div>
 
         <div class="relative">
@@ -27,7 +29,7 @@
                   @click="open = !open"
                   @click.outside="open = false"
                   class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
-            <span x-text="selectedValue === 'hidden' ? 'Hidden' : 'Visible'"></span>
+            {% translate "Hidden" as media_i18n_53 %}{% translate "Visible" as media_i18n_54 %}<span x-text="selectedValue === 'hidden' ? '{{ media_i18n_53|escapejs }}' : '{{ media_i18n_54|escapejs }}'"></span>
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
                  height="24"
@@ -54,13 +56,13 @@
                     @click="selectedValue = 'visible'; open = false"
                     class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
                     :class="{ 'text-[var(--color-text)] bg-[var(--color-surface-strong)]': selectedValue === 'visible' }">
-              Visible
+              {% translate "Visible" %}
             </button>
             <button type="button"
                     @click="selectedValue = 'hidden'; open = false"
                     class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
                     :class="{ 'text-[var(--color-text)] bg-[var(--color-surface-strong)]': selectedValue === 'hidden' }">
-              Hidden
+              {% translate "Hidden" %}
             </button>
           </div>
         </div>
@@ -73,7 +75,7 @@
                   ? 'bg-gray-600 text-gray-300 cursor-not-allowed'
                   : 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer'"
                 x-bind:disabled="selectedValue === initialValue">
-          Save
+          {% translate "Save" %}
         </button>
       </div>
     </form>

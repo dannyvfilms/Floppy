@@ -1,6 +1,22 @@
-<form id="filter-form" class="hidden">
+{% comment %}Hidden filter form: the hx-include payload for the filter toolbar.
+
+   Shared by the library/person browse pages and the smart-list rule builder.
+   Field names are the wire contract (they match smart_rules.SMART_FILTER_KEYS),
+   so a filter without an input here is a filter the server never sees.
+
+   Params:
+     filter_form_id      form id (default "filter-form")
+     filter_search_name  wire name for the search box (default "search")
+     filter_search_var   Alpine state var behind it (default "search")
+     filter_show_ranges  emit the rating/release-date/date-added range fields
+     filter_platform_multi  platform is a multi-select with a platform_mode
+     filter_show_media_types  emit the media-type multi-select fields
+     filter_edit_smart_rules  emit the smart-list edit flag
+{% endcomment %}
+<form id="{{ filter_form_id|default:'filter-form' }}" class="hidden">
   <input type="hidden" name="sort" x-model="sort">
   <input type="hidden" name="direction" x-model="direction">
+  <input type="hidden" name="layout" x-model="layout">
   <template x-for="s in statuses" :key="`status-${s}`">
     <input type="hidden" name="status" :value="s">
   </template>
@@ -9,22 +25,40 @@
          value="all"
          :disabled="statuses.length > 0">
   <input type="hidden" name="rating" x-model="rating">
+  {% if filter_show_ranges %}
+    <input type="hidden" name="rating_min" x-model="rating_min">
+    <input type="hidden" name="rating_max" x-model="rating_max">
+  {% endif %}
   <input type="hidden" name="collection" x-model="collection">
-  <input type="hidden" name="progress" x-model="progress">
+  {% if filter_data.show_progress %}
+    <input type="hidden" name="progress" x-model="progress">
+  {% endif %}
   <input type="hidden" name="genre" x-model="genre">
-  <input type="hidden" name="implied_genre" x-model="impliedGenre">
+  <input type="hidden" name="implied_genre" x-model="implied_genre">
   <input type="hidden" name="year" x-model="year">
-  <input type="hidden" name="completed_date_from" x-model="completedDateFrom">
-  <input type="hidden" name="completed_date_to" x-model="completedDateTo">
+  <input type="hidden" name="completed_date_from" x-model="completed_date_from">
+  <input type="hidden" name="completed_date_to" x-model="completed_date_to">
+  {% if filter_show_ranges %}
+    <input type="hidden" name="release_date_from" x-model="release_date_from">
+    <input type="hidden" name="release_date_to" x-model="release_date_to">
+    <input type="hidden" name="date_added_from" x-model="date_added_from">
+    <input type="hidden" name="date_added_to" x-model="date_added_to">
+  {% endif %}
   <input type="hidden" name="release" x-model="release">
-  <input type="hidden" name="source" x-model="sourceFilter">
-  <input type="hidden" name="media_status" x-model="mediaStatus">
+  <input type="hidden" name="source" x-model="source">
+  {% if filter_data.media_statuses %}
+    <input type="hidden" name="media_status" x-model="media_status">
+  {% endif %}
   <input type="hidden" name="language" x-model="language">
   <input type="hidden" name="country" x-model="country">
-  <template x-for="p in selectedPlatforms" :key="`platform-${p}`">
-    <input type="hidden" name="platform" :value="p">
-  </template>
-  <input type="hidden" name="platform_mode" x-model="platformMode">
+  {% if filter_platform_multi %}
+    <template x-for="p in selectedPlatforms" :key="`platform-${p}`">
+      <input type="hidden" name="platform" :value="p">
+    </template>
+    <input type="hidden" name="platform_mode" x-model="platformMode">
+  {% else %}
+    <input type="hidden" name="platform" x-model="platform">
+  {% endif %}
   <input type="hidden" name="origin" x-model="origin">
   <input type="hidden" name="format" x-model="format">
   <input type="hidden" name="author" x-model="author">
@@ -32,10 +66,28 @@
   <template x-for="t in selectedTags" :key="`tag-${t}`">
     <input type="hidden" name="tag" :value="t">
   </template>
+  <input type="hidden" name="tag" value="" :disabled="selectedTags.length > 0">
   <input type="hidden" name="tag_mode" x-model="tagMode">
-  <input type="hidden" name="search" x-model="search">
-  <input type="hidden" name="layout" x-model="layout">
-  <input type="hidden" name="department" x-model="department">
+  <input type="hidden"
+         name="{{ filter_search_name|default:'search' }}"
+         x-model="{{ filter_search_var|default:'search' }}">
+  {% if filter_data.departments %}
+    <input type="hidden" name="department" x-model="department">
+  {% endif %}
+  {% if filter_show_media_types %}
+    <input type="hidden"
+           name="type_mode"
+           :value="(allTypesSelected() && !hasGranularTypeSelected()) ? 'all' : 'subset'">
+    <template x-for="type in selectedTypesForSubmit()" :key="`type-${type}`">
+      <input type="hidden" name="type" :value="type">
+    </template>
+  {% endif %}
+  {% if filter_data.lists %}
+    <template x-for="id in selectedLists" :key="`list-${id}`">
+      <input type="hidden" name="list" :value="id">
+    </template>
+    <input type="hidden" name="list" value="" :disabled="selectedLists.length > 0">
+  {% endif %}
   {% if media_type == 'music' %}
     <input type="hidden"
            name="subview"
@@ -44,5 +96,8 @@
     <input type="hidden"
            name="subview"
            value="{{ current_subview|default:'comics' }}">
+  {% endif %}
+  {% if filter_edit_smart_rules %}
+    <input type="hidden" name="edit_smart_rules" value="1">
   {% endif %}
 </form>

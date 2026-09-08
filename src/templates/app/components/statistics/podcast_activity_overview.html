@@ -1,25 +1,27 @@
+
+{% load i18n %}
 {% load app_tags %}
 
       <!-- Podcast Consumption Section -->
       {% if user.podcast_enabled and podcast_consumption.has_data %}
       <section class="bg-[var(--color-surface)] rounded-lg p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-8 space-y-4 sm:space-y-6">
         <div class="flex flex-col space-y-1">
-          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">Podcast</span>
-          <h2 class="text-2xl font-semibold text-[var(--color-text)]">Activity Overview</h2>
+          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{% translate "Podcast" %}</span>
+          <h2 class="text-2xl font-semibold text-[var(--color-text)]">{% translate "Activity Overview" %}</h2>
           <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
         </div>
 
         <div class="space-y-4 sm:space-y-6">
           {% if show_year_charts %}
           <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-            <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Podcast Plays by Year</h3>
+            <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Podcast Plays by Year" %}</h3>
             {% if podcast_consumption.charts.by_year.labels %}
               <div class="h-64">
                 <canvas id="podcastPlaysByYearChart"></canvas>
               </div>
             {% else %}
               <div class="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
-                <p class="text-sm">No podcast plays available for this range.</p>
+                <p class="text-sm">{% translate "No podcast plays available for this range." %}</p>
               </div>
             {% endif %}
           </div>
@@ -29,7 +31,7 @@
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
             <!-- Most Played -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Most Played</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Most Played" %}</h3>
               {% if podcast_consumption.most_played %}
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for episode in podcast_consumption.most_played %}
@@ -46,21 +48,21 @@
                     {% endif %}
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ episode.title|default:"Unknown Show" }}</p>
-                      <p class="text-xs text-[var(--color-text-muted)]">{{ episode.plays }} play{{ episode.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=episode.plays count count=episode.plays %}{{ value_1 }} play{% plural %}{{ value_1 }} plays{% endblocktranslate %}</p>
                     </div>
                   </a>
                   {% endfor %}
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No show data available.</p>
+                  <p class="text-sm">{% translate "No show data available." %}</p>
                 </div>
               {% endif %}
             </div>
 
             <!-- Most Listened -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Most Listened</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Most Listened" %}</h3>
               {% if podcast_consumption.most_listened %}
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for episode in podcast_consumption.most_listened %}
@@ -77,21 +79,21 @@
                     {% endif %}
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ episode.title|default:"Unknown Show" }}</p>
-                      <p class="text-xs text-[var(--color-text-muted)]">{{ episode.formatted_duration }} · {{ episode.plays }} play{{ episode.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=episode.formatted_duration value_2=episode.plays count count=episode.plays %}{{ value_1 }} · {{ value_2 }} play{% plural %}{{ value_1 }} · {{ value_2 }} plays{% endblocktranslate %}</p>
                     </div>
                   </a>
                   {% endfor %}
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No episode data available.</p>
+                  <p class="text-sm">{% translate "No episode data available." %}</p>
                 </div>
               {% endif %}
             </div>
 
             <!-- Longest Episodes -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Longest Episodes</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Longest Episodes" %}</h3>
               {% if podcast_consumption.longest_episodes %}
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for episode in podcast_consumption.longest_episodes %}
@@ -115,7 +117,7 @@
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No episode data available.</p>
+                  <p class="text-sm">{% translate "No episode data available." %}</p>
                 </div>
               {% endif %}
             </div>

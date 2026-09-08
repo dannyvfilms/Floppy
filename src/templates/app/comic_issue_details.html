@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load user_tags %}
 {% load humanize %}
@@ -37,7 +39,7 @@
             {# Desktop #}
             <div class="hidden flex-wrap items-center justify-start gap-y-1 text-sm font-medium text-[var(--color-text-muted)] md:flex md:text-start">
               {% if media.details.issue_number %}
-                <span>Issue #{{ media.details.issue_number }}</span>
+                <span>{% blocktranslate trimmed with value_1=media.details.issue_number %}Issue #{{ value_1 }}{% endblocktranslate %}</span>
               {% endif %}
               {% if media.details.cover_date %}
                 <span class="mx-2 text-gray-600">•</span>
@@ -45,12 +47,12 @@
               {% endif %}
               {% if not public_view|default:False and user_medias %}
                 <span class="mx-2 text-gray-600">•</span>
-                <span>Read {{ user_medias|length }} time{{ user_medias|length|pluralize }}</span>
+                <span>{% blocktranslate trimmed with value_1=user_medias|length count count=user_medias|length %}Read {{ value_1 }} time{% plural %}Read {{ value_1 }} times{% endblocktranslate %}</span>
               {% endif %}
             </div>
             {# Mobile #}
             <div class="md:hidden text-sm font-medium text-[var(--color-text-muted)] text-center">
-              {% if media.details.issue_number %}Issue #{{ media.details.issue_number }}{% endif %}
+              {% if media.details.issue_number %}{% blocktranslate trimmed with value_1=media.details.issue_number %}Issue #{{ value_1 }}{% endblocktranslate %}{% endif %}
               {% if media.details.cover_date %}<span class="mx-1 text-gray-600">•</span>{{ media.details.cover_date }}{% endif %}
             </div>
           </div>
@@ -75,7 +77,7 @@
               <button type="button"
                       @click="showRatingPopup = !showRatingPopup"
                       class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm transition-colors duration-200 hover:border-amber-300/28 hover:bg-amber-500/[0.11] sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
-                <span class="sr-only">Your score</span>
+                <span class="sr-only">{% translate "Your score" %}</span>
                 <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14 sm:h-8 sm:w-8">
                   {% include "app/icons/star.svg" with classes="h-3.5 w-3.5 text-yellow-400 fill-yellow-400 sm:h-4 sm:w-4" %}
                 </span>
@@ -85,8 +87,8 @@
                         x-text="formatRating(rating)">{% if ep_score is not None %}{{ ep_score|score_display:user }}{% endif %}</span>
                   <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm {% if ep_score is None %}hidden{% endif %}"
                         :class="rating ? '' : 'hidden'">|</span>
-                  <span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm"
-                        x-text="rating ? 'Edit rating' : 'Add rating'">{% if ep_score is not None %}Edit rating{% else %}Add rating{% endif %}</span>
+                  {% translate "Edit rating" as media_i18n_34 %}{% translate "Add rating" as media_i18n_35 %}<span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm"
+                        x-text="rating ? '{{ media_i18n_34|escapejs }}' : '{{ media_i18n_35|escapejs }}'">{% if ep_score is not None %}{% translate "Edit rating" %}{% else %}{% translate "Add rating" %}{% endif %}</span>
                 </span>
               </button>
               <div x-show="showRatingPopup"
@@ -134,10 +136,10 @@
                       class="inline-flex w-full items-center justify-center gap-3 rounded-xl px-5 py-3 text-white shadow-sm transition duration-300 cursor-pointer sm:w-auto {% if current_instance %}bg-indigo-600 hover:bg-indigo-700{% else %}bg-gray-600 hover:bg-gray-700{% endif %}">
                 {% if current_instance %}
                   {% include "app/icons/eye.svg" with classes="w-5 h-5 shrink-0" %}
-                  <span class="font-medium">Read</span>
+                  <span class="font-medium">{% translate "Read" %}</span>
                 {% else %}
                   {% include "app/icons/eye-closed.svg" with classes="w-5 h-5 shrink-0" %}
-                  <span class="font-medium">Mark Read</span>
+                  <span class="font-medium">{% translate "Mark Read" %}</span>
                 {% endif %}
               </button>
               <div x-show="trackOpen"
@@ -157,7 +159,7 @@
             <div class="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap">
               <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
                 <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
-                        title="Add to custom lists"
+                        title="{% translate "Add to custom lists" %}"
                         hx-get="{% media_view_url 'lists_modal' media %}"
                         hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
                         hx-target="#{% component_id 'lists' media %}"
@@ -178,7 +180,7 @@
 
               <div x-data="{ historyOpen: false }" class="flex-1 sm:flex-none">
                 <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
-                        title="View your activity history"
+                        title="{% translate "View your activity history" %}"
                         hx-get="{% media_view_url 'history_modal' media %}"
                         hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
                         hx-target="#{% component_id 'history' media %}"
@@ -222,7 +224,7 @@
             <button x-show="isClamped"
                     @click="isExpanded = !isExpanded"
                     class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer inline-flex">
-              <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
+              {% translate "Show less" as media_i18n_0 %}{% translate "Read more" as media_i18n_12 %}<span x-text="isExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_12|escapejs }}'"></span>
             </button>
           </div>
         </div>
@@ -236,25 +238,25 @@
   <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start self-start">
     {% if media.details.issue_number %}
       <div class="mb-4">
-        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">ISSUE NUMBER</h3>
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "ISSUE NUMBER" %}</h3>
         <p class="text-sm text-[var(--color-text-secondary)]">{{ media.details.issue_number }}</p>
       </div>
     {% endif %}
     {% if media.details.volume_name %}
       <div class="mb-4">
-        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">VOLUME NAME</h3>
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "VOLUME NAME" %}</h3>
         <p class="text-sm text-[var(--color-text-secondary)]">{{ media.details.volume_name }}</p>
       </div>
     {% endif %}
     {% if media.details.cover_date %}
       <div class="mb-4">
-        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">COVER DATE</h3>
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "COVER DATE" %}</h3>
         <p class="text-sm text-[var(--color-text-secondary)]">{{ media.details.cover_date }}</p>
       </div>
     {% endif %}
     {% if authors_linked %}
       <div class="mb-4">
-        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">AUTHOR{{ authors_linked|length|pluralize }}</h3>
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% blocktranslate trimmed count count=authors_linked|length %}AUTHOR{% plural %}AUTHORs{% endblocktranslate %}</h3>
         <div class="flex flex-col gap-1">
           {% for author in authors_linked %}
             <a href="{% url 'person_detail' source=author.source person_id=author.person_id name=author.name|slug %}"
@@ -267,14 +269,14 @@
     {# Collection #}
     {% if not public_view|default:False %}
       <div class="flex items-center justify-between mb-2 mt-6">
-        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">COLLECTION</h3>
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "COLLECTION" %}</h3>
         <div x-data="{ collectionOpen: false }">
           <button class="p-1.5 text-white rounded-md bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer"
                   hx-get="{% media_view_url 'collection_modal' media %}"
                   hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
                   hx-target="#{% component_id 'collection' media %}"
                   @click="collectionOpen = true"
-                  title="Add collection data">{% include "app/icons/plus.svg" with classes="w-3.5 h-3.5" %}</button>
+                  title="{% translate "Add collection data" %}">{% include "app/icons/plus.svg" with classes="w-3.5 h-3.5" %}</button>
 
           <div x-show="collectionOpen"
           @mousedown.self="if (!$event.target.closest('[data-cf-dropdown-menu]')) collectionOpen = false"
@@ -297,7 +299,7 @@
           {% include "app/components/collection_entry_summary.html" with collection_entry=collection_entry media_type=media_type user=user source_style_game_meta=True flat_list=True is_last=True entry_quality_label="" %}
         </div>
       {% else %}
-        <p class="text-[var(--color-text-muted)] text-sm">No collection data available</p>
+        <p class="text-[var(--color-text-muted)] text-sm">{% translate "No collection data available" %}</p>
       {% endif %}
     {% endif %}
   </div>

@@ -13,6 +13,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import (
@@ -93,7 +94,7 @@ def update_metadata_provider_preference(request, source, media_type, media_id):
     }
     if provider not in allowed_providers:
         messages.error(
-            request, "That metadata provider is not available for this title."
+            request, gettext("That metadata provider is not available for this title.")
         )
     else:
         if (
@@ -114,7 +115,7 @@ def update_metadata_provider_preference(request, source, media_type, media_id):
             item=item,
             defaults={"provider": provider},
         )
-        messages.success(request, "Metadata provider updated.")
+        messages.success(request, gettext("Metadata provider updated."))
 
     if return_url and (
         return_url.startswith("/")
@@ -150,14 +151,14 @@ def update_metadata_language_preference(request, source, media_type, media_id):
         language_choices = [("", f"Server Default ({settings.TMDB_LANG})")]
     valid_codes = {choice[0] for choice in language_choices}
     if language and language not in valid_codes:
-        messages.error(request, "That metadata language is not available.")
+        messages.error(request, gettext("That metadata language is not available."))
     else:
         MetadataProviderPreference.objects.update_or_create(
             user=request.user,
             item=item,
             defaults={"language": language},
         )
-        messages.success(request, "Metadata language updated.")
+        messages.success(request, gettext("Metadata language updated."))
 
     if return_url and (
         return_url.startswith("/")
@@ -323,7 +324,11 @@ def move_library_item(request, item_id):
 
     messages.success(
         request,
-        f"Moved tracking to {target_item.get_display_title(request.user) or 'the selected title'}.",
+        gettext("Moved tracking to %(value_1)s.")
+        % {
+            "value_1": target_item.get_display_title(request.user)
+            or gettext("the selected title")
+        },
     )
     destination_url = reverse(
         "media_details",
@@ -362,7 +367,9 @@ def remap_metadata_provider(request, source, media_type, media_id):
         or provider == item.source
         or not provider_media_id
     ):
-        messages.error(request, "That remap target is not valid for this title.")
+        messages.error(
+            request, gettext("That remap target is not valid for this title.")
+        )
     else:
         metadata_resolution.upsert_provider_links(
             item,
@@ -378,7 +385,7 @@ def remap_metadata_provider(request, source, media_type, media_id):
             item=item,
             defaults={"provider": provider},
         )
-        messages.success(request, "Remapped to the selected match.")
+        messages.success(request, gettext("Remapped to the selected match."))
 
     if return_url and (
         return_url.startswith("/")
@@ -455,7 +462,7 @@ def set_hardcover_edition(request, item_id):
     edition_id = (request.POST.get("edition_id") or "").strip()
 
     if not edition_id:
-        messages.error(request, "Select an edition to use.")
+        messages.error(request, gettext("Select an edition to use."))
     else:
         HardcoverEditionPreference.objects.update_or_create(
             user=request.user,
@@ -469,7 +476,7 @@ def set_hardcover_edition(request, item_id):
             f"{Sources.HARDCOVER.value}_{MediaTypes.BOOK.value}_"
             f"{item.media_id}_{edition_id}",
         )
-        messages.success(request, "Edition updated.")
+        messages.success(request, gettext("Edition updated."))
 
     if return_url and (
         return_url.startswith("/")
@@ -500,19 +507,21 @@ def update_item_image(request, item_id):
     item = get_object_or_404(Item, id=item_id)
     media_model = apps.get_model("app", item.media_type)
     if not media_model.objects.filter(user=request.user, item=item).exists():
-        messages.error(request, "You can only update images for items in your library.")
+        messages.error(
+            request, gettext("You can only update images for items in your library.")
+        )
         return helpers.redirect_back(request)
 
     if not image_url:
-        messages.error(request, "Enter an image URL to save.")
+        messages.error(request, gettext("Enter an image URL to save."))
         return helpers.redirect_back(request)
 
     if item.image != image_url:
         item.image = image_url
         item.save(update_fields=["image"])
-        messages.success(request, "Image URL updated.")
+        messages.success(request, gettext("Image URL updated."))
     else:
-        messages.success(request, "Image URL already matches this item.")
+        messages.success(request, gettext("Image URL already matches this item."))
 
     if return_url and (
         return_url.startswith("/")
@@ -542,12 +551,14 @@ def update_manual_item_metadata(request, item_id):
         owned = media_model.objects.filter(user=request.user, item=item)
     if not owned.exists():
         messages.error(
-            request, "You can only update metadata for items in your library."
+            request, gettext("You can only update metadata for items in your library.")
         )
         return helpers.redirect_back(request)
 
     if not custom_metadata.supports_custom_metadata(item):
-        messages.error(request, "Metadata overrides are not available for this item.")
+        messages.error(
+            request, gettext("Metadata overrides are not available for this item.")
+        )
         return helpers.redirect_back(request)
 
     form = custom_metadata.ManualMetadataForm(
@@ -558,9 +569,11 @@ def update_manual_item_metadata(request, item_id):
     if form.is_valid():
         update_fields = form.save()
         if update_fields:
-            messages.success(request, "Custom metadata updated.")
+            messages.success(request, gettext("Custom metadata updated."))
         else:
-            messages.success(request, "Custom metadata already matches this item.")
+            messages.success(
+                request, gettext("Custom metadata already matches this item.")
+            )
     else:
         logger.error(form.errors.as_json())
         helpers.form_error_messages(form, request)
@@ -639,10 +652,12 @@ def migrate_grouped_anime(request, source, media_type, media_id):
     allowed_providers = {Sources.TMDB.value, Sources.TVDB.value}
     if media_type != MediaTypes.ANIME.value or source != Sources.MAL.value:
         messages.error(
-            request, "Only flat MAL anime can be migrated to grouped series."
+            request, gettext("Only flat MAL anime can be migrated to grouped series.")
         )
     elif provider not in allowed_providers:
-        messages.error(request, "Choose TMDB or TVDB before migrating this anime.")
+        messages.error(
+            request, gettext("Choose TMDB or TVDB before migrating this anime.")
+        )
     else:
         try:
             result = anime_migration.migrate_flat_anime_to_grouped(
@@ -655,7 +670,7 @@ def migrate_grouped_anime(request, source, media_type, media_id):
         else:
             messages.success(
                 request,
-                "Migrated this anime into grouped series tracking.",
+                gettext("Migrated this anime into grouped series tracking."),
             )
             grouped_item = result.grouped_tv.item
             grouped_title = grouped_item.get_display_title(request.user) or "item"
@@ -1505,7 +1520,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         cache.set(cache_key, cached_metadata, timeout=timeout)
 
     if source == Sources.MANUAL.value:
-        msg = "Manual items cannot be synced."
+        msg = gettext("Manual items cannot be synced.")
         messages.error(request, msg)
         return HttpResponse(
             msg,
@@ -1525,11 +1540,11 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             )
             messages.error(
                 request,
-                "Could not read the podcast's RSS feed right now.",
+                gettext("Could not read the podcast's RSS feed right now."),
             )
             return _sync_redirect_response()
         if synced_show is not None:
-            messages.success(request, "Metadata synced successfully.")
+            messages.success(request, gettext("Metadata synced successfully."))
             return _sync_redirect_response()
 
     tracking_media_type = metadata_resolution.get_tracking_media_type(
@@ -1550,7 +1565,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
     logger.debug("%s - Cache TTL for: %s", cache_key, ttl)
 
     if ttl is not None and ttl > (settings.CACHE_TIMEOUT - 3):
-        msg = "The data was recently synced, please wait a few seconds."
+        msg = gettext("The data was recently synced, please wait a few seconds.")
         messages.error(request, msg)
         logger.error(msg)
     else:
@@ -1577,10 +1592,9 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             if isinstance(exc, services.ProviderAPIError):
                 msg = str(exc)
             else:
-                msg = (
-                    f"Could not sync with {provider_label} right now because the provider "
-                    "could not be reached."
-                )
+                msg = gettext(
+                    "Could not sync with %(value_1)s right now because the provider could not be reached."
+                ) % {"value_1": provider_label}
             if cached_metadata is not None:
                 msg += " Cached data has been kept."
             messages.error(request, msg)
@@ -1760,12 +1774,18 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         _sync_plex_rating(request, item, media_type)
 
         if preferred_provider_synced:
-            msg = (
-                f"{title} was synced to {Sources(source).label} and "
-                f"{Sources(preferred_provider_synced).label} successfully."
-            )
+            msg = gettext(
+                "%(value_1)s was synced to %(value_2)s and %(value_3)s successfully."
+            ) % {
+                "value_1": title,
+                "value_2": Sources(source).label,
+                "value_3": Sources(preferred_provider_synced).label,
+            }
         else:
-            msg = f"{title} was synced to {Sources(source).label} successfully."
+            msg = gettext("%(value_1)s was synced to %(value_2)s successfully.") % {
+                "value_1": title,
+                "value_2": Sources(source).label,
+            }
         messages.success(request, msg)
 
     return _sync_redirect_response()

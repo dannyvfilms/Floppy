@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 {% if edition.image %}
@@ -14,7 +16,7 @@
   <span class="flex items-center gap-2">
     <span class="block truncate text-[var(--color-text)]">{{ edition.title }}</span>
     {% if picker_type == "music" and selected_release_id == edition.release_id %}
-      <span class="shrink-0 text-xs text-[var(--color-accent)]">Selected</span>
+      <span class="shrink-0 text-xs text-[var(--color-accent)]">{% translate "Selected" %}</span>
     {% endif %}
   </span>
   {% if picker_type == "music" %}
@@ -27,10 +29,10 @@
       {{ edition.format|default:"Format unknown" }}
       {% if edition.packaging %} · {{ edition.packaging }}{% endif %}
       {% if edition.label %} · {{ edition.label }}{% endif %}
-      {% if edition.track_count %} · {{ edition.track_count }} tracks{% endif %}
+      {% if edition.track_count %} {% blocktranslate trimmed with value_1=edition.track_count %}· {{ value_1 }} tracks{% endblocktranslate %}{% endif %}
     </span>
     {% if edition.barcode %}
-      <span class="block text-xs text-[var(--color-text-muted)] truncate">Barcode: {{ edition.barcode }}</span>
+      <span class="block text-xs text-[var(--color-text-muted)] truncate">{% blocktranslate trimmed with value_1=edition.barcode %}Barcode: {{ value_1 }}{% endblocktranslate %}</span>
     {% endif %}
   {% elif edition.language or edition.format %}
     <span class="block text-xs text-[var(--color-text-muted)] truncate">

@@ -1,3 +1,5 @@
+
+{% load i18n %}
 <div class="relative filter-control"
      x-cloak
      x-show="layout === 'table'"
@@ -27,7 +29,7 @@
            :value="JSON.stringify(columns.filter(column => !column.visible).map(column => column.key))">
   </form>
   <button class="p-2 rounded-md border border-gray-700 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] transition-colors cursor-pointer"
-          title="Configure Table Columns"
+          title="{% translate "Configure Table Columns" %}"
           @click="open = !open"
           type="button">
     {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5" %}
@@ -41,7 +43,7 @@
        x-transition:leave="transition ease-in duration-75"
        x-transition:leave-start="transform opacity-100 scale-100"
        x-transition:leave-end="transform opacity-0 scale-95">
-    <div class="px-3 py-2 text-xs uppercase tracking-wide text-[var(--color-text-secondary)] border-b border-gray-700">Columns</div>
+    <div class="px-3 py-2 text-xs uppercase tracking-wide text-[var(--color-text-secondary)] border-b border-gray-700">{% translate "Columns" %}</div>
     <template x-for="(column, index) in columns" :key="column.key">
       <div class="flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-secondary)] border-b border-gray-700/60 last:border-b-0"
            :class="dragIndex === index ? 'bg-[var(--color-surface-hover)]' : ''"
@@ -52,13 +54,13 @@
            @dragend="endDrag">
         <button type="button"
                 class="cursor-grab text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
-                title="Drag to reorder">
+                title="{% translate "Drag to reorder" %}">
           {% include "app/icons/hamburger.svg" with classes="w-4 h-4" %}
         </button>
         <span class="flex-1 truncate" x-text="column.label"></span>
-        <button class="text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+        {% translate "Hide column" as media_i18n_66 %}{% translate "Show column" as media_i18n_67 %}<button class="text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                 type="button"
-                :title="column.visible ? 'Hide column' : 'Show column'"
+                :title="column.visible ? '{{ media_i18n_66|escapejs }}' : '{{ media_i18n_67|escapejs }}'"
                 @click="toggleVisibility(index)">
           <span x-show="column.visible">{% include "app/icons/eye.svg" with classes="w-4 h-4" %}</span>
           <span x-show="!column.visible">{% include "app/icons/eye-closed.svg" with classes="w-4 h-4" %}</span>
@@ -68,7 +70,7 @@
     <button class="w-full text-left px-3 py-2 text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer border-t border-[var(--color-surface-border)]"
             type="button"
             @click="resetDefaults()">
-      Reset to defaults
+      {% translate "Reset to defaults" %}
     </button>
   </div>
 </div>

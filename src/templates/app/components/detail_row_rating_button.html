@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -65,7 +67,7 @@
                hx-trigger="change"
                hx-swap="none"
                class="w-16 rounded border border-gray-600 bg-[var(--color-surface)] px-2 py-1 text-center text-xs text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-amber-400">
-        <span class="text-xs text-[var(--color-text-muted)]">exact rating</span>
+        <span class="text-xs text-[var(--color-text-muted)]">{% translate "exact rating" %}</span>
       </div>
     {% endif %}
   </div>

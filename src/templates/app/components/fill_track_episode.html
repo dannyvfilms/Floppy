@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -12,7 +14,7 @@
   <div class="w-[400px] max-h-[90vh] px-4 md:px-0 relative z-60">
     <div class="bg-[var(--color-surface)] p-6 rounded-lg max-h-[70svh] overflow-y-auto">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold text-[var(--color-text)]">Track Episode</h2>
+        <h2 class="text-xl font-bold text-[var(--color-text)]">{% translate "Track Episode" %}</h2>
         <button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                 @click="trackOpen = false">{% include "app/icons/x.svg" with classes="w-5 h-5" %}</button>
       </div>
@@ -26,16 +28,16 @@
                src="{{ episode.image|image_url }}">
           <div>
             <h3 class="text-lg font-semibold mb-1 line-clamp-1">{{ episode_title }}</h3>
-            <p class="text-sm text-[var(--color-text-muted)]">Episode {{ episode.display_episode_number|default:episode.episode_number }}</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=episode.display_episode_number|default:episode.episode_number %}Episode {{ value_1 }}{% endblocktranslate %}</p>
             {% with watched_count=episode.history|watched_count %}
               {% if watched_count == 1 %}
-                <p class="text-sm text-[var(--color-text-muted)] mt-1">Watched once</p>
+                <p class="text-sm text-[var(--color-text-muted)] mt-1">{% translate "Watched once" %}</p>
               {% elif watched_count > 1 %}
-                <p class="text-sm text-[var(--color-text-muted)] mt-1">Watched {{ watched_count }} times</p>
+                <p class="text-sm text-[var(--color-text-muted)] mt-1">{% blocktranslate trimmed with value_1=watched_count %}Watched {{ value_1 }} times{% endblocktranslate %}</p>
               {% elif episode.history %}
-                <p class="text-sm text-[var(--color-text-muted)] mt-1">Dropped</p>
+                <p class="text-sm text-[var(--color-text-muted)] mt-1">{% translate "Dropped" %}</p>
               {% else %}
-                <p class="text-sm text-[var(--color-text-muted)] mt-1">Not watched yet</p>
+                <p class="text-sm text-[var(--color-text-muted)] mt-1">{% translate "Not watched yet" %}</p>
               {% endif %}
             {% endwith %}
           </div>
@@ -47,18 +49,18 @@
 
         {% if episode.history %}
           <div>
-            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-3">Previous Watches</label>
+            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-3">{% translate "Previous Watches" %}</label>
             <div class="max-h-[200px] overflow-y-auto space-y-2">
 
               {% for entry in episode.history %}
                 <div class="flex items-center justify-between bg-[var(--color-surface-muted)] rounded-md p-3 border border-gray-600">
                   <div class="text-sm text-[var(--color-text)]">
                     {% if entry.dropped %}
-                      <span class="text-amber-400 italic">Dropped</span>
+                      <span class="text-amber-400 italic">{% translate "Dropped" %}</span>
                     {% elif entry.end_date %}
                       {{ entry.end_date|user_date_format:user }}
                     {% else %}
-                      No date provided
+                      {% translate "No date provided" %}
                     {% endif %}
                   </div>
                   <form method="post"
@@ -67,7 +69,7 @@
                     <input type="hidden" name="instance_id" value="{{ entry.id }}">
                     <input type="hidden" name="media_type" value="episode">
                     <button class="text-red-400 hover:text-red-300 transition-colors text-sm px-2 py-1 hover:bg-red-600/20 rounded-md cursor-pointer">
-                      Delete
+                      {% translate "Delete" %}
                     </button>
                   </form>
                 </div>
@@ -102,9 +104,9 @@
                  name="watch_operation_id"
                  value="{{ episode_watch_operation_id }}">
 
-          <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">Watch Date</label>
+          <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-2">{% translate "Watch Date" %}</label>
 
-          {% include "app/components/date_time_picker.html" with field_name="end_date" field_value="" field_id="episode-watch-date" field_label="Watch Date" default_now=True track_time=TRACK_TIME suggestion_label="Release Date" suggestion_date=episode.air_date|date:"Y-m-d" runtime_minutes=episode.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
+          {% include "app/components/date_time_picker.html" with field_name="end_date" field_value="" field_id="episode-watch-date" field_label=_("Watch Date") default_now=True track_time=TRACK_TIME suggestion_label=_("Release Date") suggestion_date=episode.air_date|date:"Y-m-d" runtime_minutes=episode.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
         </form>
 
         {# Drop form (no date input) #}
@@ -133,12 +135,12 @@
           <button type="submit"
                   form="episode-drop-{{ media.season_number }}-{{ episode.episode_number }}"
                   class="px-4 py-2 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer">
-            Drop
+            {% translate "Drop" %}
           </button>
           <button type="submit"
                   form="episode-watch-{{ media.season_number }}-{{ episode.episode_number }}"
                   class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
-            Add watch
+            {% translate "Add watch" %}
           </button>
         </div>
       </div>

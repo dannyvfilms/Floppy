@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 {% load humanize %}
@@ -51,13 +53,13 @@
       <div class="mt-4 mb-5 flex flex-wrap gap-2">
         {% if music_artist_rating.rating %}
           <div class="inline-flex h-8 items-center gap-2 rounded-full border border-rose-400/18 bg-rose-500/[0.07] pl-0 pr-3 text-sm text-white shadow-sm">
-            <span class="sr-only">MusicBrainz score</span>
+            <span class="sr-only">{% translate "MusicBrainz score" %}</span>
             <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-rose-400/28 bg-rose-500/14">
-              <span class="text-[9px] font-black tracking-[0.12em] text-rose-100">MB</span>
+              <span class="text-[9px] font-black tracking-[0.12em] text-rose-100">{% translate "MB" %}</span>
             </span>
             <span class="text-sm font-semibold text-[var(--color-text)]">{{ music_artist_rating.rating|floatformat:1 }}</span>
             <span class="text-sm text-[var(--color-text-muted)]">|</span>
-            <span class="text-sm text-[var(--color-text-secondary)]">{{ music_artist_rating.rating_count|intcomma }} vote{{ music_artist_rating.rating_count|pluralize }}</span>
+            <span class="text-sm text-[var(--color-text-secondary)]">{% blocktranslate trimmed with value_1=music_artist_rating.rating_count|intcomma count count=music_artist_rating.rating_count %}{{ value_1 }} vote{% plural %}{{ value_1 }} votes{% endblocktranslate %}</span>
           </div>
         {% endif %}
 
@@ -67,7 +69,7 @@
             <button type="button"
                     @click="showRatingPopup = !showRatingPopup"
                     class="inline-flex h-8 items-center gap-2 rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-3 text-sm text-white shadow-sm transition-colors duration-200 hover:border-amber-300/28 hover:bg-amber-500/[0.11]">
-              <span class="sr-only">Your score</span>
+              <span class="sr-only">{% translate "Your score" %}</span>
               <span class="-my-px -ml-px flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14">
                 {% include "app/icons/star.svg" with classes="h-4 w-4 text-yellow-400 fill-yellow-400" %}
               </span>
@@ -77,8 +79,8 @@
                       x-text="formatRating(rating)">{% if artist_tracker.score is not None %}{% if user|rating_scale_max == 5 %}{{ artist_tracker.score|score_display:user }}/5{% else %}{{ artist_tracker.score|score_display:user }}{% endif %}{% endif %}</span>
                 <span class="text-sm text-[var(--color-text-muted)] {% if artist_tracker.score is None %}hidden{% endif %}"
                       :class="rating ? '' : 'hidden'">|</span>
-                <span class="text-sm font-medium text-[var(--color-text-secondary)]"
-                      x-text="rating ? 'Edit rating' : 'Add rating'">{% if artist_tracker.score is not None %}Edit rating{% else %}Add rating{% endif %}</span>
+                {% translate "Edit rating" as media_i18n_34 %}{% translate "Add rating" as media_i18n_35 %}<span class="text-sm font-medium text-[var(--color-text-secondary)]"
+                      x-text="rating ? '{{ media_i18n_34|escapejs }}' : '{{ media_i18n_35|escapejs }}'">{% if artist_tracker.score is not None %}{% translate "Edit rating" %}{% else %}{% translate "Add rating" %}{% endif %}</span>
               </span>
             </button>
 
@@ -122,7 +124,7 @@
                 hx-trigger="click"
                 @click="trackOpen = true">
           {% include "app/icons/edit.svg" with classes="w-5 h-5 shrink-0" %}
-          <span class="font-medium">{{ detail_primary_action.label }}</span>
+          <span class="font-medium">{% translate detail_primary_action.label %}</span>
         </button>
 
         <div x-show="trackOpen"
@@ -147,7 +149,7 @@
                @keydown.escape.window="linksOpen = false; linksPinned = false"
                @click.outside="linksOpen = false; linksPinned = false">
             <button class="size-11 inline-flex items-center justify-center shrink-0 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
-                    title="View source and external links"
+                    title="{% translate "View source and external links" %}"
                     aria-haspopup="true"
                     :aria-expanded="linksOpen.toString()"
                     @click="linksPinned = !linksPinned; linksOpen = linksPinned">{% include "app/icons/link.svg" with classes="w-4 h-4" %}</button>
@@ -233,7 +235,7 @@
           <button x-show="isClamped"
                   @click="isExpanded = !isExpanded"
                   class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
-            <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
+            {% translate "Show less" as media_i18n_0 %}{% translate "Read more" as media_i18n_12 %}<span x-text="isExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_12|escapejs }}'"></span>
           </button>
         </div>
       </div>
@@ -243,42 +245,42 @@
 
 <div class="flex flex-col md:flex-row gap-12 md:gap-10">
   <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0">
-    <h2 class="text-xl font-bold mb-4">Details</h2>
+    <h2 class="text-xl font-bold mb-4">{% translate "Details" %}</h2>
     <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
       {% if music_artist_metadata.type %}
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">TYPE</h3>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "TYPE" %}</h3>
           <p class="text-[var(--color-text-secondary)]">{{ music_artist_metadata.type }}</p>
         </div>
       {% endif %}
       {% if music_artist_metadata.area or music_artist_metadata.country %}
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">ORIGIN</h3>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "ORIGIN" %}</h3>
           <p class="text-[var(--color-text-secondary)]">{{ music_artist_metadata.area|default:music_artist_metadata.country }}</p>
         </div>
       {% endif %}
       {% if music_artist_metadata.begin_date %}
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% if music_artist_metadata.type == 'Group' %}FORMED{% else %}BORN{% endif %}</h3>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% if music_artist_metadata.type == 'Group' %}{% translate "FORMED" %}{% else %}{% translate "BORN" %}{% endif %}</h3>
           <p class="text-[var(--color-text-secondary)]">{{ music_artist_metadata.begin_date }}</p>
         </div>
       {% endif %}
       {% if music_artist_metadata.end_date %}
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% if music_artist_metadata.type == 'Group' %}DISBANDED{% else %}DIED{% endif %}</h3>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% if music_artist_metadata.type == 'Group' %}{% translate "DISBANDED" %}{% else %}{% translate "DIED" %}{% endif %}</h3>
           <p class="text-[var(--color-text-secondary)]">{{ music_artist_metadata.end_date }}</p>
         </div>
       {% endif %}
       <div>
-        <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">RELEASES</h3>
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "RELEASES" %}</h3>
         <p class="text-[var(--color-text-secondary)]">{{ total_releases }}</p>
       </div>
     </div>
 
-    <h2 class="text-xl font-bold mb-4 mt-6">Collection</h2>
+    <h2 class="text-xl font-bold mb-4 mt-6">{% translate "Collection" %}</h2>
     <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
       <div class="mb-4">
-        <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">COLLECTED ALBUMS</h3>
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "COLLECTED ALBUMS" %}</h3>
         <p class="text-[var(--color-text-secondary)]">
           {{ collection_stats.collected_albums }}/{{ collection_stats.total_albums }}
           {% if collection_stats.total_albums > 0 %}
@@ -289,7 +291,7 @@
         </p>
       </div>
       <div>
-        <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">COLLECTED TRACKS</h3>
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "COLLECTED TRACKS" %}</h3>
         <p class="text-[var(--color-text-secondary)]">
           {{ collection_stats.collected_tracks }}/{{ collection_stats.total_tracks }}
           {% if collection_stats.total_tracks > 0 %}
@@ -310,21 +312,21 @@
     {% include "app/components/artist_relations_container.html" with artist=artist band_members=band_members member_of_bands=member_of_bands missing_relation_image_count=missing_relation_image_count poll_for_relation_images=poll_for_relation_images user=user only %}
 
     <section class="mb-8">
-      <h2 class="text-xl font-bold mb-4">Discography</h2>
+      <h2 class="text-xl font-bold mb-4">{% translate "Discography" %}</h2>
       {% if discography_groups %}
         {% include "app/components/artist_discography_container.html" with discography_groups=discography_groups artist=artist missing_cover_count=missing_cover_count poll_for_covers=poll_for_covers user=user only %}
       {% else %}
         <div class="bg-[var(--color-surface)] p-6 rounded-lg text-center">
           <p class="text-[var(--color-text-muted)]">
             {% if artist.musicbrainz_id %}
-              No releases found for this artist on MusicBrainz.
+              {% translate "No releases found for this artist on MusicBrainz." %}
             {% else %}
-              This artist doesn't have a MusicBrainz ID, so releases can't be populated automatically.
+              {% translate "This artist doesn't have a MusicBrainz ID, so releases can't be populated automatically." %}
             {% endif %}
           </p>
           <a href="{% url 'search' %}?q={{ artist.name|urlencode }}&media_type=music"
              class="inline-block mt-4 px-4 py-2 bg-rose-600 text-white rounded-md hover:bg-rose-700 transition-colors">
-            Search for {{ artist.name }}
+            {% blocktranslate trimmed with value_1=artist.name %}Search for {{ value_1 }}{% endblocktranslate %}
           </a>
         </div>
       {% endif %}

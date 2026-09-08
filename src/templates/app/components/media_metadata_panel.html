@@ -1,28 +1,30 @@
+
+{% load i18n %}
 {% load app_tags user_tags widget_tweaks %}
 
 <div class="space-y-6">
   {% if can_update_metadata_provider and metadata_provider_options and metadata_item %}
     <section class="space-y-3">
       <div>
-        <h3 class="text-xl font-semibold text-[var(--color-text)]">Metadata Provider</h3>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Metadata Provider" %}</h3>
         <p class="text-sm text-[var(--color-text-muted)] mt-1">
-          Display metadata can differ from tracking. Watch history stays on {{ identity_provider_label }} until you explicitly migrate a title.
+          {% blocktranslate trimmed with value_1=identity_provider_label %}Display metadata can differ from tracking. Watch history stays on {{ value_1 }} until you explicitly migrate a title.{% endblocktranslate %}
         </p>
       </div>
 
       <div class="flex items-start justify-between gap-4">
         <div>
           <p class="text-sm text-[var(--color-text-secondary)]">
-            Display metadata is currently coming from <span class="font-semibold">{{ display_provider_label }}</span>.
+            {% translate "Display metadata is currently coming from" %} <span class="font-semibold">{{ display_provider_label }}</span>.
           </p>
           <p class="text-xs text-[var(--color-text-muted)] mt-1">
-            Tracking source stays on {{ identity_provider_label }}.
+            {% blocktranslate trimmed with value_1=identity_provider_label %}Tracking source stays on {{ value_1 }}.{% endblocktranslate %}
           </p>
         </div>
         {% if metadata_provider_mapping_status == "missing" %}
-          <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Mapping needed</span>
+          <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">{% translate "Mapping needed" %}</span>
         {% elif metadata_provider_mapping_status == "mapped" %}
-          <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Mapped</span>
+          <span class="shrink-0 text-[11px] px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">{% translate "Mapped" %}</span>
         {% endif %}
       </div>
 
@@ -73,7 +75,7 @@
 
           <button type="submit"
                   class="shrink-0 inline-flex h-10 w-48 items-center justify-center px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
-            Save Provider
+            {% translate "Save Provider" %}
           </button>
         </div>
       </form>
@@ -82,17 +84,17 @@
         <div class="pt-2 border-t border-[var(--color-border)] space-y-2">
           <p class="text-sm text-[var(--color-text-secondary)]">
             {% if metadata_provider_mapping_status == "missing" %}
-              No automatic match was found on {{ display_provider_label }}.
+              {% blocktranslate trimmed with value_1=display_provider_label %}No automatic match was found on {{ value_1 }}.{% endblocktranslate %}
             {% else %}
-              Wrong match? Search {{ display_provider_label }} to pick the correct title.
+              {% blocktranslate trimmed with value_1=display_provider_label %}Wrong match? Search {{ value_1 }} to pick the correct title.{% endblocktranslate %}
             {% endif %}
           </p>
-          <input type="text"
+          {% translate "Enter" as media_i18n_65 %}<input type="text"
                  name="q"
-                 placeholder="Search {{ display_provider_label }}..."
+                 placeholder="{% blocktranslate trimmed with value_1=display_provider_label %}Search {{ value_1 }}...{% endblocktranslate %}"
                  class="w-full h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
                  hx-get="{% url 'search_remap_candidates' source=identity_provider media_type=media_type media_id=metadata_item.media_id %}?provider={{ display_provider }}&return_url={{ return_url|urlencode }}"
-                 hx-trigger="input changed delay:400ms, keyup[key=='Enter']"
+                 hx-trigger="input changed delay:400ms, keyup[key=='{{ media_i18n_65|escapejs }}']"
                  hx-target="#remap-search-results">
           <div id="remap-search-results"></div>
         </div>
@@ -103,9 +105,9 @@
   {% if can_update_metadata_language and metadata_language_options and metadata_item %}
     <section class="space-y-3">
       <div>
-        <h3 class="text-xl font-semibold text-[var(--color-text)]">Metadata Language</h3>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Metadata Language" %}</h3>
         <p class="text-sm text-[var(--color-text-muted)] mt-1">
-          Override your global metadata language for this title only.
+          {% translate "Override your global metadata language for this title only." %}
         </p>
       </div>
 
@@ -120,7 +122,7 @@
                  open: false,
                  selectedValue: '{{ selected_metadata_language }}',
                  selectedLabel: '',
-                 options: [{% for code, label in metadata_language_options %}{ value: '{{ code }}', label: '{{ label|escapejs }}' }{% if not forloop.last %},{% endif %}{% endfor %}],
+                 options: [{% for code, label in metadata_language_options %}{ value: '{{ code }}', label: '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}' }{% if not forloop.last %},{% endif %}{% endfor %}],
                  init() {
                    const match = this.options.find(o => o.value === this.selectedValue);
                    this.selectedLabel = match ? match.label : this.options[0]?.label ?? '';
@@ -156,7 +158,7 @@
 
           <button type="submit"
                   class="shrink-0 inline-flex h-10 w-48 items-center justify-center px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
-            Save Language
+            {% translate "Save Language" %}
           </button>
         </div>
       </form>
@@ -166,14 +168,14 @@
   {% if can_move_library_item and metadata_item and library_move_context %}
     <section class="space-y-3">
       <div>
-        <h3 class="text-xl font-semibold text-[var(--color-text)]">Move to {{ library_move_context.target_label }}</h3>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">{% blocktranslate trimmed with value_1=library_move_context.target_label %}Move to {{ value_1 }}{% endblocktranslate %}</h3>
         <p class="text-sm text-[var(--color-text-muted)] mt-1">
-          Search {{ library_move_context.target_source_label }} for the matching show. The selected title becomes the new tracking identity while your watch history and owned relations are retained when the destination supports them.
+          {% blocktranslate trimmed with value_1=library_move_context.target_source_label %}Search {{ value_1 }} for the matching show. The selected title becomes the new tracking identity while your watch history and owned relations are retained when the destination supports them.{% endblocktranslate %}
         </p>
       </div>
       <input type="text"
              name="q"
-             placeholder="Search {{ library_move_context.target_label }}..."
+             placeholder="{% blocktranslate trimmed with value_1=library_move_context.target_label %}Search {{ value_1 }}...{% endblocktranslate %}"
              autocomplete="off"
              role="combobox"
              aria-autocomplete="list"
@@ -188,7 +190,7 @@
            class="htmx-indicator flex items-center gap-2 text-sm text-[var(--color-text-muted)]"
            aria-live="polite">
         <span class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></span>
-        Searching {{ library_move_context.target_source_label }}...
+        {% blocktranslate trimmed with value_1=library_move_context.target_source_label %}Searching {{ value_1 }}...{% endblocktranslate %}
       </div>
       <div id="library-move-results"></div>
     </section>
@@ -199,14 +201,14 @@
              x-data="{ editionOpen: false }"
              @click.outside="editionOpen = false">
       <div>
-        <h3 class="text-xl font-semibold text-[var(--color-text)]">Edition</h3>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Edition" %}</h3>
         <p class="text-sm text-[var(--color-text-muted)] mt-1">
-          Pick a specific Hardcover edition (e.g. a different language or cover) to use for this title's title and cover. Leave the search blank to see every edition.
+          {% translate "Pick a specific Hardcover edition (e.g. a different language or cover) to use for this title's title and cover. Leave the search blank to see every edition." %}
         </p>
       </div>
       {% if hardcover_selected_edition %}
         <div>
-          <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">Selected edition</p>
+          <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">{% translate "Selected edition" %}</p>
           <div class="flex items-center gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
             {% if hardcover_selected_edition.image %}
               <img src="{{ hardcover_selected_edition.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
@@ -229,7 +231,7 @@
       <div class="relative">
         <input type="text"
                name="q"
-               placeholder="Search editions..."
+               placeholder="{% translate "Search editions..." %}"
                autocomplete="off"
                role="combobox"
                aria-autocomplete="list"
@@ -250,14 +252,14 @@
              x-data="{ releaseOpen: false }"
              @click.outside="releaseOpen = false">
       <div>
-        <h3 class="text-xl font-semibold text-[var(--color-text)]">Specific release</h3>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Specific release" %}</h3>
         <p class="text-sm text-[var(--color-text-muted)] mt-1">
-          Pick a MusicBrainz pressing for its format, cover, and release details. Play history remains grouped under this album.
+          {% translate "Pick a MusicBrainz pressing for its format, cover, and release details. Play history remains grouped under this album." %}
         </p>
       </div>
       {% if selected_music_release %}
         <div>
-          <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">Selected release</p>
+          <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">{% translate "Selected release" %}</p>
           <div class="flex items-start gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
             {% if selected_music_release.image %}
               <img src="{{ selected_music_release.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
@@ -280,7 +282,7 @@
                 </span>
               {% endif %}
               {% if selected_music_release.track_count %}
-                <span class="block text-xs text-[var(--color-text-muted)]">{{ selected_music_release.track_count }} tracks in this release</span>
+                <span class="block text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=selected_music_release.track_count %}{{ value_1 }} tracks in this release{% endblocktranslate %}</span>
               {% endif %}
             </span>
           </div>
@@ -289,7 +291,7 @@
       <div class="relative">
         <input type="text"
                name="q"
-               placeholder="Search releases..."
+               placeholder="{% translate "Search releases..." %}"
                autocomplete="off"
                role="combobox"
                aria-autocomplete="list"
@@ -308,9 +310,9 @@
   {% if manual_metadata_form %}
     <section class="space-y-4">
       <div>
-        <h3 class="text-xl font-semibold text-[var(--color-text)]">Custom Metadata</h3>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Custom Metadata" %}</h3>
         <p class="text-sm text-[var(--color-text-muted)] mt-1">
-          These overrides only affect this item while Custom is selected as the display provider.
+          {% translate "These overrides only affect this item while Custom is selected as the display provider." %}
         </p>
       </div>
 
@@ -324,23 +326,23 @@
           {% for field in manual_metadata_form %}
             <div class="{% if field.name == 'synopsis' or field.name == 'genres' or field.name == 'studios' or field.name == 'languages' or field.name == 'authors' or field.name == 'isbn' or field.name == 'platforms' or field.name == 'themes' or field.name == 'creators' %}md:col-span-2{% endif %}">
               <label class="block text-sm font-medium mb-1 text-[var(--color-text-secondary)]"
-                     for="{{ field.id_for_label }}">{{ field.label }}</label>
+                     for="{{ field.id_for_label }}">{% translate field.label %}</label>
               <div class="relative">
                 {% if field.field.widget.input_type == "number" %}
                   {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
                   <div class="absolute inset-y-0 right-0 flex flex-col border-l border-gray-600">
                     <button type="button"
                             class="flex-1 px-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors rounded-tr-md border-t border-r border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-                            aria-label="Increase {{ field.label }}"
-                            title="Increase {{ field.label }}"
+                            aria-label="{% blocktranslate trimmed with value_1=field.label %}Increase {{ value_1 }}{% endblocktranslate %}"
+                            title="{% blocktranslate trimmed with value_1=field.label %}Increase {{ value_1 }}{% endblocktranslate %}"
                             aria-controls="{{ field.id_for_label }}"
                             onclick="this.parentElement.previousElementSibling.stepUp()">
                       {% include "app/icons/chevron-up.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <button type="button"
                             class="flex-1 px-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors rounded-br-md border-b border-r border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-                            aria-label="Decrease {{ field.label }}"
-                            title="Decrease {{ field.label }}"
+                            aria-label="{% blocktranslate trimmed with value_1=field.label %}Decrease {{ value_1 }}{% endblocktranslate %}"
+                            title="{% blocktranslate trimmed with value_1=field.label %}Decrease {{ value_1 }}{% endblocktranslate %}"
                             aria-controls="{{ field.id_for_label }}"
                             onclick="this.parentElement.previousElementSibling.stepDown()">
                       {% include "app/icons/chevron-down.svg" with classes="w-3.5 h-3.5" %}
@@ -362,7 +364,7 @@
         <div class="flex justify-end">
           <button type="submit"
                   class="inline-flex h-10 w-48 items-center justify-center px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
-            Save Metadata
+            {% translate "Save Metadata" %}
           </button>
         </div>
       </form>
@@ -373,7 +375,7 @@
     <section class="space-y-3"
              x-data="{ imageUrl: '{{ image_field.value|default_if_none:''|escapejs }}' }">
       <label class="block text-sm font-medium text-[var(--color-text-secondary)]"
-             for="{{ image_field.id_for_label }}">{{ image_field.label }}</label>
+             for="{{ image_field.id_for_label }}">{% translate image_field.label %}</label>
 
       <div class="flex flex-col md:flex-row md:items-start gap-3">
         <input type="url"
@@ -394,7 +396,7 @@
             <input type="hidden" name="image_url" x-model="imageUrl">
             <button type="submit"
                     class="inline-flex h-10 w-48 items-center justify-center px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
-              Save Image
+              {% translate "Save Image" %}
             </button>
           </form>
         {% endif %}
@@ -402,7 +404,7 @@
 
       {% if not image_save_item_id %}
         <p class="text-xs text-[var(--color-text-muted)]">
-          Save this image from the General tab when you add or update the entry.
+          {% translate "Save this image from the General tab when you add or update the entry." %}
         </p>
       {% endif %}
     </section>
@@ -411,33 +413,32 @@
   {% if can_migrate_grouped_anime and grouped_preview and metadata_item %}
     <section class="space-y-3">
       <div>
-        <h3 class="text-xl font-semibold text-[var(--color-text)]">Convert to Grouped Series</h3>
+        <h3 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Convert to Grouped Series" %}</h3>
         <p class="text-sm text-[var(--color-text-muted)] mt-1">
-          See how this {{ identity_provider|upper }} entry will map into a single show with seasons before you convert it.
+          {% blocktranslate trimmed with value_1=identity_provider|upper %}See how this {{ value_1 }} entry will map into a single show with seasons before you convert it.{% endblocktranslate %}
         </p>
       </div>
 
       <div class="bg-[var(--color-surface-dim)] border border-[var(--color-border)] rounded-xl p-4 space-y-4">
         <div>
           <p class="text-sm text-[var(--color-text-secondary)]">
-            {{ display_provider|upper }} organizes this anime as
-            <span class="font-semibold">{{ grouped_preview|display_title:user }}</span>,
-            with seasons grouped under one main show.
+            {% blocktranslate trimmed with value_1=display_provider|upper %}{{ value_1 }} organizes this anime as{% endblocktranslate %}
+            <span class="font-semibold">{{ grouped_preview|display_title:user }}</span>{% translate ", with seasons grouped under one main show." %}
           </p>
           {% if grouped_preview_target %}
             <p class="text-sm text-[var(--color-text-secondary)] mt-2">
-              This {{ identity_provider|upper }} entry would convert to
+              {% blocktranslate trimmed with value_1=identity_provider|upper %}This {{ value_1 }} entry would convert to{% endblocktranslate %}
               <span class="font-semibold">{{ grouped_preview_target.season_title|default:"Unknown season" }}</span>
               {% if grouped_preview_target.episode_start and grouped_preview_target.episode_end %}
-                , episodes {{ grouped_preview_target.episode_start }}-{{ grouped_preview_target.episode_end }}
+                {% blocktranslate trimmed with value_1=grouped_preview_target.episode_start value_2=grouped_preview_target.episode_end %}, episodes {{ value_1 }}-{{ value_2 }}{% endblocktranslate %}
               {% elif grouped_preview_target.episode_start %}
-                starting at episode {{ grouped_preview_target.episode_start }}
+                {% blocktranslate trimmed with value_1=grouped_preview_target.episode_start %}starting at episode {{ value_1 }}{% endblocktranslate %}
               {% endif %}
               .
             </p>
           {% endif %}
           <p class="text-xs text-[var(--color-text-muted)] mt-1">
-            Nothing changes until you click Convert to Grouped Series. Your existing {{ identity_provider|upper }} entry stays in place until then.
+            {% blocktranslate trimmed with value_1=identity_provider|upper %}Nothing changes until you click Convert to Grouped Series. Your existing {{ value_1 }} entry stays in place until then.{% endblocktranslate %}
           </p>
         </div>
 
@@ -450,14 +451,14 @@
                     <div class="flex items-center gap-2">
                       <p class="text-sm text-[var(--color-text)]">
                         {% if season.season_number == 0 %}
-                          Specials
+                          {% translate "Specials" %}
                         {% else %}
-                          Season {{ season.season_number }}
+                          {% blocktranslate trimmed with value_1=season.season_number %}Season {{ value_1 }}{% endblocktranslate %}
                         {% endif %}
                       </p>
                       {% if season.is_mapped_target %}
                         <span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-[var(--color-link)] border border-indigo-500/30">
-                          Conversion target
+                          {% translate "Conversion target" %}
                         </span>
                       {% endif %}
                     </div>
@@ -466,19 +467,19 @@
                     {% endif %}
                     {% if season.is_mapped_target and season.mapped_episode_start and season.mapped_episode_end %}
                       <p class="text-xs text-[var(--color-link)] mt-1">
-                        {{ identity_provider|upper }} episodes: E{{ season.mapped_episode_start }}-E{{ season.mapped_episode_end }}
+                        {% blocktranslate trimmed with value_1=identity_provider|upper value_2=season.mapped_episode_start value_3=season.mapped_episode_end %}{{ value_1 }} episodes: E{{ value_2 }}-E{{ value_3 }}{% endblocktranslate %}
                       </p>
                     {% endif %}
                   </div>
                   <p class="text-xs text-[var(--color-text-secondary)] text-right">
                     {% if season.max_progress or season.max_progress == 0 %}
-                      {{ season.max_progress }} episodes
+                      {% blocktranslate trimmed with value_1=season.max_progress %}{{ value_1 }} episodes{% endblocktranslate %}
                     {% elif season.episode_count or season.episode_count == 0 %}
-                      {{ season.episode_count }} episodes
+                      {% blocktranslate trimmed with value_1=season.episode_count %}{{ value_1 }} episodes{% endblocktranslate %}
                     {% elif season.details and season.details.episodes %}
-                      {{ season.details.episodes }} episodes
+                      {% blocktranslate trimmed with value_1=season.details.episodes %}{{ value_1 }} episodes{% endblocktranslate %}
                     {% else %}
-                      ? episodes
+                      {% translate "? episodes" %}
                     {% endif %}
                   </p>
                 </div>
@@ -495,7 +496,7 @@
             <input type="hidden" name="return_url" value="{{ return_url }}">
             <button type="submit"
                     class="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors text-sm cursor-pointer">
-              Convert to Grouped Series
+              {% translate "Convert to Grouped Series" %}
             </button>
           </form>
         </div>

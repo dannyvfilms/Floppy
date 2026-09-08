@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% comment %}
   Role Leaders — 4 columns (Actors/Actresses/Directors/Writers), each a scrollable
@@ -8,7 +10,7 @@
   Required context: role_leaders (from stats_cast_crew.get_role_leaders),
   current_range_name / current_start_date / current_end_date for the POST body.
 {% endcomment %}
-<div x-data="{
+{% translate "Time" as media_i18n_61 %}{% translate "Titles" as media_i18n_68 %}{% translate "Plays" as media_i18n_62 %}<div x-data="{
        selectedPersonKey: '{{ featured_person.source|default:"" }}:{{ featured_person.person_id|default:"" }}',
        open: false,
        selectedSort: '{{ role_leaders.sort_by|default:"plays"|escapejs }}',
@@ -20,7 +22,7 @@
        totalLibraryTitles: {{ media_count.total|default:0 }},
        selectedMediaType: 'all',
        init() {
-         this.selectedLabel = this.selectedSort === 'time' ? 'Time' : (this.selectedSort === 'titles' ? 'Titles' : 'Plays');
+         this.selectedLabel = this.selectedSort === 'time' ? '{{ media_i18n_61|escapejs }}' : (this.selectedSort === 'titles' ? '{{ media_i18n_68|escapejs }}' : '{{ media_i18n_62|escapejs }}');
          this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
          window.addEventListener('stats-media-type-changed', () => {
            this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
@@ -226,8 +228,8 @@
      }">
   <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
     <div class="flex flex-col space-y-1">
-      <h2 class="text-xl font-semibold text-[var(--color-text)]">Role Leaders</h2>
-      <p class="text-sm text-[var(--color-text-muted)]">Top contributors by role across your library.</p>
+      <h2 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Role Leaders" %}</h2>
+      <p class="text-sm text-[var(--color-text-muted)]">{% translate "Top contributors by role across your library." %}</p>
     </div>
 
     <div class="w-full sm:w-auto sm:min-w-32 sm:ml-auto">
@@ -258,20 +260,20 @@
              x-transition:leave-start="transform opacity-100 scale-100"
              x-transition:leave-end="transform opacity-0 scale-95"
              class="absolute right-0 z-10 mt-2 min-w-full py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden border border-gray-600">
-          <button type="button"
-                  @click="setSort('plays', 'Plays')"
+          {% translate "Plays" as media_i18n_62 %}<button type="button"
+                  @click="setSort('plays', '{{ media_i18n_62|escapejs }}')"
                   class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-            Plays
+            {% translate "Plays" %}
           </button>
-          <button type="button"
-                  @click="setSort('time', 'Time')"
+          {% translate "Time" as media_i18n_61 %}<button type="button"
+                  @click="setSort('time', '{{ media_i18n_61|escapejs }}')"
                   class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-            Time
+            {% translate "Time" %}
           </button>
-          <button type="button"
-                  @click="setSort('titles', 'Titles')"
+          {% translate "Titles" as media_i18n_68 %}<button type="button"
+                  @click="setSort('titles', '{{ media_i18n_68|escapejs }}')"
                   class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-            Titles
+            {% translate "Titles" %}
           </button>
         </div>
       </div>

@@ -11,6 +11,7 @@ from integrations import import_progress
 from integrations.imports import (
     anilist,
     audiobookshelf,
+    clz,
     goodreads,
     gpodder,
     grouvee,
@@ -239,6 +240,18 @@ def import_kitsu(username, user_id, mode):
 def import_yamtrack(file, user_id, mode):
     """Celery task for importing a Floppy backup or Yamtrack CSV."""
     return import_media(yamtrack.importer, _coerce_uploaded_file(file), user_id, mode)
+
+
+@shared_task(name="Import from CLZ")
+def import_clz(file, user_id, mode, media_type=None):
+    """Celery task for importing a CLZ (Collectorz) CSV or XML export."""
+    return import_media(
+        clz.importer,
+        _coerce_uploaded_file(file),
+        user_id,
+        mode,
+        media_type=media_type,
+    )
 
 
 @shared_task(name="Import from HowLongToBeat")

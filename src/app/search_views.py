@@ -4,6 +4,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.db.models import Q
 from django.shortcuts import render
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET
 
 from app import helpers
@@ -328,7 +329,8 @@ def media_search(request):
         )
         messages.error(
             request,
-            f"{exc.provider_label} is currently unavailable. Please try again shortly.",
+            gettext("%(value_1)s is currently unavailable. Please try again shortly.")
+            % {"value_1": exc.provider_label},
         )
         data = {"page": 1, "total_results": 0, "total_pages": 0, "results": []}
 

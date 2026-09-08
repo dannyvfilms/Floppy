@@ -1,8 +1,10 @@
+
+{% load i18n %}
 <section class="mb-8"
          x-data="{ detailGridExpanded: false, detailGridIsMobile: false, detailGridVisibleCount: 6, syncDetailGrid() { this.detailGridIsMobile = window.matchMedia('(max-width: 768px)').matches; this.detailGridVisibleCount = document.body.dataset.mobileGrid === 'comfortable' ? 4 : 6; }, shouldShowDetailCard(index) { return !this.detailGridIsMobile || this.detailGridExpanded || index < this.detailGridVisibleCount; }, canToggleDetailGrid(total) { return this.detailGridIsMobile && total > this.detailGridVisibleCount; } }"
          x-init="syncDetailGrid()"
          @resize.window="syncDetailGrid()">
-  <h2 class="text-xl font-bold mb-4">Seasons</h2>
+  <h2 class="text-xl font-bold mb-4">{% translate "Seasons" %}</h2>
   <div class="detail-media-grid">
     {% for result in media.related.seasons %}
       <div x-show="shouldShowDetailCard({{ forloop.counter0 }})">
@@ -13,6 +15,6 @@
   <button x-show="canToggleDetailGrid({{ media.related.seasons|length }})"
           @click="detailGridExpanded = !detailGridExpanded"
           class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden">
-    <span x-text="detailGridExpanded ? 'Show less' : 'Show more'"></span>
+    {% translate "Show less" as media_i18n_0 %}{% translate "Show more" as media_i18n_1 %}<span x-text="detailGridExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_1|escapejs }}'"></span>
   </button>
 </section>

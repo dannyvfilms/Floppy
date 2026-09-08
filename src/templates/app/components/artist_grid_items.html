@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -55,7 +57,7 @@
         <div class="relative z-10 flex items-center justify-center space-x-2.5">
           {# Track Button #}
           <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
-                  title="Edit tracking"
+                  title="{% translate "Edit tracking" %}"
                   hx-get="{% url 'artist_track_modal' tracker.artist.id %}"
                   hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
                   hx-target="#artist-track-modal-{{ tracker.artist.id }}"
@@ -67,14 +69,14 @@
           {# View Artist Button #}
           <a href="{{ tracker.artist|music_artist_url }}"
              class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
-             title="View artist">
+             title="{% translate "View artist" %}">
             {% include "app/icons/person.svg" with classes="w-4 h-4" %}
           </a>
 
           {# History Button #}
           <a href="{% url 'history' %}?artist={{ tracker.artist.id }}"
              class="p-2.5 bg-amber-600 text-white rounded-full hover:bg-amber-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all duration-200 cursor-pointer"
-             title="View listening history">
+             title="{% translate "View listening history" %}">
             {% include "app/icons/history.svg" with classes="w-4 h-4" %}
           </a>
         </div>

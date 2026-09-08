@@ -1,9 +1,11 @@
+
+{% load i18n %}
 {% load widget_tweaks %}
 
 <div class="mb-5" data-markdown-editor>
   <div class="flex items-center justify-between mb-2">
-    <label class="block text-sm font-medium text-[var(--color-text-secondary)]" for="{{ notes_field.id_for_label }}">{{ notes_field.label }}</label>
-    <span class="text-xs text-[var(--color-text-muted)]">Markdown supported</span>
+    <label class="block text-sm font-medium text-[var(--color-text-secondary)]" for="{{ notes_field.id_for_label }}">{% translate notes_field.label %}</label>
+    <span class="text-xs text-[var(--color-text-muted)]">{% translate "Markdown supported" %}</span>
   </div>
 
   <div class="border border-gray-600 rounded-md overflow-hidden bg-[var(--color-page-bg)]">
@@ -11,61 +13,61 @@
       <button type="button"
               data-md-tab="write"
               class="px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-        Write
+        {% translate "Write" %}
       </button>
       <button type="button"
               data-md-tab="preview"
               class="px-3 py-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-        Preview
+        {% translate "Preview" %}
       </button>
       <div class="ml-auto flex items-center gap-1 px-2">
         <button type="button"
                 data-md-action="heading"
                 class="px-2 py-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] rounded"
-                title="Heading">
-          H
+                title="{% translate "Heading" %}">
+          {% translate "H" %}
         </button>
         <button type="button"
                 data-md-action="bold"
                 class="px-2 py-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] rounded"
-                title="Bold">
-          B
+                title="{% translate "Bold" %}">
+          {% translate "B" %}
         </button>
         <button type="button"
                 data-md-action="italic"
                 class="px-2 py-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] rounded"
-                title="Italic">
-          I
+                title="{% translate "Italic" %}">
+          {% translate "I" %}
         </button>
         <button type="button"
                 data-md-action="code"
                 class="px-2 py-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] rounded"
-                title="Code">
+                title="{% translate "Code" %}">
           &lt;&gt;
         </button>
         <button type="button"
                 data-md-action="link"
                 class="px-2 py-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] rounded"
-                title="Link">
-          Link
+                title="{% translate "Link" %}">
+          {% translate "Link" %}
         </button>
         <button type="button"
                 data-md-action="quote"
                 class="px-2 py-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] rounded"
-                title="Quote">
+                title="{% translate "Quote" %}">
           &gt;
         </button>
         <button type="button"
                 data-md-action="ul"
                 class="px-2 py-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] rounded"
-                title="Bulleted list">
-          UL
+                title="{% translate "Bulleted list" %}">
+          {% translate "UL" %}
         </button>
         <button type="button"
                 data-md-action="ol"
                 class="px-2 py-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] rounded"
-                title="Numbered list">
-          OL
+                title="{% translate "Numbered list" %}">
+          {% translate "OL" %}
         </button>
       </div>
     </div>

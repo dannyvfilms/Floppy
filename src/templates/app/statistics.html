@@ -1,10 +1,12 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load static %}
 {% load app_tags %}
 {% load user_tags %}
 
 {% block title %}
-  Statistics - Floppy
+  {% translate "Statistics - Floppy" %}
 {% endblock title %}
 
 {% block content %}
@@ -635,7 +637,7 @@
            class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info opacity-0"
            x-init="setTimeout(() => $el.classList.add('opacity-100', 'transform-none'), 10); $el.classList.add('transition-all', 'duration-300', 'ease-out', 'transform', 'translate-y-[-1rem]')">
         {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 animate-pulse" %}
-        <p class="text-sm font-medium flex-1">Refreshing statistics in background...</p>
+        <p class="text-sm font-medium flex-1">{% translate "Refreshing statistics in background..." %}</p>
         <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                 @click="cacheRefreshing = false; cacheUpdater?.stop();">
           {% include "app/icons/x.svg" with classes="w-4 h-4" %}
@@ -647,7 +649,7 @@
            class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info opacity-0"
            x-init="setTimeout(() => $el.classList.add('opacity-100', 'transform-none'), 10); $el.classList.add('transition-all', 'duration-300', 'ease-out', 'transform', 'translate-y-[-1rem]')">
         {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 animate-pulse" %}
-        <p class="text-sm font-medium flex-1">Updating metadata in background...</p>
+        <p class="text-sm font-medium flex-1">{% translate "Updating metadata in background..." %}</p>
         <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                 @click="metadataRefreshing = false; cacheUpdater?.stop();">
           {% include "app/icons/x.svg" with classes="w-4 h-4" %}
@@ -656,7 +658,7 @@
     </div>
   </div>
   
-  <div x-data="dateRangePicker({
+  {% translate "Anime" as media_i18n_22 %}{% translate "Manga" as media_i18n_26 %}{% translate "Music" as media_i18n_24 %}<div x-data="dateRangePicker({
     initialRangeName: '{{ selected_range_name|default:""|escapejs }}',
     initialStartDate: '{{ start_date_str|default:""|escapejs }}',
     initialEndDate: '{{ end_date_str|default:""|escapejs }}',
@@ -669,11 +671,11 @@
       {value: 'all', label: 'All media'},
       {value: 'tv', label: 'TV Shows'},
       {value: 'movie', label: 'Movies'},
-      {value: 'anime', label: 'Anime'},
-      {% if user.manga_enabled %}{value: 'manga', label: 'Manga'},{% endif %}
+      {value: 'anime', label: '{{ media_i18n_22|escapejs }}'},
+      {% if user.manga_enabled %}{value: 'manga', label: '{{ media_i18n_26|escapejs }}'},{% endif %}
       {value: 'game', label: 'Games'},
       {% if user.boardgame_enabled %}{value: 'boardgame', label: 'Board Games'},{% endif %}
-      {% if user.music_enabled %}{value: 'music', label: 'Music'},{% endif %}
+      {% if user.music_enabled %}{value: 'music', label: '{{ media_i18n_24|escapejs }}'},{% endif %}
       {% if user.podcast_enabled %}{value: 'podcast', label: 'Podcasts'},{% endif %}
       {% if user.book_enabled %}{value: 'book', label: 'Books'},{% endif %}
       {% if user.comic_enabled %}{value: 'comic', label: 'Comics'},{% endif %}
@@ -726,12 +728,12 @@
             <button @click="activeTab = 'predefined'"
                     :class="{'text-[var(--color-text)] border-b-2 border-indigo-500': activeTab === 'predefined', 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]': activeTab !== 'predefined'}"
                     class="flex-1 py-3 text-sm font-medium transition-colors cursor-pointer">
-              Predefined Ranges
+              {% translate "Predefined Ranges" %}
             </button>
             <button @click="activeTab = 'custom'"
                     :class="{'text-[var(--color-text)] border-b-2 border-indigo-500': activeTab === 'custom', 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]': activeTab !== 'custom'}"
                     class="flex-1 py-3 text-sm font-medium transition-colors cursor-pointer">
-              Custom Range
+              {% translate "Custom Range" %}
             </button>
           </div>
 
@@ -767,14 +769,14 @@
             <div class="space-y-4">
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Start Date</label>
+                  <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Start Date" %}</label>
                   <input x-model="startDate"
                          @change="updateDateRange()"
                          class="w-full p-2.5 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm"
                          type="date">
                 </div>
                 <div>
-                  <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">End Date</label>
+                  <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "End Date" %}</label>
                   <input x-model="endDate"
                          @change="updateDateRange()"
                          class="w-full p-2.5 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-sm"
@@ -785,7 +787,7 @@
 <div class="flex justify-end gap-2 pt-2">
                 <button @click="isRangeOpen = false"
                         class="px-4 py-2 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] text-sm rounded-md transition-colors cursor-pointer">
-                  Cancel
+                  {% translate "Cancel" %}
                 </button>
                 <button @click="applyCustomRange()"
                         class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded-md transition-colors cursor-pointer flex items-center gap-2">
@@ -801,7 +803,7 @@
                        class="w-4 h-4">
                     <path d="M20 6 9 17l-5-5"></path>
                   </svg>
-                  Apply Range
+                  {% translate "Apply Range" %}
                 </button>
               </div>
             </div>
@@ -875,7 +877,7 @@
         <button @click="toggleCompareDropdown()"
                 class="stats-compare-button flex items-center gap-2 w-full px-4 py-2.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)] rounded-lg transition-all duration-200 border border-gray-700 shadow-sm cursor-pointer">
           <div class="stats-compare-copy">
-            <span class="stats-compare-prefix">Compare to:</span>
+            <span class="stats-compare-prefix">{% translate "Compare to:" %}</span>
             <span class="stats-compare-value"
                   x-text="comparisonTriggerLabel()"></span>
           </div>
@@ -936,7 +938,7 @@
       <button @click="refreshStatistics()"
               :disabled="refreshing"
               class="stats-refresh-button flex items-center justify-center px-3 py-2.5 bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-all duration-200 border border-gray-700 shadow-sm cursor-pointer"
-              title="Refresh statistics">
+              title="{% translate "Refresh statistics" %}">
         <svg xmlns="http://www.w3.org/2000/svg"
              width="24"
              height="24"
@@ -963,16 +965,16 @@
       <div class="stats-hero-row grid grid-cols-1 gap-x-3 sm:gap-x-4 items-start">
         <div class="flex flex-col justify-center stats-hero-text">
           <p class="stats-hero-title font-bold text-[var(--color-text)] leading-snug">
-            You've spent <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total_hours || 0).toLocaleString()"></span> hours
+            {% translate "You've spent" %} <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total_hours || 0).toLocaleString()"></span> {% translate "hours" %}
           </p>
           <p class="stats-hero-title font-bold text-[var(--color-text)] leading-snug">
-            with <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total || 0).toLocaleString()"></span> <span x-text="currentTypeLabel + '.'"></span>
+            {% translate "with" %} <span class="text-[var(--color-link)] tabular-nums" x-text="(currentTypeSummary.total || 0).toLocaleString()"></span> <span x-text="currentTypeLabel + '.'"></span>
           </p>
           <div class="flex items-center gap-2 mt-4 pb-3 text-sm text-[var(--color-text-muted)]">
             <div class="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-[var(--color-link)] shrink-0">
               <svg viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path d="M10 2l1.8 5.4L17 10l-5.2 2.6L10 18l-1.8-5.4L3 10l5.2-2.6z"/></svg>
             </div>
-            <span>That's <span x-text="(currentTypeSummary.total_days || 0).toLocaleString()"></span> days of <span x-text="currentTypeFlavor"></span>. Keep exploring.</span>
+            <span>{% translate "That's" %} <span x-text="(currentTypeSummary.total_days || 0).toLocaleString()"></span> {% translate "days of" %} <span x-text="currentTypeFlavor"></span>{% translate ". Keep exploring." %}</span>
           </div>
         </div>
         <div class="min-w-0 stats-hero-cards">
@@ -1010,7 +1012,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Completed Items</h3>
+            <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Completed Items" %}</h3>
             <p x-show="currentTypeSummary.total" class="text-xl sm:text-2xl font-bold" style="display:none">
               <span x-text="currentTypeSummary.completed"></span>
               <span class="text-[var(--color-text-muted)] text-sm sm:text-lg">/ <span x-text="currentTypeSummary.total"></span></span>
@@ -1036,7 +1038,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Average Rating</h3>
+            <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Average Rating" %}</h3>
             <p x-show="currentTypeSummary.has_score" class="text-xl sm:text-2xl font-bold" style="display:none">
               <span x-text="currentTypeSummary.average_score"></span>
               <span class="text-[var(--color-text-muted)] text-sm sm:text-lg">/ {{ user|rating_scale_max }}</span>
@@ -1063,7 +1065,7 @@
             </svg>
           </div>
           <div>
-            <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Most Active Day</h3>
+            <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Most Active Day" %}</h3>
             <p x-show="currentTypeSummary.most_active_day" class="text-xl sm:text-2xl font-bold" x-text="currentTypeSummary.most_active_day" style="display:none"></p>
             <p x-show="currentTypeSummary.most_active_day" class="text-xs sm:text-sm text-[var(--color-text-muted)]" x-text="currentTypeSummary.most_active_day_percentage + '% of activity'" style="display:none"></p>
             <p x-show="!currentTypeSummary.most_active_day" class="text-xl sm:text-2xl font-bold text-[var(--color-text-muted)]" style="display:none">--</p>
@@ -1086,13 +1088,13 @@
             </svg>
           </div>
           <div>
-            <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Current Streak</h3>
+            <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Current Streak" %}</h3>
             <div x-show="currentTypeSummary.most_active_day" style="display:none">
-              <div class="text-xl sm:text-2xl font-bold" x-text="currentTypeSummary.current_streak + ' day' + (currentTypeSummary.current_streak === 1 ? '' : 's')"></div>
+              {% translate " day" as media_i18n_13 %}<div class="text-xl sm:text-2xl font-bold" x-text="currentTypeSummary.current_streak + '{{ media_i18n_13|escapejs }}' + (currentTypeSummary.current_streak === 1 ? '' : 's')"></div>
               <div class="flex items-center gap-1 text-xs sm:text-sm text-[var(--color-text-muted)]">
-                <span x-text="'Longest: ' + currentTypeSummary.longest_streak + ' day' + (currentTypeSummary.longest_streak === 1 ? '' : 's')"></span>
+                {% translate "Longest: " as media_i18n_14 %}{% translate " day" as media_i18n_13 %}<span x-text="'{{ media_i18n_14|escapejs }}' + currentTypeSummary.longest_streak + '{{ media_i18n_13|escapejs }}' + (currentTypeSummary.longest_streak === 1 ? '' : 's')"></span>
                 <div x-show="currentTypeSummary.longest_streak_start" class="relative" x-data="{ tooltipOpen: false }">
-                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show information" style="transform: translateY(1px);">
+                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="{% translate "Show information" %}" style="transform: translateY(1px);">
                     {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                   </button>
                   <div x-show="tooltipOpen"
@@ -1124,16 +1126,16 @@
             {% endif %}
           </div>
           <div class="min-w-0">
-            <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Activity</h3>
+            <h3 class="text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Activity" %}</h3>
             <p class="text-xl sm:text-2xl font-bold {% if total_activity_comparison.badge_state == 'up' %}text-green-400{% elif total_activity_comparison.badge_state == 'down' %}text-red-400{% else %}text-[var(--color-text-muted)]{% endif %}">
               {% if total_activity_comparison.badge %}{{ total_activity_comparison.badge }}{% else %}--{% endif %}
             </p>
             {% if total_activity_comparison.badge %}
               <div class="flex items-center gap-1 text-xs sm:text-sm text-[var(--color-text-muted)]">
-                <span>vs {{ activity_comparison_period_label }}</span>
+                <span>{% blocktranslate trimmed with value_1=activity_comparison_period_label %}vs {{ value_1 }}{% endblocktranslate %}</span>
                 {% if total_activity_comparison.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show comparison totals" style="transform: translateY(1px);">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="{% translate "Show comparison totals" %}" style="transform: translateY(1px);">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -1170,8 +1172,8 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
       <div class="flex items-center justify-between mb-3">
         <div>
-          <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5">Activity Rhythm</h2>
-          <p class="text-xs text-[var(--color-text-muted)]">Each cell is one day. Brighter means more.</p>
+          <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5">{% translate "Activity Rhythm" %}</h2>
+          <p class="text-xs text-[var(--color-text-muted)]">{% translate "Each cell is one day. Brighter means more." %}</p>
         </div>
         <div id="activityRhythmLegend" class="flex-shrink-0 flex items-center gap-1.5 ml-3"></div>
       </div>
@@ -1179,11 +1181,11 @@
     </div>
     <!-- Time Across Your Worlds -->
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
-      <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="timeWorldsTitle">Hours by Media Type</h2>
+      <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="timeWorldsTitle">{% translate "Hours by Media Type" %}</h2>
       <div class="text-xs text-[var(--color-text-muted)] mb-3 flex items-center gap-1">
-        <span id="timeWorldsSubtitle">Where your hours go.</span>
+        <span id="timeWorldsSubtitle">{% translate "Where your hours go." %}</span>
         <div id="timeWorldsInfo" class="relative hidden" x-data="{ tooltipOpen: false }">
-          <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="Show information">
+          <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center" type="button" aria-label="{% translate "Show information" %}">
             {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
           </button>
           <div x-show="tooltipOpen"
@@ -1195,7 +1197,7 @@
                x-transition:leave-end="opacity-0 scale-95"
                class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                style="display: none;">
-            Shows can belong to multiple genres, so genre hours overlap and can add up to more than the total shown in the middle, which reflects your actual watch time.
+            {% translate "Shows can belong to multiple genres, so genre hours overlap and can add up to more than the total shown in the middle, which reflects your actual watch time." %}
             <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent stats-tooltip-arrow"></div>
           </div>
         </div>
@@ -1216,17 +1218,17 @@
   <div id="activityHistory" class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 w-full overflow-hidden mb-4">
         <div class="flex items-center justify-between mb-3">
           <div>
-            <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5">Activity History</h2>
-            <p class="text-xs text-[var(--color-text-muted)]">Each cell is one day. Brighter means more activity.</p>
+            <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5">{% translate "Activity History" %}</h2>
+            <p class="text-xs text-[var(--color-text-muted)]">{% translate "Each cell is one day. Brighter means more activity." %}</p>
           </div>
           <div class="flex-shrink-0 flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-            <span>Less</span>
+            <span>{% translate "Less" %}</span>
             <div class="w-3 h-3 rounded-sm bg-[var(--color-surface-muted)]"></div>
             <div class="w-3 h-3 rounded-sm bg-indigo-700"></div>
             <div class="w-3 h-3 rounded-sm bg-indigo-600"></div>
             <div class="w-3 h-3 rounded-sm bg-indigo-500"></div>
             <div class="w-3 h-3 rounded-sm bg-indigo-400"></div>
-            <span>More</span>
+            <span>{% translate "More" %}</span>
           </div>
         </div>
         <div class="w-full overflow-x-auto overflow-y-hidden scrollbar-hidden">
@@ -1248,7 +1250,7 @@
                   {% if forloop.counter|divisibleby:2 %}
                     <div class="flex-1"></div>
                   {% else %}
-                    <div class="flex-1 flex items-center justify-end">{{ label }}</div>
+                    <div class="flex-1 flex items-center justify-end">{% translate label %}</div>
                   {% endif %}
                 {% endfor %}
               </div>
@@ -1259,7 +1261,7 @@
                   <div class="flex flex-col gap-1 flex-1 min-w-4" style="max-width:20px">
                     {% for day in week %}
                       <div class="aspect-square w-full rounded-sm transition-colors duration-200 {% if day.future %}bg-[var(--color-surface-muted)] cursor-default{% else %}hover:ring-2 hover:ring-white {% if day.level == 0 %}bg-[var(--color-surface-muted)]{% elif day.level == 1 %}bg-indigo-700{% elif day.level == 2 %}bg-indigo-600{% elif day.level == 3 %}bg-indigo-500{% elif day.level == 4 %}bg-indigo-400{% endif %}{% endif %}"
-                           title="{% if day.future %}{{ day.date }}{% else %}{{ day.date }}: {{ day.count }} activit{{ day.count|pluralize:"y,ies" }}{% endif %}"></div>
+                           title="{% if day.future %}{{ day.date }}{% else %}{% blocktranslate with date=day.date count count=day.count %}{{ date }}: {{ count }} activity{% plural %}{{ date }}: {{ count }} activities{% endblocktranslate %}{% endif %}"></div>
                     {% endfor %}
                   </div>
                 {% endfor %}
@@ -1274,19 +1276,19 @@
   <!-- Combined Hours charts -->
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
-      <h2 class="text-base font-semibold text-[var(--color-text)] mb-3">Hours by Month</h2>
+      <h2 class="text-base font-semibold text-[var(--color-text)] mb-3">{% translate "Hours by Month" %}</h2>
       <div id="combinedPlaysByMonthContainer" class="h-64">
         <canvas id="combinedPlaysByMonthChart"></canvas>
       </div>
     </div>
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
-      <h2 class="text-base font-semibold text-[var(--color-text)] mb-3">Hours by Day of Week</h2>
+      <h2 class="text-base font-semibold text-[var(--color-text)] mb-3">{% translate "Hours by Day of Week" %}</h2>
       <div id="combinedPlaysByWeekdayContainer" class="h-64">
         <canvas id="combinedPlaysByWeekdayChart"></canvas>
       </div>
     </div>
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
-      <h2 class="text-base font-semibold text-[var(--color-text)] mb-3">Hours by Time of Day</h2>
+      <h2 class="text-base font-semibold text-[var(--color-text)] mb-3">{% translate "Hours by Time of Day" %}</h2>
       <div id="combinedPlaysByTimeContainer" class="h-64">
         <canvas id="combinedPlaysByTimeChart"></canvas>
       </div>
@@ -1315,8 +1317,8 @@
   <!-- Status Composition + Rating Distribution -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 flex flex-col h-full">
-      <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="statusCompositionTitle">Status Composition</h2>
-      <p class="text-xs text-[var(--color-text-muted)] mb-3" id="statusCompositionSubtitle">What portion of your library is in each state.</p>
+      <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="statusCompositionTitle">{% translate "Status Composition" %}</h2>
+      <p class="text-xs text-[var(--color-text-muted)] mb-3" id="statusCompositionSubtitle">{% translate "What portion of your library is in each state." %}</p>
       <div id="statusCompositionContainer" class="flex-1 min-w-0 flex items-center gap-4 sm:gap-6">
         <div class="relative shrink-0" style="width:150px;height:150px;">
           <div id="statusCompositionCenter" class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center"></div>
@@ -1326,8 +1328,8 @@
       </div>
     </div>
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6">
-      <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="ratingDistributionTitle">Rating Distribution</h2>
-      <p class="text-xs text-[var(--color-text-muted)] mb-3" id="ratingDistributionSubtitle">How your rated items are distributed.</p>
+      <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="ratingDistributionTitle">{% translate "Rating Distribution" %}</h2>
+      <p class="text-xs text-[var(--color-text-muted)] mb-3" id="ratingDistributionSubtitle">{% translate "How your rated items are distributed." %}</p>
       <div id="ratingDistributionContainer" class="h-[174px]">
         <canvas id="ratingDistributionChart"></canvas>
       </div>
@@ -1337,12 +1339,12 @@
   <!-- Status Breakdown + Average Rating -->
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4" style="margin-bottom:1rem">
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-2">
-      <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="statusBreakdownTitle">Status Breakdown</h2>
+      <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5" id="statusBreakdownTitle">{% translate "Status Breakdown" %}</h2>
       <div id="statusBreakdownContainer"></div>
     </div>
     <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 lg:col-span-1">
-      <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5">Average Rating</h2>
-      <p class="text-xs text-[var(--color-text-muted)] pb-2 mb-1 border-b border-gray-700">Your average score by type.</p>
+      <h2 class="text-base font-semibold text-[var(--color-text)] mb-0.5">{% translate "Average Rating" %}</h2>
+      <p class="text-xs text-[var(--color-text-muted)] pb-2 mb-1 border-b border-gray-700">{% translate "Your average score by type." %}</p>
       <div>
         <template x-for="row in averageRatingRows()" :key="row.value">
           <div class="flex items-center gap-3 py-2 border-b border-gray-700/50 last:border-0">
@@ -1375,7 +1377,7 @@
             <span class="text-sm font-semibold text-[var(--color-text)] w-10 text-center shrink-0" x-text="row.average_score_display"></span>
           </div>
         </template>
-        <p x-show="averageRatingRows().length === 0" class="text-sm text-[var(--color-text-muted)] text-center py-6" style="display:none">No ratings yet.</p>
+        <p x-show="averageRatingRows().length === 0" class="text-sm text-[var(--color-text-muted)] text-center py-6" style="display:none">{% translate "No ratings yet." %}</p>
       </div>
     </div>
   </div>
@@ -1383,7 +1385,7 @@
     <!-- Copied: Score Distribution by Media Type (placed under Activity History) -->
     {% if user.activity_history_view != 'heatmap' %}
     <div id="scoreCopyWrapper" class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 stat-scroll-safe mt-0">
-      <h2 class="text-xl font-semibold mb-3 sm:mb-4 text-center">Played Hours by Media Type</h2>
+      <h2 class="text-xl font-semibold mb-3 sm:mb-4 text-center">{% translate "Played Hours by Media Type" %}</h2>
 
         {% if daily_hours_by_media_type.labels and daily_hours_by_media_type.datasets %}
           <div class="flex justify-center items-stretch min-h-[320px] sm:min-h-[380px]" id="scoreCopyCanvasWrapper">
@@ -1407,8 +1409,8 @@
                 <circle cx="12" cy="8" r="6"></circle>
               </svg>
             </div>
-            <h3 class="text-lg font-medium mb-2">No content logged</h3>
-            <p class="text-[var(--color-text-muted)] text-center max-w-md">No media items were logged during the selected time period.</p>
+            <h3 class="text-lg font-medium mb-2">{% translate "No content logged" %}</h3>
+            <p class="text-[var(--color-text-muted)] text-center max-w-md">{% translate "No media items were logged during the selected time period." %}</p>
           </div>
         {% endif %}
       </div>
@@ -1452,7 +1454,7 @@
 
       {% if user.manga_enabled and manga_consumption.has_data %}
         <div x-show="isMediaTypeVisible('manga')">
-          {% include "app/components/reading_consumption_section.html" with media_name="Manga" consumption=manga_consumption media_type_slug='manga' chart_prefix='manga' top_rated_list=top_rated_manga %}
+          {% include "app/components/reading_consumption_section.html" with media_name=_("Manga") consumption=manga_consumption media_type_slug='manga' chart_prefix='manga' top_rated_list=top_rated_manga %}
         </div>
       {% endif %}
 
@@ -1470,13 +1472,13 @@
 
       {% if user.book_enabled and book_consumption.has_data %}
         <div x-show="isMediaTypeVisible('book')">
-          {% include "app/components/reading_consumption_section.html" with media_name="Books" consumption=book_consumption media_type_slug='book' chart_prefix='book' top_rated_list=top_rated_book show_top_authors=True %}
+          {% include "app/components/reading_consumption_section.html" with media_name=_("Books") consumption=book_consumption media_type_slug='book' chart_prefix='book' top_rated_list=top_rated_book show_top_authors=True %}
         </div>
       {% endif %}
 
       {% if user.comic_enabled and comic_consumption.has_data %}
         <div x-show="isMediaTypeVisible('comic')">
-          {% include "app/components/reading_consumption_section.html" with media_name="Comics" consumption=comic_consumption media_type_slug='comic' chart_prefix='comic' top_rated_list=top_rated_comic %}
+          {% include "app/components/reading_consumption_section.html" with media_name=_("Comics") consumption=comic_consumption media_type_slug='comic' chart_prefix='comic' top_rated_list=top_rated_comic %}
         </div>
       {% endif %}
 
@@ -1674,14 +1676,14 @@
       {% if top_played.boardgame %}
         <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-6">
           <div class="flex flex-col space-y-1 mb-3 sm:mb-4">
-            <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">Board Games</span>
+            <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{% translate "Board Games" %}</span>
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <div>
-                <h2 class="text-2xl font-semibold text-[var(--color-text)]">Most Played</h2>
+                <h2 class="text-2xl font-semibold text-[var(--color-text)]">{% translate "Most Played" %}</h2>
                 <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
               </div>
               <a href="{% url 'medialist' 'boardgame' %}" class="text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">
-                See all your top board games →
+                {% translate "See all your top board games →" %}
               </a>
             </div>
           </div>
@@ -1754,7 +1756,7 @@
       <!-- Empty State for Top Played -->
       {% if not top_played.movie and not top_played.tv and not top_played.boardgame and not top_played.anime %}
         <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 stat-scroll-safe mb-4 sm:mb-6">
-          <h2 class="text-xl font-semibold mb-3 sm:mb-4">Top Played</h2>
+          <h2 class="text-xl font-semibold mb-3 sm:mb-4">{% translate "Top Played" %}</h2>
           <div class="flex flex-col items-center justify-center py-12 sm:py-16">
             <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
               <svg xmlns="http://www.w3.org/2000/svg"
@@ -1771,8 +1773,8 @@
                 <path d="M18.7 8l-5.1 5.1-2.8-2.7L7 14.3"></path>
               </svg>
             </div>
-            <h3 class="text-lg font-medium mb-2">No activity yet</h3>
-            <p class="text-[var(--color-text-muted)] text-center max-w-md">Start tracking your media to see your top played items.</p>
+            <h3 class="text-lg font-medium mb-2">{% translate "No activity yet" %}</h3>
+            <p class="text-[var(--color-text-muted)] text-center max-w-md">{% translate "Start tracking your media to see your top played items." %}</p>
           </div>
         </div>
       {% endif %}
@@ -1785,7 +1787,7 @@
       To restore: Uncomment this entire section
       <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-6">
         <div class="flex flex-col space-y-1 mb-3 sm:mb-4">
-          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">All Media</span>
+          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{% translate "All Media" %}</span>
           <h2 class="text-2xl font-semibold text-[var(--color-text)]">Top Rated Media</h2>
         </div>
 
@@ -1877,8 +1879,8 @@
     {# FAB button #}
     <button @click="open = true"
             class="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
-            title="Statistics preferences"
-            aria-label="Statistics preferences">
+            title="{% translate "Statistics preferences" %}"
+            aria-label="{% translate "Statistics preferences" %}">
       {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5" %}
     </button>
 
@@ -1892,7 +1894,7 @@
         <div class="bg-[var(--color-surface)] rounded-t-2xl sm:rounded-xl p-6 overflow-visible modal-max-height">
           {# Header #}
           <div class="flex items-center justify-between mb-5">
-            <h2 class="text-lg font-semibold text-[var(--color-text)]">Statistics Preferences</h2>
+            <h2 class="text-lg font-semibold text-[var(--color-text)]">{% translate "Statistics Preferences" %}</h2>
             <button @click="open = false"
                     class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
               {% include "app/icons/x.svg" with classes="w-5 h-5" %}
@@ -1902,7 +1904,7 @@
           <div class="space-y-4">
             {# Activity History View #}
             <div>
-              <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Activity History View</label>
+              <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Activity History View" %}</label>
               <div class="relative" @click.outside="activityHistoryViewOpen = false">
                 <button type="button"
                         @click="activityHistoryViewOpen = !activityHistoryViewOpen"
@@ -1922,13 +1924,13 @@
                           @click="activityHistoryView = 'heatmap'; activityHistoryViewOpen = false"
                           :class="activityHistoryView === 'heatmap' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
-                    Activity Heatmap
+                    {% translate "Activity Heatmap" %}
                   </button>
                   <button type="button"
                           @click="activityHistoryView = 'stacked'; activityHistoryViewOpen = false"
                           :class="activityHistoryView === 'stacked' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
-                    Stacked Bar Chart
+                    {% translate "Stacked Bar Chart" %}
                   </button>
                 </div>
               </div>
@@ -1936,7 +1938,7 @@
 
             {# Duration Format #}
             <div>
-              <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Duration Format</label>
+              <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Duration Format" %}</label>
               <div class="relative" @click.outside="durationFormatOpen = false">
                 <button type="button"
                         @click="durationFormatOpen = !durationFormatOpen"
@@ -1956,13 +1958,13 @@
                           @click="durationFormat = 'hours_minutes'; durationFormatOpen = false"
                           :class="durationFormat === 'hours_minutes' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
-                    Hours and minutes (500h 30min)
+                    {% translate "Hours and minutes (500h 30min)" %}
                   </button>
                   <button type="button"
                           @click="durationFormat = 'long_units'; durationFormatOpen = false"
                           :class="durationFormat === 'long_units' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
-                    Days and hours (20d 20h 30min)
+                    {% translate "Days and hours (20d 20h 30min)" %}
                   </button>
                 </div>
               </div>
@@ -1970,7 +1972,7 @@
 
             {# Week Start Day #}
             <div>
-              <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Week Start Day</label>
+              <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Week Start Day" %}</label>
               <div class="relative" @click.outside="weekStartDayOpen = false">
                 <button type="button"
                         @click="weekStartDayOpen = !weekStartDayOpen"
@@ -1990,13 +1992,13 @@
                           @click="weekStartDay = 'monday'; weekStartDayOpen = false"
                           :class="weekStartDay === 'monday' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
-                    Monday
+                    {% translate "Monday" %}
                   </button>
                   <button type="button"
                           @click="weekStartDay = 'sunday'; weekStartDayOpen = false"
                           :class="weekStartDay === 'sunday' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
-                    Sunday
+                    {% translate "Sunday" %}
                   </button>
                 </div>
               </div>
@@ -2004,7 +2006,7 @@
 
             {# Rating Scale #}
             <div>
-              <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Rating Scale</label>
+              <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Rating Scale" %}</label>
               <div class="relative" @click.outside="ratingScaleOpen = false">
                 <button type="button"
                         @click="ratingScaleOpen = !ratingScaleOpen"
@@ -2024,13 +2026,13 @@
                           @click="ratingScale = '10'; ratingScaleOpen = false"
                           :class="ratingScale === '10' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
-                    1-10 stars
+                    {% translate "1-10 stars" %}
                   </button>
                   <button type="button"
                           @click="ratingScale = '5'; ratingScaleOpen = false"
                           :class="ratingScale === '5' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
-                    1-5 stars
+                    {% translate "1-5 stars" %}
                   </button>
                 </div>
               </div>
@@ -2038,8 +2040,8 @@
 
             {% if not user.anime_enabled and tvdb_enabled %}
             <div>
-              <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Anime Statistics</label>
-              <p class="text-xs text-[var(--color-text-muted)] mb-2">Choose how TV shows tagged as Anime via TVDB appear.</p>
+              <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Anime Statistics" %}</label>
+              <p class="text-xs text-[var(--color-text-muted)] mb-2">{% translate "Choose how TV shows tagged as Anime via TVDB appear." %}</p>
               <div class="relative" @click.outside="statsAnimeGenreOpen = false">
                 <button type="button"
                         @click="statsAnimeGenreOpen = !statsAnimeGenreOpen"
@@ -2059,13 +2061,13 @@
                           @click="statsAnimeGenre = 'false'; statsAnimeGenreOpen = false"
                           :class="statsAnimeGenre === 'false' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
-                    Display in TV Shows
+                    {% translate "Display in TV Shows" %}
                   </button>
                   <button type="button"
                           @click="statsAnimeGenre = 'true'; statsAnimeGenreOpen = false"
                           :class="statsAnimeGenre === 'true' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors">
-                    Display as Anime
+                    {% translate "Display as Anime" %}
                   </button>
                 </div>
               </div>
@@ -2078,14 +2080,14 @@
             <button type="button"
                     @click="open = false"
                     class="flex-1 px-4 py-2 bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)] rounded-md text-sm font-medium hover:bg-[var(--color-surface-border)] transition-colors cursor-pointer">
-              Cancel
+              {% translate "Cancel" %}
             </button>
             <button type="button"
                     @click="save()"
                     :disabled="saving"
                     class="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-500 transition-colors cursor-pointer disabled:opacity-50">
-              <span x-show="!saving">Save</span>
-              <span x-show="saving" x-cloak>Saving…</span>
+              <span x-show="!saving">{% translate "Save" %}</span>
+              <span x-show="saving" x-cloak>{% translate "Saving…" %}</span>
             </button>
           </div>
         </div>

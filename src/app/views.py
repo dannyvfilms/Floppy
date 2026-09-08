@@ -36,6 +36,7 @@ from django.utils.dateparse import parse_date
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.text import slugify
 from django.utils.timezone import datetime
+from django.utils.translation import gettext
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -960,9 +961,7 @@ def episode_details(
             ),
         )
         notes_entries = [
-            entry
-            for entry in public_user_medias
-            if entry.notes and entry.notes.strip()
+            entry for entry in public_user_medias if entry.notes and entry.notes.strip()
         ]
         notes_entry = notes_entries[0] if notes_entries else None
 
@@ -1119,13 +1118,13 @@ def music_bulk_save(request):
             response["HX-Trigger"] = json.dumps(
                 {
                     "showToast": {
-                        "message": "Start and end dates are required.",
+                        "message": gettext("Start and end dates are required."),
                         "type": "error",
                     },
                 }
             )
             return response
-        messages.error(request, "Start and end dates are required.")
+        messages.error(request, gettext("Start and end dates are required."))
         return redirect(request.POST.get("return_url") or "/")
 
     try:
@@ -1139,13 +1138,13 @@ def music_bulk_save(request):
             response["HX-Trigger"] = json.dumps(
                 {
                     "showToast": {
-                        "message": "Invalid track range.",
+                        "message": gettext("Invalid track range."),
                         "type": "error",
                     },
                 }
             )
             return response
-        messages.error(request, "Invalid track range.")
+        messages.error(request, gettext("Invalid track range."))
         return redirect(request.POST.get("return_url") or "/")
 
     track_count = max(int(request.POST.get("episode_count") or 0), 0)
@@ -1192,7 +1191,10 @@ def music_bulk_save(request):
         )
         return response
 
-    messages.info(request, f"Adding plays to {track_count} tracks.")
+    messages.info(
+        request,
+        gettext("Adding plays to %(value_1)s tracks.") % {"value_1": track_count},
+    )
     return redirect(request.POST.get("return_url") or "/")
 
 
@@ -1223,7 +1225,11 @@ def create_entry(request):
             media_name += f" - Episode {form.cleaned_data['episode_number']}"
 
         logger.exception("%s already exists in the database.", media_name)
-        messages.error(request, f"{media_name} already exists in the database.")
+        messages.error(
+            request,
+            gettext("%(value_1)s already exists in the database.")
+            % {"value_1": media_name},
+        )
         return redirect("create_entry")
 
     # Prepare and validate the media form
@@ -1254,7 +1260,7 @@ def create_entry(request):
     media_form.save()
 
     # Success message
-    msg = f"{item} added successfully."
+    msg = gettext("%(value_1)s added successfully.") % {"value_1": item}
     messages.success(request, msg)
     logger.info(msg)
 

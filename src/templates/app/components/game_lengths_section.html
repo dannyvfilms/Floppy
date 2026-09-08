@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load humanize %}
 
 <style>
@@ -80,18 +82,18 @@
 
 <section class="mb-12 md:mb-10">
   <div class="flex items-center justify-between gap-3 mb-4">
-    <h2 class="text-xl font-bold">Time to Beat</h2>
+    <h2 class="text-xl font-bold">{% translate "Time to Beat" %}</h2>
     {% if game_lengths and game_lengths.source_label %}
       {% if game_lengths.source_url %}
         <a href="{{ game_lengths.source_url }}"
            target="_blank"
            rel="noreferrer noopener"
            class="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold tracking-wide text-[var(--color-link)] transition hover:border-indigo-400/50 hover:bg-indigo-500/15 hover:text-[var(--color-link-hover)]">
-          {{ game_lengths.source_label }}
+          {% translate game_lengths.source_label %}
         </a>
       {% else %}
         <span class="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold tracking-wide text-[var(--color-link)]">
-          {{ game_lengths.source_label }}
+          {% translate game_lengths.source_label %}
         </span>
       {% endif %}
     {% endif %}
@@ -106,10 +108,10 @@
             {% include card.icon_template with classes="w-5 h-5" %}
           </div>
           <div class="game-length-highlight-copy">
-            <h3 class="game-length-highlight-label">{{ card.label }}</h3>
+            <h3 class="game-length-highlight-label">{% translate card.label %}</h3>
             <p class="game-length-highlight-value">{{ card.value }}</p>
             <p class="game-length-highlight-meta">
-              {{ card.count|intcomma }} submission{{ card.count|pluralize }}
+              {% blocktranslate trimmed with value_1=card.count|intcomma count count=card.count %}{{ value_1 }} submission{% plural %}{{ value_1 }} submissions{% endblocktranslate %}
             </p>
           </div>
         </div>
@@ -117,11 +119,11 @@
     </div>
   {% elif game_lengths_pending %}
     <div class="bg-[var(--color-surface)] p-4 rounded-lg">
-      <p class="text-[var(--color-text-secondary)]">Fetching cached time-to-beat data in the background.</p>
+      <p class="text-[var(--color-text-secondary)]">{% translate "Fetching cached time-to-beat data in the background." %}</p>
     </div>
   {% else %}
     <div class="bg-[var(--color-surface)] p-4 rounded-lg">
-      <p class="text-[var(--color-text-secondary)]">Time-to-beat data is not available yet.</p>
+      <p class="text-[var(--color-text-secondary)]">{% translate "Time-to-beat data is not available yet." %}</p>
     </div>
   {% endif %}
 </section>

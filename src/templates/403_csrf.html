@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load static %}
 {% load app_tags %}
 
 {% block title %}
-  {{ error_page_title|default:"Forbidden" }} - Floppy
+  {% blocktranslate with value1=error_page_title|default:"Forbidden" %}{{ value1 }} - Floppy{% endblocktranslate %}
 {% endblock title %}
 
 {% block extra_head %}
@@ -21,51 +23,50 @@
           {% if error_message %}
             {{ error_message }}
           {% else %}
-            CSRF verification failed for this request. This usually means the CSRF cookie was missing,
-            expired, or didn't match the form token.
+            {% translate "CSRF verification failed for this request. This usually means the CSRF cookie was missing, expired, or didn't match the form token." %}
           {% endif %}
         </p>
         {% if reason %}
           <p class="text-sm text-amber-200 mb-3">
-            CSRF reason: {{ reason }}
+            {% blocktranslate %}CSRF reason: {{ reason }}{% endblocktranslate %}
           </p>
         {% endif %}
 
         <div class="bg-[var(--color-surface)] p-4 rounded-lg mb-4 text-left">
-          <h3 class="font-medium mb-2 text-[var(--color-text-secondary)]">Quick checks</h3>
+          <h3 class="font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Quick checks" %}</h3>
           <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1">
-            <li>Reload the page and try again.</li>
-            <li>If you're using the iOS PWA, open the site in Safari once to refresh cookies.</li>
-            <li>Confirm cookies are allowed and you're not switching between http/https or domains.</li>
-            <li>Admins: verify <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">CSRF_TRUSTED_ORIGINS</code> and <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">URLS</code> match the domain you're using.</li>
+            <li>{% translate "Reload the page and try again." %}</li>
+            <li>{% translate "If you're using the iOS PWA, open the site in Safari once to refresh cookies." %}</li>
+            <li>{% translate "Confirm cookies are allowed and you're not switching between http/https or domains." %}</li>
+            <li>{% translate "Admins: verify" %} <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">CSRF_TRUSTED_ORIGINS</code> {% translate "and" %} <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">URLS</code> {% translate "match the domain you're using." %}</li>
           </ul>
         </div>
         <div class="bg-[var(--color-surface)] p-4 rounded-lg mb-4 text-left">
-          <h3 class="font-medium mb-2 text-[var(--color-text-secondary)]">Using a Reverse Proxy?</h3>
+          <h3 class="font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Using a Reverse Proxy?" %}</h3>
           <p class="text-sm text-[var(--color-text-muted)]">
-            If you're accessing Floppy through a reverse proxy, you need to set the <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">URLS</code> environment variable to your application URL.
+            {% translate "If you're accessing Floppy through a reverse proxy, you need to set the" %} <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">URLS</code> {% translate "environment variable to your application URL." %}
           </p>
 
           <p class="text-sm text-[var(--color-text-muted)] mt-2">
-            For example, <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">https://floppy.mydomain.com</code>.
+            {% translate "For example," %} <code class="bg-[var(--color-surface-strong)] px-1 py-0.5 rounded">https://floppy.mydomain.com</code>.
           </p>
         </div>
         {% include "includes/error_report_panel.html" %}
         <p class="text-sm text-[var(--color-text-muted)] mb-6">
-          If you believe this was a bug, please <a href="https://github.com/dannyvfilms/Floppy/issues"
-    class="text-[var(--color-link)] hover:underline">report the issue.</a>
+          {% translate "If you believe this was a bug, please" %} <a href="https://github.com/dannyvfilms/Floppy/issues"
+    class="text-[var(--color-link)] hover:underline">{% translate "report the issue." %}</a>
         </p>
       </div>
       <div class="flex flex-col sm:flex-row gap-4 justify-center">
         <a href="{% url 'account_login' %}"
            class="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
           {% include "app/icons/padlock.svg" with classes="w-5 h-5" %}
-          <span>Log In</span></a>
+          <span>{% translate "Log In" %}</span></a>
 
         <a href="{% url 'home' %}"
            class="flex items-center justify-center gap-2 px-6 py-3 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
           {% include "app/icons/house.svg" with classes="w-5 h-5" %}
-          <span>Back to Home</span></a>
+          <span>{% translate "Back to Home" %}</span></a>
       </div>
     </div>
   </div>

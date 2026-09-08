@@ -50,7 +50,7 @@ stripped. Last.fm is the only family below without a `_FILE` input.
 | TVDB | `TVDB_PIN` | `TVDB_PIN_FILE` | empty |
 | MyAnimeList | `MAL_API` | `MAL_API_FILE` | non-empty shared client ID |
 | IGDB | `IGDB_ID` | `IGDB_ID_FILE` | non-empty shared client ID |
-| IGDB | `IGDB_SECRET` | `IGDB_SECRET_FILE` | non-empty shared client secret |
+| IGDB | `IGDB_SECRET` | `IGDB_SECRET_FILE` | empty; operator/user supplied |
 | Steam | `STEAM_API_KEY` | `STEAM_API_KEY_FILE` | empty |
 | BoardGameGeek | `BGG_API_TOKEN` | `BGG_API_TOKEN_FILE` | non-empty shared token |
 | Hardcover | `HARDCOVER_API` | `HARDCOVER_API_FILE` | empty (metered per account, so no shared default; see #1025) |
@@ -62,7 +62,34 @@ stripped. Last.fm is the only family below without a `_FILE` input.
 | AniList | `ANILIST_ID` | `ANILIST_ID_FILE` | empty |
 | AniList | `ANILIST_SECRET` | `ANILIST_SECRET_FILE` | empty |
 | SIMKL | `SIMKL_ID` | `SIMKL_ID_FILE` | non-empty shared client ID |
-| SIMKL | `SIMKL_SECRET` | `SIMKL_SECRET_FILE` | non-empty shared client secret |
+| SIMKL | `SIMKL_SECRET` | `SIMKL_SECRET_FILE` | empty; operator/user supplied |
+
+### Shared-default security boundary
+
+`SHARED_DEFAULT_CREDENTIALS` contains only app-owned, shared metadata-provider
+credentials intended for the free-tier defaults. They are public repository
+content by design and must never be treated as user or account credentials.
+The current shared-default settings are `TMDB_API`, `MAL_API`, `IGDB_ID`,
+`BGG_API_TOKEN`, `COMICVINE_API`, and `SIMKL_ID`.
+
+`IGDB_SECRET` and `SIMKL_SECRET` are deliberately excluded from that map. Their
+`*_FILE` and environment inputs remain supported, but no private provider
+secret may be added to the source-level shared-default map. A provider key
+that is tied to an individual account, paid quota, or private scope follows
+the same rule even if the provider offers a free tier.
+
+Personal and instance credentials entered through Settings > Metadata are
+stored as Fernet ciphertext in `UserProviderCredential` and
+`InstanceProviderCredential`. The Pocket Casts and legacy integration account
+paths use the same encryption primitive. Templates expose only masked previews;
+resolvers decrypt values at the provider boundary and do not return them from
+settings views or API payloads.
+
+The repository's `.gitguardian.yaml` contains SHA-256 matches for the exact
+shared values above so local GitGuardian scans can distinguish the intentional
+public defaults from unknown credentials. The GitGuardian dashboard incident
+still requires an explicit triage decision, and this allowlist does not remove
+the need to rotate the shared values when they are replaced.
 
 The current value order is explicit primary environment, `_FILE` contents, then
 built-in fallback. The expression is `config(PRIMARY,

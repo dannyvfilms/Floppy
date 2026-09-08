@@ -12,6 +12,11 @@ from django.utils.dateparse import parse_datetime
 import app
 from app import config
 from app import forms as app_forms
+from app.collection_field_import import (
+    ImportColumn,
+    ImportedFieldResolver,
+)
+from app.collection_field_import import normalize_label as normalize_field_label
 from app.log_safety import mapping_keys
 from app.models import (
     Album,
@@ -19,6 +24,11 @@ from app.models import (
     Artist,
     ArtistTracker,
     CollectionEntry,
+    CollectionEntrySource,
+    CollectionField,
+    CollectionFieldGroup,
+    CollectionFieldSource,
+    CollectionFieldType,
     ItemTag,
     MediaTypes,
     Sources,
@@ -168,6 +178,14 @@ class YamtrackImporter:
         # this run (overwrite mode wipes once per item, then recreates
         # every CSV copy).
         self._collection_overwritten_item_ids = set()
+        self.collection_field_resolver = ImportedFieldResolver(
+            user,
+            "yamtrack",
+            import_run=None,
+        )
+        # Portable field uid -> destination CollectionField, built from the
+        # export's collection_schema row.
+        self._collection_field_by_uid = {}
 
         logger.info(
             "Initialized Yamtrack CSV importer for user %s with mode %s",
@@ -216,7 +234,11 @@ class YamtrackImporter:
         if self.collection_count:
             imported_counts["collection"] = self.collection_count
 
-        deduplicated_messages = "\n".join(dict.fromkeys(self.warnings))
+        messages = [
+            *self.collection_field_resolver.report.messages(),
+            *self.warnings,
+        ]
+        deduplicated_messages = "\n".join(dict.fromkeys(messages))
         return imported_counts, deduplicated_messages
 
     def _apply_status_overrides(self):
@@ -255,6 +277,9 @@ class YamtrackImporter:
             return
         if row_type in ("", "media"):
             self._process_media_row(row)
+            return
+        if row_type == "collection_schema":
+            self._process_collection_schema_row(row)
             return
         if row_type == "collection":
             self._process_collection_row(row)
@@ -591,6 +616,151 @@ class YamtrackImporter:
                 tag = Tag.objects.create(user=self.user, name=name)
             ItemTag.objects.get_or_create(tag=tag, item=item)
 
+    def _process_collection_schema_row(self, row):
+        """Rebuild the exported custom-field schema for the importing user.
+
+        Field ids are per-user and never portable, so the export addresses
+        fields by group name plus label and this remaps them onto the
+        destination user's own rows, reusing anything compatible that
+        already exists rather than duplicating it.
+        """
+        raw = (row.get("collection_custom_fields") or "").strip()
+        if not raw:
+            return
+        try:
+            schema = json.loads(raw)
+        except ValueError:
+            self.warnings.append("Skipping unreadable collection field schema.")
+            return
+
+        for raw_group in schema.get("groups") or []:
+            group_name = (raw_group.get("name") or "").strip()
+            if not group_name:
+                continue
+            group, _ = CollectionFieldGroup.objects.get_or_create(
+                user=self.user,
+                name=group_name,
+                defaults={"position": raw_group.get("position") or 0},
+            )
+            for raw_field in raw_group.get("fields") or []:
+                field = self._resolve_schema_field(group, raw_field)
+                if field is None:
+                    continue
+                uid = raw_field.get("uid")
+                if uid:
+                    self._collection_field_by_uid[uid] = field
+                    self.collection_field_resolver.register(uid, field)
+                self._record_schema_sources(field, raw_field)
+
+    def _resolve_schema_field(self, group, raw_field):
+        """Return the destination field for one exported field definition."""
+        label = (raw_field.get("label") or "").strip()
+        if not label:
+            return None
+
+        target = normalize_field_label(label)
+        for candidate in CollectionField.objects.filter(group__user=self.user):
+            if normalize_field_label(candidate.label) == target:
+                # An existing field keeps its own type and options; only the
+                # media types it covers are widened.
+                missing = [
+                    media_type
+                    for media_type in raw_field.get("media_types") or []
+                    if media_type not in candidate.media_types
+                ]
+                if missing:
+                    candidate.media_types = [*candidate.media_types, *missing]
+                    candidate.save(update_fields=["media_types", "updated_at"])
+                return candidate
+
+        field_type = raw_field.get("field_type")
+        if field_type not in CollectionFieldType.values:
+            field_type = CollectionFieldType.TEXT
+        return CollectionField.objects.create(
+            group=group,
+            label=label[:100],
+            field_type=field_type,
+            options=raw_field.get("options") or [],
+            media_types=raw_field.get("media_types") or [],
+            position=raw_field.get("position") or 0,
+        )
+
+    def _record_schema_sources(self, field, raw_field):
+        """Carry source-to-field mappings across into the destination user."""
+        for raw_source in raw_field.get("sources") or []:
+            source = (raw_source.get("source") or "").strip()
+            source_key = (raw_source.get("source_key") or "").strip()
+            if not source or not source_key:
+                continue
+            CollectionFieldSource.objects.update_or_create(
+                user=self.user,
+                source=source[:32],
+                source_key=source_key[:200],
+                defaults={
+                    "source_label": (raw_source.get("source_label") or "")[:200],
+                    "field": field,
+                    "created_field": bool(raw_source.get("created_field")),
+                },
+            )
+
+    def _collection_custom_values(self, row, media_type):
+        """Return custom_field_values for a collection row, remapped by uid."""
+        raw = (row.get("collection_custom_fields") or "").strip()
+        if not raw:
+            return {}
+        try:
+            portable = json.loads(raw)
+        except ValueError:
+            self.warnings.append(
+                f"{row.get('title', '')}: unreadable custom field values, skipped.",
+            )
+            return {}
+        if not isinstance(portable, dict):
+            return {}
+
+        unknown = [uid for uid in portable if uid not in self._collection_field_by_uid]
+        if unknown:
+            # A value whose definition never arrived (partial export, or a
+            # field deleted before the export ran). Resolve it like any other
+            # unmapped source column rather than dropping it.
+            self.collection_field_resolver.prepare(
+                [
+                    ImportColumn(
+                        key=uid,
+                        label=str(uid).split("\u001f")[-1] or "Imported field",
+                        values=[portable[uid]],
+                        media_types=[media_type],
+                    )
+                    for uid in unknown
+                ],
+            )
+
+        return self.collection_field_resolver.build_values(portable, media_type)
+
+    def _link_collection_source(self, entry, row):
+        """Recreate the source identity an exported copy carried."""
+        raw = (row.get("collection_source_identity") or "").strip()
+        if not raw:
+            return
+        try:
+            identity = json.loads(raw)
+        except ValueError:
+            return
+        source = (identity.get("source") or "").strip()
+        record_id = (identity.get("record_id") or "").strip()
+        if not source or not record_id:
+            return
+        CollectionEntrySource.objects.update_or_create(
+            user=self.user,
+            source=source[:32],
+            source_record_id=record_id[:200],
+            occurrence=identity.get("occurrence") or 0,
+            defaults={
+                "derived_identity": bool(identity.get("derived")),
+                "entry": entry,
+            },
+        )
+
     def _process_collection_row(self, row):
         """Process a collection (owned media) row from the CSV file."""
         media_type = (row.get("media_type") or "").strip().lower()
@@ -641,6 +811,21 @@ class YamtrackImporter:
             )
             entry_fields["bitrate"] = None
 
+        entry_fields["purchase_location"] = (
+            row.get("collection_purchase_location") or ""
+        ).strip()
+        price_raw = (row.get("collection_purchase_price") or "").strip()
+        try:
+            entry_fields["purchase_price"] = Decimal(price_raw) if price_raw else None
+        except InvalidOperation:
+            self.warnings.append(
+                f"{row.get('title', row['media_id'])}: invalid collection "
+                f"price {price_raw!r}, ignoring.",
+            )
+            entry_fields["purchase_price"] = None
+
+        custom_values = self._collection_custom_values(row, item.media_type)
+
         existing = CollectionEntry.objects.filter(user=self.user, item=item)
         if self.mode == "overwrite":
             if item.id not in self._collection_overwritten_item_ids:
@@ -657,9 +842,11 @@ class YamtrackImporter:
             lambda: CollectionEntry.objects.create(
                 user=self.user,
                 item=item,
+                custom_field_values=custom_values,
                 **entry_fields,
             ),
         )
+        self._link_collection_source(entry, row)
 
         collected_at = parse_datetime(
             (row.get("collection_collected_at") or "").strip(),

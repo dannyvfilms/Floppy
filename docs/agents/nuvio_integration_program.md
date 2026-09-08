@@ -1,18 +1,21 @@
 # Floppy–Nuvio Integration Programme
 
-**Status:** Reviewed programme plan  
-**Review date:** 2026-08-15  
-**Floppy baseline:** `1bb6999a539679a27502c6514c3fdfec70f17091`  
-**Target branch:** `latest`  
+**Status:** Reviewed programme plan, reconciled against implementation
+**Review date:** 2026-08-15
+**Reconciliation date:** 2026-09-06
+**Floppy baseline:** `17dc7c8e0eaae82603b98bd084abd0131ee6c1c1` (`latest`)
+**Prior baseline:** `1bb6999a539679a27502c6514c3fdfec70f17091`
 **Programme issue:** #532
+
+This document is the single source of truth for the programme. `docs/plans/floppy-nuvio-unified-program-prd.md` describes a superseded single-PR delivery plan whose PR (#791) was withdrawn; do not implement from it.
 
 ## Decision
 
 Build the programme in two release trains.
 
-### Release Train A — Tracking interoperability
+### Release A — Tracking interoperability
 
-Ship this first:
+Two-way tracking that preserves existing local data:
 
 - scoped client access;
 - saved-library/watchlist membership;
@@ -26,9 +29,9 @@ Ship this first:
 - diagnostics;
 - conformance fixtures.
 
-### Release Train B — Local Shared Media Workspace
+### Release B — Catalogs and shared media features
 
-Start this after Train A is stable:
+Start after Release A's server contract is stable:
 
 - Floppy lists and Discover rows as read-only catalogs;
 - normalized metadata projections;
@@ -36,162 +39,130 @@ Start this after Train A is stable:
 - declarative add-on registration;
 - portable Collection descriptors;
 - optional writable list bindings;
-- Nuvio self-host pairing through a supported external API.
+- user metadata preferences and overrides.
 
 Do not combine both trains in one release or one pull request.
 
-## One-page operating view
+## Reconciliation ledger
 
-### Now
+Every capability below was checked against `latest` at the reconciliation baseline. `Implemented` means present with tests. `Partial` means present but short of the contract this programme requires. `Missing` means no production code exists.
 
-1. Record current behavior.
-2. Correct stale issue relationships.
-3. Fix the open malformed Stremio payload defect.
-4. Add scoped client credentials.
-5. Add durable delivery identity and receipts.
-6. Add ordered progress and saved-item changes.
-7. Publish a Nuvio conformance kit.
-8. Add dry-run reconciliation and diagnostics.
-9. Release Tracking Interoperability 1.0.
+### Release A
 
-### Next
+| Capability | State | Evidence |
+|---|---|---|
+| Scoped API credential record | Implemented | `IntegrationToken` (`src/integrations/models.py:1208`): digest-only storage, prefix, JSON scopes, expiry, revocation, `flp_` + 32-byte URL-safe secret. Migration `integrations/0024_integrationtoken.py`. |
+| Credential authentication | Implemented | `src/api/authentication.py`: `BearerAuthentication`, `ListenBrainzTokenAuthentication`, `APIKeyAuthentication`; legacy `User.token` still accepted. Tests: `src/api/tests/test_fork_integration_tokens.py`. |
+| **Scope enforcement** | **Partial — highest-priority gap** | `HasScope` exists in `src/api/authentication.py:98` but **no view declares `required_scope` and no view lists `HasScope` in `permission_classes`**. Scopes are stored and testable at model level only; in practice any valid token reaches every endpoint the user can reach. |
+| Credential lifecycle management | Missing | `IntegrationToken.generate` has no view, URL, admin form, or management command. Only `^user/token/regenerate/?$` (legacy account token) is exposed. A user cannot create, list, name, or revoke a scoped token without a shell. |
+| Constant-time digest compare | Partial | Lookup is a unique-index equality match on a SHA-256 digest, not a `compare_digest` on a secret. Acceptable in practice; record the reasoning rather than claim the control. |
+| Credential last-use tracking | Missing | `last_used_at` is written by nothing (`src/integrations/models.py:1222`). Connection status and revocation triage have no data source. |
+| Delivery receipts / idempotency | Implemented | `IntegrationEventReceipt` (`src/integrations/models.py:1277`) with `unique(user, client_event_id)`; `src/integrations/delivery.py` implements same-digest replay and changed-digest conflict. Tests: `src/api/tests/test_fork_delivery_receipts.py`. |
+| Receipt coverage | Partial | Wired only into `fork_views_scrobble.py:294` and two paths in `fork_views_playback.py` (`:610`, `:698`). Tracking, list, and collection mutations accept no `Idempotency-Key`. |
+| Receipt retention/compaction | Missing | No expiry field, no cleanup task, no metrics. Table grows without bound. |
+| Receipt–state atomicity | Partial | `get_or_record_receipt` runs inside a transaction, but only for the two wired endpoints. Verify the fault matrix before claiming the guarantee. |
+| Playback progress read/write | Implemented | `^playback/progress/?$`, `^playback/now-playing/?$`, per-media and per-season progress routes (`src/api/fork_urls.py`). Tests: `src/api/tests/test_fork_playback_progress.py`. |
+| Scrobble ingest | Implemented | `^scrobble/?$` (`src/api/fork_views_scrobble.py`); start/pause non-durable, completed stop creates history. Baseline tests: `src/api/tests/test_fork_nuvio_baseline.py`. |
+| Saved items / watched state / history API | Implemented | `^collection/`, `^history/`, per-episode `watch`/`drop`/`score`, bulk episodes (`src/api/fork_urls.py`); `src/api/tests/test_fork_tracking.py`. |
+| Delta sync | Partial | `?updated_since=` on playback progress only (`src/api/fork_views_playback.py:322-565`, backed by `position_updated_at`, migration `app/0142`). Timestamp-ordered, not server-sequenced. No delta on saved items, watched state, or history. |
+| Explicit deletes / tombstones | Missing | No delete events, no tombstones anywhere. A client cannot learn that an item was removed except by full comparison, which the state policy forbids treating as a delete. |
+| `SyncBinding` (user + external client/profile) | Missing | `IntegrationToken.client_identifier` is a free-text field with no approval, no profile, no capability set, no direction set, and no reapproval-on-profile-change. |
+| `SyncCheckpoint` | Missing | No server-side cursor state. |
+| Opaque cursor contract | Missing | No cursor issuance, validation, binding check, or expiry response. |
+| Origin derivation / loop prevention | Missing | Nothing derives change origin from the authenticated credential, and nothing suppresses reflected changes. |
+| `UnresolvedExternalReference` | Missing | Unresolvable ids return 404 (`test_fork_nuvio_baseline.py:106`) and are not recorded, deduplicated, or surfaced. |
+| Reconciliation preview / apply | Missing | `src/app/reconcile_state.py` is internal library-state repair, not client reconciliation. No dry run, no categorized diff, no diagnostics surface. |
+| Conformance fixtures | Missing | `src/api/tests/test_fork_nuvio_baseline.py` is a five-test regression baseline, not a publishable kit. |
+| Published contract artifacts | Implemented | `src/api/contracts/openapi.yaml`, `asyncapi.json`, `context.jsonld`; regeneration and validation commands in `AGENTS.md`. AsyncAPI channels: Plex, Jellyfin, Emby, Jellyseerr, Seerr, Kodi, Stremio subtitles, ListenBrainz. |
 
-1. Publish selected Floppy lists as read-only catalogs.
-2. Publish normalized metadata with provenance.
-3. Add safe remote fetch and transparent cache state.
-4. Add a declarative add-on registry.
+### Release B
 
-### Later
+| Capability | State | Evidence |
+|---|---|---|
+| Stremio-compatible manifest and catalog | Partial | `stremio-addon/<token>/manifest.json` and the catalog route exist (`src/integrations/urls.py:230-239`), backed by `src/integrations/stremio_catalog.py`. |
+| Catalog grant model | Missing | The addon routes authenticate on the **legacy `User.token` in the URL path** (`src/integrations/views.py:4135`, `:4154`). There is no per-resource grant, no independent revocation, and revoking means regenerating the account token that other integrations use. This is the first thing Release B must fix. |
+| Catalog `meta` resource | Missing | Manifest and catalog only; no metadata endpoint. |
+| Normalized metadata projections | Partial | `src/api/fork_views_metadata.py` and `^metadata/items/<id>/` exist for internal use; no source attribution, freshness, or licence surface in the contract. |
+| Declarative remote add-ons | Missing | No manifest schema, registry, safe-fetch boundary, or cache-status surface. |
+| Portable Collection descriptors | Missing | `CollectionSourceState` (`src/integrations/models.py:814`) is unrelated internal source state. |
+| Optional writable list bindings | Missing | List write endpoints exist (`^lists/...`), but not as scoped external bindings. Smart lists must stay read-only. |
+| Metadata preferences and overrides | Partial | `^media/.../provider-preference/?$` exists; not modelled as user-owned overrides held separately from cached provider data. |
 
-1. Add portable Nuvio Collection descriptors.
-2. Add optional writable list bindings.
-3. Add user-owned metadata preferences and overrides.
-4. Add Nuvio self-host pairing after Nuvio exposes supported authorization and a versioned external contract.
-5. Extend the activity contract to other Floppy media domains.
+### Adoption kit
 
-### Not in scope
+| Capability | State |
+|---|---|
+| Verified OpenAPI artifact | Implemented (`src/api/contracts/openapi.yaml`) |
+| Auth/capability documentation for external clients | Missing |
+| Executable conformance fixtures | Missing |
+| NuvioTV compatibility matrix | Missing |
+| Nuvio Mobile compatibility matrix | Missing |
 
-- direct access to Nuvio PostgreSQL;
-- Supabase service-role credentials;
-- raw Nuvio account passwords;
-- title-only authoritative matching;
-- executable plugin synchronization;
-- stream or debrid functionality in Floppy;
-- a second Floppy database;
-- a new microservice;
-- unrestricted provider metadata replication;
-- a broad identity-platform rewrite.
+### Reconciliation conclusion
+
+The security and delivery foundation landed. The **ordered-change layer did not**: no bindings, no sequences, no cursors, no tombstones, no reconciliation. Everything Release A still owes depends on that layer, so it is the next thing built.
+
+Two findings are corrections rather than gaps, and are pulled forward:
+
+1. Stored-but-unenforced scopes are worse than no scopes, because the credential UI will claim a restriction the server does not apply. Enforce before anything else ships on top.
+2. Scoped tokens cannot be created through the product. Until they can, every external client is still told to paste the account token, which is exactly what the catalog routes already do.
 
 ## Current issue state
 
-Recheck issue state before each PR.
+Recheck issue state before each PR. Verified 2026-09-06 against `dannyvfilms/Floppy`.
 
-- #532 is the open programme epic.
-- #599 is open and owns malformed Cinemeta/Stremio payload handling.
-- #598 is open and owns recurring Stremio import visibility.
-- #635 is open and owns read-only catalog publication.
-- #636 is open and owns scoped API credentials.
-- #619 is completed. Keep its behavior as a regression baseline.
-- #723 is completed. Keep its watched-state and history rules as a regression baseline.
-- #652 is closed as not planned. It is context only. It is not a blocker.
+- #532 open. Programme epic.
+- #599 closed. Malformed Cinemeta/Stremio payload handling. Keep as regression baseline.
+- #598 closed. Recurring Stremio import visibility.
+- #635 closed. Read-only catalog publication — closed with the routes only partially delivered; the grant model was never built. Re-file the remaining work rather than reopening.
+- #636 closed as withdrawn. Scoped API credentials — the model landed; enforcement and lifecycle did not. Re-file.
+- #429 closed. Bidirectional playback progress. Regression baseline.
+- #417 closed. Kodi client API correctness. Regression baseline.
+- #619 closed. Provider-prefixed ids. Regression baseline.
+- #723 closed. Stremio watched-state correctness and history preservation. Regression baseline.
+- #652 closed as not planned. Context only.
+- PR #845 merged. AsyncAPI 3.0, schema viewer, delivery receipts.
 
-Do not reopen completed issues to recreate an architecture hierarchy.
+Do not reopen completed issues to recreate an architecture hierarchy. File one new issue per testable behavior in the backlog below.
 
 ## Repository rules
 
-- Target `latest`.
-- Never target `upstream` or `release`.
-- Prefer the smallest maintainable change.
-- Use existing patterns before new abstractions.
-- Split large work into reviewable PRs.
+- Target `latest`. Never target `upstream` or `release`.
+- Implement each PR on its own branch off `latest`; leave unrelated working-tree changes in the shared checkout untouched, and never `git stash`.
+- Prefer the smallest maintainable change and existing patterns.
+- Extend existing endpoints and records additively. Do not recreate tokens, receipts, progress, scrobble, tracking, or list APIs.
+- Preserve existing API compatibility and the Stremio regression coverage from #619 and #723.
 - Validate models, migrations, authentication, permissions, webhooks, tasks, cache behavior, and external APIs.
 - Keep the test and lint baseline at zero.
 - Include screenshots for UI changes.
-- Include the exact AI-assistance disclosure in each PR.
 - Regenerate domain and OpenAPI artifacts when their contracts change.
 - Run migration hygiene and upgrade replay when schema changes require them.
 
 ## External dependency
 
-Floppy can publish its server contract.
+Floppy can publish its server contract on its own schedule.
 
-A complete Nuvio user experience still needs one of:
+A complete Nuvio user experience additionally needs one of:
 
 - a Nuvio client that implements the Floppy contract;
 - a compatible bridge;
 - a supported versioned Nuvio self-host API.
 
-Do not describe the programme as complete until an end-to-end client path passes the conformance suite.
+Server readiness and verified end-to-end client compatibility are separate milestones. Publish server readiness when Floppy's own conformance suite passes. Claim TV or Mobile compatibility only after that client passes end-to-end verification at a recorded revision.
 
-## Review method
+## Scope exclusions
 
-This plan was reviewed against:
+- direct access to Nuvio PostgreSQL or Supabase service-role credentials;
+- raw Nuvio account passwords;
+- title-only authoritative matching;
+- executable plugin synchronization;
+- stream or debrid functionality in Floppy;
+- a second Floppy database or a new microservice;
+- unrestricted provider metadata replication;
+- a broad identity-platform rewrite;
+- full historical rewatch parity in Release A.
 
-- the official gstack sprint workflow;
-- Floppy repository instructions;
-- current Floppy issues;
-- NuvioTV client behavior;
-- Nuvio self-host behavior;
-- OWASP Top 10:2025;
-- OWASP API Security Top 10:2023;
-- an adversarial red-team review;
-- a defensive blue-team review;
-- a frontier engineering panel;
-- an ADHD/AuDHD panel;
-- a synthetic 50-role streaming and tracking panel.
-
-The panels are role-based reviews. They did not involve real named people.
-
-## Gstack workflow
-
-Use this sprint in the implementation worktree:
-
-```text
-Think
-  /office-hours
-
-Plan
-  /autoplan
-  /cso
-  Codex Security threat model and scan
-
-Build
-  implement one approved PR boundary
-
-Review
-  /review
-  Codex Security diff scan
-  /codex review when available
-
-Test
-  targeted tests
-  repository validation
-  /qa
-  accessibility checks
-
-Ship
-  /ship
-  monitor CI
-  verify the release candidate
-
-Reflect
-  /retro
-  milestone post-mortem
-```
-
-`/autoplan` supplies the CEO, design, engineering, and developer-experience reviews. Re-run the engineering review only after a material plan change.
-
-Production code must not start until:
-
-- `/office-hours` is complete;
-- `/autoplan` is complete;
-- `/cso` is complete;
-- the Codex Security threat model is complete;
-- blocking findings are resolved;
-- the engineering plan is a pass;
-- the programme owner accepts the final plan.
-
-The planning-doc PR can precede this gate because it changes no production behavior.
+Nuvio self-host pairing stays deferred until Nuvio exposes a supported authorization mechanism and a versioned external API.
 
 ## Product vocabulary
 
@@ -274,83 +245,54 @@ Do not add:
 - a title/year fallback for authoritative writes;
 - a cache-only event bus.
 
-## Proposed durable records
+## Durable records
 
-Names are proposals. Reuse current records when they already satisfy the requirement.
+Reuse current records wherever their semantics fit. Names for new records are proposals.
 
-### IntegrationClient
+### IntegrationToken — exists
 
-Stores stable external client identity and revocation state.
+`src/integrations/models.py:1208`. Keep it as the scoped credential. Owed behavior:
 
-### ScopedAccessToken
+- enforce `scopes` at every mutating and reading endpoint an external client can reach;
+- update `last_used_at` with bounded write frequency;
+- expose create/list/revoke through the product, showing the secret once;
+- keep the legacy account token working during a measured migration period.
 
-Owned by #636.
+Do not introduce a second credential record.
 
-Required behavior:
+### IntegrationEventReceipt — exists
 
-- show the secret once;
-- store only a digest;
-- compare in constant time;
-- support explicit scopes;
-- support expiry and revocation;
-- update last-use state with bounded write frequency;
-- keep the legacy account token during a measured migration period.
-
-### SyncBinding
-
-Binds one Floppy user to one external instance and profile.
-
-It stores:
-
-- client;
-- external instance ID;
-- external profile ID;
-- approved capabilities;
-- approved directions;
-- status;
-- created, updated, and disabled times.
-
-A profile change requires explicit reapproval.
-
-### SyncCheckpoint
-
-Stores the last applied cursor for one binding, resource, and direction.
-
-Advance it only after the page commits. Never store it only in cache.
-
-### DeliveryReceipt
-
-Makes mutating requests safe to retry.
+`src/integrations/models.py:1277`, gateway in `src/integrations/delivery.py`. Contract already held:
 
 ```text
-same binding + event ID + same digest -> prior result
-same binding + event ID + changed digest -> conflict
+same user + event ID + same digest -> prior result
+same user + event ID + changed digest -> conflict
 new event ID -> new operation
 ```
 
-Keep receipts for the documented retry guarantee. Compact them in bounded batches after expiry.
+Owed behavior: scope the uniqueness to the binding once bindings exist, extend coverage to every external mutation, add retention and bounded compaction, keep aggregate metrics after row deletion.
 
-### ProgressChange
+### SyncBinding — new
 
-Exposes ordered progress upserts and deletes.
+Binds one Floppy user to one external instance and profile. Stores client, external instance id, external profile id, approved capabilities, approved directions, status, and created/updated/disabled times. A profile change requires explicit reapproval. Binding identity is what origin derivation, cursors, and receipts scope to; `IntegrationToken.client_identifier` is not a substitute.
 
-Use a server sequence. Do not order by client time. Keep `PlaybackProgress` as the current-state source.
+### SyncCheckpoint — new
 
-### SavedItemChange and WatchedStateChange
+Last applied cursor for one binding, resource, and direction. Advance only after the page commits. Never store it only in cache.
 
-Expose explicit additions, removals, watched upserts, and watched deletes.
+### ProgressChange, SavedItemChange, WatchedStateChange — new
 
-Do not infer a delete from absence.
+Ordered upserts and explicit deletes on a server sequence. Never order by client time. Keep `PlaybackProgress` and the existing tracking models as the current-state source; the change logs are additive. Never infer a delete from absence.
 
-### UnresolvedExternalReference
+The existing `?updated_since=` playback filter stays as-is for compatibility. It is not the ordered-change contract and must not be documented as one.
 
-Deduplicates unsupported or ambiguous IDs. It stores a reason code and occurrence count. It does not store a raw secret-bearing payload.
+### UnresolvedExternalReference — new
 
-### SyncRun
+Deduplicates unsupported or ambiguous ids with a reason code and occurrence count. Stores no secret-bearing payload.
 
-Reuse or extend `ImportRun` only when its semantics fit.
+### SyncRun — reuse or extend `ImportRun`
 
-Required result counts:
+`src/integrations/models.py:1145`. Extend only if its semantics fit. Required result counts:
 
 ```text
 created
@@ -361,6 +303,10 @@ unresolved
 failed
 preserved_local
 ```
+
+### Catalog grant — new, Release B
+
+Per-resource, revocable grant for published catalogs. Replaces the account token currently embedded in the Stremio addon URL path.
 
 ## Retention and compaction
 
@@ -660,139 +606,158 @@ Panel consensus:
 - keep setup minimal;
 - let future clients use stable public contracts without a Floppy source change.
 
-## Release Train A
+## Release A backlog
 
-### Milestone A0 — Contract and safety baseline
+Each item is one branch off `latest` and one reviewable PR. Ordering is a dependency order, not a suggestion.
 
-#### PR A0 — Document this reviewed programme
+### A0 — Enforce declared scopes
 
-Behavior change: none.
+Correction, not new capability. `HasScope` exists and is used nowhere.
 
-#### PR A1 — Harden malformed Stremio/Cinemeta input
+Deliver: `required_scope` on every external-facing API view; `HasScope` in their `permission_classes`; a documented scope map; `last_used_at` updated with a bounded write interval; scope names in the OpenAPI artifact.
 
-Issue: #599
+Compatibility: legacy `User.token` keeps full access (`request.auth is None`). Tokens minted before this PR carry `DEFAULT_INTEGRATION_SCOPES`; audit that default against the new map before merging so no existing client loses access silently.
 
-Deliver type validation, bounded logging, continuation, and regression fixtures.
+Validate: allowed-scope and denied-scope tests per endpoint group; two-user isolation; legacy-token regression; fast suite.
 
-Keep completed #619 and #723 behavior as baseline tests.
+### A1 — Credential lifecycle in the product
 
-### Milestone A1 — Client security and delivery
+Deliver: create/list/revoke named tokens with scope selection and optional expiry; secret shown once; prefix and last-use shown thereafter; settings UI following existing patterns; **no native `<select>`** — use the Alpine dropdown pattern from `users/preferences.html`.
 
-#### PR A2 — Add scoped API credentials
+Validate: cross-user access, revocation takes effect immediately, secret never re-readable, secret absent from logs and accessible names, desktop and narrow screenshots, keyboard and focus evidence.
 
-Issue: #636
+### A2 — Client identity and binding
 
-Deliver named tokens, scopes, digest storage, expiry, revocation, one-time display, legacy compatibility, OpenAPI scope documentation, and cross-user tests.
+Deliver: `SyncBinding`, binding approval and revocation, explicit reapproval on profile change, connection status derived from real last-use, and binding resolution from the authenticated credential.
 
-#### PR A3 — Add client identity, binding, and receipts
+Validate: migrations on SQLite and PostgreSQL, migration hygiene, cross-profile isolation, revocation under load, deleted-profile handling.
 
-Deliver stable client identity, user/profile binding, optional idempotency, durable receipts, payload digests, replay handling, correlation IDs, retention, and cleanup.
+### A3 — Extend receipt coverage and retention
 
-### Milestone A2 — Ordered state
+Deliver: `Idempotency-Key` on every external mutation; receipt uniqueness scoped to binding; retention setting; bounded compaction task; aggregate metrics retained after deletion.
 
-#### PR A4 — Add ordered progress changes
+Validate: concurrent duplicates, conflicting retries, DB timeout before and after commit, storage-growth test.
 
-Relationships: #429 and #532
+### A4 — Ordered progress changes
 
-Deliver additive upsert/delete changes, server sequence, opaque cursor, page limits, snapshot recovery, and cursor expiry. Keep the current progress response compatible.
+Deliver: `ProgressChange`, server sequence, opaque binding-bound cursor, `SyncCheckpoint`, page limits, snapshot endpoint, cursor-expired response with a documented snapshot-recovery path.
 
-#### PR A5 — Add saved-item and watched-state changes
+Compatibility: the current progress response and `?updated_since=` stay unchanged.
 
-Issue: #532
+Validate: reorder matrix, clock skew, cursor tampering and cross-binding use, cursor expiry, interrupted pagination, checkpoint not advanced on a failed page.
 
-Deliver explicit add/remove, exact watched changes, snapshots, tombstones, and no delete by absence. Split these resources if the reviewed diff becomes too large.
+### A5 — Saved-item and watched-state changes
 
-### Milestone A3 — Nuvio adoption package
+Deliver: explicit add/remove, exact watched upsert/delete, snapshots, tombstones, and no delete by absence. Split saved items from watched state if the diff gets large.
 
-#### PR A6 — Publish the Nuvio conformance kit
+Preserve the #723 rules: Stremio watched-bitfield evidence stays authoritative for Stremio episode completion; external season completion must not trigger manual Floppy fan-out; a better existing watch date is never replaced by a lower-fidelity source.
 
-Relationships: #532, NuvioTV #2935, and NuvioTV #2484
+Validate: delete-resurrection, partial-page and empty-snapshot, episode identity, completion and rewatch rules, preservation of better history dates.
 
-Deliver capabilities, OpenAPI examples, request/response fixtures, retry and delete examples, origin rules, and a client implementation guide.
+### A6 — Origin derivation and unresolved references
 
-Do not claim upstream Nuvio adoption without an implementation.
+Deliver: origin derived from the authenticated binding, own-origin changes skipped in feeds, `UnresolvedExternalReference` recording with deduplication and a user-visible list.
 
-### Milestone A4 — Reconciliation and diagnostics
+Validate: loop simulation across two bound clients, repeated unresolved ids deduplicate rather than accumulate.
 
-#### PR A7 — Add dry-run reconciliation and diagnostics
+### A7 — Reconciliation and diagnostics
 
-Deliver dry run, categorized differences, safe apply, unresolved items, last success/error, grouped counts, a feature flag, a kill switch, accessibility support, and screenshots.
+Deliver: dry-run preview, categorized differences (applied, preserved, unresolved, failed), explicit apply for destructive reconciliation, last success and error, grouped counts, feature flag, kill switch.
 
-Default to preserve and report.
+Default to preserve and report. Applying destructive reconciliation always requires an explicit action with an affected count shown first.
 
-### Milestone A5 — Release 1.0 stabilization
+Validate: large-library preview, accessibility of the preview and error surfaces, `/qa`, screenshots.
 
-#### PR A8 — Stabilize Tracking Interoperability 1.0
+### A8 — Release A stabilization
 
-Run clean-install, upgrade, large-library, multi-device, multi-profile, offline, restart, timeout, revoked-token, replay, ordering, cursor-expiry, compaction, SQLite, PostgreSQL, performance, review, QA, ship, security, rollback, and post-mortem gates.
+Run clean-install, upgrade, large-library, multi-device, multi-profile, offline, restart, timeout, revoked-token, replay, ordering, cursor-expiry, compaction, SQLite, PostgreSQL, performance, security, and rollback gates.
 
-State which Nuvio client or bridge was tested end to end.
+State which Nuvio client or bridge was tested end to end, or state that none was.
 
-## Release Train B
+## Release B backlog
 
-Start after Train A is stable and its post-mortem is complete.
+Start after Release A is stable and its post-mortem is complete. Deliver in this order.
 
-### PR B1 — Add read-only share grants
+### B1 — Catalog grants
 
-Relationships: #635 and #636
+Replace the account token in the Stremio addon URL with a per-resource revocable grant limited to the selected lists and Discover rows. Keep the existing install URL working through a measured deprecation.
 
-### PR B2 — Publish Floppy as a local Stremio-compatible add-on
+Validate: catalog privacy, grant revocation, cross-user access, install-URL migration.
 
-Issue: #635
+### B2 — Complete the read-only catalog surface
 
-Publish selected catalogs and normalized metadata. Do not publish streams or mutation routes.
+Add the `meta` resource to the existing manifest and catalog routes. Publish selected Floppy lists and Discover rows only. Do not publish streams or mutation routes.
 
-### PR B3 — Add safe fetch and cache transparency
+Validate: pagination, empty and unready catalogs, Stremio client compatibility fixtures.
 
-Add network policy, limits, last-known-good behavior, provenance, freshness UI, and SSRF/cache-isolation tests.
+### B3 — Metadata projections
 
-### PR B4 — Add declarative add-on capability discovery
+Normalized projections with source attribution, freshness, licence and attribution. Preserve provider restrictions. Keep user overrides separate from cached provider data.
 
-Add a manifest schema, version negotiation, declared media types, resources, permissions, configuration, validation, health, and conformance fixtures. Do not add executable plugin support.
+### B4 — Safe fetch and cache transparency
 
-### PR B5 — Add shared declarative installation records
+Central safe-fetch boundary with SSRF and rebinding protection, link-local metadata blocking, redirect policy, bounded size and time, per-request header allowlist, last-known-good behavior, and visible cache and error status.
 
-Encrypt configured URLs. Keep per-application enabled state independent.
+### B5 — Declarative add-on capability discovery
 
-### PR B6 — Add portable Collection descriptors
+Manifest schema, version negotiation, declared media types, resources, permissions, configuration, validation, health, and conformance fixtures. Declarative HTTP only. Reject executable plugins.
 
-Preserve folders, source references, order, ownership, unknown fields, preview, round trip, and safe unlink.
+### B6 — Shared declarative installation records
 
-### PR B7 — Add optional writable list bindings
+Encrypt configured URLs. Keep per-application enabled state independent. Mask URLs in UI and logs; use digests as cache keys.
 
-Use explicit operations, preview, confirmation, recovery, and conflict reporting.
+### B7 — Portable Collection descriptors
 
-### PR B8 — Add normalized metadata projections
+Versioned descriptors carrying layout and source references. Preserve folders, order, ownership, and unknown fields. Exclude credentials and executable plugins. Support preview, round trip, and safe unlink.
 
-Include exact identity, normalized fields, provenance, language, region, observation time, expiry, cache state, license and attribution.
+### B8 — Optional writable list bindings
 
-### PR B9 — Add user metadata preferences and overrides
+Explicit scoped bindings to selected editable Floppy lists, with preview, confirmation, recovery, and conflict reporting. Computed and smart lists stay read-only.
 
-Keep user-owned fields separate from provider projections.
+### B9 — Metadata preferences and overrides
 
-### PR B10 — Add Nuvio self-host pairing
+User-owned fields kept separate from provider projections. Never silently overwrite imported metadata.
 
-Block this PR until Nuvio supplies supported external authorization, profile-bound scopes, a versioned API, OpenAPI, and stable change/delete semantics.
+## Adoption kit
 
-Never substitute direct database access.
+The kit is a deliverable of Release A, built alongside A4–A7 and published with A8. It is what a Nuvio maintainer needs to implement a client without reading Floppy's source.
 
-## Issue graph
+### Contents
 
-```text
-#532 Nuvio programme
-|
-+-- #599 malformed Stremio input [open, independent]
-+-- #636 scoped API credentials [open]
-+-- #429 progress contract [relationship; verify state]
-+-- #417 client API correctness [relationship; verify state]
-+-- #635 read-only catalog publication [open, Train B]
-+-- #598 import visibility [open, independent]
-+-- #619 provider-prefixed IDs [completed baseline]
-+-- #723 Stremio watched-state correctness [completed baseline]
-`-- #652 architecture research [closed, never a blocker]
-```
+- **Contract artifacts.** The verified `src/api/contracts/openapi.yaml`, `asyncapi.json`, and `context.jsonld`, regenerated and validated by the documented commands, published per release with the exact Floppy revision.
+- **Authentication guide.** Creating a scoped token, the three accepted header forms (`Authorization: Bearer`, `Authorization: Token`, `X-API-Key`), the scope map, expiry and revocation behavior, and the legacy-token migration path.
+- **Capability document.** What each scope grants, which resources support snapshots and ordered changes, page limits, and the cursor contract.
+- **Error catalogue.** Worked examples for invalid and revoked credentials, insufficient scope, conflicting retry, cursor expiry, unresolved reference, and rate limiting.
+- **Executable conformance fixtures.** Request/response pairs runnable against a live Floppy, covering the flows below. The same fixtures are used by both client targets — a divergent fixture set is a defect in the kit.
 
-Search current issues before creating a new one. Use one issue for one testable behavior. Do not create one issue per compatible client.
+### Documented flows
+
+Connect; initial merge; playback progress update; offline retry; incremental pull; reset; reconciliation preview and apply; disconnect.
+
+Each flow states what is preserved, what is overwritten, and what is left unresolved.
+
+### Compatibility matrices
+
+Maintain one matrix per client, each recording the exact tested revision of that client and of Floppy.
+
+- [Nuvio TV](https://github.com/NuvioMedia/NuvioTV)
+- [Nuvio Mobile](https://github.com/NuvioMedia/NuvioMobile) — Kotlin Multiplatform. Target the KMP implementation; the former React Native architecture is not the integration surface. Confirm the current architecture at the recorded revision before writing platform guidance.
+
+A matrix row is `verified` only when the fixture passed against a real build of that client. `Server ready` is a separate, earlier claim.
+
+### Feature availability
+
+State plainly which features a user gets through add-ons alone and which require native client adoption:
+
+| Feature | Add-on is enough | Needs native client work |
+|---|---|---|
+| Browsing Floppy lists and Discover rows | Yes | No |
+| Catalog metadata | Yes | No |
+| Saved-item sync | No | Yes |
+| Watched state sync | No | Yes |
+| Resume progress sync | No | Yes |
+| Reconciliation | No | Yes |
+| Collections | No | Yes |
 
 ## QA and release gates
 
@@ -888,12 +853,7 @@ Each PR includes:
 - security and accessibility evidence;
 - post-mortem or post-implementation notes where applicable.
 
-Use this AI disclosure:
-
-```text
-Generated and substantially shaped with ChatGPT (GPT-5.6 Pro).
-Reviewed against current repository guidance and source evidence.
-```
+State the AI assistance actually used for that PR, and the evidence it was reviewed against. Do not carry a disclosure forward from another PR.
 
 Do not include tokens, configured URLs, or private viewing data in screenshots.
 
@@ -914,7 +874,9 @@ Stop and request a decision for:
 - inability to test a high-risk change;
 - a security finding that changes the approved design.
 
-## GSTACK REVIEW REPORT
+## Review record — 2026-08-15 (historical)
+
+Retained as the record of the original plan review. It describes the plan as written at the prior baseline, before the reconciliation above.
 
 **Plan reviewed:** Floppy–Nuvio Integration Programme  
 **Baseline:** `1bb6999a539679a27502c6514c3fdfec70f17091`  

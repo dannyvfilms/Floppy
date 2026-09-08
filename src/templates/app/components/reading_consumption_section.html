@@ -1,23 +1,25 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 <section class="bg-[var(--color-surface)] rounded-lg p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-8 space-y-4 sm:space-y-6">
   <div class="flex flex-col space-y-1">
     <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{{ media_name }}</span>
-    <h2 class="text-2xl font-semibold text-[var(--color-text)]">Activity Overview</h2>
+    <h2 class="text-2xl font-semibold text-[var(--color-text)]">{% translate "Activity Overview" %}</h2>
     <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
   </div>
 
   <div class="space-y-4 sm:space-y-6">
     {% if show_year_charts %}
     <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-      <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{{ consumption.completion_label }} by Year</h3>
+      <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% blocktranslate trimmed with value_1=consumption.completion_label %}{{ value_1 }} by Year{% endblocktranslate %}</h3>
       {% if consumption.completion_charts.by_year.labels %}
         <div class="h-64">
           <canvas id="{{ chart_prefix }}FinishedByYearChart"></canvas>
         </div>
       {% else %}
         <div class="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
-          <p class="text-sm">No yearly completion data available.</p>
+          <p class="text-sm">{% translate "No yearly completion data available." %}</p>
         </div>
       {% endif %}
     </div>
@@ -25,22 +27,22 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-        <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{{ media_name }} Released by Year</h3>
+        <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% blocktranslate trimmed with value_1=media_name %}{{ value_1 }} Released by Year{% endblocktranslate %}</h3>
         {% if consumption.release_chart.labels %}
           <div class="h-64">
             <canvas id="{{ chart_prefix }}ReleasedByYearChart"></canvas>
           </div>
         {% else %}
           <div class="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
-            <p class="text-sm">No release data available.</p>
+            <p class="text-sm">{% translate "No release data available." %}</p>
           </div>
         {% endif %}
       </div>
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
         <div class="flex items-center gap-2 mb-4">
-          <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">Completed {{ consumption.unit_name }}s</h3>
+          <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">{% blocktranslate trimmed with value_1=consumption.unit_name %}Completed {{ value_1 }}s{% endblocktranslate %}</h3>
           <div class="relative" x-data="{ tooltipOpen: false }">
-            <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer" type="button" aria-label="Show information">
+            <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer" type="button" aria-label="{% translate "Show information" %}">
               {% include "app/icons/info.svg" with classes="w-4 h-4" %}
             </button>
             <div x-show="tooltipOpen" 
@@ -52,7 +54,7 @@
                  x-transition:leave-end="opacity-0 scale-95"
                  class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10"
                  style="display: none; background: rgba(0, 0, 0, 0.85); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);">
-              <p>Completed {{ consumption.unit_name|lower }}s grouped by length for this range.</p>
+              <p>{% blocktranslate trimmed with value_1=consumption.unit_name|lower %}Completed {{ value_1 }}s grouped by length for this range.{% endblocktranslate %}</p>
               <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent" style="border-top-color: rgba(0, 0, 0, 0.85);"></div>
             </div>
           </div>
@@ -63,7 +65,7 @@
           </div>
         {% else %}
           <div class="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
-            <p class="text-sm">No completion length data available.</p>
+            <p class="text-sm">{% translate "No completion length data available." %}</p>
           </div>
         {% endif %}
       </div>
@@ -71,7 +73,7 @@
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-        <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Most Read</h3>
+        <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Most Read" %}</h3>
         {% if consumption.top_items %}
           <div class="overflow-y-auto pr-1 statistics-card-scroll">
             {% for item in consumption.top_items %}
@@ -94,14 +96,14 @@
           </div>
         {% else %}
           <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-            <p class="text-sm">No reading data available.</p>
+            <p class="text-sm">{% translate "No reading data available." %}</p>
           </div>
         {% endif %}
       </div>
 
       {% if show_top_authors %}
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-        <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Top {{ consumption.top_authors|length|default:0 }} Authors</h3>
+        <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% blocktranslate trimmed with value_1=consumption.top_authors|length|default:0 %}Top {{ value_1 }} Authors{% endblocktranslate %}</h3>
         {% if consumption.top_authors %}
           <div class="overflow-y-auto pr-1 statistics-card-scroll">
             {% for author in consumption.top_authors %}
@@ -125,7 +127,7 @@
                 {% endif %}
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ author.name }}</p>
-                  <p class="text-xs text-[var(--color-text-muted)]">{{ author.formatted_units }} · {{ author.titles }} book{{ author.titles|pluralize }}</p>
+                  <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=author.formatted_units value_2=author.titles count count=author.titles %}{{ value_1 }} · {{ value_2 }} book{% plural %}{{ value_1 }} · {{ value_2 }} books{% endblocktranslate %}</p>
                 </div>
               {% if author.source and author.person_id %}
               </a>
@@ -136,14 +138,14 @@
           </div>
         {% else %}
           <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-            <p class="text-sm">No author data available.</p>
+            <p class="text-sm">{% translate "No author data available." %}</p>
           </div>
         {% endif %}
       </div>
       {% endif %}
 
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-        <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Top Genres</h3>
+        <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Top Genres" %}</h3>
         {% if consumption.top_genres %}
           <div class="overflow-y-auto pr-1 statistics-card-scroll">
             {% for genre in consumption.top_genres %}
@@ -157,11 +159,11 @@
                 <p class="text-xs text-[var(--color-text-muted)] truncate">
                   {{ genre.formatted_units }}
                   {% if media_type_slug == 'book' %}
-                    · {{ genre.titles }} book{{ genre.titles|pluralize }}
+                    {% blocktranslate trimmed with value_1=genre.titles count count=genre.titles %}· {{ value_1 }} book{% plural %}· {{ value_1 }} books{% endblocktranslate %}
                   {% elif media_type_slug == 'comic' %}
-                    · {{ genre.titles }} comic{{ genre.titles|pluralize }}
+                    {% blocktranslate trimmed with value_1=genre.titles count count=genre.titles %}· {{ value_1 }} comic{% plural %}· {{ value_1 }} comics{% endblocktranslate %}
                   {% elif media_type_slug == 'manga' %}
-                    · {{ genre.titles }} manga
+                    {% blocktranslate trimmed with value_1=genre.titles %}· {{ value_1 }} manga{% endblocktranslate %}
                   {% endif %}
                 </p>
               </div>
@@ -170,13 +172,13 @@
           </div>
         {% else %}
           <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-            <p class="text-sm">No genre data available.</p>
+            <p class="text-sm">{% translate "No genre data available." %}</p>
           </div>
         {% endif %}
       </div>
 
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-        <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Top Rated</h3>
+        <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Top Rated" %}</h3>
         {% if top_rated_list %}
           <div class="overflow-y-auto pr-1 statistics-card-scroll">
             {% for media in top_rated_list %}
@@ -205,7 +207,7 @@
           </div>
         {% else %}
           <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-            <p class="text-sm">No ratings yet.</p>
+            <p class="text-sm">{% translate "No ratings yet." %}</p>
           </div>
         {% endif %}
       </div>

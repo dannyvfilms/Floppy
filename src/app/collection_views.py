@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.translation import gettext
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
@@ -386,17 +387,21 @@ def _collection_add_season_or_show_response(request, item, form, post_data):
     )
     if created_entries:
         values = _custom_field_values_from_post(
-            request.user, post_data, scope_media_type=item.media_type,
+            request.user,
+            post_data,
+            scope_media_type=item.media_type,
         )
         if values:
             CollectionEntry.objects.filter(
                 id__in=[entry.id for entry in created_entries],
             ).update(custom_field_values=values)
-        message = f"Added {len(created_entries)} episode(s) to collection"
+        message = gettext("Added %(value_1)s episode(s) to collection") % {
+            "value_1": len(created_entries)
+        }
         if skipped_count:
             message += f" ({skipped_count} already collected)"
     else:
-        message = "All episodes are already in your collection"
+        message = gettext("All episodes are already in your collection")
     messages.success(request, message)
     if request.headers.get("HX-Request"):
         return JsonResponse({"success": True, "message": message})
@@ -411,12 +416,14 @@ def _collection_quick_add_season_or_show_response(request, item):
         cleaned_data={},
     )
     if created_entries:
-        message = f"Added {len(created_entries)} episode(s) to collection"
+        message = gettext("Added %(value_1)s episode(s) to collection") % {
+            "value_1": len(created_entries)
+        }
         if skipped_count:
             message += f" ({skipped_count} already collected)"
         messages.success(request, message)
     else:
-        message = "All episodes are already in your collection"
+        message = gettext("All episodes are already in your collection")
     if request.headers.get("HX-Request"):
         return JsonResponse(
             {"success": True, "created": bool(created_entries), "message": message}
@@ -431,7 +438,7 @@ def collection_add(request):
     if not item_id:
         if request.headers.get("HX-Request"):
             return HttpResponseBadRequest("Item ID is required")
-        messages.error(request, "Item ID is required")
+        messages.error(request, gettext("Item ID is required"))
         return _collection_redirect(request)
 
     try:
@@ -439,7 +446,7 @@ def collection_add(request):
     except Item.DoesNotExist:
         if request.headers.get("HX-Request"):
             return HttpResponseBadRequest("Item not found")
-        messages.error(request, "Item not found")
+        messages.error(request, gettext("Item not found"))
         return _collection_redirect(request)
 
     post_data = request.POST.copy()
@@ -479,10 +486,17 @@ def collection_add(request):
             )
             entry.collected_at = collected_at
         _apply_custom_field_values(entry, request.user, post_data)
-        messages.success(request, f"Added {item.title} to collection")
+        messages.success(
+            request,
+            gettext("Added %(value_1)s to collection") % {"value_1": item.title},
+        )
         if request.headers.get("HX-Request"):
             return JsonResponse(
-                {"success": True, "message": f"Added {item.title} to collection"}
+                {
+                    "success": True,
+                    "message": gettext("Added %(value_1)s to collection")
+                    % {"value_1": item.title},
+                }
             )
     else:
         helpers.form_error_messages(form, request)
@@ -525,7 +539,10 @@ def collection_quick_add(request, source, media_type, media_id):
     if entry is None:
         entry = CollectionEntry.objects.create(user=request.user, item=item)
         created = True
-        messages.success(request, f"Added {item.title} to collection")
+        messages.success(
+            request,
+            gettext("Added %(value_1)s to collection") % {"value_1": item.title},
+        )
 
     if request.headers.get("HX-Request"):
         return JsonResponse({"success": True, "created": created, "entry_id": entry.id})
@@ -558,7 +575,11 @@ def collection_update(request, entry_id):
             )
             entry.collected_at = collected_at
         _apply_custom_field_values(entry, request.user, request.POST)
-        messages.success(request, f"Updated collection entry for {entry.item.title}")
+        messages.success(
+            request,
+            gettext("Updated collection entry for %(value_1)s")
+            % {"value_1": entry.item.title},
+        )
         if request.headers.get("HX-Request"):
             return JsonResponse(
                 {"success": True, "message": "Updated collection entry"}
@@ -583,11 +604,18 @@ def collection_remove(request, entry_id):
 
     item_title = entry.item.title
     entry.delete()
-    messages.success(request, f"Removed {item_title} from collection")
+    messages.success(
+        request,
+        gettext("Removed %(value_1)s from collection") % {"value_1": item_title},
+    )
 
     if request.headers.get("HX-Request"):
         return JsonResponse(
-            {"success": True, "message": f"Removed {item_title} from collection"}
+            {
+                "success": True,
+                "message": gettext("Removed %(value_1)s from collection")
+                % {"value_1": item_title},
+            }
         )
     return _collection_redirect(request)
 
@@ -614,9 +642,16 @@ def collection_remove_season(request, season_item_id):
     ).delete()
 
     if deleted_count:
-        messages.success(request, f"Removed {season_title} from collection")
+        messages.success(
+            request,
+            gettext("Removed %(value_1)s from collection") % {"value_1": season_title},
+        )
     else:
-        messages.error(request, f"No collected episodes found for {season_title}")
+        messages.error(
+            request,
+            gettext("No collected episodes found for %(value_1)s")
+            % {"value_1": season_title},
+        )
 
     if request.headers.get("HX-Request"):
         message = (
@@ -911,11 +946,11 @@ def _parse_optional_int(value):
 def _validate_collection_numbers(request, media_type, season_number, episode_number):
     """Return an error response when required season/episode numbers are missing."""
     if media_type == MediaTypes.SEASON.value and season_number is None:
-        message = "Season number is required"
+        message = gettext("Season number is required")
     elif media_type == MediaTypes.EPISODE.value and (
         season_number is None or episode_number is None
     ):
-        message = "Season and episode numbers are required"
+        message = gettext("Season and episode numbers are required")
     else:
         return None
     if request.headers.get("HX-Request"):
@@ -1034,7 +1069,10 @@ def _custom_fields_fragment_context(request, item, *, manage_fields_open=False):
             serialize_collection_field_schema(request.user)
         ),
         "field_type_choices_json": json.dumps(
-            [{"value": value, "label": label} for value, label in CollectionFieldType.choices]
+            [
+                {"value": value, "label": label}
+                for value, label in CollectionFieldType.choices
+            ]
         ),
         "media_type_choices_json": json.dumps(
             [{"value": value, "label": label} for value, label in MediaTypes.choices]
@@ -1062,7 +1100,9 @@ def _custom_field_input_name(field_id):
     return f"custom_field_{field_id}"
 
 
-def _custom_field_values_from_post(user, post_data, *, scope_media_type, base_values=None):
+def _custom_field_values_from_post(
+    user, post_data, *, scope_media_type, base_values=None
+):
     """Return the custom_field_values dict implied by a submitted form.
 
     Only considers fields scoped to scope_media_type, so submitting a form

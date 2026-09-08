@@ -9,6 +9,7 @@ from django.db import IntegrityError, models
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext, gettext_noop
 from django.views.decorators.http import require_GET, require_POST
 
 from app.discover import tab_cache as discover_tab_cache
@@ -235,11 +236,11 @@ def _render_music_tracker_modal(
                 initial=bulk_initial,
                 domain=bulk_domain,
             )
-        episode_plays_tab_label = bulk_domain.get("tab_label") or "Track Plays"
+        episode_plays_tab_label = bulk_domain.get("tab_label") or gettext("Track Plays")
         episode_plays_submit_label = bulk_domain.get("submit_label") or "Save plays"
     else:
         episode_plays_form = None
-        episode_plays_tab_label = "Track Plays"
+        episode_plays_tab_label = gettext("Track Plays")
         episode_plays_submit_label = "Save plays"
 
     music_release_preference = None
@@ -370,9 +371,7 @@ def _build_artist_relations(user, artist):
     member_of_bands = _to_relations(band_of_memberships, "band")
 
     missing_relation_image_count = sum(
-        1
-        for related_artist in related_artists
-        if not related_artist.image
+        1 for related_artist in related_artists if not related_artist.image
     )
 
     return band_members, member_of_bands, missing_relation_image_count
@@ -644,7 +643,9 @@ def _render_music_artist_details(request, artist):
         Sources.MUSICBRAINZ.value,
     )
     detail_primary_action = {
-        "label": artist_tracker.status_readable if artist_tracker else "Add to Library",
+        "label": artist_tracker.status_readable
+        if artist_tracker
+        else gettext_noop("Add to Library"),
         "modal_url": reverse("artist_track_modal", args=[artist.id]),
         "target_id": f"artist-track-modal-{artist.id}",
         "active": bool(artist_tracker),
@@ -954,7 +955,9 @@ def _render_music_album_details(request, artist, album):
         Sources.MUSICBRAINZ.value,
     )
     detail_primary_action = {
-        "label": album_tracker.status_readable if album_tracker else "Add to Library",
+        "label": album_tracker.status_readable
+        if album_tracker
+        else gettext_noop("Add to Library"),
         "modal_url": reverse("album_track_modal", args=[album.id]),
         "target_id": f"album-track-modal-{album.id}",
         "active": bool(album_tracker),
@@ -1401,10 +1404,17 @@ def sync_artist_discography_view(request, artist_id):
     if cover_task_id:
         messages.success(
             request,
-            f"Synced {count} albums for {artist.name}. Cover art refresh queued.",
+            gettext(
+                "Synced %(value_1)s albums for %(value_2)s. Cover art refresh queued."
+            )
+            % {"value_1": count, "value_2": artist.name},
         )
     else:
-        messages.success(request, f"Synced {count} albums for {artist.name}")
+        messages.success(
+            request,
+            gettext("Synced %(value_1)s albums for %(value_2)s")
+            % {"value_1": count, "value_2": artist.name},
+        )
 
     response = HttpResponse(status=204)
     response["HX-Refresh"] = "true"
@@ -1462,9 +1472,7 @@ def artist_save(request):
         request,
         fallback_media_type=MediaTypes.MUSIC.value,
     )
-    home_row_id = request.GET.get("home_row_id") or request.POST.get(
-        "home_row_id", ""
-    )
+    home_row_id = request.GET.get("home_row_id") or request.POST.get("home_row_id", "")
 
     tracker = ArtistTracker.objects.filter(user=request.user, artist=artist).first()
     old_status = getattr(tracker, "status", None)
@@ -1475,7 +1483,9 @@ def artist_save(request):
         tracker.user = request.user
         tracker.artist = artist
         tracker.save()
-        messages.success(request, f"Saved {artist.name}")
+        messages.success(
+            request, gettext("Saved %(value_1)s") % {"value_1": artist.name}
+        )
 
         if request.headers.get("HX-Request"):
             htmx_trigger = {
@@ -1491,7 +1501,11 @@ def artist_save(request):
             response["HX-Trigger"] = json.dumps(htmx_trigger)
             return response
     else:
-        messages.error(request, f"Error saving {artist.name}: {form.errors}")
+        messages.error(
+            request,
+            gettext("Error saving %(value_1)s: %(value_2)s")
+            % {"value_1": artist.name, "value_2": form.errors},
+        )
 
     next_url = request.GET.get("next", "")
     if next_url:
@@ -1514,7 +1528,10 @@ def artist_delete(request):
     tracker = ArtistTracker.objects.filter(user=request.user, artist=artist).first()
     if tracker:
         tracker.delete()
-        messages.success(request, f"Removed {artist.name} from your library")
+        messages.success(
+            request,
+            gettext("Removed %(value_1)s from your library") % {"value_1": artist.name},
+        )
 
     next_url = request.GET.get("next", "")
     if next_url:

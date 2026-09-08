@@ -301,6 +301,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/media_type_integration.md`: playbook for adding new media types safely.
 - `docs/agents/music_integration.md`: music-specific data model and UI integration notes.
 - `docs/agents/pocketcasts_workflow.md`: Pocket Casts import/schedule workflow details.
+- `docs/agents/clz_import.md`: the CLZ importer's header-mapped contract and the shared custom-field resolution layer it sits on.
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
 - `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
 - `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.

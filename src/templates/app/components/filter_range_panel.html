@@ -1,0 +1,47 @@
+{% load i18n %}
+{% firstof filter_form_id "filter-form" as resolved_filter_form_id %}
+{% comment %}Two-ended range control (From/To) with the Apply/Clear footer.
+
+   Every range filter must go through this partial: the footer is what fires the
+   hx-get that refreshes the results, so a range added without it would silently
+   save its value and never update the view.
+
+   Params:
+     range_from_var / range_to_var   Alpine state variable names
+     range_input_type                "date" (default) or "number"
+     range_min / range_max / range_step   number inputs only
+     filter_hx_endpoint / filter_hx_target / filter_form_id
+     filter_on_change                JS appended to Apply/Clear (e.g. "onRuleChange(0);")
+{% endcomment %}
+<label class="block text-xs text-[var(--color-text-muted)]">{% translate "From" %}</label>
+<input type="{{ range_input_type|default:'date' }}"
+       x-model="{{ range_from_var }}"
+       {% if range_min %}min="{{ range_min }}"{% endif %}
+       {% if range_max %}max="{{ range_max }}"{% endif %}
+       {% if range_step %}step="{{ range_step }}"{% endif %}
+       class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+<label class="block text-xs text-[var(--color-text-muted)]">{% translate "To" %}</label>
+<input type="{{ range_input_type|default:'date' }}"
+       x-model="{{ range_to_var }}"
+       {% if range_min %}min="{{ range_min }}"{% endif %}
+       {% if range_max %}max="{{ range_max }}"{% endif %}
+       {% if range_step %}step="{{ range_step }}"{% endif %}
+       class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+<div class="flex gap-2 pt-1">
+  <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+          hx-target="{{ filter_hx_target }}"
+          hx-include="#{{ filter_form_id|default:'filter-form' }}"
+          hx-indicator="#loading-indicator"
+          class="flex-1 px-3 py-2 rounded-md text-sm bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer"
+          @click="open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+          type="button">{% translate "Apply" %}</button>
+  <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+          hx-target="{{ filter_hx_target }}"
+          hx-include="#{{ filter_form_id|default:'filter-form' }}"
+          hx-indicator="#loading-indicator"
+          class="px-3 py-2 rounded-md text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+          @click="{{ range_from_var }} = ''; {{ range_to_var }} = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+          type="button">{% translate "Clear" %}</button>
+</div>

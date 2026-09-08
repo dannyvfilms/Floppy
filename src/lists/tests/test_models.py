@@ -1450,3 +1450,106 @@ class TmdbBackdropTest(TestCase):
         backdrop = CustomList()._get_tmdb_backdrop(MediaTypes.MOVIE.value, "603")
 
         self.assertEqual(backdrop, settings.IMG_NONE)
+
+
+class SmartRuleGranularMediaTypesTest(TestCase):
+    """Season and episode participate in smart rules on their own terms."""
+
+    def setUp(self):
+        """Create a user with TV enabled but Seasons hidden from the sidebar."""
+        self.user = get_user_model().objects.create_user(
+            username="granular",
+            password="12345",
+        )
+        self.user.season_enabled = False
+        self.user.save(update_fields=["season_enabled"])
+
+        self.season_item = Item.objects.create(
+            title="Friends",
+            media_id="1668",
+            media_type=MediaTypes.SEASON.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/friends.jpg",
+            season_number=1,
+        )
+        self.season = Season.objects.create(
+            item=self.season_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        self.episode_item = Item.objects.create(
+            title="Friends S1E1",
+            media_id="1668",
+            media_type=MediaTypes.EPISODE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/friends.jpg",
+            season_number=1,
+            episode_number=1,
+        )
+        self.episode = Episode.objects.create(
+            item=self.episode_item,
+            related_season=self.season,
+            score=8,
+            end_date=datetime.datetime(2023, 6, 2, tzinfo=datetime.UTC),
+        )
+
+    def test_available_media_types_ignore_the_sidebar_season_preference(self):
+        """Hiding Seasons in the sidebar must not remove them from smart rules."""
+        self.assertNotIn(MediaTypes.SEASON.value, self.user.get_enabled_media_types())
+
+        available = smart_rules.get_available_media_types(self.user)
+
+        self.assertIn(MediaTypes.SEASON.value, available)
+        self.assertIn(MediaTypes.EPISODE.value, available)
+
+    def test_granular_types_stay_out_of_an_implicit_all_types_rule(self):
+        """A list naming no media types must not materialise every episode."""
+        targets = smart_rules._target_media_types(self.user, [])
+
+        self.assertNotIn(MediaTypes.SEASON.value, targets)
+        self.assertNotIn(MediaTypes.EPISODE.value, targets)
+
+        smart_list = CustomList.objects.create(
+            name="Everything",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[],
+        )
+        smart_list.sync_smart_items()
+
+        self.assertFalse(smart_list.items.filter(id=self.episode_item.id).exists())
+
+    def test_episode_rules_match_when_named_explicitly(self):
+        """Episodes participate once the rule asks for them."""
+        rules = smart_rules.normalize_rule_payload(
+            {"media_types": [MediaTypes.EPISODE.value]},
+            self.user,
+        )
+
+        self.assertEqual(rules["media_types"], [MediaTypes.EPISODE.value])
+        self.assertIn(
+            self.episode_item.id,
+            smart_rules.collect_matching_item_ids(self.user, rules),
+        )
+
+    def test_episode_rating_filter_uses_the_season_owner(self):
+        """Episode hangs off its season, so `user=` would raise a FieldError."""
+        rules = smart_rules.normalize_rule_payload(
+            {"media_types": [MediaTypes.EPISODE.value], "rating_min": "7"},
+            self.user,
+        )
+
+        self.assertIn(
+            self.episode_item.id,
+            smart_rules.collect_matching_item_ids(self.user, rules),
+        )
+
+        unrated = smart_rules.normalize_rule_payload(
+            {"media_types": [MediaTypes.EPISODE.value], "rating": "not_rated"},
+            self.user,
+        )
+
+        self.assertNotIn(
+            self.episode_item.id,
+            smart_rules.collect_matching_item_ids(self.user, unrated),
+        )

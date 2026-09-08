@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load widget_tweaks %}
 {% load app_tags %}
 
@@ -41,9 +43,9 @@
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-2xl font-bold">
         {% if form.instance.pk %}
-          Edit List
+          {% translate "Edit List" %}
         {% else %}
-          Create New List
+          {% translate "Create New List" %}
         {% endif %}
       </h2>
       <button @click="showModal = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
@@ -65,7 +67,7 @@
                 <div class="flex-1">
                   <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                     {% include "app/icons/globe.svg" with classes="w-5 h-5 mr-2" %}
-                    <span class="text-sm font-medium">{{ field.label }}</span>
+                    <span class="text-sm font-medium">{% translate field.label %}</span>
                   </div>
                   <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
                 </div>
@@ -78,7 +80,7 @@
                 <div class="flex-1">
                   <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                     {% include "app/icons/eye.svg" with classes="w-5 h-5 mr-2" %}
-                    <span class="text-sm font-medium">{{ form.include_notes.label }}</span>
+                    <span class="text-sm font-medium">{% translate form.include_notes.label %}</span>
                   </div>
                   <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ form.include_notes.help_text }}</p>
                 </div>
@@ -94,7 +96,7 @@
                 <div class="flex-1">
                   <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                     {% include "app/icons/bell.svg" with classes="w-5 h-5 mr-2" %}
-                    <span class="text-sm font-medium">{{ field.label }}</span>
+                    <span class="text-sm font-medium">{% translate field.label %}</span>
                   </div>
                   <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ field.help_text }}</p>
                 </div>
@@ -107,7 +109,7 @@
                 <div class="flex-1">
                   <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                     {% include "app/icons/horizontal-sliders.svg" with classes="w-5 h-5 mr-2" %}
-                    <span class="text-sm font-medium">{{ form.is_smart.label }}</span>
+                    <span class="text-sm font-medium">{% translate form.is_smart.label %}</span>
                   </div>
                   <p class="text-xs text-[var(--color-text-muted)] ml-7">{{ form.is_smart.help_text }}</p>
                 </div>
@@ -124,16 +126,16 @@
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <label for="{{ field.id_for_label }}" class="flex items-center text-[var(--color-text-secondary)] text-sm font-medium">
                   {% include "app/icons/link.svg" with classes="w-5 h-5 mr-2 text-[var(--color-text-secondary)]" %}
-                  <span>{{ field.label }}</span>
+                  <span>{% translate field.label %}</span>
                 </label>
                 <p class="text-xs text-[var(--color-text-muted)] break-all sm:text-right" x-show="currentListUrl()" x-cloak>
-                  Current URL:
+                  {% translate "Current URL:" %}
                   <a class="underline hover:text-[var(--color-text)] transition-colors"
                      :href="currentListUrl()"
                      x-text="currentListUrl()"></a>
                 </p>
                 <p class="text-xs text-[var(--color-text-muted)] sm:text-right" x-show="!currentListUrl()" x-cloak>
-                  Save the list to generate its URL.
+                  {% translate "Save the list to generate its URL." %}
                 </p>
               </div>
 
@@ -143,24 +145,24 @@
                         x-text="listUrlPrefix()"></span>
                   {{ field|attr:"x-model:slugValue"|attr:"autocapitalize:none"|attr:"spellcheck:false"|attr:"aria-label:Custom URL"|add_class:"flex-1 min-w-0 px-3 py-2 bg-[var(--color-panel)] text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-inset" }}
                 </div>
-                <p class="text-xs text-[var(--color-text-muted)]">{{ field.help_text }} Leave blank to keep the numeric URL.</p>
+                <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=field.help_text %}{{ value_1 }} Leave blank to keep the numeric URL.{% endblocktranslate %}</p>
                 {% if field.errors %}
                   <p class="text-sm text-red-400">{{ field.errors|join:", " }}</p>
                 {% endif %}
               </div>
 
               <p x-show="!isPublic" x-cloak class="text-xs text-[var(--color-text-muted)]">
-                Make this list public to customize the share URL.
+                {% translate "Make this list public to customize the share URL." %}
               </p>
             </div>
           {% elif field.name == 'tags' %}
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ field.label }}</label>
+                <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate field.label %}</label>
                 {{ field }}
               </div>
               <div>
-                <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ form.collaborators.label }}</label>
+                <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate form.collaborators.label %}</label>
                 {{ form.collaborators }}
               </div>
             </div>
@@ -168,7 +170,7 @@
             {# Rendered with List Tags above. #}
           {% elif field.name|slice:':6' == 'smart_' %}
           {% else %}
-            <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{{ field.label }}</label>
+            <label class="block text text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate field.label %}</label>
             {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
           {% endif %}
         </div>
@@ -178,19 +180,19 @@
         <div class="flex flex-wrap items-center justify-between gap-3 mt-6">
           <a href="{% url 'list_activity' custom_list.id %}"
              class="px-4 py-2 bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
-            Activity History
+            {% translate "Activity History" %}
           </a>
           <div class="flex flex-row-reverse gap-2">
             <button type="submit" formaction="{% url 'list_edit' %}?next={{ request.path }}"
               class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
-              Save
+              {% translate "Save" %}
             </button>
             {% if request.user == custom_list.owner %}
               <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
-                class="px-4 py-2 rounded-md transition duration-300 bg-red-700 text-white hover:bg-red-800 cursor-pointer">Delete</button>
+                class="px-4 py-2 rounded-md transition duration-300 bg-red-700 text-white hover:bg-red-800 cursor-pointer">{% translate "Delete" %}</button>
             {% else %}
               <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
-                class="px-4 py-2 rounded-md transition duration-300 bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)] cursor-not-allowed" disabled>Delete</button>
+                class="px-4 py-2 rounded-md transition duration-300 bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)] cursor-not-allowed" disabled>{% translate "Delete" %}</button>
             {% endif %}
           </div>
         </div>
@@ -198,7 +200,7 @@
         <div class="flex justify-end pt-4">
           <button type="submit" formaction="{% url 'list_create' %}?next={{ request.path }}"
             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
-            Create List
+            {% translate "Create List" %}
           </button>
         </div>
       {% endif %}

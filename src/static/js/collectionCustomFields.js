@@ -132,36 +132,45 @@ if (!window.__floppyCollectionCustomFieldsBound) {
       },
 
       mediaTypesLabel(field) {
-        if (!field.media_types.length) return "Media types";
+        if (!field.media_types.length) return gettext("Media types");
         if (field.media_types.length === 1) {
           const choice = this.mediaTypeChoices.find(
             (c) => c.value === field.media_types[0],
           );
           return choice ? choice.label : field.media_types[0];
         }
-        return `${field.media_types.length} selected`;
+        return interpolate(gettext("%(count)s selected"), { count: field.media_types.length }, true);
       },
 
       validateLocally() {
         for (const group of this.groups) {
           if (!group.name.trim()) {
-            return "Every group needs a name.";
+            return gettext("Every group needs a name.");
           }
           for (const field of group.fields) {
             if (!field.label.trim()) {
-              return "Every field needs a label.";
+              return gettext("Every field needs a label.");
             }
             if (!field.media_types.length) {
-              return `"${field.label}" needs at least one media type.`;
+              return interpolate(gettext("\"%(label)s\" needs at least one media type."), { label: field.label }, true);
             }
           }
         }
         return "";
       },
 
+      knownFieldIds() {
+        // Only fields this form was rendered with may be deleted by a save.
+        // Anything created since (by an import, or another tab) is untouched.
+        return this.savedSchema.flatMap((group) =>
+          (group.fields || []).map((field) => field.id).filter((id) => id != null),
+        );
+      },
+
       serialize() {
         return {
           item_id: this.itemId,
+          known_field_ids: this.knownFieldIds(),
           groups: this.groups.map((group) => ({
             id: group.id,
             name: (group.name || "").trim(),
@@ -217,13 +226,13 @@ if (!window.__floppyCollectionCustomFieldsBound) {
           });
           payload = await response.json();
         } catch (e) {
-          this.error = "Could not save custom fields.";
+          this.error = gettext("Could not save custom fields.");
           this.saving = false;
           return;
         }
 
         if (!response.ok || !payload.success) {
-          this.error = (payload && payload.error) || "Could not save custom fields.";
+          this.error = (payload && payload.error) || gettext("Could not save custom fields.");
           this.saving = false;
           return;
         }

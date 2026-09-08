@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -5,7 +7,7 @@
   <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg episode-card" data-episode-uuid="{% if episode.track_adapter %}{{ episode.track_adapter.episode_uuid }}{% elif episode.music_wrapper and episode.music_wrapper.item %}{{ episode.music_wrapper.item.media_id }}{% endif %}">
     <div class="flex flex-col md:flex-row">
       <img src="{{ IMG_NONE }}"
-           alt="E{{ episode.episode_number }}"
+           alt="{% blocktranslate trimmed with value_1=episode.episode_number %}E{{ value_1 }}{% endblocktranslate %}"
            data-src="{{ episode.image|image_url }}"
            class="lazyload md:w-40 md:h-40 shrink-0 {% if episode.image != IMG_NONE %}object-cover{% endif %}">
       <div class="py-3 flex-1 flex flex-col">
@@ -14,14 +16,14 @@
             <div>
               <h2 class="text-xl font-semibold mb-1 line-clamp-1">{{ episode.title }}</h2>
               <p class="text-sm text-[var(--color-text-muted)]">
-                {% if episode.episode_number %}Episode {{ episode.episode_number }} • {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:"Unknown date" }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
+                {% if episode.episode_number %}{% blocktranslate trimmed with value_1=episode.episode_number %}Episode {{ value_1 }} •{% endblocktranslate %} {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:"Unknown date" }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
               </p>
               {% if episode.website_url %}
                 <a href="{{ episode.website_url }}"
                    target="_blank"
                    rel="noopener noreferrer"
                    class="text-sm text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200">
-                  Episode website
+                  {% translate "Episode website" %}
                 </a>
               {% endif %}
             </div>
@@ -29,7 +31,7 @@
               {# Track Episode #}
               <div x-data="{ trackOpen: false }">
                 <button @click="trackOpen = true"
-                        title="Track Episode"
+                        title="{% translate "Track Episode" %}"
                         class="p-2 {% if episode.music_wrapper and episode.music_wrapper.history.count > 0 %}bg-indigo-600 hover:bg-indigo-700{% else %}bg-gray-600 hover:bg-gray-500{% endif %} text-white rounded-full transition duration-300 cursor-pointer">
                   {% if episode.music_wrapper and episode.music_wrapper.history.count > 0 %}
                     {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
@@ -46,7 +48,7 @@
               {% if episode.item %}
               <div x-data="{ listsOpen: false }">
                 <button class="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full transition duration-300 cursor-pointer"
-                        title="Add to custom lists"
+                        title="{% translate "Add to custom lists" %}"
                         hx-get="{% media_view_url 'lists_modal' episode.item %}"
                         hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
                         hx-target="#{% component_id 'lists' episode.item %}"
@@ -69,7 +71,7 @@
               {# History #}
               <div x-data="{ historyOpen: false }">
                 <button class="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition duration-300 cursor-pointer"
-                        title="View your activity history"
+                        title="{% translate "View your activity history" %}"
                         hx-get="{% media_view_url 'history_modal' episode.item %}"
                         hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
                         hx-target="#{% component_id 'history' episode.item %}"
@@ -93,8 +95,8 @@
         </div>
         {% if episode.history %}
           <p class="text-xs text-[var(--color-text-muted)] mt-2 px-4">
-            Last watched: {{ episode.history.0.end_date|datetime_format:user|default_if_none:"No date provided" }}
-            {% if episode.history|length > 1 %}• Watched {{ episode.history|length }} times{% endif %}
+            {% blocktranslate trimmed with value_1=episode.history.0.end_date|datetime_format:user|default_if_none:_("No date provided") %}Last watched: {{ value_1 }}{% endblocktranslate %}
+            {% if episode.history|length > 1 %}{% blocktranslate trimmed with value_1=episode.history|length %}• Watched {{ value_1 }} times{% endblocktranslate %}{% endif %}
           </p>
         {% endif %}
       </div>
@@ -112,7 +114,7 @@
        class="py-4 episodes-load-more-trigger"
        data-page="{{ next_page }}">
     <div class="htmx-indicator text-center text-[var(--color-text-muted)]">
-      <p>Loading more episodes...</p>
+      <p>{% translate "Loading more episodes..." %}</p>
     </div>
   </div>
 {% endif %}

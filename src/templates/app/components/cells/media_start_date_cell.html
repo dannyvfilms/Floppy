@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load user_tags %}
 {% load app_tags %}
 {% if media.aggregated_start_date %}
@@ -5,7 +7,7 @@
   {% if media.repeats > 1 %}
     {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.BOARDGAME.value or user.game_logging_style != 'sessions' %}
       <div class="text-xs text-[var(--color-link)] mt-1">
-        <span>Earliest</span>
+        <span>{% translate "Earliest" %}</span>
       </div>
     {% endif %}
   {% endif %}

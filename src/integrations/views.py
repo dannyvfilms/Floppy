@@ -39,6 +39,7 @@ import users
 from app import helpers as app_helpers
 from app import image_cache
 from app.log_safety import exception_summary
+from app.models import MediaTypes
 from app.providers import credentials
 from integrations import (
     audiobookshelf_cover as abs_cover_proxy,
@@ -1300,6 +1301,41 @@ def import_yamtrack(request):
         "The task to import media from the CSV file has been queued.",
     )
     return _integration_redirect(request, connected_slug="yamtrack")
+
+
+@require_POST
+def import_clz(request):
+    """View for importing a CLZ (Collectorz) CSV or XML export."""
+    file = request.FILES.get("clz_export")
+
+    if not file:
+        messages.error(request, "A CLZ CSV or XML export is required.")
+        return _integration_redirect(request)
+
+    if file.size > YAMTRACK_IMPORT_MAX_UPLOAD_BYTES:
+        messages.error(
+            request,
+            "That export file is too large to import "
+            f"(limit {YAMTRACK_IMPORT_MAX_UPLOAD_BYTES // (1024 * 1024)} MB).",
+        )
+        return _integration_redirect(request)
+
+    media_type = (request.POST.get("clz_media_type") or "").strip() or None
+    if media_type and media_type not in MediaTypes.values:
+        messages.error(request, "Unknown media type for the CLZ import.")
+        return _integration_redirect(request)
+
+    tasks.import_clz.delay(
+        user_id=request.user.id,
+        file=_read_uploaded_file(file),
+        mode=request.POST.get("mode", "new"),
+        media_type=media_type,
+    )
+    messages.info(
+        request,
+        "The task to import your CLZ export has been queued.",
+    )
+    return _integration_redirect(request, connected_slug="clz")
 
 
 @require_POST

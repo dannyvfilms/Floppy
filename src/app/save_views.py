@@ -14,6 +14,7 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
+from django.utils.translation import gettext, pgettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import cache_utils, fork_services_episode, helpers, history_cache
@@ -248,6 +249,11 @@ def media_save(request):
     home_row_id = request.GET.get("home_row_id") or ""
     old_status = getattr(instance, "status", None) if instance_id else None
     action_verb = "Added" if not instance_id else "Updated"
+    action_label = (
+        pgettext("saved action", "Added")
+        if not instance_id
+        else pgettext("saved action", "Updated")
+    )
     if form.is_valid():
         if isinstance(instance, (Season, TV)):
             media = form.save(commit=False)
@@ -266,7 +272,10 @@ def media_save(request):
                     media.start_rewatch()
         else:
             media = form.save()
-        if media_type == MediaTypes.BOOK.value and "koreader_document_id" in request.POST:
+        if (
+            media_type == MediaTypes.BOOK.value
+            and "koreader_document_id" in request.POST
+        ):
             from django.db import IntegrityError
 
             from integrations.koreader_links import (
@@ -279,7 +288,9 @@ def media_save(request):
             if raw_hash.strip() and normalized is None:
                 messages.error(
                     request,
-                    "KOReader document ID must be a 32-character hexadecimal hash.",
+                    gettext(
+                        "KOReader document ID must be a 32-character hexadecimal hash."
+                    ),
                 )
             else:
                 try:
@@ -287,7 +298,9 @@ def media_save(request):
                 except IntegrityError:
                     messages.error(
                         request,
-                        "That KOReader document ID is already linked to another book.",
+                        gettext(
+                            "That KOReader document ID is already linked to another book."
+                        ),
                     )
         BasicMedia.objects.annotate_max_progress([media], media_type)
         image_url = form.cleaned_data.get("image_url")
@@ -440,7 +453,11 @@ def media_save(request):
             htmx_trigger = {
                 "closeModal": {"formId": track_form_id},
                 "showToast": {
-                    "message": f"{action_verb} {display_title}.",
+                    "message": gettext("%(value_1)s %(value_2)s.")
+                    % {
+                        "value_1": action_label,
+                        "value_2": display_title,
+                    },
                     "type": "success",
                 },
             }
@@ -453,7 +470,14 @@ def media_save(request):
             response["Pragma"] = "no-cache"
             response["Expires"] = "0"
             return response
-        messages.success(request, f"{action_verb} {display_title}.")
+        messages.success(
+            request,
+            gettext("%(value_1)s %(value_2)s.")
+            % {
+                "value_1": action_label,
+                "value_2": display_title,
+            },
+        )
     else:
         logger.error(form.errors.as_json())
         if is_htmx:
@@ -488,7 +512,11 @@ def media_save(request):
             for error in errors:
                 messages.error(
                     request,
-                    f"{field.replace('_', ' ').title()}: {error}",
+                    gettext("%(value_1)s: %(value_2)s")
+                    % {
+                        "value_1": gettext(field.replace("_", " ").title()),
+                        "value_2": error,
+                    },
                 )
 
     return helpers.redirect_back(request)
@@ -684,8 +712,10 @@ def media_rewatch(request):
             skipped_list = ", ".join(str(number) for number in skipped_numbers)
             messages.warning(
                 request,
-                f"{season_word} {skipped_list} already fully watched from "
-                f"that date — left as is.",
+                gettext(
+                    "%(value_1)s %(value_2)s already fully watched from that date — left as is."
+                )
+                % {"value_1": gettext(season_word), "value_2": skipped_list},
             )
         logger.info("Rewatch of %s started, from %s.", media, started_at)
 
@@ -1294,13 +1324,13 @@ def episode_bulk_save(request):
             response["HX-Trigger"] = json.dumps(
                 {
                     "showToast": {
-                        "message": "Start and end dates are required.",
+                        "message": gettext("Start and end dates are required."),
                         "type": "error",
                     },
                 }
             )
             return response
-        messages.error(request, "Start and end dates are required.")
+        messages.error(request, gettext("Start and end dates are required."))
         return redirect(request.POST.get("return_url") or "/")
 
     try:
@@ -1314,13 +1344,13 @@ def episode_bulk_save(request):
             response["HX-Trigger"] = json.dumps(
                 {
                     "showToast": {
-                        "message": "Invalid episode range.",
+                        "message": gettext("Invalid episode range."),
                         "type": "error",
                     },
                 }
             )
             return response
-        messages.error(request, "Invalid episode range.")
+        messages.error(request, gettext("Invalid episode range."))
         return redirect(request.POST.get("return_url") or "/")
 
     episode_count = max(int(request.POST.get("episode_count") or 0), 0)
@@ -1369,5 +1399,8 @@ def episode_bulk_save(request):
         )
         return response
 
-    messages.info(request, f"Adding plays to {episode_count} episodes.")
+    messages.info(
+        request,
+        gettext("Adding plays to %(value_1)s episodes.") % {"value_1": episode_count},
+    )
     return redirect(request.POST.get("return_url") or "/")

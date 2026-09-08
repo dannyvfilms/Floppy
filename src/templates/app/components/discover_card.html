@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 <article class="w-36 shrink-0 snap-start sm:w-40 md:w-44">
@@ -12,7 +14,7 @@
       {% if candidate.release_date %}
         <p class="mt-1 text-xs text-[var(--color-text-muted)]">{{ candidate.release_date|slice:":4" }}</p>
       {% elif candidate.anchor_title %}
-        <p class="mt-1 text-xs text-[var(--color-text-muted)]">Based on {{ candidate.anchor_title }}</p>
+        <p class="mt-1 text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=candidate.anchor_title %}Based on {{ value_1 }}{% endblocktranslate %}</p>
       {% elif candidate.source_reason %}
         <p class="mt-1 line-clamp-1 text-xs text-[var(--color-text-muted)]">{{ candidate.source_reason }}</p>
       {% else %}

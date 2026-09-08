@@ -7,6 +7,7 @@ from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import cache_utils
@@ -176,7 +177,7 @@ def _build_detail_tag_sections(
             ],
         }
         if not tag_names:
-            tag_section["empty_label"] = "Click to add tags"
+            tag_section["empty_label"] = gettext("Click to add tags")
 
         sections.append(
             tag_section,
@@ -481,7 +482,9 @@ def tag_create(request):
         return HttpResponseBadRequest("Tag name is required.")
 
     if Tag.objects.filter(user=request.user, name__iexact=name).exists():
-        messages.error(request, f'Tag "{name}" already exists.')
+        messages.error(
+            request, gettext('Tag "%(value_1)s" already exists.') % {"value_1": name}
+        )
     else:
         tag = Tag.objects.create(user=request.user, name=name)
         if item_id:

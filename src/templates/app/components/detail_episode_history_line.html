@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load user_tags %}
 {% load app_tags %}
 
@@ -8,25 +10,25 @@
   {% if episode.history %}
     {% with first=episode.history.0 watched=episode.history|watched_count %}
       {% if first.dropped and watched == 0 %}
-        Dropped
+        {% translate "Dropped" %}
       {% else %}
-        {% if first.start_date %}Started: {{ first.start_date|datetime_format:user }} •{% endif %}
-        Ended:
+        {% if first.start_date %}{% blocktranslate trimmed with value_1=first.start_date|datetime_format:user %}Started: {{ value_1 }} •{% endblocktranslate %}{% endif %}
+        {% translate "Ended:" %}
         {% if first.end_date %}
           {{ first.end_date|datetime_format:user }}
         {% else %}
-          No date provided
+          {% translate "No date provided" %}
         {% endif %}
-        {% if watched > 1 %}• Watched {{ watched }} times{% endif %}
+        {% if watched > 1 %}{% blocktranslate trimmed with value_1=watched %}• Watched {{ value_1 }} times{% endblocktranslate %}{% endif %}
         {% if first.notes %}
-          • <span class="inline-flex items-center gap-1 align-middle" title="You wrote a note">
-            {% include "app/icons/page.svg" with classes="w-3 h-3 inline" %}Note
+          • <span class="inline-flex items-center gap-1 align-middle" title="{% translate "You wrote a note" %}">
+            {% include "app/icons/page.svg" with classes="w-3 h-3 inline" %}{% translate "Note" %}
           </span>
         {% endif %}
       {% endif %}
-      {% if episode.collection_entry %}• Collected{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}{% endif %}
+      {% if episode.collection_entry %}{% translate "• Collected" %}{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}{% endif %}
     {% endwith %}
   {% elif episode.collection_entry %}
-    Collected{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}
+    {% translate "Collected" %}{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}
   {% endif %}
 </p>

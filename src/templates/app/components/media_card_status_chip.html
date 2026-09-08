@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -10,7 +12,7 @@
     <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md max-w-[calc(100%-1rem)] overflow-hidden"
          data-mobile-hide-on-mobile="{% if current_sort_value == 'score' or current_sort_value == 'time_left' or current_sort_value == 'progress' %}true{% else %}false{% endif %}"
          data-status-label="no-status">
-      <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">No Status</span>
+      <span class="text-xs font-medium text-white drop-shadow-sm truncate min-w-0">{% translate "No Status" %}</span>
     </div>
   {% elif media %}
     {% with has_watched=media.end_date|default_if_none:media|safe_attr:"aggregated_end_date"|default_if_none:media.status %}
@@ -24,7 +26,7 @@
                 {% if media.next_event.content_number %}
                   {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }}
                 {% else %}
-                  Release
+                  {% translate "Release" %}
                 {% endif %}
               </span>
             {% elif media.aggregated_status %}
@@ -69,7 +71,7 @@
               {% if media.next_event.content_number %}
                 {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }}
               {% else %}
-                Release
+                {% translate "Release" %}
               {% endif %}
             </span>
           </div>
@@ -82,7 +84,7 @@
             {% if media.next_event.content_number %}
               {{ media.item.media_type|short_unit }}{{ media.next_event.content_number }}
             {% else %}
-              Release
+              {% translate "Release" %}
             {% endif %}
           </span>
         </div>

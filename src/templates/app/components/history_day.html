@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 <div id="history-day-{{ day.day_key|default:'unknown' }}"
@@ -11,14 +13,14 @@
       {% if history_mode == "release" %}
         <p class="text-sm text-[var(--color-text-muted)]">
           {% if day.release_count is not None %}
-            {{ day.release_count }} release{{ day.release_count|pluralize }}
+            {% blocktranslate trimmed with value_1=day.release_count count count=day.release_count %}{{ value_1 }} release{% plural %}{{ value_1 }} releases{% endblocktranslate %}
           {% else %}
-            {{ day.entries|length }} release{{ day.entries|length|pluralize }}
+            {% blocktranslate trimmed with value_1=day.entries|length count count=day.entries|length %}{{ value_1 }} release{% plural %}{{ value_1 }} releases{% endblocktranslate %}
           {% endif %}
         </p>
       {% else %}
         <p class="text-sm text-[var(--color-text-muted)]">
-          {{ day.entry_count }} item{{ day.entry_count|pluralize }} &middot; {{ day.total_runtime_display }}
+          {% blocktranslate trimmed with value_1=day.entry_count value_3=day.total_runtime_display count count=day.entry_count %}{{ value_1 }} item &middot; {{ value_3 }}{% plural %}{{ value_1 }} items &middot; {{ value_3 }}{% endblocktranslate %}
         </p>
       {% endif %}
     </div>
@@ -56,8 +58,8 @@
               hx-get="{% url 'history_day_fragment' day_key=day.day_key %}?{{ day.next_entry_query }}"
               hx-target="closest .history-day"
               hx-swap="outerHTML">
-        Load more
-        {% if day.remaining_entry_count %}({{ day.remaining_entry_count }} remaining){% endif %}
+        {% translate "Load more" %}
+        {% if day.remaining_entry_count %}{% blocktranslate trimmed with value_1=day.remaining_entry_count %}({{ value_1 }} remaining){% endblocktranslate %}{% endif %}
       </button>
     </div>
   {% endif %}

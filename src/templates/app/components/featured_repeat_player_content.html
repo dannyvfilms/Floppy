@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% if featured_person %}
   <div class="space-y-3">
@@ -22,23 +24,23 @@
 
         <div class="space-y-1.5">
           <p class="text-4xl font-bold text-[var(--color-link)] leading-none">{{ featured_person.unique_titles }}</p>
-          <p class="text-xs text-[var(--color-text-muted)] uppercase tracking-wide leading-none">titles</p>
+          <p class="text-xs text-[var(--color-text-muted)] uppercase tracking-wide leading-none">{% translate "titles" %}</p>
         </div>
 
         <div class="grid {% if featured_person.unique_games %}grid-cols-3{% else %}grid-cols-2{% endif %} items-center justify-center lg:justify-start gap-x-4 gap-y-2">
           <div>
             <p class="text-2xl font-semibold text-blue-400 leading-none">{{ featured_person.unique_movies }}</p>
-            <p class="text-xs text-[var(--color-text-muted)] leading-none mt-1">Movies</p>
+            <p class="text-xs text-[var(--color-text-muted)] leading-none mt-1">{% translate "Movies" %}</p>
           </div>
           {% if featured_person.unique_games %}
             <div>
               <p class="text-2xl font-semibold text-violet-400 leading-none">{{ featured_person.unique_games }}</p>
-              <p class="text-xs text-[var(--color-text-muted)] leading-none mt-1">Games</p>
+              <p class="text-xs text-[var(--color-text-muted)] leading-none mt-1">{% translate "Games" %}</p>
             </div>
           {% endif %}
           <div>
             <p class="text-2xl font-semibold text-emerald-400 leading-none">{{ featured_person.unique_shows }}</p>
-            <p class="text-xs text-[var(--color-text-muted)] leading-none mt-1">Shows</p>
+            <p class="text-xs text-[var(--color-text-muted)] leading-none mt-1">{% translate "Shows" %}</p>
           </div>
         </div>
       </div>
@@ -55,6 +57,6 @@
   {{ featured_person.pct_of_library|json_script:"featured_person_pct" }}
 {% else %}
   <div class="flex flex-col items-center justify-center py-8 text-center">
-    <p class="text-[var(--color-text-muted)]">No repeat cast or crew found for this range.</p>
+    <p class="text-[var(--color-text-muted)]">{% translate "No repeat cast or crew found for this range." %}</p>
   </div>
 {% endif %}

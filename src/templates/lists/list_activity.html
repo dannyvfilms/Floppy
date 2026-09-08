@@ -1,10 +1,12 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load static %}
 {% load app_tags %}
 {% load user_tags %}
 
 {% block title %}
-    Activity - {{ custom_list.name }} - Floppy
+    {% blocktranslate trimmed with value_1=custom_list.name %}Activity - {{ value_1 }} - Floppy{% endblocktranslate %}
 {% endblock title %}
 
 {% block content %}
@@ -13,10 +15,10 @@
             <a href="{% url 'list_detail' custom_list.public_reference %}"
                class="inline-flex items-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors mb-4">
                 {% include "app/icons/chevron-left.svg" with classes="w-4 h-4 mr-1" %}
-                Back to {{ custom_list.name }}
+                {% blocktranslate trimmed with value_1=custom_list.name %}Back to {{ value_1 }}{% endblocktranslate %}
             </a>
-            <h1 class="text-3xl font-bold mb-2">Activity History</h1>
-            <p class="text-[var(--color-text-muted)]">View recent activity for "{{ custom_list.name }}"</p>
+            <h1 class="text-3xl font-bold mb-2">{% translate "Activity History" %}</h1>
+            <p class="text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=custom_list.name %}View recent activity for "{{ value_1 }}"{% endblocktranslate %}</p>
         </div>
 
         {% if activities %}
@@ -45,7 +47,7 @@
                                 <p class="text-sm text-[var(--color-text-muted)] mt-1">
                                     {{ activity.timestamp|user_datetime_format:user }}
                                     <span class="text-gray-600 mx-1">•</span>
-                                    {{ activity.timestamp|timesince }} ago
+                                    {% blocktranslate trimmed with value_1=activity.timestamp|timesince %}{{ value_1 }} ago{% endblocktranslate %}
                                 </p>
                             </div>
 
@@ -66,8 +68,8 @@
                 <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                     {% include "app/icons/bell.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
                 </div>
-                <h3 class="text-xl font-semibold mb-2">No activity yet</h3>
-                <p class="text-[var(--color-text-muted)]">Activity history will appear here as items are added or removed from the list.</p>
+                <h3 class="text-xl font-semibold mb-2">{% translate "No activity yet" %}</h3>
+                <p class="text-[var(--color-text-muted)]">{% translate "Activity history will appear here as items are added or removed from the list." %}</p>
             </div>
         {% endif %}
     </div>

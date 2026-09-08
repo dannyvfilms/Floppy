@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
@@ -42,7 +44,7 @@
       {% endif %}
     </div>
     <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-1">
-      {% if entry.year %}{{ entry.year }}{% else %}Unknown Year{% endif %}
+      {% if entry.year %}{{ entry.year }}{% else %}{% translate "Unknown Year" %}{% endif %}
       {% if entry.media_type %} • {{ entry.media_type|media_type_readable }}{% endif %}
     </p>
     <p class="media-card-year text-xs text-[var(--color-link)] mt-0.5 line-clamp-2">

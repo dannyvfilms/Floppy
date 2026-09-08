@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 <div id="{% component_id 'track-action' media %}"
@@ -17,7 +19,7 @@
       {% if current_instance %}
         {{ current_instance.status|media_status_readable }}
       {% else %}
-        Add to tracker
+        {% translate "Add to tracker" %}
       {% endif %}
     </span>
   </button>

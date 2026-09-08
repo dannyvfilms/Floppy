@@ -1,9 +1,11 @@
+
+{% load i18n %}
 <div id="discography-groups" class="space-y-8">
   {% for group in discography_groups %}
     <section>
       <div class="flex items-baseline justify-between mb-3">
         <h3 class="text-lg font-semibold text-[var(--color-text-secondary)]">{{ group.label }}</h3>
-        <span class="text-xs text-[var(--color-text-muted)]">{{ group.count }} release{{ group.count|pluralize }}</span>
+        <span class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=group.count count count=group.count %}{{ value_1 }} release{% plural %}{{ value_1 }} releases{% endblocktranslate %}</span>
       </div>
       {% include "app/components/album_grid.html" with all_albums=group.albums show_release_type=False %}
     </section>

@@ -1,14 +1,14 @@
 {% extends "users/onboarding/_layout.html" %}
+{% load i18n %}
 
-{% block step_title %}What do you want to track?{% endblock step_title %}
+
+{% block step_title %}{% translate "What do you want to track?" %}{% endblock step_title %}
 
 {% block step_explanation %}
   <p>
-    Pick the kinds of media you want Floppy to track. This controls what
-    shows up in your sidebar and search, and which services we'll offer to
-    connect next.
+    {% translate "Pick the kinds of media you want Floppy to track. This controls what shows up in your sidebar and search, and which services we'll offer to connect next." %}
   </p>
-  <p>You can change this anytime from Settings, and nothing you skip here is lost.</p>
+  <p>{% translate "You can change this anytime from Settings, and nothing you skip here is lost." %}</p>
 {% endblock step_explanation %}
 
 {% block step_options %}
@@ -20,11 +20,11 @@
               name="action"
               value="skip"
               class="px-4 py-2 text-sm rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
-        I'll choose later
+        {% translate "I'll choose later" %}
       </button>
       <button type="submit"
               class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-        Continue
+        {% translate "Continue" %}
       </button>
     </div>
   </form>

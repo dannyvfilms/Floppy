@@ -66,6 +66,7 @@ urlpatterns = [
     ),
     path("import/kitsu", views.import_kitsu, name="import_kitsu"),
     path("import/yamtrack", views.import_yamtrack, name="import_yamtrack"),
+    path("import/clz", views.import_clz, name="import_clz"),
     path("import/hltb", views.import_hltb, name="import_hltb"),
     path("import/grouvee", views.import_grouvee, name="import_grouvee"),
     path("import/steam", views.import_steam, name="import_steam"),
@@ -234,13 +235,13 @@ urlpatterns = [
     re_path(
         r"^stremio-addon/(?P<token>[^/]+)/catalog/"
         r"(?P<media_type>movie|series)/"
-        r"(?P<catalog_id>[^/]+?)(?:/(?P<extra>[^/]*))?\.json$",
+        r"(?P<catalog_id>[^/]+?)(?:/(?P<extra>.*))?\.json$",
         views.stremio_addon_catalog,
         name="stremio_addon_catalog",
     ),
     re_path(
         r"^stremio-addon/(?P<token>[^/]+)/subtitles/"
-        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/[^/]*)?\.json$",
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/.*)?\.json$",
         views.stremio_addon_subtitles,
         name="stremio_addon_subtitles",
     ),

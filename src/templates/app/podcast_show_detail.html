@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load user_tags %}
 {% load humanize %}
@@ -34,7 +36,7 @@
             {% if tracker %}
               {{ tracker.status_readable }}
             {% else %}
-              Add to Library
+              {% translate "Add to Library" %}
             {% endif %}
           </div>
           <div class="h-5 mx-2 border-l border-white/30"></div>
@@ -60,7 +62,7 @@
       <h1 class="text-3xl font-bold mb-4 text-center md:text-start">{{ show.title }}</h1>
 
       {% if show.author %}
-        <p class="text-[var(--color-text-muted)] mb-4 text-center md:text-start">by {{ show.author }}</p>
+        <p class="text-[var(--color-text-muted)] mb-4 text-center md:text-start">{% blocktranslate trimmed with value_1=show.author %}by {{ value_1 }}{% endblocktranslate %}</p>
       {% endif %}
 
       {% if show.website_url %}
@@ -69,7 +71,7 @@
              target="_blank"
              rel="noopener noreferrer"
              class="text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200 text-sm">
-            Visit show website
+            {% translate "Visit show website" %}
           </a>
         </p>
       {% endif %}
@@ -77,22 +79,22 @@
       {# Stats cards #}
       <div class="flex flex-wrap gap-4 mb-6">
         <div class="bg-[var(--color-surface)] p-3 rounded-lg">
-          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">EPISODES</h3>
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">{% translate "EPISODES" %}</h3>
           <div class="text-lg font-bold text-[var(--color-text)] text-center">{{ total_episodes }}</div>
         </div>
         <div class="bg-[var(--color-surface)] p-3 rounded-lg">
-          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">LISTENED</h3>
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">{% translate "LISTENED" %}</h3>
           <div class="text-lg font-bold text-[var(--color-text)] text-center">{{ total_listened }}</div>
         </div>
         {% if total_minutes %}
           <div class="bg-[var(--color-surface)] p-3 rounded-lg">
-            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">TIME</h3>
-            <div class="text-lg font-bold text-[var(--color-text)] text-center">{{ total_minutes|intcomma }}m</div>
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">{% translate "TIME" %}</h3>
+            <div class="text-lg font-bold text-[var(--color-text)] text-center">{% blocktranslate trimmed with value_1=total_minutes|intcomma %}{{ value_1 }}m{% endblocktranslate %}</div>
           </div>
         {% endif %}
         {% if tracker and tracker.score %}
           <div class="bg-[var(--color-surface)] p-3 rounded-lg">
-            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">YOUR SCORE</h3>
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">{% translate "YOUR SCORE" %}</h3>
             <div class="flex items-center justify-center">
               {% include "app/icons/star.svg" with classes="w-5 h-5 mr-1.5 text-yellow-400 fill-yellow-400" %}
               <span class="text-lg font-bold text-[var(--color-text)]">{{ tracker.score|score_display:user|floatformat:1 }}</span><span class="text-[var(--color-text-muted)] ml-0.5 text-sm">/{{ user|rating_scale_max }}</span>
@@ -105,7 +107,7 @@
 
   {# Episodes list #}
   <div class="mb-8">
-    <h2 class="text-2xl font-bold mb-4">Episodes</h2>
+    <h2 class="text-2xl font-bold mb-4">{% translate "Episodes" %}</h2>
     <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden">
       <div class="divide-y divide-gray-700">
         {% for episode in episodes %}
@@ -124,7 +126,7 @@
                      target="_blank"
                      rel="noopener noreferrer"
                      class="text-sm text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200">
-                    Episode website
+                    {% translate "Episode website" %}
                   </a>
                 {% endif %}
               </div>
@@ -141,7 +143,7 @@
           </div>
         {% empty %}
           <div class="p-8 text-center text-[var(--color-text-muted)]">
-            <p>No episodes found for this show.</p>
+            <p>{% translate "No episodes found for this show." %}</p>
           </div>
         {% endfor %}
       </div>

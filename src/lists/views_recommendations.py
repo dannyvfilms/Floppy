@@ -15,6 +15,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
@@ -294,7 +295,9 @@ def submit_recommendation(request, list_id):
     custom_list = get_object_or_404(CustomList, id=list_id)
 
     if not custom_list.can_recommend():
-        messages.error(request, "Recommendations are not enabled for this list.")
+        messages.error(
+            request, gettext("Recommendations are not enabled for this list.")
+        )
         return redirect("list_detail", custom_list.public_reference)
 
     next_url = request.POST.get("next")
@@ -331,12 +334,19 @@ def submit_recommendation(request, list_id):
 
     # Check if item is already in the list
     if custom_list.items.filter(id=item.id).exists():
-        messages.info(request, f'"{item.title}" is already in this list.')
+        messages.info(
+            request,
+            gettext('"%(value_1)s" is already in this list.') % {"value_1": item.title},
+        )
         return _redirect_after_submit(redirect("recommend_item", list_id=list_id))
 
     # Check if already recommended
     if ListRecommendation.objects.filter(custom_list=custom_list, item=item).exists():
-        messages.info(request, f'"{item.title}" has already been recommended.')
+        messages.info(
+            request,
+            gettext('"%(value_1)s" has already been recommended.')
+            % {"value_1": item.title},
+        )
         return _redirect_after_submit(redirect("recommend_item", list_id=list_id))
 
     # Create the recommendation
@@ -358,7 +368,8 @@ def submit_recommendation(request, list_id):
     logger.info("Recommendation created: %s for %s", item.title, custom_list.name)
     messages.success(
         request,
-        f'Your recommendation for "{item.title}" has been submitted!',
+        gettext('Your recommendation for "%(value_1)s" has been submitted!')
+        % {"value_1": item.title},
     )
 
     return _redirect_after_submit(redirect("list_detail", custom_list.public_reference))
@@ -420,7 +431,9 @@ def approve_recommendation(request, list_id, recommendation_id):
     custom_list = get_object_or_404(CustomList, id=list_id)
 
     if not custom_list.user_can_edit(request.user):
-        messages.error(request, "You do not have permission to manage recommendations.")
+        messages.error(
+            request, gettext("You do not have permission to manage recommendations.")
+        )
         return helpers.redirect_back(request)
 
     recommendation = get_object_or_404(
@@ -447,7 +460,8 @@ def approve_recommendation(request, list_id, recommendation_id):
         )
         messages.success(
             request,
-            f'"{recommendation.item.title}" has been added to the list.',
+            gettext('"%(value_1)s" has been added to the list.')
+            % {"value_1": recommendation.item.title},
         )
         ListActivity.objects.create(
             custom_list=custom_list,
@@ -459,7 +473,8 @@ def approve_recommendation(request, list_id, recommendation_id):
     else:
         messages.info(
             request,
-            f'"{recommendation.item.title}" is already in the list.',
+            gettext('"%(value_1)s" is already in the list.')
+            % {"value_1": recommendation.item.title},
         )
 
     recommendation.delete()
@@ -473,7 +488,9 @@ def deny_recommendation(request, list_id, recommendation_id):
     custom_list = get_object_or_404(CustomList, id=list_id)
 
     if not custom_list.user_can_edit(request.user):
-        messages.error(request, "You do not have permission to manage recommendations.")
+        messages.error(
+            request, gettext("You do not have permission to manage recommendations.")
+        )
         return helpers.redirect_back(request)
 
     recommendation = get_object_or_404(
@@ -500,6 +517,10 @@ def deny_recommendation(request, list_id, recommendation_id):
     )
 
     logger.info("Recommendation denied: %s for %s", item_title, custom_list.name)
-    messages.success(request, f'Recommendation for "{item_title}" has been removed.')
+    messages.success(
+        request,
+        gettext('Recommendation for "%(value_1)s" has been removed.')
+        % {"value_1": item_title},
+    )
 
     return helpers.redirect_back(request)

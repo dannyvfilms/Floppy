@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% comment %}
   Taste Signals — Top Genres panel body. Split out so the sort dropdown in
   taste_signals.html can swap it in place via x-ref, same pattern as
@@ -15,7 +17,7 @@
           <div class="h-full rounded-full" style="width: {{ genre.pct }}%; background-color: {{ genre.color }};"></div>
         </div>
         {% if genre_sort_by == 'plays' %}
-          <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{{ genre.plays }} play{{ genre.plays|pluralize }}</span>
+          <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{% blocktranslate trimmed with value_1=genre.plays count count=genre.plays %}{{ value_1 }} play{% plural %}{{ value_1 }} plays{% endblocktranslate %}</span>
         {% else %}
           <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{{ genre.formatted_duration }}</span>
         {% endif %}
@@ -24,5 +26,5 @@
     {% endfor %}
   </div>
 {% else %}
-  <p class="text-sm text-[var(--color-text-muted)] py-4">No genre data available for this range.</p>
+  <p class="text-sm text-[var(--color-text-muted)] py-4">{% translate "No genre data available for this range." %}</p>
 {% endif %}

@@ -16,6 +16,6 @@
            class="hidden"
            :disabled="uploading"
            @change="uploading = true; $el.form.submit()">
-    <span x-text="uploading ? 'Uploading…' : 'Select File'"></span>
+    <span x-text="uploading ? gettext('Uploading…') : gettext('Select File')"></span>
   </label>
 </form>

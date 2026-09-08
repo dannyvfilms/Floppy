@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load user_tags %}
 
 <p id="track-history-{{ track_data.track.id }}"
@@ -5,15 +7,15 @@
    class="text-xs text-[var(--color-text-muted)] mt-2 px-4"
    {% if not track_data.history and not track_data.collection_entry %}style="display: none;"{% endif %}>
   {% if track_data.history %}
-    Last listened:
+    {% translate "Last listened:" %}
     {% if track_data.history.0.end_date %}
       {{ track_data.history.0.end_date|user_date_format:user }}
     {% else %}
-      No date provided
+      {% translate "No date provided" %}
     {% endif %}
-    {% if track_data.history|length > 1 %}• Listened {{ track_data.history|length }} times{% endif %}
-    {% if track_data.collection_entry and track_data.collection_entry.audio_codec %}• Collected: {{ track_data.collection_entry.audio_codec }}{% endif %}
+    {% if track_data.history|length > 1 %}{% blocktranslate trimmed with value_1=track_data.history|length %}• Listened {{ value_1 }} times{% endblocktranslate %}{% endif %}
+    {% if track_data.collection_entry and track_data.collection_entry.audio_codec %}{% blocktranslate trimmed with value_1=track_data.collection_entry.audio_codec %}• Collected: {{ value_1 }}{% endblocktranslate %}{% endif %}
   {% elif track_data.collection_entry and track_data.collection_entry.audio_codec %}
-    Collected: {{ track_data.collection_entry.audio_codec }}
+    {% blocktranslate trimmed with value_1=track_data.collection_entry.audio_codec %}Collected: {{ value_1 }}{% endblocktranslate %}
   {% endif %}
 </p>

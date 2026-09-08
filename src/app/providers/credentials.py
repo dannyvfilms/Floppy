@@ -2,10 +2,14 @@
 
 Credentials resolve in one order everywhere: a user's personal override, then
 the environment, then an instance-wide value stored from Settings > Metadata,
-then the shared token baked into the image. ``settings.SHARED_DEFAULT_CREDENTIALS``
-is what lets "supplied by the environment" be told apart from "still on the
-bundled default" - a plain ``bool(setting)`` cannot, because the bundled
-providers are always truthy.
+then an intentionally public shared default baked into the image.
+``settings.SHARED_DEFAULT_CREDENTIALS`` is what lets "supplied by the
+environment" be told apart from "still on the bundled default" - a plain
+``bool(setting)`` cannot, because the bundled providers are always truthy.
+
+Shared defaults are app-owned metadata credentials, never user or account
+credentials. Private provider secrets must come from the environment, a
+Docker secret, or the encrypted instance/user credential stores.
 """
 
 import contextlib

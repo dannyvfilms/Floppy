@@ -149,6 +149,14 @@ def _smart_list_detail_response(
                     "date_added_to",
                     saved_rules["date_added_to"],
                 ),
+                "completed_date_from": request.GET.get(
+                    "completed_date_from",
+                    saved_rules["completed_date_from"],
+                ),
+                "completed_date_to": request.GET.get(
+                    "completed_date_to",
+                    saved_rules["completed_date_to"],
+                ),
                 "source": request.GET.get("source", saved_rules["source"]),
                 "language": request.GET.get("language", saved_rules["language"]),
                 "country": request.GET.get("country", saved_rules["country"]),
@@ -357,6 +365,8 @@ def _smart_list_detail_response(
             active_rules.get("release_date_to"),
             active_rules.get("date_added_from"),
             active_rules.get("date_added_to"),
+            active_rules.get("completed_date_from"),
+            active_rules.get("completed_date_to"),
             active_rules.get("source"),
             active_rules.get("language"),
             active_rules.get("country"),

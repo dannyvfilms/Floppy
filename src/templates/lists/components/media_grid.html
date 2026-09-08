@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -59,17 +61,17 @@
         <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
           {% include "app/icons/magnifying-glass.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
         </div>
-        <h3 class="text-xl font-semibold mb-2">No results found</h3>
+        <h3 class="text-xl font-semibold mb-2">{% translate "No results found" %}</h3>
         <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">
           {% if request.GET.q %}
-            We couldn't find any matches for "{{ request.GET.q }}". Try a different search or recommend something new.
+            {% blocktranslate trimmed with value_1=request.GET.q %}We couldn't find any matches for "{{ value_1 }}". Try a different search or recommend something new.{% endblocktranslate %}
           {% else %}
-            We couldn't find any matches with the current filters. Try adjusting them or recommend something new.
+            {% translate "We couldn't find any matches with the current filters. Try adjusting them or recommend something new." %}
           {% endif %}
         </p>
         {% if custom_list.can_recommend %}
           <a href="{% url 'recommend_item' custom_list.id %}"
-             class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">Recommend Item</a>
+             class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">{% translate "Recommend Item" %}</a>
         {% endif %}
       </div>
     </div>

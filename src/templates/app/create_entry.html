@@ -1,18 +1,20 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 
 {% block title %}
-  Create - Floppy
+  {% translate "Create - Floppy" %}
 {% endblock title %}
 
 {% block content %}
   <div class="mx-auto max-w-4xl">
     <div class="mb-8">
-      <h1 class="text-3xl font-bold mb-2">Create Custom Entry</h1>
-      <p class="text-[var(--color-text-muted)]">Add a custom media entry to your collection if it's not available in the database.</p>
+      <h1 class="text-3xl font-bold mb-2">{% translate "Create Custom Entry" %}</h1>
+      <p class="text-[var(--color-text-muted)]">{% translate "Add a custom media entry to your collection if it's not available in the database." %}</p>
     </div>
     {# djlint:off #}
-    <form method="post" class="space-y-6" x-data="{
+    {% translate "Progress (Episodes)" as media_i18n_40 %}{% translate "Progress (Chapters)" as media_i18n_41 %}{% translate "Progress (Play Time)" as media_i18n_42 %}{% translate "Progress (Pages)" as media_i18n_43 %}{% translate "Progress" as media_i18n_44 %}{% translate "Please select a parent TV show from the dropdown" as media_i18n_45 %}{% translate "Please select a parent Season from the dropdown" as media_i18n_46 %}<form method="post" class="space-y-6" x-data="{
       mediaType: 'tv',
       placeholderHtml: null,
 
@@ -31,7 +33,7 @@
 
           // Create the image element
           const img = document.createElement('img');
-          img.alt = 'Preview';
+          img.alt = '{% translate "Preview" %}';
           img.className = 'w-full h-full object-cover';
           img.src = imageUrl;
 
@@ -71,11 +73,11 @@
       },
     
       getProgressLabel() {
-        if (this.mediaType === 'anime') return 'Progress (Episodes)';
-        if (this.mediaType === 'manga') return 'Progress (Chapters)';
-        if (this.mediaType === 'game') return 'Progress (Play Time)';
-        if (this.mediaType === 'book') return 'Progress (Pages)';
-        return 'Progress';
+        if (this.mediaType === 'anime') return '{{ media_i18n_40|escapejs }}';
+        if (this.mediaType === 'manga') return '{{ media_i18n_41|escapejs }}';
+        if (this.mediaType === 'game') return '{{ media_i18n_42|escapejs }}';
+        if (this.mediaType === 'book') return '{{ media_i18n_43|escapejs }}';
+        return '{{ media_i18n_44|escapejs }}';
       },
     
       validateForm() {
@@ -83,7 +85,7 @@
         if (this.mediaType === 'season') {
           const parentTvId = document.getElementById('parent-tv-id').value;
           if (!parentTvId) {
-            alert('Please select a parent TV show from the dropdown');
+            alert('{{ media_i18n_45|escapejs }}');
             return false;
           }
         }
@@ -92,7 +94,7 @@
         if (this.mediaType === 'episode') {
           const parentSeasonId = document.getElementById('parent-season-id').value;
           if (!parentSeasonId) {
-            alert('Please select a parent Season from the dropdown');
+            alert('{{ media_i18n_46|escapejs }}');
             return false;
           }
         }
@@ -107,7 +109,7 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="grid gap-6">
         <div x-cloak>
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Media Type</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Media Type" %}</label>
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {% for media_type in media_types %}
               <button type="button"
@@ -123,9 +125,9 @@
 
         <!-- Title field (TV, Movie, Anime, Manga, Game, Book) -->
         <div x-show="showField('title')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Title</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Title" %}</label>
           <input class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
-                 placeholder="Enter title"
+                 placeholder="{% translate "Enter title" %}"
                  name="title"
                  type="text"
                  value="">
@@ -133,12 +135,12 @@
 
         <!-- Parent TV Show field (Season) -->
         <div x-show="showField('parentShow')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Parent TV Show</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Parent TV Show" %}</label>
           <div class="relative">
             <div class="relative">
               <input id="parent-tv-input"
                      class="w-full p-2 pl-9 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
-                     placeholder="Search for a TV show..."
+                     placeholder="{% translate "Search for a TV show..." %}"
                      name="q"
                      type="text"
                      autocomplete="off"
@@ -155,7 +157,7 @@
 
         <!-- Season Number field (Season) -->
         <div x-show="showField('seasonNumber')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Season Number</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Season Number" %}</label>
           <div class="relative">
             <input min="1"
                    max="999"
@@ -180,12 +182,12 @@
 
         <!-- Parent Season field (Episode) -->
         <div x-show="showField('parentSeason')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Parent Season</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Parent Season" %}</label>
           <div class="relative">
             <div class="relative">
               <input id="parent-season-input"
                      class="w-full p-2 pl-9 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
-                     placeholder="Search for a season..."
+                     placeholder="{% translate "Search for a season..." %}"
                      name="q"
                      type="text"
                      autocomplete="off"
@@ -202,7 +204,7 @@
 
         <!-- Episode Number field (Episode) -->
         <div x-show="showField('episodeNumber')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Episode Number</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Episode Number" %}</label>
           <div class="relative">
             <input min="1"
                    max="999"
@@ -227,12 +229,12 @@
 
         <!-- Image URL field (All types) -->
         <div x-show="showField('image')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Image URL</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Image URL" %}</label>
           <div class="flex gap-4">
             <div class="flex-1">
               <input class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                      name="image"
-                     placeholder="Enter image URL"
+                     placeholder="{% translate "Enter image URL" %}"
                      type="url"
                      value=""
                      x-on:input="updateImagePreview($event.target)">
@@ -248,7 +250,7 @@
 
         <!-- Score field (TV, Movie, Anime, Manga, Game, Book, Season) -->
         <div x-show="showField('score')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Score</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Score" %}</label>
           <div class="relative">
             <input min="0"
                    max="{{ user|rating_scale_max }}"
@@ -274,13 +276,13 @@
         <!-- Progress field (Movie, Anime, Manga, Game, Book) -->
         <div x-show="showField('progress')">
           <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]"
-                 x-text="getProgressLabel()">Progress</label>
+                 x-text="getProgressLabel()">{% translate "Progress" %}</label>
 
           <div class="relative">
-            <input class="w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
+            {% translate "hh:mm or 111 minutes" as media_i18n_47 %}<input class="w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                    name="progress"
                    x-bind:type="mediaType === 'game' ? 'text' : 'number'"
-                   x-bind:placeholder="mediaType === 'game' ? 'hh:mm or 111 minutes' : ''"
+                   x-bind:placeholder="mediaType === 'game' ? '{{ media_i18n_47|escapejs }}' : ''"
                    x-bind:min="mediaType !== 'game' ? 0 : null"
                    x-bind:max="mediaType !== 'game' ? 99999 : null"
                    x-bind:class="{'[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none': mediaType !== 'game'}"
@@ -304,7 +306,7 @@
 
         <!-- Status field (TV, Movie, Anime, Manga, Game, Book, Season) -->
         <div x-show="showField('status')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Status</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Status" %}</label>
           <div class="relative">
             <select class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                     name="status">
@@ -318,7 +320,7 @@
 
         <!-- Start Date field (Movie, Anime, Manga, Game, Book) -->
         <div x-show="showField('startDate')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Start Date</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Start Date" %}</label>
           <input class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                  name="start_date"
                  type="date"
@@ -327,7 +329,7 @@
 
         <!-- End Date field (Episode, Movie, Anime, Manga, Game, Book) -->
         <div x-show="showField('endDate')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">End Date</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "End Date" %}</label>
           <input class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                  name="end_date"
                  type="date"
@@ -336,27 +338,27 @@
 
         <!-- Notes field (TV, Movie, Anime, Manga, Game, Book, Season) -->
         <div x-show="showField('notes')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Notes</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Notes" %}</label>
           <textarea class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                     rows="4"
                     name="notes"
-                    placeholder="Add any notes or comments..."></textarea>
+                    placeholder="{% translate "Add any notes or comments..." %}"></textarea>
         </div>
 
         <!-- Description field (TV, Movie, Anime, Manga, Game, Book, Season) -->
         <div x-show="showField('synopsis')">
-          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Description</label>
+          <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Description" %}</label>
           <textarea class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                     rows="4"
                     name="synopsis"
-                    placeholder="Add a description..."></textarea>
+                    placeholder="{% translate "Add a description..." %}"></textarea>
         </div>
       </div>
 
       <button type="submit"
               class="flex items-center mt-5 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
         {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
-        Create Entry
+        {% translate "Create Entry" %}
       </button>
     </div>
   </form>

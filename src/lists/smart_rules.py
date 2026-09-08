@@ -94,6 +94,21 @@ SHOW_COLLECTION_MEDIA_TYPES = {
     MediaTypes.ANIME.value,
     MediaTypes.SEASON.value,
 }
+# Offered in the media-type picker, but never pulled in by an implicit "all
+# types" rule: a list that names no media types would otherwise materialise
+# every episode in the library on its next sync. Opt in by ticking them.
+IMPLICIT_ALL_EXCLUDED_MEDIA_TYPES = {
+    MediaTypes.SEASON.value,
+    MediaTypes.EPISODE.value,
+}
+# Season/episode rules ride on the show libraries rather than on their own
+# sidebar preference, so a user who hides Seasons can still build a smart list
+# at that granularity.
+SHOW_GRANULARITY_MEDIA_TYPES = {
+    MediaTypes.SEASON.value,
+    MediaTypes.EPISODE.value,
+}
+SHOW_GRANULARITY_PARENTS = {MediaTypes.TV.value, MediaTypes.ANIME.value}
 LANGUAGE_MEDIA_TYPES = {
     MediaTypes.TV.value,
     MediaTypes.MOVIE.value,
@@ -269,16 +284,13 @@ def get_available_media_types(owner) -> list[str]:
     if owner and hasattr(owner, "get_enabled_media_types"):
         enabled = list(owner.get_enabled_media_types())
     else:
-        enabled = [
-            media_type
-            for media_type in MediaTypes.values
-            if media_type != MediaTypes.EPISODE.value
-        ]
+        enabled = list(MediaTypes.values)
 
-    # Keep list smart rules at show/media granularity.
-    enabled = [
-        media_type for media_type in enabled if media_type != MediaTypes.EPISODE.value
-    ]
+    # Seasons and episodes follow the show libraries, not the sidebar
+    # preference: tracking "what I just watched" at episode granularity is a
+    # list concern, and hiding Seasons from the sidebar should not remove it.
+    if SHOW_GRANULARITY_PARENTS & set(enabled):
+        enabled += sorted(SHOW_GRANULARITY_MEDIA_TYPES)
 
     # Remove duplicates while preserving order.
     deduped = []
@@ -459,6 +471,7 @@ def normalize_list_rules(custom_list) -> dict:
                 media_type
                 for media_type in get_available_media_types(custom_list.owner)
                 if media_type not in excluded_media_types
+                and media_type not in IMPLICIT_ALL_EXCLUDED_MEDIA_TYPES
             ]
 
     return normalized_rules
@@ -529,7 +542,11 @@ def _target_media_types(owner, rules_media_types: list[str]) -> list[str]:
         return [
             media_type for media_type in rules_media_types if media_type in available
         ]
-    return available
+    return [
+        media_type
+        for media_type in available
+        if media_type not in IMPLICIT_ALL_EXCLUDED_MEDIA_TYPES
+    ]
 
 
 def _matches_item_filters(item: Item, rules: dict, today, region=None) -> bool:
@@ -845,10 +862,16 @@ def _filter_item_ids_by_rating(
         return candidate_item_ids
 
     model = apps.get_model("app", media_type)
+    # Episode has no `user` field; it hangs off its season.
+    owner_lookup = (
+        {"related_season__user": owner}
+        if media_type == MediaTypes.EPISODE.value
+        else {"user": owner}
+    )
     rated_item_ids = set()
     for id_batch in batched(candidate_item_ids, _id_batch_size(len(candidate_item_ids))):
         queryset = model.objects.filter(
-            user=owner,
+            **owner_lookup,
             item_id__in=id_batch,
             score__isnull=False,
         )

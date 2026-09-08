@@ -54,15 +54,16 @@
 
       monthLabel() {
         return new Date(this.viewYear, this.viewMonth, 1).toLocaleDateString(
-          undefined,
+          document.documentElement.lang || undefined,
           { month: "long", year: "numeric" },
         );
       },
 
       weekdayLabels() {
-        return this.weekStartsMonday
-          ? ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
-          : ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+        return Array.from({ length: 7 }, (_, index) =>
+          new Date(2024, 0, (this.weekStartsMonday ? 1 : 7) + index)
+            .toLocaleDateString(document.documentElement.lang || undefined, { weekday: "short" }),
+        );
       },
 
       makeCell(day, inMonth, monthOffset) {
@@ -235,7 +236,7 @@
         return this.calendarMode === "activity" &&
           this.calendarDayHasActivity(cell) &&
           this.calendarDayIsInteractive(cell)
-          ? `View activity for ${this.dateKey(cell)}`
+          ? interpolate(gettext("View activity for %(date)s"), { date: this.dateKey(cell) }, true)
           : this.dateKey(cell);
       },
 

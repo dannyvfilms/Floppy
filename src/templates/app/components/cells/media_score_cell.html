@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% if media.is_untracked %}
   <span class="text-[var(--color-text-muted)]">-</span>
@@ -20,7 +22,7 @@
   {% if media.repeats > 1 %}
     {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.BOARDGAME.value or user.game_logging_style != 'sessions' %}
       <div class="text-xs text-[var(--color-text-muted)] mt-1">
-        <span class="text-[var(--color-link)]">Latest</span>
+        <span class="text-[var(--color-link)]">{% translate "Latest" %}</span>
       </div>
     {% endif %}
   {% endif %}

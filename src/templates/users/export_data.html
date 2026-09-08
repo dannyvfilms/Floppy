@@ -1,9 +1,11 @@
 {% extends "users/base.html" %}
+{% load i18n %}
+
 {% load user_tags %}
 {% load app_tags %}
 
 {% block title %}
-  Export - Floppy
+  {% translate "Export - Floppy" %}
 {% endblock title %}
 
 {% block settings_content %}
@@ -14,34 +16,34 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-4">
         {% include "app/icons/export.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-        <h2 class="text-xl font-semibold">Export Data</h2>
+        <h2 class="text-xl font-semibold">{% translate "Export Data" %}</h2>
       </div>
       <p class="text-[var(--color-text-muted)] mb-2 text-sm">
-        Export your media, ratings, and lists as CSV, or create a recurring export schedule and download the initial CSV immediately. This is a data export, not a database backup &mdash; it does not restore your account, integrations, or preferences, and it cannot replace a damaged database file.
+        {% translate "Export your media, ratings, and lists as CSV, or create a recurring export schedule and download the initial CSV immediately. This is a data export, not a database backup — it does not restore your account, integrations, or preferences, and it cannot replace a damaged database file." %}
       </p>
       <p class="mb-5 text-sm">
-        Scheduled exports save to: <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">{{ backup_status.path }}</code>
+        {% translate "Scheduled exports save to:" %} <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">{{ backup_status.path }}</code>
         {% if backup_status.host_reachable %}
           <br>
-          <span class="text-xs text-[var(--color-text-muted)]">{{ backup_status.file_count }} file{{ backup_status.file_count|pluralize }} there now.</span>
+          <span class="text-xs text-[var(--color-text-muted)]">{% blocktranslate count count=backup_status.file_count %}{{ count }} file there now.{% plural %}{{ count }} files there now.{% endblocktranslate %}</span>
         {% else %}
           <br>
-          <span class="text-xs text-[var(--color-warning-text)]">Not mounted to the host &mdash; add <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code> to your docker-compose volumes to find these files.</span>
+          <span class="text-xs text-[var(--color-warning-text)]">{% translate "Not mounted to the host — add" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code> {% translate "to your docker-compose volumes to find these files." %}</span>
         {% endif %}
       </p>
       <p class="mb-5 text-sm">
-        For disaster recovery, Floppy separately writes a verified database snapshot to: <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">{{ db_snapshot_status.path }}</code>
+        {% translate "For disaster recovery, Floppy separately writes a verified database snapshot to:" %} <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">{{ db_snapshot_status.path }}</code>
         {% if db_snapshot_status.enabled %}
           {% if db_snapshot_status.host_reachable %}
             <br>
-            <span class="text-xs text-[var(--color-text-muted)]">{{ db_snapshot_status.file_count }} snapshot{{ db_snapshot_status.file_count|pluralize }} there now. This is the file to restore from if the database itself is damaged.</span>
+            <span class="text-xs text-[var(--color-text-muted)]">{% blocktranslate count count=db_snapshot_status.file_count %}{{ count }} snapshot there now. This is the file to restore from if the database itself is damaged.{% plural %}{{ count }} snapshots there now. This is the file to restore from if the database itself is damaged.{% endblocktranslate %}</span>
           {% else %}
             <br>
-            <span class="text-xs text-[var(--color-warning-text)]">Not mounted to the host &mdash; add <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code> to your docker-compose volumes to find these files.</span>
+            <span class="text-xs text-[var(--color-warning-text)]">{% translate "Not mounted to the host — add" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code> {% translate "to your docker-compose volumes to find these files." %}</span>
           {% endif %}
         {% else %}
           <br>
-          <span class="text-xs text-[var(--color-warning-text)]">Disabled &mdash; set <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">DB_SNAPSHOT_ENABLED=true</code> to turn it back on.</span>
+          <span class="text-xs text-[var(--color-warning-text)]">{% translate "Disabled — set" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">DB_SNAPSHOT_ENABLED=true</code> {% translate "to turn it back on." %}</span>
         {% endif %}
       </p>
 
@@ -51,9 +53,9 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             {# Export Frequency #}
             <div>
-              <label class="block text-sm text-[var(--color-text-muted)] mb-2">Export Frequency</label>
+              <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Export Frequency" %}</label>
               <div class="relative"
-                   x-data="{ open: false, selectedValue: 'once', selectedLabel: 'Export Once' }">
+                   x-data="{ open: false, selectedValue: 'once', selectedLabel: gettext('Export Once') }">
                 <button type="button"
                         @click="open = !open"
                         @click.outside="open = false"
@@ -81,24 +83,24 @@
                      x-transition:leave-end="transform opacity-0 scale-95"
                      class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
                   <button type="button"
-                          @click="selectedValue = 'once'; selectedLabel = 'Export Once'; backupFrequency = 'once'; open = false"
+                          @click="selectedValue = 'once'; selectedLabel = gettext('Export Once'); backupFrequency = 'once'; open = false"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                    Export Once
+                    {% translate "Export Once" %}
                   </button>
                   <button type="button"
-                          @click="selectedValue = 'daily'; selectedLabel = 'Every Day'; backupFrequency = 'daily'; open = false"
+                          @click="selectedValue = 'daily'; selectedLabel = gettext('Every Day'); backupFrequency = 'daily'; open = false"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                    Every Day
+                    {% translate "Every Day" %}
                   </button>
                   <button type="button"
-                          @click="selectedValue = '2days'; selectedLabel = 'Every 2 Days'; backupFrequency = '2days'; open = false"
+                          @click="selectedValue = '2days'; selectedLabel = gettext('Every 2 Days'); backupFrequency = '2days'; open = false"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                    Every 2 Days
+                    {% translate "Every 2 Days" %}
                   </button>
                   <button type="button"
-                          @click="selectedValue = 'weekly'; selectedLabel = 'Weekly'; backupFrequency = 'weekly'; open = false"
+                          @click="selectedValue = 'weekly'; selectedLabel = gettext('Weekly'); backupFrequency = 'weekly'; open = false"
                           class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                    Weekly
+                    {% translate "Weekly" %}
                   </button>
                 </div>
                 <input type="hidden" name="frequency" x-bind:value="selectedValue">
@@ -107,7 +109,7 @@
 
             {# Export Time #}
             <div>
-              <label class="block text-sm text-[var(--color-text-muted)] mb-2">Export Time</label>
+              <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Export Time" %}</label>
               <input x-model="backupTime"
                      name="time"
                      x-bind:disabled="backupFrequency === 'once'"
@@ -122,10 +124,10 @@
         <div class="mb-5">
           <div class="flex items-center mb-4">
             {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-            <h3 class="text-lg font-semibold">Export Content</h3>
+            <h3 class="text-lg font-semibold">{% translate "Export Content" %}</h3>
           </div>
           <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-            Keep at least one media type, Custom Lists, or Collection enabled. Keep every media type and both additional content options enabled for a full export; turn off all media types and leave Lists or Collection enabled for a subset export.
+            {% translate "Keep at least one media type, Custom Lists, or Collection enabled. Keep every media type and both additional content options enabled for a full export; turn off all media types and leave Lists or Collection enabled for a subset export." %}
           </p>
 
           <div class="grid gap-3 md:grid-cols-3">
@@ -151,7 +153,7 @@
             <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
               <div class="flex items-center text-[var(--color-text-muted)]">
                 {% include "app/icons/list.svg" with classes="w-5 h-5" %}
-                <span class="text-[var(--color-text-secondary)] text-sm ml-2">Custom Lists</span>
+                <span class="text-[var(--color-text-secondary)] text-sm ml-2">{% translate "Custom Lists" %}</span>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
                 <input class="sr-only peer"
@@ -168,7 +170,7 @@
             <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
               <div class="flex items-center text-[var(--color-text-muted)]">
                 {% include "app/icons/save.svg" with classes="w-5 h-5" %}
-                <span class="text-[var(--color-text-secondary)] text-sm ml-2">Collection</span>
+                <span class="text-[var(--color-text-secondary)] text-sm ml-2">{% translate "Collection" %}</span>
               </div>
               <label class="relative inline-flex items-center cursor-pointer">
                 <input class="sr-only peer"
@@ -188,8 +190,8 @@
                 x-bind:disabled="!exportContentSelected"
                 x-bind:class="!exportContentSelected ? 'opacity-50 cursor-not-allowed' : ''"
                 class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer disabled:hover:bg-indigo-600">
-          <span x-show="backupFrequency === 'once'">Export as CSV</span>
-          <span x-show="backupFrequency !== 'once'">Export as CSV and Save Schedule</span>
+          <span x-show="backupFrequency === 'once'">{% translate "Export as CSV" %}</span>
+          <span x-show="backupFrequency !== 'once'">{% translate "Export as CSV and Save Schedule" %}</span>
         </button>
       </form>
     </div>
@@ -198,17 +200,17 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-4">
         {% include "app/icons/external-link.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-        <h2 class="text-xl font-semibold">Export for Other Websites</h2>
+        <h2 class="text-xl font-semibold">{% translate "Export for Other Websites" %}</h2>
       </div>
       <p class="text-[var(--color-text-muted)] mb-5 text-sm">
-        Unlike the export above, these exports are trimmed and reshaped to match what a specific external site expects.
+        {% translate "Unlike the export above, these exports are trimmed and reshaped to match what a specific external site expects." %}
       </p>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         <a href="{% url 'export_csv_letterboxd' %}"
            class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left flex flex-col gap-2">
           <div class="flex items-center">{% source_display "letterboxd" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Watched movies with ratings and diary dates, ready for Letterboxd's CSV import.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Watched movies with ratings and diary dates, ready for Letterboxd's CSV import." %}</p>
         </a>
       </div>
     </div>
@@ -217,10 +219,10 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-4">
         {% include "app/icons/repeat.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-        <h2 class="text-xl font-semibold">Active Scheduled Exports</h2>
+        <h2 class="text-xl font-semibold">{% translate "Active Scheduled Exports" %}</h2>
       </div>
       <p class="text-[var(--color-text-muted)] mb-5 text-sm">
-        Automated exports that run on a schedule. These will continue until disabled.
+        {% translate "Automated exports that run on a schedule. These will continue until disabled." %}
       </p>
       <div class="space-y-3">
         {% for scheduled_backup in export_tasks.schedules %}
@@ -228,7 +230,7 @@
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-3">
                 {% include "app/icons/download.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
-                <span class="text-sm font-medium text-[var(--color-text-secondary)]">CSV Export</span>
+                <span class="text-sm font-medium text-[var(--color-text-secondary)]">{% translate "CSV Export" %}</span>
                 <span class="text-sm text-[var(--color-text-muted)]">{{ scheduled_backup.schedule }}</span>
               </div>
               <form action="{% url 'delete_export_schedule' %}" method="post">
@@ -243,22 +245,22 @@
             </div>
             <div class="text-sm text-[var(--color-text-muted)] space-y-1">
               {% if scheduled_backup.media_types is None %}
-                <div>Media Types: All</div>
+                <div>{% translate "Media Types: All" %}</div>
               {% elif scheduled_backup.media_types %}
-                <div>Media Types: {{ scheduled_backup.media_types|join:", " }}</div>
+                <div>{% blocktranslate with value1=scheduled_backup.media_types|join:", " %}Media Types: {{ value1 }}{% endblocktranslate %}</div>
               {% else %}
-                <div>Media Types: None (Lists/Collection only)</div>
+                <div>{% translate "Media Types: None (Lists/Collection only)" %}</div>
               {% endif %}
-              <div>Lists: {% if scheduled_backup.include_lists %}Included{% else %}Excluded{% endif %}</div>
-              <div>Collection: {% if scheduled_backup.include_collection %}Included{% else %}Excluded{% endif %}</div>
-              <div>Last Backup: {% if scheduled_backup.last_run %}{{ scheduled_backup.last_run|user_datetime_format:user }}{% else %}Never{% endif %}</div>
-              <div>Next Backup: {{ scheduled_backup.next_run|user_datetime_format:user }}</div>
+              <div>{% translate "Lists:" %} {% if scheduled_backup.include_lists %}{% translate "Included" %}{% else %}{% translate "Excluded" %}{% endif %}</div>
+              <div>{% translate "Collection:" %} {% if scheduled_backup.include_collection %}{% translate "Included" %}{% else %}{% translate "Excluded" %}{% endif %}</div>
+              <div>{% translate "Last Backup:" %} {% if scheduled_backup.last_run %}{{ scheduled_backup.last_run|user_datetime_format:user }}{% else %}{% translate "Never" %}{% endif %}</div>
+              <div>{% blocktranslate with value1=scheduled_backup.next_run|user_datetime_format:user %}Next Backup: {{ value1 }}{% endblocktranslate %}</div>
             </div>
           </div>
         {% empty %}
           <div class="bg-[var(--color-surface-strong)] rounded-lg p-6 text-center">
-            <p class="text-[var(--color-text-muted)] text-sm">No scheduled exports configured</p>
-            <p class="text-[var(--color-text-muted)] text-xs mt-1">Set up a schedule above to automatically export your data</p>
+            <p class="text-[var(--color-text-muted)] text-sm">{% translate "No scheduled exports configured" %}</p>
+            <p class="text-[var(--color-text-muted)] text-xs mt-1">{% translate "Set up a schedule above to automatically export your data" %}</p>
           </div>
         {% endfor %}
       </div>
@@ -268,10 +270,10 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-4">
         {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-        <h2 class="text-xl font-semibold">Export History</h2>
+        <h2 class="text-xl font-semibold">{% translate "Export History" %}</h2>
       </div>
 
-      <p class="text-[var(--color-text-muted)] mb-5 text-sm">Showing export activity from the last 7 days.</p>
+      <p class="text-[var(--color-text-muted)] mb-5 text-sm">{% translate "Showing export activity from the last 7 days." %}</p>
 
       <div class="space-y-3">
         {% for result in export_tasks.results %}
@@ -279,16 +281,16 @@
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
               <div class="flex items-center gap-3">
                 {% if result.status == "SUCCESS" %}
-                  <span class="px-2 py-1 rounded text-xs font-medium text-green-400 bg-green-400/10">Success</span>
+                  <span class="px-2 py-1 rounded text-xs font-medium text-green-400 bg-green-400/10">{% translate "Success" %}</span>
                 {% elif result.status == "STARTED" %}
-                  <span class="px-2 py-1 rounded text-xs font-medium text-blue-400 bg-blue-400/10">Started</span>
+                  <span class="px-2 py-1 rounded text-xs font-medium text-blue-400 bg-blue-400/10">{% translate "Started" %}</span>
                 {% elif result.status == "FAILURE" %}
-                  <span class="px-2 py-1 rounded text-xs font-medium text-red-400 bg-red-400/10">Failed</span>
+                  <span class="px-2 py-1 rounded text-xs font-medium text-red-400 bg-red-400/10">{% translate "Failed" %}</span>
                 {% else %}
-                  <span class="px-2 py-1 rounded text-xs font-medium text-yellow-400 bg-yellow-400/10">Pending</span>
+                  <span class="px-2 py-1 rounded text-xs font-medium text-yellow-400 bg-yellow-400/10">{% translate "Pending" %}</span>
                 {% endif %}
                 {% include "app/icons/download.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
-                <span class="text-sm text-[var(--color-text-secondary)]">CSV Export</span>
+                <span class="text-sm text-[var(--color-text-secondary)]">{% translate "CSV Export" %}</span>
               </div>
               <span class="text-xs text-[var(--color-text-muted)]">{{ result.date|user_datetime_format:user }}</span>
             </div>
@@ -300,7 +302,7 @@
                 {% if result.errors %}
                   <button @click="showDetails = !showDetails"
                           class="text-xs text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors cursor-pointer"
-                          x-text="showDetails ? 'Hide details' : 'Show details'">Show details</button>
+                          x-text="showDetails ? gettext('Hide details') : gettext('Show details')">{% translate "Show details" %}</button>
 
                   <div class="mt-2 space-y-1 text-sm bg-[var(--color-surface)] p-3 rounded"
                        x-show="showDetails">
@@ -314,8 +316,8 @@
           </div>
         {% empty %}
           <div class="bg-[var(--color-surface-strong)] rounded-lg p-6 text-center">
-            <p class="text-[var(--color-text-muted)] text-sm">No exports in the last 7 days</p>
-            <p class="text-[var(--color-text-muted)] text-xs mt-1">Set up a schedule to see the history here</p>
+            <p class="text-[var(--color-text-muted)] text-sm">{% translate "No exports in the last 7 days" %}</p>
+            <p class="text-[var(--color-text-muted)] text-xs mt-1">{% translate "Set up a schedule to see the history here" %}</p>
           </div>
         {% endfor %}
       </div>

@@ -1,4 +1,6 @@
 {% extends base_template %}
+{% load i18n %}
+
 {% load static %}
 {% load app_tags %}
 
@@ -17,7 +19,7 @@
       </div>
       <div class="mb-3 text-sm font-medium text-[var(--color-text-muted)]">
         <div class="flex flex-wrap items-center gap-y-1">
-          <span>{{ items_count }} item{{ items_count|pluralize }}</span>
+          <span>{% blocktranslate trimmed with value_1=items_count count count=items_count %}{{ value_1 }} item{% plural %}{{ value_1 }} items{% endblocktranslate %}</span>
           {% if completion_percent is not None %}
             <span class="mx-2 text-gray-600">•</span>
             <div class="relative inline-flex"
@@ -28,9 +30,9 @@
                       @mouseenter="tooltipOpen = true"
                       @mouseleave="tooltipOpen = false"
                       @click="tooltipOpen = !tooltipOpen"
-                      aria-label="Show completion details">
-                <span class="sm:hidden">{{ completion_percent }}% done</span>
-                <span class="hidden sm:inline">{{ completion_percent }}% complete</span>
+                      aria-label="{% translate "Show completion details" %}">
+                <span class="sm:hidden">{% blocktranslate trimmed with value_1=completion_percent %}{{ value_1 }}% done{% endblocktranslate %}</span>
+                <span class="hidden sm:inline">{% blocktranslate trimmed with value_1=completion_percent %}{{ value_1 }}% complete{% endblocktranslate %}</span>
               </button>
               <div x-show="tooltipOpen"
                    x-cloak
@@ -42,7 +44,7 @@
                    x-transition:leave-end="opacity-0 scale-95"
                    class="absolute left-1/2 bottom-full z-10 mb-2 w-64 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg p-3 text-center text-xs text-[var(--color-text)]"
                    style="display: none; background: rgba(0, 0, 0, 1); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);">
-                {{ completed_count }}/{{ items_count }} completed
+                {% blocktranslate trimmed with value_1=completed_count value_2=items_count %}{{ value_1 }}/{{ value_2 }} completed{% endblocktranslate %}
                 <div class="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-l-4 border-r-4 border-t-4 border-transparent" style="border-top-color: rgba(0, 0, 0, 1);"></div>
               </div>
             </div>
@@ -68,11 +70,11 @@
             <a href="{% url 'list_add_item' custom_list.id %}"
                class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
               {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
-              <span class="text-sm">Add New Item</span>
+              <span class="text-sm">{% translate "Add New Item" %}</span>
             </a>
             <button @click="open = !open"
                     class="h-10 inline-flex items-center px-2 bg-indigo-600 text-white rounded-r-md hover:bg-indigo-700 transition-colors cursor-pointer"
-                    aria-label="More list actions"
+                    aria-label="{% translate "More list actions" %}"
                     type="button">
               {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
             </button>
@@ -87,32 +89,32 @@
                  x-transition:leave-end="transform opacity-0 scale-95">
               <a href="{% url 'list_add_item' custom_list.id %}"
                  class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-                Add New Item
+                {% translate "Add New Item" %}
               </a>
               {% if custom_list.can_recommend %}
                 <a href="{% url 'recommend_item' custom_list.id %}"
                    class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-                  Add Recommendation
+                  {% translate "Add Recommendation" %}
                 </a>
               {% endif %}
               <button class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                       @click="open = false; window.dispatchEvent(new CustomEvent('open-list-edit-modal'))"
                       type="button">
-                Edit List
+                {% translate "Edit List" %}
               </button>
               <a href="{% url 'list_activity' custom_list.id %}"
                  class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-                View Activity History
+                {% translate "View Activity History" %}
               </a>
               {% if custom_list.can_recommend and recommendation_count > 0 %}
                 <a href="{% url 'list_recommendations' custom_list.id %}"
                    class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-                  View Recommendations
+                  {% translate "View Recommendations" %}
                 </a>
               {% endif %}
               <a href="{% url 'list_export_csv' custom_list.public_reference %}"
                  class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-                Export as CSV
+                {% translate "Export as CSV" %}
               </a>
             </div>
           </div>
@@ -125,18 +127,18 @@
               <a href="{% url 'list_recommendations' custom_list.id %}"
                  class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
                 {% include "app/icons/bell.svg" with classes="w-4 h-4" %}
-                <span class="text-sm">View Recommendations</span>
+                <span class="text-sm">{% translate "View Recommendations" %}</span>
               </a>
             {% else %}
               <a href="{% url 'recommend_item' custom_list.id %}"
                  class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
                 {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
-                <span class="text-sm">Recommend Item</span>
+                <span class="text-sm">{% translate "Recommend Item" %}</span>
               </a>
             {% endif %}
             <button @click="open = !open"
                     class="h-10 inline-flex items-center px-2 bg-indigo-600 text-white rounded-r-md hover:bg-indigo-700 transition-colors cursor-pointer"
-                    aria-label="More list actions"
+                    aria-label="{% translate "More list actions" %}"
                     type="button">
               {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
             </button>
@@ -152,21 +154,21 @@
               {% if recommendation_count > 0 %}
                 <a href="{% url 'recommend_item' custom_list.id %}"
                    class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-                  Recommend Item
+                  {% translate "Recommend Item" %}
                 </a>
               {% else %}
                 <a href="{% url 'list_recommendations' custom_list.id %}"
                    class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-                  View Recommendations
+                  {% translate "View Recommendations" %}
                 </a>
               {% endif %}
               <a href="{% url 'list_activity' custom_list.id %}"
                  class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-                View Activity History
+                {% translate "View Activity History" %}
               </a>
               <a href="{% url 'list_export_csv' custom_list.public_reference %}"
                  class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-                Export as CSV
+                {% translate "Export as CSV" %}
               </a>
             </div>
           </div>
@@ -177,7 +179,7 @@
           <a href="{% url 'list_export_csv' custom_list.public_reference %}"
              class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer whitespace-nowrap">
             {% include "app/icons/export.svg" with classes="w-4 h-4" %}
-            <span class="text-sm">Export as CSV</span>
+            <span class="text-sm">{% translate "Export as CSV" %}</span>
           </a>
           {% if media_type_breakdown %}
             {% include "lists/components/media_type_breakdown_button.html" %}
@@ -192,11 +194,11 @@
         <a href="{% url 'list_add_item' custom_list.id %}"
            class="h-10 inline-flex flex-1 min-w-0 items-center justify-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
           {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
-          <span class="text-sm">Add New Item</span>
+          <span class="text-sm">{% translate "Add New Item" %}</span>
         </a>
         <button @click="open = !open"
                 class="h-10 inline-flex shrink-0 items-center px-3 bg-indigo-600 text-white rounded-r-md hover:bg-indigo-700 transition-colors cursor-pointer"
-                aria-label="More list actions"
+                aria-label="{% translate "More list actions" %}"
                 type="button">
           {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
         </button>
@@ -211,32 +213,32 @@
              x-transition:leave-end="transform opacity-0 scale-95">
           <a href="{% url 'list_add_item' custom_list.id %}"
              class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-            Add New Item
+            {% translate "Add New Item" %}
           </a>
           {% if custom_list.can_recommend %}
             <a href="{% url 'recommend_item' custom_list.id %}"
                class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-              Add Recommendation
+              {% translate "Add Recommendation" %}
             </a>
           {% endif %}
           <button class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                   @click="open = false; window.dispatchEvent(new CustomEvent('open-list-edit-modal'))"
                   type="button">
-            Edit List
+            {% translate "Edit List" %}
           </button>
           <a href="{% url 'list_activity' custom_list.id %}"
              class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-            View Activity History
+            {% translate "View Activity History" %}
           </a>
           {% if custom_list.can_recommend and recommendation_count > 0 %}
             <a href="{% url 'list_recommendations' custom_list.id %}"
                class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-              View Recommendations
+              {% translate "View Recommendations" %}
             </a>
           {% endif %}
           <a href="{% url 'list_export_csv' custom_list.public_reference %}"
              class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-            Export as CSV
+            {% translate "Export as CSV" %}
           </a>
         </div>
       </div>
@@ -249,18 +251,18 @@
           <a href="{% url 'list_recommendations' custom_list.id %}"
              class="h-10 inline-flex flex-1 min-w-0 items-center justify-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
             {% include "app/icons/bell.svg" with classes="w-4 h-4" %}
-            <span class="text-sm">View Recommendations</span>
+            <span class="text-sm">{% translate "View Recommendations" %}</span>
           </a>
         {% else %}
           <a href="{% url 'recommend_item' custom_list.id %}"
              class="h-10 inline-flex flex-1 min-w-0 items-center justify-center gap-2 px-4 bg-indigo-600 text-white rounded-l-md hover:bg-indigo-700 transition-colors cursor-pointer border-r border-indigo-500 whitespace-nowrap">
             {% include "app/icons/list-add.svg" with classes="w-4 h-4" %}
-            <span class="text-sm">Recommend Item</span>
+            <span class="text-sm">{% translate "Recommend Item" %}</span>
           </a>
         {% endif %}
         <button @click="open = !open"
                 class="h-10 inline-flex shrink-0 items-center px-3 bg-indigo-600 text-white rounded-r-md hover:bg-indigo-700 transition-colors cursor-pointer"
-                aria-label="More list actions"
+                aria-label="{% translate "More list actions" %}"
                 type="button">
           {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
         </button>
@@ -276,21 +278,21 @@
           {% if recommendation_count > 0 %}
             <a href="{% url 'recommend_item' custom_list.id %}"
                class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-              Recommend Item
+              {% translate "Recommend Item" %}
             </a>
           {% else %}
             <a href="{% url 'list_recommendations' custom_list.id %}"
                class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-              View Recommendations
+              {% translate "View Recommendations" %}
             </a>
           {% endif %}
           <a href="{% url 'list_activity' custom_list.id %}"
              class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-            View Activity History
+            {% translate "View Activity History" %}
           </a>
           <a href="{% url 'list_export_csv' custom_list.public_reference %}"
              class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
-            Export as CSV
+            {% translate "Export as CSV" %}
           </a>
         </div>
       </div>
@@ -301,7 +303,7 @@
       <a href="{% url 'list_export_csv' custom_list.public_reference %}"
          class="h-10 inline-flex items-center gap-2 px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer whitespace-nowrap">
         {% include "app/icons/export.svg" with classes="w-4 h-4" %}
-        <span class="text-sm">Export as CSV</span>
+        <span class="text-sm">{% translate "Export as CSV" %}</span>
       </a>
       {% if media_type_breakdown %}
         {% include "lists/components/media_type_breakdown_button.html" %}
@@ -310,7 +312,7 @@
   {% endif %}
   {% if custom_list.description %}<p class="mb-6 text-[var(--color-text-muted)]">{{ custom_list.description }}</p>{% endif %}
 
-  <div x-data="{
+  {% translate "All Types" as media_i18n_16 %}{% translate "Status" as media_i18n_74 %}{% translate " Statuses" as media_i18n_75 %}<div x-data="{
     showModal: false,
     isOrderEditing: false,
     canEdit: {% if can_edit %}true{% else %}false{% endif %},
@@ -328,21 +330,21 @@
     searchMode: false,
     mediaTypeLabels: {
       {% for media_type in media_types %}'{{ media_type }}': '{{ media_type|media_type_readable_plural }}',{% endfor %}
-      'all': 'All Types'
+      'all': '{{ media_i18n_16|escapejs }}'
     },
     statusLabels: {
-      {% for value, label in status_choices %}'{{ value }}': '{{ label }}',{% endfor %}
+      {% for value, label in status_choices %}'{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}',{% endfor %}
     },
     sortLabels: {
-      {% for value, label in sort_choices %}'{{ value }}': '{{ label }}'{% if not forloop.last %},{% endif %}{% endfor %}
+      {% for value, label in sort_choices %}'{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}
     },
     getMediaTypeLabel() {
       return this.mediaTypeLabels[this.type] || this.type;
     },
     getStatusLabel() {
-      if (this.statuses.length === 0) return 'Status';
+      if (this.statuses.length === 0) return '{{ media_i18n_74|escapejs }}';
       if (this.statuses.length === 1) return this.statusLabels[this.statuses[0]] || this.statuses[0];
-      return this.statuses.length + ' Statuses';
+      return this.statuses.length + '{{ media_i18n_75|escapejs }}';
     },
     isStatusSelected(value) { return this.statuses.includes(value); },
     toggleStatus(value) {
@@ -403,7 +405,7 @@
     <div class="flex flex-col gap-3 md:flex-row md:gap-4 mb-8">
       <div class="relative grow min-w-0 md:hidden">
         <input id="search-input-mobile"
-               placeholder="Search this list or recommend something..."
+               placeholder="{% translate "Search this list or recommend something..." %}"
                class="w-full min-w-0 py-2 pl-10 pr-4 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                type="text"
                x-model="query"
@@ -429,14 +431,14 @@
                   x-show="!searchMode"
                   @click="searchMode = true; $nextTick(() => $refs.listSearchInput?.focus())"
                   type="button"
-                  aria-label="Search this list">
+                  aria-label="{% translate "Search this list" %}">
             {% include "app/icons/magnifying-glass.svg" with classes="w-5 h-5" %}
           </button>
 
           <div class="relative grow min-w-0" x-cloak x-show="searchMode">
             <input id="search-input"
                    x-ref="listSearchInput"
-                   placeholder="Search this list or recommend something..."
+                   placeholder="{% translate "Search this list or recommend something..." %}"
                    class="w-full min-w-0 py-2 pl-10 pr-4 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                    type="text"
                    x-model="query"
@@ -488,7 +490,7 @@
                       class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
                       :class="type === 'all' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                       @click="type = 'all'; open = false"
-                      type="button">All</button>
+                      type="button">{% translate "All" %}</button>
               {% for media_type in media_types %}
                 <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
                         hx-target="#items-view"
@@ -534,7 +536,7 @@
                       class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
                       :class="statuses.length === 0 ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                       @click="statuses = []"
-                      type="button">All</button>
+                      type="button">{% translate "All" %}</button>
               {% for value, label in status_choices %}
                 {% if value != 'All' %}
                   <button hx-get="{% url 'list_detail' custom_list.public_reference %}"
@@ -545,7 +547,7 @@
                           :class="isStatusSelected('{{ value }}') ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                           @click="toggleStatus('{{ value }}')"
                           type="button">
-                    <span>{{ label }}</span>
+                    <span>{% translate label %}</span>
                     <span class="ml-auto" x-show="isStatusSelected('{{ value }}')">
                       {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-[var(--color-text)]" %}
                     </span>
@@ -565,7 +567,7 @@
                     @click="isOrderEditing = false; sortOpen = false; orderOpen = false"
                     type="button">
               {% include "app/icons/checkmark.svg" with classes="w-4 h-4" %}
-              <span class="text-sm">Done Editing Order</span>
+              <span class="text-sm">{% translate "Done Editing Order" %}</span>
             </button>
 
             <div class="inline-flex"
@@ -597,7 +599,7 @@
                       x-cloak
                       x-show="sort === 'custom' && canEdit"
                       @click="orderOpen = !orderOpen; sortOpen = false"
-                      aria-label="Custom sort options"
+                      aria-label="{% translate "Custom sort options" %}"
                       type="button">
                 {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
               </button>
@@ -620,7 +622,7 @@
                         class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
                         :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                         @click="setSort('{{ value }}'); sortOpen = false; orderOpen = false"
-                        type="button">{{ label }}</button>
+                        type="button">{% translate label %}</button>
               {% endfor %}
             </div>
 
@@ -636,7 +638,7 @@
               <button class="w-full text-left px-3 py-2 text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="isOrderEditing = true; orderOpen = false; sortOpen = false"
                       type="button">
-                Edit Item Order
+                {% translate "Edit Item Order" %}
               </button>
             </div>
           </div>
@@ -653,7 +655,7 @@
                       hx-indicator="#loading-indicator"
                       class="p-2 cursor-pointer"
                       :class="layout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
-                      title="Grid View"
+                      title="{% translate "Grid View" %}"
                       @click="layout = 'grid'"
                       type="button">
                 {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
@@ -664,7 +666,7 @@
                       hx-indicator="#loading-indicator"
                       class="p-2 cursor-pointer"
                       :class="layout === 'table' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
-                      title="Table View"
+                      title="{% translate "Table View" %}"
                       @click="layout = 'table'"
                       type="button">
                 {% include "app/icons/table.svg" with classes="w-5 h-5" %}
@@ -695,12 +697,12 @@
             <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
               {% include "app/icons/magnifying-glass.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
             </div>
-            <h3 class="text-xl font-semibold mb-2">No results found</h3>
+            <h3 class="text-xl font-semibold mb-2">{% translate "No results found" %}</h3>
             <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">
               {% if request.GET.q %}
-                We couldn't find any matches for "{{ request.GET.q }}". Try a different search or adjust your filters.
+                {% blocktranslate trimmed with value_1=request.GET.q %}We couldn't find any matches for "{{ value_1 }}". Try a different search or adjust your filters.{% endblocktranslate %}
               {% else %}
-                We couldn't find any matches with the current filters. Try adjusting them to see more items.
+                {% translate "We couldn't find any matches with the current filters. Try adjusting them to see more items." %}
               {% endif %}
             </p>
           </div>
@@ -710,23 +712,23 @@
               <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                 {% include "app/icons/list-add.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
               </div>
-              <h3 class="text-xl font-semibold mb-2">No items in this list yet</h3>
+              <h3 class="text-xl font-semibold mb-2">{% translate "No items in this list yet" %}</h3>
               {% if can_edit %}
-                <p class="text-[var(--color-text-muted)] mb-6">Start adding your favorite media to build your collection</p>
+                <p class="text-[var(--color-text-muted)] mb-6">{% translate "Start adding your favorite media to build your collection" %}</p>
                 <div class="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
-                  <a href="{{ 'all'|browse_url }}" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Browse Media</a>
+                  <a href="{{ 'all'|browse_url }}" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">{% translate "Browse Media" %}</a>
                   {% if custom_list.can_recommend %}
                     <a href="{% url 'recommend_item' custom_list.id %}"
-                       class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">Recommend Item</a>
+                       class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">{% translate "Recommend Item" %}</a>
                   {% endif %}
                 </div>
               {% elif custom_list.can_recommend %}
-                <p class="text-[var(--color-text-muted)] mb-6">Be the first to recommend something!</p>
+                <p class="text-[var(--color-text-muted)] mb-6">{% translate "Be the first to recommend something!" %}</p>
                 <div class="pt-4">
-                  <a href="{% url 'recommend_item' custom_list.id %}" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">Recommend Item</a>
+                  <a href="{% url 'recommend_item' custom_list.id %}" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">{% translate "Recommend Item" %}</a>
                 </div>
               {% else %}
-                <p class="text-[var(--color-text-muted)]">This list is empty</p>
+                <p class="text-[var(--color-text-muted)]">{% translate "This list is empty" %}</p>
               {% endif %}
             </div>
           </div>
@@ -737,23 +739,23 @@
             <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
               {% include "app/icons/list-add.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
             </div>
-            <h3 class="text-xl font-semibold mb-2">No items in this list yet</h3>
+            <h3 class="text-xl font-semibold mb-2">{% translate "No items in this list yet" %}</h3>
             {% if can_edit %}
-              <p class="text-[var(--color-text-muted)] mb-6">Start adding your favorite media to build your collection</p>
+              <p class="text-[var(--color-text-muted)] mb-6">{% translate "Start adding your favorite media to build your collection" %}</p>
               <div class="pt-4 flex flex-col sm:flex-row gap-3 justify-center">
-                <a href="{{ 'all'|browse_url }}" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">Browse Media</a>
+                <a href="{{ 'all'|browse_url }}" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">{% translate "Browse Media" %}</a>
                 {% if custom_list.can_recommend %}
                   <a href="{% url 'recommend_item' custom_list.id %}"
-                     class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">Recommend Item</a>
+                     class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">{% translate "Recommend Item" %}</a>
                 {% endif %}
               </div>
             {% elif custom_list.can_recommend %}
-              <p class="text-[var(--color-text-muted)] mb-6">Be the first to recommend something!</p>
+              <p class="text-[var(--color-text-muted)] mb-6">{% translate "Be the first to recommend something!" %}</p>
               <div class="pt-4">
-                <a href="{% url 'recommend_item' custom_list.id %}" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">Recommend Item</a>
+                <a href="{% url 'recommend_item' custom_list.id %}" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors">{% translate "Recommend Item" %}</a>
               </div>
             {% else %}
-              <p class="text-[var(--color-text-muted)]">This list is empty</p>
+              <p class="text-[var(--color-text-muted)]">{% translate "This list is empty" %}</p>
             {% endif %}
           </div>
         </div>
@@ -808,11 +810,11 @@
   </script>
   {% include "lists/components/list_toggle_refresh_handler.html" %}
 
-  <script>
+  {% translate "All Types" as media_i18n_16 %}<script>
     // var (not let/const): these scripts re-execute on boosted navigation
     var mediaTypeLabels = {
       {% for media_type in media_types %}'{{ media_type }}': '{{ media_type|media_type_readable_plural }}',{% endfor %}
-      'all': 'All Types'
+      'all': '{{ media_i18n_16|escapejs }}'
     };
   </script>
 

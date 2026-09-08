@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.floppy.app</string>
+    <key>UserName</key>
+    <string>@@RUN_USER@@</string>
+    <key>GroupName</key>
+    <string>@@RUN_GROUP@@</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>@@RUN_DIR@@/floppy-supervisord</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>@@SRC_DIR@@</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>@@LOG_DIR@@/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>@@LOG_DIR@@/launchd.err.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>@@VENV_DIR@@/bin:@@EXTRA_PATH@@:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>

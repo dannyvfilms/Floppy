@@ -444,6 +444,22 @@ class StremioAddonViewTests(TestCase):
             "series:tt0108778:1:1",
         )
 
+    @patch("integrations.views.stremio_queue.reserve_pending", return_value="accepted")
+    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    def test_subtitles_with_slash_in_extra_path(self, mock_delay, _mock_reserve):
+        """A release filename containing a slash still resolves and scrobbles."""
+        response = self.client.get(
+            "/stremio-addon/test-token/subtitles/movie/"
+            "tt1872181/filename=Novyy Chelovek-pauk / The Amazing Spider-Man 2"
+            " [2014].mp4&videoSize=60913373676.json",
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_delay.assert_called_once_with(
+            {"id": "tt1872181", "type": "movie"},
+            self.user.id,
+            "movie:tt1872181",
+        )
+
     @patch("integrations.views.stremio_queue.reserve_pending", return_value="limited")
     @patch("integrations.views.tasks.process_stremio_webhook.delay")
     def test_subtitles_limit_returns_empty_response_without_dispatch(

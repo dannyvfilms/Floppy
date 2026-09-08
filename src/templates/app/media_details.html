@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load user_tags %}
 {% load humanize %}
@@ -6,7 +8,7 @@
 
 {% block title %}
   {{ media|display_title:user }}
-  {% if media.media_type == MediaTypes.SEASON.value %}S{{ media.season_number }}{% endif %}
+  {% if media.media_type == MediaTypes.SEASON.value %}{% blocktranslate trimmed with value_1=media.season_number %}S{{ value_1 }}{% endblocktranslate %}{% endif %}
   - Floppy
 {% endblock title %}
 
@@ -99,7 +101,7 @@
            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 md:p-6"
            role="dialog"
            aria-modal="true"
-           aria-label="Activity history"
+           aria-label="{% translate "Activity history" %}"
            @click.self="sessionHistoryOpen = false">
         <div id="session-history-modal-host"
              class="flex max-h-full w-full items-center justify-center"

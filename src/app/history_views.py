@@ -17,6 +17,7 @@ from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseNotFou
 from django.shortcuts import render
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
+from django.utils.translation import gettext_noop
 from django.views.decorators.http import require_GET, require_http_methods
 
 from app import (
@@ -817,10 +818,7 @@ def _build_session_history_stats(history_days):
     activity_entries = sum(len(day.get("entries", [])) for day in history_days)
     total_minutes = sum(day.get("total_minutes") or 0 for day in history_days)
 
-    gaps = [
-        (current - previous).days
-        for previous, current in pairwise(dates)
-    ]
+    gaps = [(current - previous).days for previous, current in pairwise(dates)]
     average_gap = sum(gaps) / len(gaps) if gaps else None
 
     longest_streak = 0
@@ -857,19 +855,19 @@ def _build_session_history_stats(history_days):
         return f"{rounded:g} day{'s' if rounded != 1 else ''}"
 
     return [
-        {"label": "Active days", "value": str(len(dates))},
-        {"label": "Activity entries", "value": str(activity_entries)},
+        {"label": gettext_noop("Active days"), "value": str(len(dates))},
+        {"label": gettext_noop("Activity entries"), "value": str(activity_entries)},
         {
-            "label": "Tracked time",
+            "label": gettext_noop("Tracked time"),
             "value": format_minutes(total_minutes if activity_entries else None),
         },
         {
-            "label": "Average per active day",
+            "label": gettext_noop("Average per active day"),
             "value": format_minutes(total_minutes / len(dates)) if dates else "—",
         },
-        {"label": "Average gap", "value": format_days(average_gap)},
+        {"label": gettext_noop("Average gap"), "value": format_days(average_gap)},
         {
-            "label": "Longest streak",
+            "label": gettext_noop("Longest streak"),
             "value": (
                 f"{longest_streak} day{'s' if longest_streak != 1 else ''}"
                 if longest_streak
@@ -877,7 +875,7 @@ def _build_session_history_stats(history_days):
             ),
         },
         {
-            "label": "Most active weekday",
+            "label": gettext_noop("Most active weekday"),
             "value": most_active_weekday or "—",
         },
     ]
@@ -907,11 +905,7 @@ def activity_sessions_modal(request):
     session_history_stats = _build_session_history_stats(history_days)
 
     marker_days = sorted(
-        {
-            day["date"].isoformat()
-            for day in history_days
-            if day.get("date")
-        },
+        {day["date"].isoformat() for day in history_days if day.get("date")},
     )
     newest_dated_day = next(
         (day["date"] for day in history_days if day.get("date")),
@@ -919,11 +913,7 @@ def activity_sessions_modal(request):
     )
     visible_days = history_days[:SESSION_HISTORY_MAX_DAYS]
     visible_marker_days = sorted(
-        {
-            day["date"].isoformat()
-            for day in visible_days
-            if day.get("date")
-        },
+        {day["date"].isoformat() for day in visible_days if day.get("date")},
     )
     return render(
         request,
@@ -1080,9 +1070,7 @@ def history(request):
     # dropped so the search bar falls back to last_search_type.
     requested_media_type = request.GET.get("media_type")
     context_media_type = (
-        requested_media_type
-        if requested_media_type in MediaTypes.values
-        else None
+        requested_media_type if requested_media_type in MediaTypes.values else None
     )
     try:
         view_start = time.perf_counter()

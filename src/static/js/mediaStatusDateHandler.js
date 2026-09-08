@@ -253,8 +253,9 @@ function trackModalCreateToast(detail) {
     <p class="text-sm font-medium flex-1"></p>
     <button type="button"
             class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
-            aria-label="Dismiss notification">x</button>
+            aria-label="">x</button>
   `;
+  toast.querySelector("button").setAttribute("aria-label", gettext("Dismiss notification"));
   toast.querySelector("p").textContent = message;
   toast
     .querySelector("button")

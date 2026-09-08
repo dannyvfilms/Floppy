@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -6,11 +8,11 @@
     <table class="w-full bg-[var(--color-surface)] media-table">
       <thead class="text-left text-[var(--color-text-muted)] text-sm">
         <tr>
-          <th class="px-2 py-2">Title</th>
-          <th class="px-2 py-2">Type</th>
-          <th class="px-2 py-2">Format</th>
-          <th class="px-2 py-2">Resolution</th>
-          <th class="px-2 py-2">Collected</th>
+          <th class="px-2 py-2">{% translate "Title" %}</th>
+          <th class="px-2 py-2">{% translate "Type" %}</th>
+          <th class="px-2 py-2">{% translate "Format" %}</th>
+          <th class="px-2 py-2">{% translate "Resolution" %}</th>
+          <th class="px-2 py-2">{% translate "Collected" %}</th>
         </tr>
       </thead>
       <tbody id="collection-table-body">
@@ -34,8 +36,8 @@
         <span class="text-[var(--color-text)]">{{ entry.item|display_title:user }}</span>
         {% if entry.completeness.is_partial %}
           <span class="shrink-0 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-100"
-                title="{{ entry.completeness.collected }} of {{ entry.completeness.total }} episodes collected">
-            {{ entry.completeness.collected }}/{{ entry.completeness.total }} &middot; Partial
+                title="{% blocktranslate trimmed with value_1=entry.completeness.collected value_2=entry.completeness.total %}{{ value_1 }} of {{ value_2 }} episodes collected{% endblocktranslate %}">
+            {% blocktranslate trimmed with value_1=entry.completeness.collected value_2=entry.completeness.total %}{{ value_1 }}/{{ value_2 }} &middot; Partial{% endblocktranslate %}
           </span>
         {% endif %}
       </a>

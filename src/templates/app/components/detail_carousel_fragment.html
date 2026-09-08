@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% if carousel %}
   <div class="w-full h-full flex flex-col gap-2" x-data="{ selected: 0, mode: 'image', videoPlaying: false, items: [], lightboxOpen: false, fit: localStorage.getItem('gallery-fit') || 'contain', select(i) { this.selected = i; this.mode = this.items[i].kind; this.videoPlaying = false }, next() { this.select((this.selected + 1) % this.items.length) }, prev() { this.select((this.selected - 1 + this.items.length) % this.items.length) }, toggleFit() { this.fit = this.fit === 'cover' ? 'contain' : 'cover'; localStorage.setItem('gallery-fit', this.fit) }, }" x-init="items = [ {% if carousel.video %}{ kind: 'video', key: '{{ carousel.video.key|escapejs }}' },{% endif %}
 
@@ -8,7 +10,7 @@
       <button type="button"
               class="relative block h-full w-full cursor-pointer"
               @click="videoPlaying = true"
-              aria-label="Play trailer">
+              aria-label="{% translate "Play trailer" %}">
         <img class="w-full h-full object-cover"
              :src="'https://img.youtube.com/vi/' + items[selected].key + '/maxresdefault.jpg'"
              onload="if (this.naturalWidth === 120) { this.src = this.src.replace('maxresdefault', 'hqdefault') }"
@@ -23,7 +25,7 @@
     <template x-if="mode === 'video' && videoPlaying">
       <iframe class="w-full h-full"
               :src="'https://www.youtube.com/embed/' + items[selected].key + '?autoplay=1'"
-              title="Trailer"
+              title="{% translate "Trailer" %}"
               frameborder="0"
               referrerpolicy="strict-origin-when-cross-origin"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -41,27 +43,27 @@
          x-text="(selected + 1) + ' / ' + items.length"></div>
 
     <div class="absolute top-2 right-2 flex items-center gap-1">
-      <button type="button"
+      {% translate "Fit image" as media_i18n_77 %}{% translate "Fill frame" as media_i18n_78 %}<button type="button"
               class="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
               @click="toggleFit()"
-              :aria-label="fit === 'cover' ? 'Fit image' : 'Fill frame'"
-              :title="fit === 'cover' ? 'Fit image' : 'Fill frame'">
+              :aria-label="fit === 'cover' ? '{{ media_i18n_77|escapejs }}' : '{{ media_i18n_78|escapejs }}'"
+              :title="fit === 'cover' ? '{{ media_i18n_77|escapejs }}' : '{{ media_i18n_78|escapejs }}'">
         {% include "app/icons/scan.svg" with classes="w-4 h-4" %}
       </button>
       <button type="button"
               class="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
               @click="lightboxOpen = true"
-              aria-label="View full size">{% include "app/icons/expand.svg" with classes="w-4 h-4" %}</button>
+              aria-label="{% translate "View full size" %}">{% include "app/icons/expand.svg" with classes="w-4 h-4" %}</button>
     </div>
 
     <button type="button"
             class="absolute left-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
             @click="prev()"
-            aria-label="Previous">{% include "app/icons/chevron-left.svg" with classes="w-5 h-5" %}</button>
+            aria-label="{% translate "Previous" %}">{% include "app/icons/chevron-left.svg" with classes="w-5 h-5" %}</button>
     <button type="button"
             class="absolute right-2 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
             @click="next()"
-            aria-label="Next">{% include "app/icons/chevron-right.svg" with classes="w-5 h-5" %}</button>
+            aria-label="{% translate "Next" %}">{% include "app/icons/chevron-right.svg" with classes="w-5 h-5" %}</button>
   </div>
 
   <div class="flex shrink-0 gap-2 overflow-x-auto py-1 home-row-scrollbar-hidden">
@@ -103,7 +105,7 @@
       <button type="button"
               class="shrink-0 w-20 h-14 rounded-md flex items-center justify-center bg-[var(--color-surface)] px-1 text-center text-[10px] leading-tight text-[var(--color-text-muted)] cursor-pointer hover:bg-[var(--color-surface-muted)] transition-colors"
               @click="lightboxOpen = true">
-        View all {{ carousel.photos|length }} photo{{ carousel.photos|length|pluralize }}
+        {% blocktranslate trimmed with value_1=carousel.photos|length count count=carousel.photos|length %}View all {{ value_1 }} photo{% plural %}View all {{ value_1 }} photos{% endblocktranslate %}
       </button>
     {% endif %}
   </div>
@@ -124,22 +126,22 @@
     <button type="button"
             class="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
             @click="lightboxOpen = false"
-            aria-label="Close">{% include "app/icons/x.svg" with classes="w-5 h-5" %}</button>
+            aria-label="{% translate "Close" %}">{% include "app/icons/x.svg" with classes="w-5 h-5" %}</button>
 
     <button type="button"
             class="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
             @click="prev()"
-            aria-label="Previous">{% include "app/icons/chevron-left.svg" with classes="w-6 h-6" %}</button>
+            aria-label="{% translate "Previous" %}">{% include "app/icons/chevron-left.svg" with classes="w-6 h-6" %}</button>
     <button type="button"
             class="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors cursor-pointer"
             @click="next()"
-            aria-label="Next">{% include "app/icons/chevron-right.svg" with classes="w-6 h-6" %}</button>
+            aria-label="{% translate "Next" %}">{% include "app/icons/chevron-right.svg" with classes="w-6 h-6" %}</button>
 
     <template x-if="lightboxOpen && mode === 'video' && !videoPlaying">
       <button type="button"
               class="relative block max-h-full max-w-5xl w-full aspect-video cursor-pointer"
               @click="videoPlaying = true"
-              aria-label="Play trailer">
+              aria-label="{% translate "Play trailer" %}">
         <img class="w-full h-full object-cover"
              :src="'https://img.youtube.com/vi/' + items[selected].key + '/maxresdefault.jpg'"
              onload="if (this.naturalWidth === 120) { this.src = this.src.replace('maxresdefault', 'hqdefault') }"
@@ -154,7 +156,7 @@
     <template x-if="lightboxOpen && mode === 'video' && videoPlaying">
       <iframe class="w-full h-full max-w-5xl max-h-[80vh]"
               :src="'https://www.youtube.com/embed/' + items[selected].key + '?autoplay=1'"
-              title="Trailer"
+              title="{% translate "Trailer" %}"
               frameborder="0"
               referrerpolicy="strict-origin-when-cross-origin"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

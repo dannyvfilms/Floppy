@@ -21,6 +21,7 @@ from app.models import (
     Sources,
     Status,
 )
+from lists import smart_rules
 from lists.feeds import FloppyRssFeed
 from lists.models import CustomList, CustomListItem, ListActivity
 from users.models import DateFormatChoices
@@ -1511,6 +1512,37 @@ class ListDetailViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "lists/smart_list_detail.html")
         self.assertTrue(response.context["is_smart_list"])
+
+    def test_smart_filter_form_carries_every_persisted_rule_key(self):
+        """Every saved rule must have a form input, or it silently saves empty.
+
+        The hidden form is both the hx-include payload and the shape the save
+        payload mirrors, so a rule key with no input previews correctly and is
+        then dropped on reload (this is how implied_genre was being lost).
+        """
+        smart_list = CustomList.objects.create(
+            name="Rule Coverage",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[MediaTypes.MOVIE.value],
+        )
+
+        response = self.client.get(
+            f"{reverse('list_detail', args=[smart_list.id])}?edit_smart_rules=1",
+        )
+        html = response.content.decode()
+
+        # Keys whose form field is deliberately named differently.
+        field_names = {
+            "search": "q",
+            "sort_direction": "direction",
+        }
+        missing = [
+            key
+            for key in smart_rules.SMART_FILTER_KEYS
+            if f'name="{field_names.get(key, key)}"' not in html
+        ]
+        self.assertEqual(missing, [])
 
     def test_smart_list_detail_shares_layout_preference_with_manual_lists(self):
         """Smart lists respect the same saved list_detail_layout preference."""

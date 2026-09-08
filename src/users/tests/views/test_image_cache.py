@@ -1,3 +1,4 @@
+from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -51,9 +52,15 @@ class ImageCacheSettingsTests(TestCase):
         )
         self.assertRedirects(response, reverse("advanced"))
         self.assertTrue(ApplicationSettings.objects.get(pk=1).image_caching_enabled)
-        self.assertContains(self.client.get(reverse("advanced")), "Clear Image Cache")
-        self.assertContains(
-            self.client.get(reverse("advanced")),
-            "window.confirm('Clear all cached external images?",
+        response = self.client.get(reverse("advanced"))
+        self.assertContains(response, "Clear Image Cache")
+        soup = BeautifulSoup(response.content, "html.parser")
+        clear_form = soup.find("form", action=reverse("clear_image_cache"))
+        self.assertIsNotNone(clear_form)
+        self.assertEqual(clear_form["method"], "post")
+        self.assertEqual(
+            clear_form["onsubmit"],
+            "return window.confirm(gettext('Clear all cached external images? "
+            "They will be downloaded again if caching remains enabled.'));",
         )
 

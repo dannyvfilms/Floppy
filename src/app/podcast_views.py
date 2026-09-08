@@ -8,6 +8,7 @@ from django.contrib.auth.decorators import login_not_required
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.text import slugify
+from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
@@ -353,9 +354,7 @@ def podcast_show_save(request):
         request,
         fallback_media_type=MediaTypes.PODCAST.value,
     )
-    home_row_id = request.GET.get("home_row_id") or request.POST.get(
-        "home_row_id", ""
-    )
+    home_row_id = request.GET.get("home_row_id") or request.POST.get("home_row_id", "")
 
     tracker = PodcastShowTracker.objects.filter(user=request.user, show=show).first()
     old_status = getattr(tracker, "status", None)
@@ -366,7 +365,9 @@ def podcast_show_save(request):
         tracker.user = request.user
         tracker.show = show
         tracker.save()
-        messages.success(request, f"Saved {show.title}")
+        messages.success(
+            request, gettext("Saved %(value_1)s") % {"value_1": show.title}
+        )
 
         if old_status != tracker.status:
             # Home/medialist read episode-level Podcast.status, not the
@@ -394,7 +395,11 @@ def podcast_show_save(request):
             response["HX-Trigger"] = json.dumps(htmx_trigger)
             return response
     else:
-        messages.error(request, f"Error saving {show.title}: {form.errors}")
+        messages.error(
+            request,
+            gettext("Error saving %(value_1)s: %(value_2)s")
+            % {"value_1": show.title, "value_2": form.errors},
+        )
 
     next_url = request.GET.get("next", "")
     if next_url:
@@ -421,7 +426,10 @@ def podcast_show_delete(request):
     tracker = PodcastShowTracker.objects.filter(user=request.user, show=show).first()
     if tracker:
         tracker.delete()
-        messages.success(request, f"Removed {show.title} from your library")
+        messages.success(
+            request,
+            gettext("Removed %(value_1)s from your library") % {"value_1": show.title},
+        )
 
     next_url = request.GET.get("next", "")
     if next_url:
@@ -454,13 +462,19 @@ def podcast_mark_all_played(request, show_id):
 
     if created_count == 0:
         messages.info(
-            request, f"All episodes of {show.title} are already marked as played"
+            request,
+            gettext("All episodes of %(value_1)s are already marked as played")
+            % {"value_1": show.title},
         )
     else:
-        episode_word = "episodes" if created_count != 1 else "episode"
         messages.success(
             request,
-            f"Marked {created_count} {episode_word} of {show.title} as played",
+            ngettext(
+                "Marked %(count)s episode of %(title)s as played",
+                "Marked %(count)s episodes of %(title)s as played",
+                created_count,
+            )
+            % {"count": created_count, "title": show.title},
         )
 
     return redirect(
@@ -497,11 +511,9 @@ def podcast_save(request):
         try:
             end_date = helpers.parse_completion_datetime(end_date_str)
         except (TypeError, ValueError):
-            message = (
-                f'Floppy cannot read the date "{end_date_str}". '
-                "Enter the date as YYYY-MM-DD. "
-                "To record this play at the current time, keep the date empty."
-            )
+            message = gettext(
+                'Floppy cannot read the date "%(value_1)s". Enter the date as YYYY-MM-DD. To record this play at the current time, keep the date empty.'
+            ) % {"value_1": end_date_str}
             if request.headers.get("HX-Request"):
                 # Do not swap and do not close the modal. The date the user
                 # typed stays on screen for them to correct. Closing it would
@@ -538,11 +550,15 @@ def podcast_save(request):
         # success, and the user then finds the play count unchanged.
         messages.info(
             request,
-            f"Floppy recorded a play for {episode_title} less than five "
-            "minutes ago. Floppy did not add a second play.",
+            gettext(
+                "Floppy recorded a play for %(value_1)s less than five minutes ago. Floppy did not add a second play."
+            )
+            % {"value_1": episode_title},
         )
     else:
-        messages.success(request, f"Added play for {episode_title}")
+        messages.success(
+            request, gettext("Added play for %(value_1)s") % {"value_1": episode_title}
+        )
 
     if request.headers.get("HX-Request"):
         from django.template.loader import render_to_string

@@ -1,24 +1,26 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load static %}
 
 {% block title %}
-  Tags - Floppy
+  {% translate "Tags - Floppy" %}
 {% endblock title %}
 
 {% block content %}
   <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
     <div>
-      <h1 class="text-3xl font-bold mb-2">Tags</h1>
-      <p class="text-[var(--color-text-muted)]">All tags you've created, with how many items use each one</p>
+      <h1 class="text-3xl font-bold mb-2">{% translate "Tags" %}</h1>
+      <p class="text-[var(--color-text-muted)]">{% translate "All tags you've created, with how many items use each one" %}</p>
     </div>
     <div class="flex items-center gap-2 text-sm">
       <a href="?sort=name"
          class="px-3 py-1.5 rounded-md transition-colors {% if sort == 'name' %}bg-[var(--color-border)] text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
-        Name
+        {% translate "Name" %}
       </a>
       <a href="?sort=count"
          class="px-3 py-1.5 rounded-md transition-colors {% if sort == 'count' %}bg-[var(--color-border)] text-[var(--color-text)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)]{% endif %}">
-        Most used
+        {% translate "Most used" %}
       </a>
     </div>
   </div>
@@ -31,7 +33,7 @@
           <div class="flex items-center gap-2">
             {% include "app/icons/tag.svg" with classes="w-4 h-4 text-[var(--color-text-muted)] shrink-0" %}
             <span class="font-medium text-[var(--color-text)] truncate">{{ tag.name }}</span>
-            <span class="text-xs text-[var(--color-text-muted)]">{{ tag.item_count }} item{{ tag.item_count|pluralize }}</span>
+            <span class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=tag.item_count count count=tag.item_count %}{{ value_1 }} item{% plural %}{{ value_1 }} items{% endblocktranslate %}</span>
           </div>
           {% if tag.type_breakdown %}
             <div class="flex flex-wrap gap-2 mt-2">
@@ -52,14 +54,14 @@
                 hx-swap="delete"
                 hx-confirm="Delete the &quot;{{ tag.name|escape }}&quot; tag from your library? This removes it from every item."
                 class="inline-flex h-8 w-8 items-center justify-center rounded-md text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500/50 cursor-pointer shrink-0"
-                title="Delete tag"
-                aria-label="Delete {{ tag.name }} tag">
+                title="{% translate "Delete tag" %}"
+                aria-label="{% blocktranslate trimmed with value_1=tag.name %}Delete {{ value_1 }} tag{% endblocktranslate %}">
           {% include "app/icons/trashcan.svg" with classes="w-4 h-4" %}
         </button>
       </div>
     {% empty %}
       <p class="text-[var(--color-text-secondary)]">
-        No tags yet. Add tags to items from their detail page to see them here.
+        {% translate "No tags yet. Add tags to items from their detail page to see them here." %}
       </p>
     {% endfor %}
   </div>

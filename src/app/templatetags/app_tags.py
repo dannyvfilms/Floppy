@@ -9,6 +9,8 @@ from django.urls import reverse
 from django.utils import formats, timezone
 from django.utils.dateparse import parse_date
 from django.utils.html import format_html
+from django.utils.translation import gettext as _
+from django.utils.translation import npgettext
 from unidecode import unidecode
 
 from app import config, helpers, image_cache
@@ -336,32 +338,37 @@ def source_readable(source):
 @register.filter
 def media_type_readable(media_type):
     """Return the readable media type."""
-    return MediaTypes(media_type).label
+    return _(MediaTypes(media_type).label)
 
 
 @register.filter
 def media_type_readable_plural(media_type):
     """Return the readable media type in plural form."""
-    singular = MediaTypes(media_type).label
-
-    # Special cases that don't change in plural form
-    if singular.lower() in [
-        MediaTypes.ANIME.value,
-        MediaTypes.MANGA.value,
-        MediaTypes.MUSIC.value,
-    ]:
-        return singular
-
-    return f"{singular}s"
+    # English suffixes do not produce correct plurals in other languages.
+    return {
+        MediaTypes.TV: _("TV Shows"),
+        MediaTypes.SEASON: _("TV Seasons"),
+        MediaTypes.EPISODE: _("Episodes"),
+        MediaTypes.MOVIE: _("Movies"),
+        MediaTypes.ANIME: _("Anime"),
+        MediaTypes.MANGA: _("Manga"),
+        MediaTypes.GAME: _("Games"),
+        MediaTypes.BOOK: _("Books"),
+        MediaTypes.COMIC: _("Comics"),
+        MediaTypes.COMIC_ISSUE: _("Comic Issues"),
+        MediaTypes.BOARDGAME: _("Board Games"),
+        MediaTypes.MUSIC: _("Music"),
+        MediaTypes.PODCAST: _("Podcasts"),
+    }[MediaTypes(media_type)]
 
 
 @register.filter
 def media_status_readable(media_status):
     """Return the readable media status."""
     if not media_status:
-        return "No Status"
+        return _("No Status")
     try:
-        return Status(media_status).label
+        return _(Status(media_status).label)
     except ValueError:
         # Imported/provider data can contain a metadata status that is not a
         # user tracking status (for example, "Released"). Keep list pages
@@ -378,7 +385,7 @@ def default_source(media_type):
 @register.filter
 def media_past_verb(media_type):
     """Return the past tense verb for the given media type."""
-    return config.get_verb(media_type, past_tense=True)
+    return _(config.get_verb(media_type, past_tense=True))
 
 
 @register.filter
@@ -403,6 +410,22 @@ def long_unit(media_type):
         return config.get_unit(media_type, short=False)
     except (KeyError, TypeError):
         return ""
+
+
+@register.filter
+def progress_unit_label(media_type, count):
+    """Translate progress units for display without changing raw config units."""
+    labels = {
+        "Episode": npgettext("progress unit", "Episode", "Episodes", count),
+        "Chapter": npgettext("progress unit", "Chapter", "Chapters", count),
+        "Page": npgettext("progress unit", "Page", "Pages", count),
+        "Issue": npgettext("progress unit", "Issue", "Issues", count),
+        "Read": npgettext("progress unit", "Read", "Reads", count),
+        "Play": npgettext("progress unit", "Play", "Plays", count),
+        "Minute": npgettext("progress unit", "Minute", "Minutes", count),
+    }
+    unit = long_unit(media_type)
+    return labels.get(unit, unit)
 
 
 @register.filter

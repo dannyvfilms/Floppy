@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% comment %}
 Reusable form save bar component.
 Supports clean and dirty states driven by Alpine formDirtyTracker.
@@ -8,11 +10,11 @@ Supports clean and dirty states driven by Alpine formDirtyTracker.
           :class="isDirty ? 'is-dirty' : 'is-clean'"
           aria-hidden="true"></span>
     <div aria-live="polite" aria-atomic="true" class="min-w-0">
-      <p class="preferences-actions-title" x-text="isDirty ? 'Unsaved changes' : 'All changes saved'">
-        All changes saved
+      <p class="preferences-actions-title" x-text="isDirty ? gettext('Unsaved changes') : gettext('All changes saved')">
+        {% translate "All changes saved" %}
       </p>
-      <p class="preferences-actions-copy truncate" x-text="isDirty ? 'Save your preferences to keep your changes.' : 'Your preferences are up to date.'">
-        Your preferences are up to date.
+      <p class="preferences-actions-copy truncate" x-text="isDirty ? gettext('Save your preferences to keep your changes.') : gettext('Your preferences are up to date.')">
+        {% translate "Your preferences are up to date." %}
       </p>
     </div>
   </div>
@@ -20,7 +22,7 @@ Supports clean and dirty states driven by Alpine formDirtyTracker.
     <button type="submit"
             class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-[var(--color-surface)] transition-colors text-sm cursor-pointer">
       {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
-      <span>{{ button_label|default:"Save Preferences" }}</span>
+      <span>{% if button_label %}{% translate button_label %}{% else %}{% translate "Save Preferences" %}{% endif %}</span>
     </button>
   </div>
 </div>

@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load humanize %}
 {% comment %}
 HTMX polling fragment for the Trakt series graph inner content.
@@ -16,9 +18,9 @@ HTMX stops automatically — same pattern as prefetch_artist_covers.
      {% endif %}>
 
   <div class="mb-2 flex items-center justify-between gap-3">
-    <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Series Graph</div>
+    <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{% translate "Series Graph" %}</div>
     {% if poll_for_graph %}
-      <div class="text-xs text-[var(--color-text-muted)]">Fetching remaining episodes…</div>
+      <div class="text-xs text-[var(--color-text-muted)]">{% translate "Fetching remaining episodes…" %}</div>
     {% endif %}
   </div>
 
@@ -39,7 +41,7 @@ HTMX stops automatically — same pattern as prefetch_artist_covers.
         {% for cell in ep_row.cells %}
           {% if cell.color %}
             <div class="rounded-lg py-3 text-center text-[13px] font-bold leading-none cursor-default"
-                 title="{{ cell.score }} · {{ cell.votes|intcomma }} vote{{ cell.votes|pluralize }}"
+                 title="{% blocktranslate trimmed with value_1=cell.score value_2=cell.votes|intcomma count count=cell.votes %}{{ value_1 }} · {{ value_2 }} vote{% plural %}{{ value_1 }} · {{ value_2 }} votes{% endblocktranslate %}"
                  style="background-color: {{ cell.color }}; color: {% if cell.score >= 6.0 and cell.score < 8.0 %}rgba(0,0,0,0.8){% else %}#ffffff{% endif %};">
               {{ cell.score }}
             </div>
@@ -61,9 +63,9 @@ HTMX stops automatically — same pattern as prefetch_artist_covers.
           <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-500" style="animation-delay:150ms"></span>
           <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-500" style="animation-delay:300ms"></span>
         </span>
-        Building series graph…
+        {% translate "Building series graph…" %}
       {% else %}
-        Visit a season page to start building.
+        {% translate "Visit a season page to start building." %}
       {% endif %}
     </div>
 

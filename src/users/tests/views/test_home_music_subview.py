@@ -1,5 +1,7 @@
 """Smoke tests for music subview Home rows (albums/artists/tracks)."""
 
+import json
+
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -124,10 +126,29 @@ class MusicSubviewHomeTests(TestCase):
         self.assertContains(response, "Queen")
 
     def test_settings_page_renders(self):
-        self._add_music_row("albums", Status.PLANNING.value)
+        """Lazy translated labels serialize while filter values stay canonical."""
+        row = self._add_music_row("albums", Status.PLANNING.value)
         self.client.force_login(self.user)
-        response = self.client.get("/settings/home-screen")
-        self.assertEqual(response.status_code, 200)
+        for language, last_listened_label, rating_label in (
+            ("en", "Last Listened", "Rating"),
+            ("de", "Zuletzt gehört", "Bewertung"),
+        ):
+            with self.subTest(language=language):
+                self.user.ui_language = language
+                self.user.save(update_fields=["ui_language"])
+                response = self.client.get("/settings/home-screen")
+                self.assertEqual(response.status_code, 200)
+                sections = json.loads(response.context["home_screen_sections_json"])
+                music = next(s for s in sections if s["media_type"] == "music")
+                choices = {
+                    choice["value"]: choice["label"]
+                    for choice in music["sort_choices"]["library_query"]
+                }
+                self.assertEqual(choices["end_date"], last_listened_label)
+                self.assertEqual(choices["score"], rating_label)
+                music_row = next(r for r in music["rows"] if r["id"] == row.id)
+                self.assertEqual(music_row["filters"]["status"], ["Planning"])
+                self.assertEqual(music_row["filters"]["subview"], "albums")
 
     def test_destination_url_pins_status_all_for_all_status_row(self):
         row = self._add_music_row("tracks", MediaStatusChoices.ALL.value)

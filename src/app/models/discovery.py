@@ -199,6 +199,133 @@ class CollectionField(models.Model):
         return f"{self.group.name} - {self.label}"
 
 
+class CollectionEntrySource(models.Model):
+    """Links an owned copy back to the source record that produced it.
+
+    Repeat imports reuse the copy behind the same source record instead of
+    duplicating it, and an overwrite run only touches copies it owns, so
+    manually created copies survive. ``occurrence`` distinguishes rows a
+    source cannot tell apart itself (identical duplicates in one export).
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="collection_entry_sources",
+    )
+    source = models.CharField(
+        max_length=32,
+        help_text="Importer that produced the copy, e.g. 'clz'",
+    )
+    source_record_id = models.CharField(
+        max_length=200,
+        help_text="Stable record id from the source, or a derived identity",
+    )
+    occurrence = models.PositiveIntegerField(
+        default=0,
+        help_text="Index among rows sharing a source_record_id in one export",
+    )
+    derived_identity = models.BooleanField(
+        default=False,
+        help_text="Whether source_record_id was derived rather than supplied",
+    )
+    entry = models.ForeignKey(
+        CollectionEntry,
+        on_delete=models.CASCADE,
+        related_name="source_records",
+    )
+    created_by_import_run = models.ForeignKey(
+        "integrations.ImportRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model and field configuration."""
+
+        constraints = [
+            UniqueConstraint(
+                fields=["user", "source", "source_record_id", "occurrence"],
+                name="app_collectionentrysource_unique_user_record",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "source"]),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this record."""
+        return f"{self.source}:{self.source_record_id}#{self.occurrence}"
+
+
+class CollectionFieldSource(models.Model):
+    """Maps an import source's column key to the CollectionField it feeds.
+
+    The mapping is keyed by the *source* column, not by label, so renaming or
+    moving a field in the configuration UI leaves subsequent imports pointing
+    at the same row. It also records which import run first created a field.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="collection_field_sources",
+    )
+    source = models.CharField(
+        max_length=32,
+        help_text="Importer that produced the column, e.g. 'clz' or 'yamtrack'",
+    )
+    source_key = models.CharField(
+        max_length=200,
+        help_text="Normalized column key as it appears in the source export",
+    )
+    source_label = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text="Original column label, preserved verbatim for provenance",
+    )
+    field = models.ForeignKey(
+        CollectionField,
+        on_delete=models.CASCADE,
+        related_name="source_mappings",
+    )
+    created_field = models.BooleanField(
+        default=False,
+        help_text="Whether this import created the field rather than reusing one",
+    )
+    created_by_import_run = models.ForeignKey(
+        "integrations.ImportRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model and field configuration."""
+
+        constraints = [
+            UniqueConstraint(
+                fields=["user", "source", "source_key"],
+                name="app_collectionfieldsource_unique_user_source_key",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "source"]),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this record."""
+        return f"{self.source}:{self.source_key} -> {self.field_id}"
+
+
 class Tag(models.Model):
     """User-defined tag for organizing media items."""
 

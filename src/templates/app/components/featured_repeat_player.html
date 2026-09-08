@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% comment %}
   Featured Repeat Player card — photo, name, title count, movies/TV split,
@@ -8,7 +10,7 @@
   select_featured_person POST swap.
 {% endcomment %}
 <div class="flex flex-col space-y-1 mb-4">
-  <h2 class="text-xl font-semibold text-[var(--color-text)]">Featured Repeat Player</h2>
-  <p class="text-sm text-[var(--color-text-muted)]">The most recurring talent in your library.</p>
+  <h2 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Featured Repeat Player" %}</h2>
+  <p class="text-sm text-[var(--color-text-muted)]">{% translate "The most recurring talent in your library." %}</p>
 </div>
 {% include "app/components/featured_repeat_player_content.html" %}

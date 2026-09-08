@@ -1,15 +1,17 @@
+
+{% load i18n %}
 {% if results %}
   <div class="absolute z-10 w-full mt-1 bg-[var(--color-surface-strong)] rounded-md shadow-lg border border-gray-600 max-h-60 overflow-auto">
     {% for season in results %}
       <button type="button"
               class="w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface)] hover:text-[var(--color-text)]"
               onclick="document.getElementById('parent-season-input').value = 'Season {{ season.item.season_number }} of {{ season.item.title }}'; document.getElementById('parent-season-id').value = '{{ season.id }}'; document.getElementById('parent-season-results').innerHTML = '';">
-        {{ season.item.title }} - Season {{ season.item.season_number }}
+        {% blocktranslate trimmed with value_1=season.item.title value_2=season.item.season_number %}{{ value_1 }} - Season {{ value_2 }}{% endblocktranslate %}
       </button>
     {% endfor %}
   </div>
 {% elif query %}
   <div class="absolute z-10 w-full mt-1 bg-[var(--color-surface-strong)] rounded-md shadow-lg border border-gray-600 p-3">
-    <p class="text-sm text-[var(--color-text-muted)]">No seasons found matching "{{ query }}". Please try a different search term.</p>
+    <p class="text-sm text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=query %}No seasons found matching "{{ value_1 }}". Please try a different search term.{% endblocktranslate %}</p>
   </div>
 {% endif %}

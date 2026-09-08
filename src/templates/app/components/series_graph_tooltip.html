@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load humanize %}
 {% comment %}
 Series graph tooltip — color-coded episode/season rating grid.
@@ -17,7 +19,7 @@ Variables:
      class="absolute left-0 top-full z-20 mt-2 rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)]/95 p-3 shadow-2xl backdrop-blur-sm"
      style="min-width: max-content;">
 
-  <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Series Graph</div>
+  <div class="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{% translate "Series Graph" %}</div>
 
   <div class="overflow-x-auto">
     {# CSS grid — column template built from season count so every row aligns perfectly #}
@@ -38,7 +40,7 @@ Variables:
         {% for cell in ep_row.cells %}
           {% if cell.color %}
             <div class="rounded-lg py-3 text-center text-[13px] font-bold leading-none cursor-default"
-                 title="{{ cell.score }} · {{ cell.votes|intcomma }} vote{{ cell.votes|pluralize }}"
+                 title="{% blocktranslate trimmed with value_1=cell.score value_2=cell.votes|intcomma count count=cell.votes %}{{ value_1 }} · {{ value_2 }} vote{% plural %}{{ value_1 }} · {{ value_2 }} votes{% endblocktranslate %}"
                  style="background-color: {{ cell.color }}; color: {% if cell.score >= 6.0 and cell.score < 8.0 %}rgba(0,0,0,0.8){% else %}#ffffff{% endif %};">
               {{ cell.score }}
             </div>

@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -50,7 +52,7 @@
         <a href="{{ tracker.album|music_album_url }}" class="absolute inset-0 z-0"></a>
         <div class="relative z-10 flex items-center justify-center space-x-2.5">
           <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
-                  title="Edit tracking"
+                  title="{% translate "Edit tracking" %}"
                   hx-get="{% url 'album_track_modal' tracker.album.id %}"
                   hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
                   hx-target="#album-track-modal-{{ tracker.album.id }}"
@@ -60,7 +62,7 @@
           </button>
           <a href="{{ tracker.album|music_album_url }}"
              class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
-             title="View album">
+             title="{% translate "View album" %}">
             {% icon 'music' is_active=False extra_classes="w-4 h-4" %}
           </a>
         </div>

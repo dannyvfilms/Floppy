@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% comment %}
   Studio Footprint grid — top studios, horizontal progress bars, counts/percentages.
   Split out from studio_footprint.html so it can be swapped in place on sort/media-type
@@ -18,12 +20,12 @@
         {% if studio_sort_by == 'time' %}
           <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{{ studio.watched_time }}</span>
         {% else %}
-          <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{{ studio.plays }} play{{ studio.plays|pluralize }}</span>
+          <span class="text-sm text-[var(--color-text)] text-right shrink-0 tabular-nums whitespace-nowrap">{% blocktranslate trimmed with value_1=studio.plays count count=studio.plays %}{{ value_1 }} play{% plural %}{{ value_1 }} plays{% endblocktranslate %}</span>
         {% endif %}
         <span class="text-xs text-[var(--color-text-muted)] w-12 text-right shrink-0 tabular-nums">{{ studio.pct }}%</span>
       </div>
     {% endfor %}
   </div>
 {% else %}
-  <p class="text-sm text-[var(--color-text-muted)] text-center py-8">No studio data available for this range.</p>
+  <p class="text-sm text-[var(--color-text-muted)] text-center py-8">{% translate "No studio data available for this range." %}</p>
 {% endif %}

@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 {% if suggestions %}
@@ -31,15 +33,15 @@
        data-search-online
        class="flex items-center gap-2 px-3 py-2 text-xs text-[var(--color-text-muted)] border-t border-gray-600 hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text-secondary)] transition-colors duration-150">
       {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4 shrink-0" %}
-      <span class="flex-1 min-w-0 truncate">Search online for &ldquo;{{ query }}&rdquo;</span>
-      <span class="hidden sm:inline-flex items-center shrink-0 text-[11px] text-[var(--color-text-muted)] border border-gray-600 rounded px-1.5 py-0.5">Enter</span>
+      <span class="flex-1 min-w-0 truncate">{% blocktranslate trimmed with value_1=query %}Search online for &ldquo;{{ value_1 }}&rdquo;{% endblocktranslate %}</span>
+      <span class="hidden sm:inline-flex items-center shrink-0 text-[11px] text-[var(--color-text-muted)] border border-gray-600 rounded px-1.5 py-0.5">{% translate "Enter" %}</span>
     </a>
   </div>
 {% elif query %}
   <div class="absolute z-50 w-full p-3 mt-1 bg-[var(--color-surface)] rounded-md shadow-lg border border-gray-600">
     <p class="text-sm text-[var(--color-text-muted)]">
-      Nothing saved matches &ldquo;{{ query }}&rdquo;. Keep typing and press
-      <span class="text-[var(--color-text-secondary)]">Enter</span> to search online.
+      {% blocktranslate trimmed with value_1=query %}Nothing saved matches &ldquo;{{ value_1 }}&rdquo;. Keep typing and press{% endblocktranslate %}
+      <span class="text-[var(--color-text-secondary)]">{% translate "Enter" %}</span> {% translate "to search online." %}
     </p>
   </div>
 {% endif %}

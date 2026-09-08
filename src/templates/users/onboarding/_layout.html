@@ -1,8 +1,10 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load static %}
 
 {% block title %}
-  Setup - Floppy
+  {% translate "Setup - Floppy" %}
 {% endblock title %}
 
 {% block messages_sidebar_offset %}
@@ -22,7 +24,7 @@
           {% endfor %}
         </div>
         <a href="{% url 'home' %}" class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] underline">
-          Save & finish later
+          {% translate "Save & finish later" %}
         </a>
       </div>
 
@@ -31,7 +33,7 @@
           <div class="md:w-1/3 md:shrink-0 flex flex-col gap-4">
             <div class="flex items-end gap-3">
               <img src="{% static 'img/floppy-hero.png' %}"
-                   alt="Floppy"
+                   alt="{% translate "Floppy" %}"
                    width="400"
                    height="322"
                    class="h-[2.625rem] w-auto shrink-0 rounded-lg">

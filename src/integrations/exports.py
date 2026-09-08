@@ -14,6 +14,10 @@ from app.models import (
     AlbumTracker,
     ArtistTracker,
     CollectionEntry,
+    CollectionEntrySource,
+    CollectionField,
+    CollectionFieldGroup,
+    CollectionFieldSource,
     Item,
     ItemTag,
     MediaTypes,
@@ -466,6 +470,25 @@ def _generate_collection_rows(user, writer, fields, media_types, item_tags_map):
     ``[]`` both export every entry.
     """
     logger.debug("Streaming collection entries to CSV")
+
+    # The schema row precedes the entries so the importer can build its
+    # uid -> field map before it meets the first stored value.
+    schema = _collection_schema_payload(user)
+    if schema["groups"]:
+        schema_row = (
+            ["collection_schema"]
+            + [""] * len(fields["item"])
+            + [""] * len(fields["track"])
+            + [""] * len(fields["list"])
+            + [""] * len(COLLECTION_EXPORT_FIELDS)
+            + [json.dumps(schema), ""]
+            + [""] * len(fields["tags"])
+        )
+        yield writer.writerow(schema_row)
+
+    uid_map = _collection_field_uid_map(user)
+    identity_map = _collection_identity_map(user)
+
     queryset = CollectionEntry.objects.filter(user=user).select_related("item")
     if media_types:
         types_to_export = _get_media_types_to_export(media_types)
@@ -481,6 +504,8 @@ def _generate_collection_rows(user, writer, fields, media_types, item_tags_map):
             elif value is None:
                 value = ""
             collection_vals.append(value)
+        collection_vals.append(_portable_custom_values(entry, uid_map))
+        collection_vals.append(identity_map.get(entry.id, ""))
         row = (
             ["collection"]
             + [getattr(entry.item, field, "") for field in fields["item"]]
@@ -491,6 +516,39 @@ def _generate_collection_rows(user, writer, fields, media_types, item_tags_map):
         )
         yield writer.writerow(row)
     logger.debug("Finished streaming collection entries to CSV")
+
+
+def _portable_custom_values(entry, uid_map):
+    """Return the entry's custom values re-keyed by portable field uid."""
+    values = entry.custom_field_values or {}
+    if not values:
+        return ""
+    portable = {}
+    for raw_id, value in values.items():
+        try:
+            uid = uid_map[int(raw_id)]
+        except (KeyError, TypeError, ValueError):
+            # A value whose field was deleted. Keep it under its raw key so
+            # the export stays lossless rather than dropping it.
+            portable[str(raw_id)] = value
+            continue
+        portable[uid] = value
+    return json.dumps(portable)
+
+
+def _collection_identity_map(user):
+    """Map entry id -> serialized source identity, for source-linked copies."""
+    identity = {}
+    for link in CollectionEntrySource.objects.filter(user=user):
+        identity[link.entry_id] = json.dumps(
+            {
+                "source": link.source,
+                "record_id": link.source_record_id,
+                "occurrence": link.occurrence,
+                "derived": link.derived_identity,
+            },
+        )
+    return identity
 
 
 def write_backup(user, media_types=None, include_lists=True, include_collection=True):
@@ -598,12 +656,88 @@ COLLECTION_EXPORT_FIELDS = {
     "collection_audio_channels": "audio_channels",
     "collection_bitrate": "bitrate",
     "collection_collected_at": "collected_at",
+    "collection_purchase_price": "purchase_price",
+    "collection_purchase_location": "purchase_location",
 }
+
+# Columns that are computed rather than read straight off the entry. They
+# are appended, so an export written by this version still loads in an
+# older one (which simply ignores the extra columns).
+COLLECTION_CUSTOM_FIELDS_COLUMN = "collection_custom_fields"
+COLLECTION_SOURCE_IDENTITY_COLUMN = "collection_source_identity"
+
+# Bumped when the shape of the collection_schema payload changes.
+COLLECTION_SCHEMA_VERSION = 1
+
+
+def collection_field_uid(group_name, label):
+    """Return the portable identity of a custom field.
+
+    Database ids are per-user and not portable, so exports address fields by
+    group name plus label and the importer remaps them to the destination
+    user's own ids.
+    """
+    return f"{group_name}\u001f{label}"
+
+
+def _collection_schema_payload(user):
+    """Return the user's custom-field schema as a portable dict."""
+    sources = defaultdict(list)
+    for mapping in CollectionFieldSource.objects.filter(user=user).order_by(
+        "source",
+        "source_key",
+    ):
+        sources[mapping.field_id].append(
+            {
+                "source": mapping.source,
+                "source_key": mapping.source_key,
+                "source_label": mapping.source_label,
+                "created_field": mapping.created_field,
+            },
+        )
+
+    groups = CollectionFieldGroup.objects.filter(user=user).prefetch_related("fields")
+    return {
+        "version": COLLECTION_SCHEMA_VERSION,
+        "groups": [
+            {
+                "name": group.name,
+                "position": group.position,
+                "fields": [
+                    {
+                        "uid": collection_field_uid(group.name, field.label),
+                        "label": field.label,
+                        "field_type": field.field_type,
+                        "options": field.options,
+                        "media_types": field.media_types,
+                        "position": field.position,
+                        "sources": sources.get(field.id, []),
+                    }
+                    for field in group.fields.all()
+                ],
+            }
+            for group in groups
+        ],
+    }
+
+
+def _collection_field_uid_map(user):
+    """Map field id -> portable uid, for translating stored values."""
+    return {
+        field.id: collection_field_uid(field.group.name, field.label)
+        for field in CollectionField.objects.filter(
+            group__user=user,
+        ).select_related("group")
+    }
 
 
 def get_collection_fields():
     """Get collection-specific export fields."""
-    return list(COLLECTION_EXPORT_FIELDS)
+    return [
+        *COLLECTION_EXPORT_FIELDS,
+        COLLECTION_CUSTOM_FIELDS_COLUMN,
+        COLLECTION_SOURCE_IDENTITY_COLUMN,
+    ]
 
 
 def get_tag_fields():

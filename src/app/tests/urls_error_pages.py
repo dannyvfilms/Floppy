@@ -4,6 +4,7 @@ from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.http import Http404, HttpResponse
 from django.urls import path
 from django.views.decorators.csrf import csrf_protect
+from django.views.i18n import JavaScriptCatalog
 
 from app.models import Sources
 from app.providers import services
@@ -87,6 +88,11 @@ handler500 = "app.error_views.server_error"
 urlpatterns = [
     path("", home, name="home"),
     path("accounts/login/", account_login, name="account_login"),
+    path(
+        "jsi18n/",
+        login_not_required(JavaScriptCatalog.as_view()),
+        name="javascript-catalog",
+    ),
     path("boom-400/", boom_400),
     path("boom-403/", boom_403),
     path("boom-404/", boom_404),
