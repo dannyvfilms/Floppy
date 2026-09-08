@@ -73,6 +73,16 @@ def boom_hardcover_401(_request):
     )
 
 
+@login_not_required
+def boom_igdb_not_configured(_request):
+    """Raise an unconfigured-IGDB error for middleware testing."""
+    raise services.ProviderNotConfiguredError(
+        Sources.IGDB.value,
+        "IGDB is not configured. Add your Twitch application's client "
+        "ID and secret in Settings → Metadata providers.",
+    )
+
+
 @csrf_protect
 @login_not_required
 def csrf_protected(_request):
@@ -98,5 +108,6 @@ urlpatterns = [
     path("boom-404/", boom_404),
     path("boom-500/", boom_500),
     path("boom-hardcover-401/", boom_hardcover_401),
+    path("boom-igdb-not-configured/", boom_igdb_not_configured),
     path("csrf-protected/", csrf_protected),
 ]

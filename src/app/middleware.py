@@ -288,6 +288,18 @@ class ProviderAPIErrorMiddleware:
 
     def process_exception(self, request, exception):
         """Handle exceptions raised during request processing."""
+        if isinstance(exception, services.ProviderNotConfiguredError):
+            return render_error_page(
+                request,
+                "500.html",
+                status_code=503,
+                page_title="Provider Not Configured",
+                heading="Provider Not Configured",
+                error_message=str(exception),
+                exception=exception,
+                extra_lines=[f"Provider: {exception.provider_label}"],
+                extra_context={},
+            )
         if isinstance(exception, services.ProviderAPIError):
             is_provider_unreachable = exception.status_code is None
             extra_context = {}

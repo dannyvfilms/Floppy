@@ -511,6 +511,21 @@ class ProviderAPIError(Exception):
         super().__init__(message)
 
 
+class ProviderNotConfiguredError(ProviderAPIError):
+    """Raised when a provider is used before its credentials are set up."""
+
+    def __init__(self, provider, message):
+        """Initialize without the HTTP-response parsing in the parent class."""
+        self.provider = provider
+        self.response = None
+        self.status_code = None
+        try:
+            self.provider_label = Sources(provider).label
+        except ValueError:
+            self.provider_label = provider.title()
+        Exception.__init__(self, message)
+
+
 def raise_not_found_error(provider, media_id, media_type="item"):
     """
     Raise a 404 ProviderAPIError for when a media item is not found.

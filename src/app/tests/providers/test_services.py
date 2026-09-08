@@ -400,6 +400,15 @@ class ServicesTests(TestCase):
 
         self.assertNotIn("external_links", response)
 
+    def test_igdb_get_access_token_raises_not_configured_without_credentials(self):
+        """Missing IGDB credentials should raise a clear config error, not a raw Twitch error."""
+        with patch("app.providers.credentials.is_configured", return_value=False):
+            with self.assertRaises(services.ProviderNotConfiguredError) as cm:
+                igdb.get_access_token()
+
+        self.assertEqual(cm.exception.provider, Sources.IGDB.value)
+        self.assertIn("not configured", str(cm.exception))
+
     @patch("app.providers.mal.anime")
     def test_get_media_metadata_anime(self, mock_anime):
         """Test the get_media_metadata function for anime."""
