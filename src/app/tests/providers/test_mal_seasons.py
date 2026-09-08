@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.core.cache import cache
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 from app.models import Sources
 from app.providers import mal
@@ -91,3 +91,20 @@ class MalSeasonProviderTests(SimpleTestCase):
             headers={"X-MAL-CLIENT-ID": settings.MAL_API},
         )
         self.assertEqual(mock_request.call_args.kwargs["params"]["offset"], 100)
+
+    @patch("app.providers.mal.services.api_request", return_value={"data": []})
+    def test_seasonal_cache_is_scoped_to_nsfw_setting(self, mock_request):
+        with override_settings(MAL_NSFW=False):
+            mal.seasonal_anime(2026, "winter")
+            mal.seasonal_anime(2026, "winter")
+
+        with override_settings(MAL_NSFW=True):
+            mal.seasonal_anime(2026, "winter")
+            mal.seasonal_anime(2026, "winter")
+
+        self.assertEqual(mock_request.call_count, 2)
+        self.assertNotIn("nsfw", mock_request.call_args_list[0].kwargs["params"])
+        self.assertEqual(
+            mock_request.call_args_list[1].kwargs["params"]["nsfw"],
+            "true",
+        )

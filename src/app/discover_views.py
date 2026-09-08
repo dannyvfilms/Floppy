@@ -9,6 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from app import discover
@@ -53,7 +54,8 @@ DISCOVER_FAST_LOCAL_PLANNING_MEDIA_TYPES = {
 }
 ANIME_SEASONS = ("winter", "spring", "summer", "fall")
 ANIME_SEASON_MIN_YEAR = 1900
-ANIME_SEASON_FORMATS = ("all", "tv", "movie", "ova", "ona", "special")
+ANIME_SEASON_FUTURE_YEARS = 2
+ANIME_SEASON_FORMATS = ("all", "tv", "movie", "ova", "ona", "special", "music")
 ANIME_SEASON_SORTS = ("popularity", "score", "title")
 
 
@@ -76,7 +78,7 @@ def _coerce_anime_season_params(request):
         year = int(request.GET.get("year", current_year))
     except (TypeError, ValueError):
         year = current_year
-    if not ANIME_SEASON_MIN_YEAR <= year <= current_year + 10:
+    if not ANIME_SEASON_MIN_YEAR <= year <= current_year + ANIME_SEASON_FUTURE_YEARS:
         year = current_year
     anime_format = (request.GET.get("format") or "all").lower()
     if anime_format not in ANIME_SEASON_FORMATS:
@@ -454,9 +456,9 @@ def anime_seasons_page(request):
     error = ""
     anime = []
     if not credentials.is_configured("mal", user=request.user):
-        error = (
-            "MyAnimeList credentials are not configured. "
-            "Add a MAL client ID in Settings."
+        error = _(
+            "MyAnimeList credentials are not configured. Add a MAL client ID in "
+            "Settings."
         )
     else:
         try:
@@ -518,6 +520,12 @@ def anime_seasons_page(request):
 
     previous_year, previous_season = _adjacent_anime_cour(year, season, -1)
     next_year, next_season = _adjacent_anime_cour(year, season, 1)
+    season_options = [
+        {"value": "winter", "label": _("Winter")},
+        {"value": "spring", "label": _("Spring")},
+        {"value": "summer", "label": _("Summer")},
+        {"value": "fall", "label": _("Fall")},
+    ]
     return render(
         request,
         "app/anime_seasons.html",
@@ -528,11 +536,29 @@ def anime_seasons_page(request):
             "season": season,
             "selected_format": anime_format,
             "selected_sort": sort,
-            "seasons": ANIME_SEASONS,
-            "formats": ANIME_SEASON_FORMATS,
-            "sorts": ANIME_SEASON_SORTS,
+            "discover_media_options": _discover_media_options(request.user),
+            "season_label": next(
+                option["label"]
+                for option in season_options
+                if option["value"] == season
+            ),
+            "season_options": season_options,
+            "format_options": [
+                {"value": "all", "label": _("All formats")},
+                {"value": "tv", "label": _("TV")},
+                {"value": "movie", "label": _("Movies")},
+                {"value": "ova", "label": _("OVA")},
+                {"value": "ona", "label": _("ONA")},
+                {"value": "special", "label": _("Specials")},
+                {"value": "music", "label": _("Music")},
+            ],
+            "sort_options": [
+                {"value": "popularity", "label": _("Popularity")},
+                {"value": "score", "label": _("Score")},
+                {"value": "title", "label": _("Title")},
+            ],
             "year_options": range(
-                timezone.localdate().year + 2,
+                timezone.localdate().year + ANIME_SEASON_FUTURE_YEARS,
                 ANIME_SEASON_MIN_YEAR,
                 -1,
             ),

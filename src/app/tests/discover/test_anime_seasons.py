@@ -57,8 +57,9 @@ class AnimeSeasonsViewTests(TestCase):
             ["Movie First"],
         )
         self.assertContains(response, "/details/mal/anime/1/movie-first")
-        self.assertContains(response, "Plan to Watch")
-        self.assertContains(response, "Recommendations")
+        self.assertContains(response, "Add to tracker")
+        self.assertContains(response, "All Media")
+        self.assertContains(response, 'aria-current="page"')
         self.assertContains(response, '<div class="media-grid">')
         mock_seasonal_anime.assert_called_once_with(2026, "winter")
 
@@ -157,7 +158,12 @@ class AnimeSeasonsViewTests(TestCase):
 
         response = self.client.get(
             reverse("anime_seasons"),
-            {"year": "bad", "season": "monsoon", "format": "music", "sort": "new"},
+            {
+                "year": "bad",
+                "season": "monsoon",
+                "format": "invalid",
+                "sort": "new",
+            },
         )
 
         self.assertEqual(response.context["year"], 2026)

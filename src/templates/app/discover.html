@@ -37,23 +37,7 @@
       </div>
     </div>
 
-    <nav class="flex gap-2" aria-label="Discover modes">
-      <a href="{% url 'discover' %}" aria-current="page" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white">Recommendations</a>
-      <a href="{% url 'anime_seasons' %}" class="rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">Anime Seasons</a>
-    </nav>
-
-    <div class="flex flex-wrap gap-2">
-      {% for option in discover_media_options %}
-        <button type="button"
-                @click="switchMedia('{{ option.value }}')"
-                class="rounded-full border px-3 py-1.5 text-sm transition-colors cursor-pointer"
-                :class="selectedMedia === '{{ option.value }}'
-                  ? 'border-indigo-500 bg-indigo-600 text-white'
-                  : 'border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'">
-          {% translate option.label %}
-        </button>
-      {% endfor %}
-    </div>
+    {% include "app/components/discover_navigation.html" %}
 
     <div x-cloak
          x-show="cacheRefreshing"

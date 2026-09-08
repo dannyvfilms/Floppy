@@ -150,7 +150,9 @@ def search(media_type, query, page):
 
 def seasonal_anime(year, season):
     """Return a cached, normalized MAL seasonal anime listing."""
-    cache_key = f"{Sources.MAL.value}_season_{year}_{season}"
+    cache_key = (
+        f"{Sources.MAL.value}_season_{year}_{season}_nsfw_{int(settings.MAL_NSFW)}"
+    )
     data = cache.get(cache_key)
     if data is not None:
         return data

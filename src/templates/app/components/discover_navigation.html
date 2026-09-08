@@ -1,0 +1,24 @@
+{% load i18n %}
+<nav class="flex flex-wrap gap-2"
+     aria-label="{% translate "Discover sections" %}">
+    {% for option in discover_media_options %}
+        {% if anime_seasons_active %}
+            <a href="{% url 'discover' %}?media_type={{ option.value }}"
+               class="rounded-full border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-1.5 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+                {% translate option.label %}
+            </a>
+        {% else %}
+            <button type="button"
+                    @click="switchMedia('{{ option.value }}')"
+                    class="rounded-full border px-3 py-1.5 text-sm transition-colors cursor-pointer"
+                    :class="selectedMedia === '{{ option.value }}' ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'">
+                {% translate option.label %}
+            </button>
+        {% endif %}
+    {% endfor %}
+    <a href="{% url 'anime_seasons' %}"
+       {% if anime_seasons_active %}aria-current="page"{% endif %}
+       class="rounded-full border px-3 py-1.5 text-sm transition-colors {% if anime_seasons_active %}border-indigo-500 bg-indigo-600 text-white{% else %}border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]{% endif %}">
+        {% translate "Anime Seasons" %}
+    </a>
+</nav>
