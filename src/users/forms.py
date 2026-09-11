@@ -9,7 +9,7 @@ from django.db import IntegrityError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from .models import User
+from .models import PLAYBACK_WEBHOOK_SECRET_MAX_LENGTH, User
 
 USERNAME_TAKEN_ERROR_CODE = "username_taken"
 
@@ -120,6 +120,8 @@ class NotificationSettingsForm(forms.ModelForm):
             "daily_digest_enabled",
             "release_notifications_enabled",
             "premiere_notifications_enabled",
+            "playback_webhook_url",
+            "playback_webhook_secret",
         ]
         widgets = {
             "notification_urls": forms.Textarea(
@@ -132,6 +134,17 @@ class NotificationSettingsForm(forms.ModelForm):
                         "notifiarr://api_key/#channel_id"
                     ),
                 },
+            ),
+            "playback_webhook_url": forms.URLInput(
+                attrs={"placeholder": "https://example.com/playback"},
+            ),
+            # `render_value=False`: the whole point of moving the credential out
+            # of the URL is that the page stops showing it, so a screenshot or a
+            # screen-share of this form leaks nothing. It is never written back
+            # into the HTML, not even masked.
+            "playback_webhook_secret": forms.PasswordInput(
+                render_value=False,
+                attrs={"placeholder": "Leave blank to keep the current secret"},
             ),
         }
 
@@ -154,6 +167,37 @@ class NotificationSettingsForm(forms.ModelForm):
                 raise ValidationError(message)
 
         return notification_urls
+
+    def clean_playback_webhook_secret(self):
+        """Encrypt the submitted secret, or keep the stored one when blank.
+
+        A `render_value=False` password field always posts empty, so without
+        this every unrelated save on this page — toggling the daily digest —
+        would silently wipe the secret and start sending unsigned requests.
+        Clearing it is done by clearing the webhook URL, which turns the whole
+        feature off.
+
+        What is returned here is what lands in the column, so it is ciphertext:
+        the column stores the secret the way every other credential in this app
+        is stored, and the blank branch passes the stored ciphertext straight
+        back through untouched.
+        """
+        submitted = (self.cleaned_data.get("playback_webhook_secret") or "").strip()
+        if not submitted:
+            return self.instance.playback_webhook_secret if self.instance else ""
+
+        if len(submitted) > PLAYBACK_WEBHOOK_SECRET_MAX_LENGTH:
+            message = (
+                f"Keep the secret to {PLAYBACK_WEBHOOK_SECRET_MAX_LENGTH} "
+                "characters or fewer."
+            )
+            raise ValidationError(message)
+
+        # Local import, the way `users.views` reaches for it: the helper
+        # pulls in the import stack, which this module has no other need of.
+        from integrations.imports.helpers import encrypt
+
+        return encrypt(submitted)
 
 
 class AuthenticatorSetupForm(forms.Form):

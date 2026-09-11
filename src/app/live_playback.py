@@ -105,6 +105,35 @@ def set_user_playback_state(user_id: int, state: dict) -> None:
         state,
         timeout=PLAYBACK_CACHE_TIMEOUT_SECONDS,
     )
+    _queue_playback_webhook(user_id)
+
+
+def _queue_playback_webhook(user_id: int) -> None:
+    """Queue the outgoing playback webhook, for users who configured one.
+
+    Hung off the single writer rather than the event handlers so it cannot
+    miss a state change: play, pause, resume, stop, scrobble and the deferred
+    artwork fill all land here.
+
+    A user who has configured nothing pays one indexed EXISTS query and no
+    more — everything past that check happens in a separate task, so a slow
+    endpoint cannot delay the state write that just succeeded. The media-server
+    webhooks all reach this from a Celery worker (`process_webhook.delay`), but
+    `ScrobbleView._update_live_playback` reaches it in-request, so that query is
+    on the response path for the scrobble API.
+    """
+    has_webhook = (
+        get_user_model()
+        .objects.filter(pk=user_id)
+        .exclude(playback_webhook_url="")
+        .exists()
+    )
+    if not has_webhook:
+        return
+
+    from app.tasks import post_playback_webhook
+
+    post_playback_webhook.delay(user_id)
 
 
 def clear_user_playback_state(user_id: int) -> None:
@@ -375,10 +404,21 @@ def apply_playback_event(
         playback_media_type=playback_media_type,
     ):
         if offset_seconds is None:
-            offset_seconds = _coerce_int(
-                existing_state.get("view_offset_seconds"),
-                0,
-            )
+            # **The estimate, not the raw stored offset.**
+            #
+            # Not every client reports a view offset on every event — some send
+            # none at all. While playing that costs nothing, because
+            # `_estimate_progress_seconds` adds wall-clock on read. But a pause
+            # writes a new state, and storing the raw offset there discards the
+            # position the server had just computed: a session that started at
+            # zero and ran for two minutes was stored as zero the moment it was
+            # paused, and every reader — the web card, the API, a client's Lock
+            # Screen — showed 0:00 for something two minutes in.
+            #
+            # Taking the estimate keeps what playing had already established,
+            # and is a no-op when the event does carry an offset, since this
+            # branch only runs when it does not.
+            offset_seconds = _estimate_progress_seconds(existing_state, now_ts)
         if dur_seconds is None:
             dur_seconds = _coerce_int(
                 existing_state.get("duration_seconds"),

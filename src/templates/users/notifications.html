@@ -66,6 +66,24 @@
         </div>
 
         <div>
+          <h3 class="text-sm font-medium text-[var(--color-text-secondary)] mb-2">{% translate "Playback Webhook" %}</h3>
+          <div class="bg-[var(--color-surface-strong)] p-4 rounded-md">
+            {{ form.playback_webhook_url|add_class:"w-full p-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-[var(--color-border)] focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" }}
+            <p class="mt-1 text-xs text-[var(--color-text-muted)]">
+              {% translate "POSTs the live playback state to this URL whenever it changes — the same body" %}
+              <code class="bg-[var(--color-surface)] px-1 py-0.5 rounded">/api/v1/playback/now-playing/</code>
+              {% translate "returns. For home automation or a client that wants playback pushed to it rather than polled. Leave blank to send nothing." %}
+            </p>
+            {{ form.playback_webhook_secret|add_class:"w-full mt-3 p-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-[var(--color-border)] focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50" }}
+            <p class="mt-1 text-xs text-[var(--color-text-muted)]">
+              {% translate "Optional shared secret. When set, each request carries" %}
+              <code class="bg-[var(--color-surface)] px-1 py-0.5 rounded">X-Floppy-Signature: sha256=&lt;hmac&gt;</code>
+              {% translate "over the exact body sent, so the receiver can verify it came from you. Leave blank to keep the current secret; clear the URL above to turn the webhook off." %}
+            </p>
+          </div>
+        </div>
+
+        <div>
           <h3 class="text-sm font-medium text-[var(--color-text-secondary)] mb-2">{% translate "Notification Settings" %}</h3>
 
           {# Notification Settings #}
