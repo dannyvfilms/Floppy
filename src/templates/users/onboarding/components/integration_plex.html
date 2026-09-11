@@ -1,14 +1,16 @@
+
+{% load i18n %}
 {% load app_tags %}
 <div class="w-full max-w-md text-left bg-[var(--color-surface-dim)] p-4 rounded-md">
-  <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
+  <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
   <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
-    <li>You will need a Plex Pass subscription to use webhooks.</li>
-    <li>In Plex, go to <strong>Settings &gt; Server &gt; Network</strong> and enable Webhooks.</li>
+    <li>{% translate "You will need a Plex Pass subscription to use webhooks." %}</li>
+    <li>{% translate "In Plex, go to" %} <strong>{% translate "Settings > Server > Network" %}</strong> {% translate "and enable Webhooks." %}</li>
     <li>
-      Go to <a href="https://app.plex.tv/desktop/#!/settings/webhooks"
+      {% translate "Go to" %} <a href="https://app.plex.tv/desktop/#!/settings/webhooks"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-[var(--color-link)] hover:underline">Settings &gt; Webhooks</a> and click <strong>Add Webhook</strong>, then enter the following URL:
+                class="text-[var(--color-link)] hover:underline">{% translate "Settings > Webhooks" %}</a> {% translate "and click" %} <strong>{% translate "Add Webhook" %}</strong>{% translate ", then enter the following URL:" %}
       {# djlint:off #}
       <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
         <input readonly
@@ -17,7 +19,7 @@
                type="text"
                value="{% url 'plex_webhook' request.user.token as plex_webhook_path %}{% absolute_app_url plex_webhook_path %}">
         <span class="flex items-center cursor-pointer group"
-              title="Copy"
+              title="{% translate "Copy" %}"
               data-copy-target="#onboarding-plex-webhook-url">
           {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
         </span>

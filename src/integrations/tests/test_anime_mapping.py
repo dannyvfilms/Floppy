@@ -103,6 +103,43 @@ class AnimeMappingSnapshotTests(SimpleTestCase):
 
             self.assertEqual(anime_mapping.find_entries_for_mal_id("missing"), [])
 
+    def test_resolve_provider_id_supports_anime_movies_and_imdb(self):
+        mapping = {
+            "movie": {
+                "mal_id": "199",
+                "tmdb_movie_id": "129",
+                "imdb_id": "tt0245429",
+            }
+        }
+        with patch.object(
+            anime_mapping,
+            "_load_source_data",
+            return_value=(mapping, "revision-a", "digest-a"),
+        ):
+            self.assertEqual(
+                anime_mapping.resolve_provider_id(
+                    "199",
+                    "tmdb",
+                    media_type="movie",
+                ),
+                "129",
+            )
+            self.assertEqual(
+                anime_mapping.resolve_provider_id("199", "imdb"),
+                "tt0245429",
+            )
+
+    def test_resolve_provider_id_rejects_ambiguous_mapping(self):
+        with patch.object(
+            anime_mapping,
+            "find_entries_for_mal_id",
+            return_value=[
+                {"mal_id": "199", "imdb_id": "tt0000001"},
+                {"mal_id": "199", "imdb_id": "tt0000002"},
+            ],
+        ):
+            self.assertIsNone(anime_mapping.resolve_provider_id("199", "imdb"))
+
     @tag("slow", "benchmark")
     def test_mal_index_lookup_is_bounded_for_large_mapping(self):
         """Regression for #995: the MAL lookup must be O(1), not a full scan.

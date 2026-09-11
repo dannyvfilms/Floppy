@@ -695,7 +695,9 @@ class TestPlexImportScenarios(TestCase):
             (_ for _ in ()).throw(error_404) if mid == bad_id else {"id": mid}
         )
 
-        mock_search.return_value = {"results": [{"media_id": correct_id}]}
+        mock_search.return_value = {
+            "results": [{"media_id": correct_id, "title": title}],
+        }
 
         result = self.importer._get_tv_metadata(bad_id, {3}, title)
 
@@ -716,7 +718,9 @@ class TestPlexImportScenarios(TestCase):
             (_ for _ in ()).throw(error_404) if mid == bad_id else {"id": mid}
         )
 
-        mock_search.return_value = {"results": [{"media_id": correct_id}]}
+        mock_search.return_value = {
+            "results": [{"media_id": correct_id, "title": title}],
+        }
 
         result = self.importer._get_tv_metadata(bad_id, {2, 3}, title)
 
@@ -736,7 +740,9 @@ class TestPlexImportScenarios(TestCase):
             (_ for _ in ()).throw(error_404) if mid == bad_id else {"id": mid}
         )
 
-        mock_search.return_value = {"results": [{"media_id": correct_id}]}
+        mock_search.return_value = {
+            "results": [{"media_id": correct_id, "title": title}],
+        }
 
         # Test Season 5 request
         result = self.importer._get_tv_metadata(bad_id, {5}, title)
@@ -756,7 +762,9 @@ class TestPlexImportScenarios(TestCase):
             (_ for _ in ()).throw(error_404) if mid == bad_id else {"id": mid}
         )
 
-        mock_search.return_value = {"results": [{"media_id": returned_id}]}
+        mock_search.return_value = {
+            "results": [{"media_id": returned_id, "title": title}],
+        }
 
         result = self.importer._get_tv_metadata(bad_id, {1}, title)
 

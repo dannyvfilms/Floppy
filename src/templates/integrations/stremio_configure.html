@@ -1,0 +1,219 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en"
+      class="{% if user.is_authenticated and user.theme == 'light' %}light{% elif user.is_authenticated and user.theme == 'dark' %}dark{% endif %}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configure Floppy for Stremio</title>
+  <link rel="icon" href="{% static 'favicon/favicon-32x32.png' %}">
+  <link rel="stylesheet" href="{% static 'css/main.css' %}">
+  <style>
+    body {
+      margin: 0; padding: 2rem 1rem;
+      background: var(--color-page-bg); color: var(--color-text);
+      line-height: 1.5;
+    }
+    main { max-width: 34rem; margin: 0 auto; }
+    .brand { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.25rem; }
+    .brand img { height: 2.25rem; width: 158px; }
+    .brand img.mono { object-fit: cover; object-position: center; }
+    h1 { font-size: 1.35rem; margin: 0 0 .35rem; }
+    p.lede { margin: 0 0 1.5rem; color: var(--color-text-muted); font-size: .93rem; }
+    fieldset {
+      border: 1px solid var(--color-border); border-radius: .6rem;
+      background: var(--color-panel); padding: 1rem 1.1rem; margin: 0 0 1.25rem;
+    }
+    legend {
+      padding: 0 .4rem; color: var(--color-text-muted); font-size: .8rem;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    ul#catalog-list { list-style: none; margin: 0; padding: 0; }
+    ul#catalog-list li {
+      display: flex; align-items: center; gap: .6rem; padding: .45rem 0;
+      border-bottom: 1px solid var(--color-border);
+    }
+    ul#catalog-list li:last-child { border-bottom: 0; }
+    ul#catalog-list li.off .name, ul#catalog-list li.off .type { opacity: .45; }
+    .name { flex: 1; }
+    .type { color: var(--color-text-muted); font-size: .8rem; }
+    input[type="checkbox"] {
+      width: 1.05rem; height: 1.05rem;
+      accent-color: var(--color-accent); cursor: pointer;
+    }
+    .move {
+      background: var(--color-surface-strong); border: 0;
+      color: var(--color-text-secondary); border-radius: .35rem;
+      width: 1.75rem; height: 1.75rem; font-size: .85rem;
+      cursor: pointer; line-height: 1;
+    }
+    .move:hover:not(:disabled) { background: var(--color-surface-hover); }
+    .move:disabled { opacity: .3; cursor: default; }
+    .url {
+      display: block; width: 100%; box-sizing: border-box;
+      background: var(--color-surface-dim); border: 1px solid var(--color-border);
+      border-radius: .5rem; color: var(--color-text-secondary); padding: .7rem .8rem;
+      font-family: ui-monospace, monospace; font-size: .8rem; word-break: break-all;
+      margin-bottom: 1rem; resize: none;
+    }
+    .actions { display: flex; gap: .6rem; flex-wrap: wrap; }
+    a.btn, button.btn {
+      appearance: none; border: 0; border-radius: .5rem; padding: .65rem 1.1rem;
+      font-size: .9rem; font-weight: 600; cursor: pointer; text-decoration: none;
+      background: var(--color-accent); color: var(--color-page-bg);
+    }
+    button.btn.secondary {
+      background: var(--color-surface-strong); color: var(--color-text);
+    }
+    .warn {
+      color: var(--color-warning-text); font-size: .85rem;
+      min-height: 1.2rem; margin: .75rem 0 0;
+    }
+    .hint { color: var(--color-text-muted); font-size: .85rem; margin: 0 0 .6rem; }
+  </style>
+</head>
+</head>
+<body>
+<main>
+  <div class="brand">
+    {% if user.is_authenticated and user.logo_style == 'monochrome' %}
+      <img src="{% static 'img/floppy-logo-white.png' %}" alt="Floppy"
+           width="158" height="48" class="mono">
+    {% else %}
+      <img src="{% static 'img/floppy-logo.png' %}"
+           srcset="{% static 'img/floppy-logo.png' %} 1x,
+                   {% static 'img/floppy-logo@2x.png' %} 2x"
+           alt="Floppy">
+    {% endif %}
+  </div>
+  <h1>Configure Floppy for Stremio</h1>
+  <p class="lede">Choose which catalogs this addon publishes and the order they appear in. Reinstall the addon in Stremio for changes to take effect.</p>
+
+  <fieldset>
+    <legend>Catalogs</legend>
+    <ul id="catalog-list"></ul>
+  </fieldset>
+
+  <p class="hint">Use the URL below &mdash; not the address of this page. It works in Stremio directly, or in an addon manager such as AIOStreams or AIOMetadata.</p>
+
+  <textarea class="url" id="install-url" rows="3" readonly></textarea>
+
+  <div class="actions">
+    <a class="btn" id="install" href="#">Install in Stremio</a>
+    <button class="btn secondary" id="copy" type="button">Copy URL</button>
+  </div>
+  <p class="warn" id="warn"></p>
+</main>
+
+{{ catalog_options|json_script:"catalog-options" }}
+{{ selected_ids|json_script:"selected-ids" }}
+<script>
+  (function () {
+    var options = JSON.parse(document.getElementById("catalog-options").textContent);
+    var selected = JSON.parse(document.getElementById("selected-ids").textContent);
+    var list = document.getElementById("catalog-list");
+    var urlField = document.getElementById("install-url");
+    var installLink = document.getElementById("install");
+    var warn = document.getElementById("warn");
+
+    var byId = {};
+    options.forEach(function (option) { byId[option.id] = option; });
+
+    var order = selected.filter(function (id) { return byId[id]; });
+    options.forEach(function (option) {
+      if (order.indexOf(option.id) === -1) { order.push(option.id); }
+    });
+
+    var checked = {};
+    options.forEach(function (option) {
+      checked[option.id] = selected.indexOf(option.id) !== -1;
+    });
+
+    function baseUrl() {
+      var path = window.location.pathname
+        .replace(/\/configure\/?$/, "")
+        .replace(/\/c\/[^/]*$/, "");
+      return window.location.origin + path;
+    }
+
+    function move(index, delta) {
+      var target = index + delta;
+      if (target < 0 || target >= order.length) { return; }
+      var moved = order[index];
+      order[index] = order[target];
+      order[target] = moved;
+      render();
+    }
+
+    function row(id, index) {
+      var option = byId[id];
+      var li = document.createElement("li");
+      if (!checked[id]) { li.className = "off"; }
+
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = checked[id];
+      box.setAttribute("aria-label", "Publish " + option.label);
+      box.addEventListener("change", function () {
+        checked[id] = box.checked;
+        render();
+      });
+
+      var name = document.createElement("span");
+      name.className = "name";
+      name.textContent = "Floppy: " + option.label;
+
+      var type = document.createElement("span");
+      type.className = "type";
+      type.textContent = option.stremio_type;
+
+      var up = document.createElement("button");
+      up.type = "button";
+      up.className = "move";
+      up.textContent = "\u2191";
+      up.setAttribute("aria-label", "Move " + option.label + " up");
+      up.disabled = index === 0;
+      up.addEventListener("click", function () { move(index, -1); });
+
+      var down = document.createElement("button");
+      down.type = "button";
+      down.className = "move";
+      down.textContent = "\u2193";
+      down.setAttribute("aria-label", "Move " + option.label + " down");
+      down.disabled = index === order.length - 1;
+      down.addEventListener("click", function () { move(index, 1); });
+
+      li.appendChild(box);
+      li.appendChild(name);
+      li.appendChild(type);
+      li.appendChild(up);
+      li.appendChild(down);
+      return li;
+    }
+
+    function render() {
+      list.textContent = "";
+      order.forEach(function (id, index) { list.appendChild(row(id, index)); });
+
+      var chosen = order.filter(function (id) { return checked[id]; });
+      var url = chosen.length
+        ? baseUrl() + "/c/" + chosen.map(encodeURIComponent).join(",") + "/manifest.json"
+        : baseUrl() + "/manifest.json";
+      urlField.value = url;
+      installLink.href = url.replace(/^https?:/, "stremio:");
+      warn.textContent = chosen.length
+        ? ""
+        : "Nothing selected \u2014 the default catalogs will be used.";
+    }
+
+    document.getElementById("copy").addEventListener("click", function () {
+      urlField.select();
+      navigator.clipboard.writeText(urlField.value).then(function () {
+        warn.textContent = "Copied.";
+      });
+    });
+
+    render();
+  })();
+</script>
+</body>
+</html>

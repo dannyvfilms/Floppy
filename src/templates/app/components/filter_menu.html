@@ -1,0 +1,1508 @@
+{% load i18n %}
+{% firstof filter_form_id "filter-form" as resolved_filter_form_id %}
+{% comment %}The filter dropdown menu, shared by the library/person browse
+   toolbar and the smart-list rule builder. Panes appear only when the caller's
+   filter_data carries their options, so each page shows just its own filters.
+
+   Params: filter_hx_endpoint, filter_hx_target, filter_form_id, filter_data_id,
+   filter_on_change, filter_show_ranges, filter_show_media_types.
+{% endcomment %}
+    {% firstof filter_data_id "media-filter-data" as resolved_filter_data_id %}
+    {% if filter_data %}{{ filter_data|json_script:resolved_filter_data_id }}{% endif %}
+
+    <!-- Filter Menu -->
+    <div class="relative filter-control"
+         x-data="mediaFilterMenu('{{ filter_data_id|default:'media-filter-data' }}')"
+         @click.outside="open = false; view = 'root'">
+      <button class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+              @click="open = !open; if (open) { view = 'root'; }"
+              type="button">
+        <span class="block min-w-0 truncate max-w-[10rem] sm:max-w-[14rem]"
+              x-text="filterLabel()"></span>
+        <svg xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 20 20"
+             class="w-4 h-4 ml-2"
+             aria-hidden="true">
+          <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+        </svg>
+      </button>
+
+      <div class="absolute z-40 mt-2 w-60 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
+           x-cloak
+           x-show="open"
+           x-transition:enter="transition ease-out duration-100"
+           x-transition:enter-start="transform opacity-0 scale-95"
+           x-transition:enter-end="transform opacity-100 scale-100"
+           x-transition:leave="transition ease-in duration-75"
+           x-transition:leave-start="transform opacity-100 scale-100"
+           x-transition:leave-end="transform opacity-0 scale-95">
+        <div x-show="view === 'root'" x-cloak>
+          <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                  hx-target="{{ filter_hx_target }}"
+                  hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                  hx-indicator="#loading-indicator"
+                  class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                  @click="clearFilters(); open = false; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                  type="button">
+            <span>{% translate "All" %}</span>
+            <span class="ml-auto text-xs text-[var(--color-text-muted)]"
+                  x-show="filterLabel() === gettext('All')">{% translate "Active" %}</span>
+          </button>
+
+          {% if filter_show_media_types %}
+            <div class="border-t border-gray-700 my-1"></div>
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'mediaTypes'"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Media Types" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="dropdownLabel()"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+          {% if filter_data.lists %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'list'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "List" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="selectedLists.length ? interpolate(gettext('%s Selected'), [selectedLists.length]) : gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if media_type == 'music' or media_type == 'comic' %}
+            <div class="border-t border-gray-700 my-1"></div>
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'mediaType'"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Media Type" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]">
+                {% if media_type == 'music' %}
+                  {{ current_subview|default:'artists'|title }}
+                {% else %}
+                  {{ current_subview|default:'comics'|title }}
+                {% endif %}
+              </span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          <div class="border-t border-gray-700 my-1"></div>
+          <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                  @click="view = 'rating'"
+                  type="button">
+            <span class="flex-shrink-0 mr-3">{% translate "Rating" %}</span>
+            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                  x-text="ratingLabels[rating] || gettext('Any')"></span>
+            <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+          </button>
+          <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                  @click="view = 'collection'"
+                  type="button">
+            <span class="flex-shrink-0 mr-3">{% translate "Collection" %}</span>
+            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                  x-text="collectionLabels[collection] || gettext('Any')"></span>
+            <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+          </button>
+
+          {% if filter_data.show_progress %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'progress'"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Progress" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="progressLabels[progress] || gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.genres %}
+            <div class="border-t border-gray-700 my-1"></div>
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'genre'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Genre" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="genre || gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+          {% if filter_data.implied_genres %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'impliedGenre'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Implied Genre" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="implied_genre || gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.years %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'date'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Date" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem] truncate"
+                    x-text="(year ? (year === 'unknown' ? gettext('Unknown') : year) : '') {% if filter_show_completed_date %}|| relativeWindowLabel(completed_date_within, completed_date_within_unit) || ((completed_date_from || completed_date_to) ? gettext('Completed') : ''){% endif %} {% if filter_show_ranges %}|| relativeWindowLabel(release_date_within, release_date_within_unit) || relativeWindowLabel(date_added_within, date_added_within_unit) || ((release_date_from || release_date_to || date_added_from || date_added_to) ? gettext('Range') : ''){% endif %} || gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+          <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                  @click="view = 'release'"
+                  type="button">
+            <span class="flex-shrink-0 mr-3">{% translate "Released" %}</span>
+            <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                  x-text="releaseLabels[release] || gettext('Any')"></span>
+            <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+          </button>
+
+          {% if filter_data.sources %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'source'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Source" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="source ? source.toUpperCase() : gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.media_statuses %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'mediaStatus'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Availability" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="media_status ? media_status : gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.show_languages %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'language'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Language" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="language ? (language.length <= 3 ? language.toUpperCase() : language) : gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.show_countries %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'country'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Country" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="country ? (country.length <= 3 ? country.toUpperCase() : country) : gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.show_platforms %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'platform'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Platform" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    {% if filter_platform_multi %}x-text="selectedPlatforms.length ? selectedPlatforms.join(', ') : gettext('Any')"{% else %}x-text="platform || gettext('Any')"{% endif %}></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.show_origins %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'origin'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Origin" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="origin ? (origin.length <= 3 ? origin.toUpperCase() : origin) : gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.show_formats %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'format'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Format" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="format ? (format === 'ebook' ? 'eBook' : format.charAt(0).toUpperCase() + format.slice(1)) : gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.show_authors and filter_data.authors %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'author'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Author" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="author || gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.show_providers %}
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'provider'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Streaming Service" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="provider || gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.departments %}
+            <div class="border-t border-gray-700 my-1"></div>
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'department'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Department" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="department || gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+
+          {% if filter_data.tags %}
+            <div class="border-t border-gray-700 my-1"></div>
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'tag'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Tag" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="selectedTags.length ? selectedTags.join(', ') : gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+          {% endif %}
+        </div>
+
+        <div x-show="view === 'mediaType'" x-cloak>
+          <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Media Type" %}</div>
+          </div>
+          {% if media_type == 'music' %}
+            <a href="{% url 'medialist' media_type %}?subview=artists"
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
+              <span>{% translate "Artists" %}</span>
+              {% if current_subview == 'artists' or not current_subview %}
+                <span class="ml-auto">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+              {% endif %}
+            </a>
+            <a href="{% url 'medialist' media_type %}?subview=albums"
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
+              <span>{% translate "Albums" %}</span>
+              {% if current_subview == 'albums' %}
+                <span class="ml-auto">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+              {% endif %}
+            </a>
+            <a href="{% url 'medialist' media_type %}?subview=tracks"
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
+              <span>{% translate "Tracks" %}</span>
+              {% if current_subview == 'tracks' %}
+                <span class="ml-auto">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+              {% endif %}
+            </a>
+          {% elif media_type == 'comic' %}
+            <a href="{% url 'medialist' media_type %}?subview=comics"
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
+              <span>{% translate "Comics" %}</span>
+              {% if current_subview == 'comics' or not current_subview %}
+                <span class="ml-auto">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+              {% endif %}
+            </a>
+            <a href="{% url 'medialist' media_type %}?subview=issues"
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
+              <span>{% translate "Issues" %}</span>
+              {% if current_subview == 'issues' %}
+                <span class="ml-auto">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
+              {% endif %}
+            </a>
+          {% endif %}
+        </div>
+
+        <div x-show="view === 'genre'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Genre" %}</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="genreSearch"
+                   placeholder="{% translate "Filter Genre" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="genre = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "All Genres" %}</span>
+              <span class="ml-auto" x-show="genre === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredGenres()" :key="option">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="genre = option; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
+                <span class="ml-auto" x-show="genre === option">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div x-show="view === 'impliedGenre'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Implied Genre" %}</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="impliedGenreSearch"
+                   placeholder="{% translate "Filter Implied Genre" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="implied_genre = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "All Implied Genres" %}</span>
+              <span class="ml-auto" x-show="implied_genre === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredImpliedGenres()" :key="option">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="implied_genre = option; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
+                <span class="ml-auto" x-show="implied_genre === option">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div x-show="view === 'rating'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Rating" %}</div>
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="rating = 'all'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Any Rating" %}</span>
+              <span class="ml-auto" x-show="rating === 'all'">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="rating = 'rated'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Rated" %}</span>
+              <span class="ml-auto" x-show="rating === 'rated'">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="rating = 'not_rated'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Not Rated" %}</span>
+              <span class="ml-auto" x-show="rating === 'not_rated'">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            {% if filter_show_ranges %}
+              <div class="border-t border-gray-700 my-2"></div>
+              <div class="px-4 py-3 space-y-2">
+                <div class="mb-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "Score Range" %}</div>
+            {% include "app/components/filter_range_panel.html" with range_from_var="rating_min" range_to_var="rating_max" range_input_type="number" range_min="0" range_max="10" range_step="0.1" filter_hx_endpoint=filter_hx_endpoint filter_hx_target=filter_hx_target filter_form_id=filter_form_id filter_on_change=filter_on_change %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if filter_show_ranges %}
+          <div x-show="view === 'releaseDate'" x-cloak class="p-2">
+            <div class="flex items-center gap-2 px-2 py-1">
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                      @click="view = 'date'"
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Release Date Range" %}</div>
+            </div>
+            <div class="px-2 py-2 space-y-2">
+            {% include "app/components/filter_range_panel.html" with range_from_var="release_date_from" range_within_var="release_date_within" range_within_unit_var="release_date_within_unit" relative_date_units=filter_data.relative_date_units range_to_var="release_date_to" filter_hx_endpoint=filter_hx_endpoint filter_hx_target=filter_hx_target filter_form_id=filter_form_id filter_on_change=filter_on_change %}
+            </div>
+          </div>
+
+          <div x-show="view === 'dateAdded'" x-cloak class="p-2">
+            <div class="flex items-center gap-2 px-2 py-1">
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                      @click="view = 'date'"
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Date Added" %}</div>
+            </div>
+            <div class="px-2 py-2 space-y-2">
+            {% include "app/components/filter_range_panel.html" with range_from_var="date_added_from" range_within_var="date_added_within" range_within_unit_var="date_added_within_unit" relative_date_units=filter_data.relative_date_units range_to_var="date_added_to" filter_hx_endpoint=filter_hx_endpoint filter_hx_target=filter_hx_target filter_form_id=filter_form_id filter_on_change=filter_on_change %}
+            </div>
+          </div>
+        {% endif %}
+
+        {% if filter_show_media_types %}
+          <div x-show="view === 'mediaTypes'" x-cloak class="p-2">
+            <div class="flex items-center gap-2 px-2 py-1">
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                      @click="view = 'root'"
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Media Types" %}</div>
+              <button type="button"
+                      class="ml-auto text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
+                    hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                      @click="toggleAllTypes(); setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      x-text="allTypesSelected() ? gettext('Hide all') : gettext('Show all')"></button>
+            </div>
+            <div class="max-h-64 overflow-y-auto">
+              <template x-for="type in availableMediaTypes" :key="type.value">
+                <button type="button"
+                    hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="toggleMediaType(type.value); setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}">
+                  <span x-text="type.label"></span>
+                  <span class="ml-auto" x-show="isTypeSelected(type.value)">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+        {% endif %}
+
+        {% if filter_data.lists %}
+          <div x-show="view === 'list'" x-cloak class="p-2">
+            <div class="flex items-center gap-2 px-2 py-1">
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                      @click="view = 'root'"
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "List" %}</div>
+            </div>
+            <div class="px-2 py-2">
+              <input type="text"
+                     x-model="listSearch"
+                     placeholder="{% translate "Filter Lists" %}"
+                     class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="max-h-64 overflow-y-auto">
+              <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                      @click="selectedLists = []; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span>{% translate "Clear Lists" %}</span>
+                <span class="ml-auto" x-show="selectedLists.length === 0">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+              <template x-for="option in filteredLists()" :key="option.id">
+                <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                        @click="toggleList(option.id); setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                        type="button">
+                  <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                  <span class="ml-auto" x-show="isListSelected(option.id)">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+        {% endif %}
+
+        <div x-show="view === 'collection'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Collection" %}</div>
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="collection = 'all'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Any Collection" %}</span>
+              <span class="ml-auto" x-show="collection === 'all'">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="collection = 'collected'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Collected" %}</span>
+              <span class="ml-auto" x-show="collection === 'collected'">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="collection = 'not_collected'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Not Collected" %}</span>
+              <span class="ml-auto" x-show="collection === 'not_collected'">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+          </div>
+        </div>
+
+          {% if filter_data.show_progress %}
+          <div x-show="view === 'progress'" x-cloak class="p-2">
+              <div class="flex items-center gap-2 px-2 py-1">
+                <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                        @click="view = 'root'"
+                        type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+                <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Progress" %}</div>
+              </div>
+              <div class="max-h-64 overflow-y-auto">
+                <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                        hx-target="{{ filter_hx_target }}"
+                        hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                        hx-indicator="#loading-indicator"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="progress = 'all'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                        type="button">
+                  <span>{% translate "Any Progress" %}</span>
+                  <span class="ml-auto" x-show="progress === 'all'">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+                <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                        hx-target="{{ filter_hx_target }}"
+                        hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                        hx-indicator="#loading-indicator"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="progress = 'not_caught_up'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                        type="button">
+                  <span>{% translate "Not Caught Up" %}</span>
+                  <span class="ml-auto" x-show="progress === 'not_caught_up'">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+                <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                        hx-target="{{ filter_hx_target }}"
+                        hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                        hx-indicator="#loading-indicator"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="progress = 'caught_up'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                        type="button">
+                  <span>{% translate "Caught Up" %}</span>
+                  <span class="ml-auto" x-show="progress === 'caught_up'">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+              </div>
+            </div>
+        {% endif %}
+
+        <div x-show="view === 'date'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Date" %}</div>
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="view = 'year'; resetSearch()"
+                    type="button">
+              <span class="flex-shrink-0 mr-3">{% translate "Release Date" %}</span>
+              <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                    x-text="year ? (year === 'unknown' ? gettext('Unknown') : year) : gettext('Any')"></span>
+              <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+            </button>
+            {% if filter_show_ranges %}
+              <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="view = 'releaseDate'"
+                      type="button">
+                <span class="flex-shrink-0 mr-3">{% translate "Release Date Range" %}</span>
+                <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                      x-text="relativeWindowLabel(release_date_within, release_date_within_unit) || ((release_date_from || release_date_to) ? ((release_date_from || '…') + ' – ' + (release_date_to || '…')) : gettext('Any'))"></span>
+                <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+              </button>
+            {% endif %}
+            {% if filter_show_completed_date %}
+              <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="view = 'completedDate'"
+                      type="button">
+                <span class="flex-shrink-0 mr-3">{% translate "Completed Date" %}</span>
+                <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                      x-text="relativeWindowLabel(completed_date_within, completed_date_within_unit) || ((completed_date_from || completed_date_to) ? ((completed_date_from || '…') + ' – ' + (completed_date_to || '…')) : gettext('Any'))"></span>
+                <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+              </button>
+            {% endif %}
+            {% if filter_show_ranges %}
+              <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="view = 'dateAdded'"
+                      type="button">
+                <span class="flex-shrink-0 mr-3">{% translate "Date Added" %}</span>
+                <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                      x-text="relativeWindowLabel(date_added_within, date_added_within_unit) || ((date_added_from || date_added_to) ? ((date_added_from || '…') + ' – ' + (date_added_to || '…')) : gettext('Any'))"></span>
+                <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+              </button>
+            {% endif %}
+          </div>
+        </div>
+
+        {% if filter_show_completed_date %}
+          <div x-show="view === 'completedDate'" x-cloak class="p-2">
+            <div class="flex items-center gap-2 px-2 py-1">
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                      @click="view = 'date'"
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Completed Date" %}</div>
+            </div>
+            <div class="px-2 py-2 space-y-2">
+              {% if filter_data.years %}
+                <button class="flex items-center w-full px-3 py-2 rounded-md text-left text-sm transition-colors cursor-pointer bg-[var(--color-panel)] border border-gray-600 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="view = 'completedYear'; resetSearch()"
+                        type="button">
+                  <span class="flex-shrink-0 mr-3">{% translate "Year" %}</span>
+                  <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                        x-text="(completed_date_from && completed_date_to && completed_date_from === completed_date_from.slice(0, 4) + '-01-01' && completed_date_to === completed_date_from.slice(0, 4) + '-12-31') ? completed_date_from.slice(0, 4) : gettext('Pick a year…')"></span>
+                  <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
+                </button>
+              {% endif %}
+              {% include "app/components/filter_range_panel.html" with range_from_var="completed_date_from" range_within_var="completed_date_within" range_within_unit_var="completed_date_within_unit" relative_date_units=filter_data.relative_date_units range_to_var="completed_date_to" filter_hx_endpoint=filter_hx_endpoint filter_hx_target=filter_hx_target filter_form_id=filter_form_id filter_on_change=filter_on_change %}
+            </div>
+          </div>
+        {% endif %}
+
+        {% if filter_show_completed_date %}
+          <div x-show="view === 'completedYear'" x-cloak class="p-2">
+            <div class="flex items-center gap-2 px-2 py-1">
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                      @click="view = 'completedDate'"
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Completed Year" %}</div>
+            </div>
+            <div class="px-2 py-2">
+              <input type="text"
+                     x-model="completedYearSearch"
+                     placeholder="{% translate "Filter Year" %}"
+                     class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="max-h-64 overflow-y-auto">
+              <template x-for="option in filteredCompletedYears()"
+                        :key="`completed-year-${option.value}`">
+                <button hx-trigger="filter-apply"
+                      hx-get="{{ filter_hx_endpoint }}"
+                        hx-target="{{ filter_hx_target }}"
+                        hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                        hx-indicator="#loading-indicator"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="completed_date_from = option.value + '-01-01'; completed_date_to = option.value + '-12-31'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                        type="button">
+                  <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                  <span class="ml-auto"
+                        x-show="completed_date_from === option.value + '-01-01' && completed_date_to === option.value + '-12-31'">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+        {% endif %}
+
+        <div x-show="view === 'year'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'date'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Release Date" %}</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="yearSearch"
+                   placeholder="{% translate "Filter Year" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="year = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "All Years" %}</span>
+              <span class="ml-auto" x-show="year === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredYears()" :key="option.value">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="year = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="year === option.value">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div x-show="view === 'release'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Released" %}</div>
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="release = 'all'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Any Release State" %}</span>
+              <span class="ml-auto" x-show="release === 'all'">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="release = 'released'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Released" %}</span>
+              <span class="ml-auto" x-show="release === 'released'">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="release = 'not_released'; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Not Released" %}</span>
+              <span class="ml-auto" x-show="release === 'not_released'">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div x-show="view === 'source'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Source" %}</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="sourceSearch"
+                   placeholder="{% translate "Filter Source" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="source = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "All Sources" %}</span>
+              <span class="ml-auto" x-show="source === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredSources()" :key="option.value">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="source = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="source === option.value">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        {% if filter_data.media_statuses %}
+          <div x-show="view === 'mediaStatus'" x-cloak class="p-2">
+            <div class="flex items-center gap-2 px-2 py-1">
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                      @click="view = 'root'"
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Availability" %}</div>
+            </div>
+            <div class="px-2 py-2">
+              <input type="text"
+                     x-model="mediaStatusSearch"
+                     placeholder="{% translate "Filter Availability" %}"
+                     class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="max-h-64 overflow-y-auto">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="media_status = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span>{% translate "Any Availability" %}</span>
+                <span class="ml-auto" x-show="media_status === ''">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+              <template x-for="option in filteredMediaStatuses()" :key="option.value">
+                <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                        hx-target="{{ filter_hx_target }}"
+                        hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                        hx-indicator="#loading-indicator"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="media_status = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                        type="button">
+                  <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                  <span class="ml-auto" x-show="media_status === option.value">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+        {% endif %}
+
+        <div x-show="view === 'language'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Language" %}</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="languageSearch"
+                   placeholder="{% translate "Filter Language" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="language = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "All Languages" %}</span>
+              <span class="ml-auto" x-show="language === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredLanguages()" :key="option.value">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="language = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="language === option.value">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div x-show="view === 'country'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Country" %}</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="countrySearch"
+                   placeholder="{% translate "Filter Country" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="country = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "All Countries" %}</span>
+              <span class="ml-auto" x-show="country === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredCountries()" :key="option.value">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="country = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="country === option.value">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        {% if filter_platform_multi %}
+        <div x-show="view === 'platform'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Platform" %}</div>
+            <button type="button"
+                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-[var(--color-link)] hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
+                    @click.stop="cyclePlatformMode()"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    x-text="platformMode.toUpperCase()"></button>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="platformSearch"
+                   placeholder="{% translate "Filter Platform" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="selectedPlatforms = []; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Clear Platforms" %}</span>
+              <span class="ml-auto" x-show="selectedPlatforms.length === 0">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredPlatforms()" :key="option.value">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="togglePlatform(option.value); setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="isPlatformSelected(option.value)">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+        {% else %}
+        <div x-show="view === 'platform'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Platform" %}</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="platformSearch"
+                   placeholder="{% translate "Filter Platform" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    @click="platform = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Any Platform" %}</span>
+              <span class="ml-auto" x-show="platform === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredPlatforms()" :key="option.value">
+              <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                      @click="platform = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="platform === option.value">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+        {% endif %}
+
+        <div x-show="view === 'origin'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Origin" %}</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="originSearch"
+                   placeholder="{% translate "Filter Origin" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="origin = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Any Origin" %}</span>
+              <span class="ml-auto" x-show="origin === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredOrigins()" :key="option.value">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="origin = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="origin === option.value">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div x-show="view === 'format'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Format" %}</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="formatSearch"
+                   placeholder="{% translate "Filter Format" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="format = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Any Format" %}</span>
+              <span class="ml-auto" x-show="format === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredFormats()" :key="option.value">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="format = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="format === option.value">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div x-show="view === 'author'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Author" %}</div>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="authorSearch"
+                   placeholder="{% translate "Filter Author" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="author = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "All Authors" %}</span>
+              <span class="ml-auto" x-show="author === ''">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredAuthors()" :key="option.value">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="author = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                <span class="ml-auto" x-show="author === option.value">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        {% if filter_data.show_providers %}
+          <div x-show="view === 'provider'" x-cloak class="p-2">
+            <div class="flex items-center gap-2 px-2 py-1">
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                      @click="view = 'root'"
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Streaming Service" %}</div>
+            </div>
+            <div class="px-2 py-2">
+              <input type="text"
+                     x-model="providerSearch"
+                     placeholder="{% translate "Filter Streaming Service" %}"
+                     class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="max-h-64 overflow-y-auto">
+              <button hx-trigger="filter-apply"
+                      hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="provider = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span>Any Streaming Service</span>
+                <span class="ml-auto" x-show="provider === ''">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+              <template x-for="option in filteredProviders()" :key="option.value">
+                <button hx-trigger="filter-apply"
+                      hx-get="{{ filter_hx_endpoint }}"
+                        hx-target="{{ filter_hx_target }}"
+                        hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                        hx-indicator="#loading-indicator"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="provider = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                        type="button">
+                  <span class="block min-w-0 truncate max-w-[11rem]" x-text="option.label"></span>
+                  <span class="ml-auto" x-show="provider === option.value">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+              </template>
+              <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="view = 'providerMore'; moreProviderSearch = ''"
+                      type="button">
+                <span>{% translate "More…" %}</span>
+              </button>
+            </div>
+          </div>
+        {% endif %}
+
+        {% if filter_data.show_providers and filter_data.all_providers %}
+          <div x-show="view === 'providerMore'" x-cloak class="p-2">
+            <div class="flex items-center gap-2 px-2 py-1">
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                      @click="view = 'provider'"
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "All Streaming Services" %}</div>
+            </div>
+            <div class="px-2 py-2">
+              <input type="text"
+                     x-model="moreProviderSearch"
+                     placeholder="{% translate "Search all streaming services" %}"
+                     class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="max-h-64 overflow-y-auto">
+              <template x-for="option in filteredAllProviders()" :key="option.value">
+                <div class="flex items-center w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
+                  <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                          hx-target="{{ filter_hx_target }}"
+                          hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                          hx-indicator="#loading-indicator"
+                          class="flex items-center flex-1 min-w-0 gap-2 cursor-pointer"
+                          @click="provider = option.value; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                          type="button">
+                    <span class="block min-w-0 truncate max-w-[10rem]" x-text="option.label"></span>
+                  </button>
+                  <button class="p-1 ml-auto rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                          :title="isProviderPinned(option.value) ? gettext('Unpin') : gettext('Pin to promote out of More')"
+                          @click.stop="togglePinnedProvider(option.value)"
+                          type="button">
+                    <span :class="isProviderPinned(option.value) ? 'text-yellow-400 fill-current' : 'text-[var(--color-text-muted)]'">
+                      {% include "app/icons/star.svg" with classes="w-4 h-4" %}
+                    </span>
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+        {% endif %}
+
+        {% if filter_data.departments %}
+          <div x-show="view === 'department'" x-cloak class="p-2">
+            <div class="flex items-center gap-2 px-2 py-1">
+              <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                      @click="view = 'root'"
+                      type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+              <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Department" %}</div>
+            </div>
+            <div class="px-2 py-2">
+              <input type="text"
+                     x-model="departmentSearch"
+                     placeholder="{% translate "Filter Department" %}"
+                     class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div class="max-h-64 overflow-y-auto">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="department = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span>{% translate "All Departments" %}</span>
+                <span class="ml-auto" x-show="department === ''">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+              <template x-for="option in filteredDepartments()" :key="option">
+                <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                        hx-target="{{ filter_hx_target }}"
+                        hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                        hx-indicator="#loading-indicator"
+                        class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                        @click="department = option; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                        type="button">
+                  <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
+                  <span class="ml-auto" x-show="department === option">
+                    {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+        {% endif %}
+
+        <div x-show="view === 'tag'" x-cloak class="p-2">
+          <div class="flex items-center gap-2 px-2 py-1">
+            <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                    @click="view = 'root'"
+                    type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Tag" %}</div>
+            <button type="button"
+                    class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-[var(--color-link)] hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
+                    @click.stop="cycleTagMode()"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    x-text="tagMode.toUpperCase()"></button>
+          </div>
+          <div class="px-2 py-2">
+            <input type="text"
+                   x-model="tagSearch"
+                   placeholder="{% translate "Filter Tags" %}"
+                   class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div class="max-h-64 overflow-y-auto">
+            <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                    hx-target="{{ filter_hx_target }}"
+                    hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                    hx-indicator="#loading-indicator"
+                    class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                    @click="selectedTags = []; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                    type="button">
+              <span>{% translate "Clear Tags" %}</span>
+              <span class="ml-auto" x-show="selectedTags.length === 0">
+                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+              </span>
+            </button>
+            <template x-for="option in filteredTags()" :key="option">
+              <button hx-trigger="filter-apply"
+                    hx-get="{{ filter_hx_endpoint }}"
+                      hx-target="{{ filter_hx_target }}"
+                      hx-include="#{{ filter_form_id|default:'filter-form' }}"
+                      hx-indicator="#loading-indicator"
+                      class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                      @click="toggleTag(option); setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
+                      type="button">
+                <span class="block min-w-0 truncate max-w-[11rem]" x-text="option"></span>
+                <span class="ml-auto px-2 py-0.5 rounded text-xs bg-[var(--color-surface)] border border-gray-600 text-[var(--color-text-muted)]"
+                      x-text="tagCounts[option] || 0"></span>
+                <span class="ml-2" x-show="isTagSelected(option)">
+                  {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>

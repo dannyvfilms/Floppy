@@ -16,6 +16,7 @@ def provider_metadata_cache_keys(
     season_number=None,
     episode_number=None,
     route_media_type=None,
+    language=None,
 ):
     """Return the provider cache keys holding a payload, canonical key first.
 
@@ -50,10 +51,29 @@ def provider_metadata_cache_keys(
             else MediaTypes.TV.value
         )
         if media_type == MediaTypes.SEASON.value:
-            keys.append(tvdb._season_cache_key(media_id, season_number, routed_media_type))
+            keys.append(
+                tvdb._season_cache_key(
+                    media_id,
+                    season_number,
+                    routed_media_type,
+                    language,
+                ),
+            )
         else:
-            keys.append(tvdb._cache_key(routed_media_type, media_id))
-        keys.extend(tvdb.metadata_cache_keys(media_id, season_number))
+            keys.append(
+                tvdb._cache_key(
+                    routed_media_type,
+                    media_id,
+                    tvdb._preferred_language_code(language),
+                ),
+            )
+        keys.extend(
+            tvdb.metadata_cache_keys(
+                media_id,
+                season_number,
+                language=language,
+            ),
+        )
 
     if source != Sources.TVDB.value:
         # The unversioned shape. Still worth evicting for TMDB, where entries

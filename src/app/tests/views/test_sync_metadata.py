@@ -97,6 +97,7 @@ class SyncMetadataViewTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
 
+    @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
     @patch("app.metadata_sync_views._sync_plex_rating")
     @patch("app.views.Item.fetch_releases")
     @patch("app.views.game_length_services.refresh_game_lengths")
@@ -107,6 +108,7 @@ class SyncMetadataViewTests(TestCase):
         mock_refresh_game_lengths,
         mock_fetch_releases,
         mock_sync_plex_rating,
+        _mock_refresh_imdb_credits,
     ):
         mock_get_media_metadata.return_value = {
             "media_id": "325609",
@@ -374,6 +376,7 @@ class SyncMetadataViewTests(TestCase):
             media_id,
             season_number,
             MediaTypes.TV.value,
+            tvdb._preferred_language_code(),
         )
         for cache_key in cache_keys:
             cache.set(cache_key, {"cached": True}, timeout=600)
@@ -423,6 +426,44 @@ class SyncMetadataViewTests(TestCase):
         # is actually about has to lead; the rest are order-independent.
         self.assertEqual(deleted_keys[0], primary_key)
         self.assertEqual(set(deleted_keys), set(cache_keys))
+
+    def test_tvdb_refresh_keys_reach_language_qualified_cache_entries(self):
+        """TVDB refresh helpers should evict the keys used by localized fetches."""
+        from app import metadata_utils
+
+        language = "es"
+        keys = metadata_utils.provider_metadata_cache_keys(
+            Sources.TVDB.value,
+            MediaTypes.SEASON.value,
+            "81189",
+            season_number=1,
+            language=language,
+        )
+        expected_keys = {
+            tvdb._cache_key(
+                MediaTypes.TV.value,
+                "81189",
+                tvdb._preferred_language_code(language),
+            ),
+            tvdb._season_cache_key("81189", 1, MediaTypes.TV.value, language),
+            tvdb._series_extended_cache_key("81189", language),
+            tvdb._cache_key(
+                "series_extended",
+                MediaTypes.TV.value,
+                "81189",
+                tvdb._preferred_language_code(language),
+            ),
+            tvdb._series_episode_translations_cache_key("81189", language),
+        }
+
+        self.assertTrue(expected_keys.issubset(keys))
+        for key in expected_keys:
+            cache.set(key, {"cached": True}, timeout=600)
+
+        cache.delete_many(keys)
+
+        for key in expected_keys:
+            self.assertIsNone(cache.get(key))
 
     @patch("app.metadata_sync_views._sync_plex_rating")
     @patch("app.views.Item.fetch_releases")

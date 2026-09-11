@@ -11,6 +11,7 @@ from integrations import import_progress
 from integrations.imports import (
     anilist,
     audiobookshelf,
+    clz,
     goodreads,
     gpodder,
     grouvee,
@@ -49,7 +50,7 @@ from integrations.plex_watchlist import PlexWatchlistSyncService
 from integrations.tasks._import_helpers import (
     GOODREADS_IMPORT_TASK_NAME,
     LEGACY_GOODREADS_IMPORT_TASK_NAMES,
-    _coerce_uploaded_file,
+    _run_file_import,
     format_import_message,
     format_watchlist_sync_message,
     has_imported_media,
@@ -238,27 +239,39 @@ def import_kitsu(username, user_id, mode):
 @shared_task(name="Import from Yamtrack")
 def import_yamtrack(file, user_id, mode):
     """Celery task for importing a Floppy backup or Yamtrack CSV."""
-    return import_media(yamtrack.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(yamtrack.importer, file, user_id, mode)
+
+
+@shared_task(name="Import from CLZ")
+def import_clz(file, user_id, mode, media_type=None):
+    """Celery task for importing a CLZ (Collectorz) CSV or XML export."""
+    return _run_file_import(
+        clz.importer,
+        file,
+        user_id,
+        mode,
+        media_type=media_type,
+    )
 
 
 @shared_task(name="Import from HowLongToBeat")
 def import_hltb(file, user_id, mode):
     """Celery task for importing media data from HowLongToBeat."""
-    return import_media(hltb.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(hltb.importer, file, user_id, mode)
 
 
 @shared_task(name="Import from Grouvee")
 def import_grouvee(file, user_id, mode):
     """Celery task for importing game data from a Grouvee export (JSON or zip)."""
-    return import_media(grouvee.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(grouvee.importer, file, user_id, mode)
 
 
 @shared_task(name="Import Trakt collection CSV")
 def import_trakt_collection_csv(file, user_id, mode):
     """Celery task for importing collection ownership from a Trakt CSV export."""
-    return import_media(
+    return _run_file_import(
         trakt_collection.importer,
-        _coerce_uploaded_file(file),
+        file,
         user_id,
         mode,
     )
@@ -267,9 +280,9 @@ def import_trakt_collection_csv(file, user_id, mode):
 @shared_task(name="Import Trakt data export")
 def import_trakt_export(file, user_id, mode):
     """Celery task for importing a Trakt data export archive."""
-    return import_media(
+    return _run_file_import(
         trakt_export.importer,
-        _coerce_uploaded_file(file),
+        file,
         user_id,
         mode,
     )
@@ -308,12 +321,12 @@ def import_psn_recurring(user_id, mode="new"):
 @shared_task(name="Import from IMDB")
 def import_imdb(file, user_id, mode):
     """Celery task for importing media data from IMDB."""
-    return import_media(imdb.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(imdb.importer, file, user_id, mode)
 
 
 def _run_goodreads_import(file, user_id, mode):
     """Execute the Goodreads CSV import for any registered task alias."""
-    return import_media(goodreads.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(goodreads.importer, file, user_id, mode)
 
 
 @shared_task(name=GOODREADS_IMPORT_TASK_NAME)
@@ -337,25 +350,25 @@ def import_goodreads_dotted(file, user_id, mode):
 @shared_task(name="Import from Hardcover")
 def import_hardcover(file, user_id, mode):
     """Celery task for importing media data from Hardcover."""
-    return import_media(hardcover.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(hardcover.importer, file, user_id, mode)
 
 
 @shared_task(name="Import from StoryGraph")
 def import_storygraph(file, user_id, mode):
     """Celery task for importing media data from StoryGraph."""
-    return import_media(storygraph.importer, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(storygraph.importer, file, user_id, mode)
 
 
 @shared_task(name="Import from TV Time (shows)")
 def import_tvtime_shows(file, user_id, mode):
     """Celery task for importing episode watch history from a TV Time CSV."""
-    return import_media(tvtime.importer_shows, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(tvtime.importer_shows, file, user_id, mode)
 
 
 @shared_task(name="Import from TV Time (movies)")
 def import_tvtime_movies(file, user_id, mode):
     """Celery task for importing movie watch activity from a TV Time CSV."""
-    return import_media(tvtime.importer_movies, _coerce_uploaded_file(file), user_id, mode)
+    return _run_file_import(tvtime.importer_movies, file, user_id, mode)
 
 
 @shared_task(name="Import from Plex")
@@ -367,9 +380,9 @@ def import_plex(library, user_id, mode, username=None):
 @shared_task(name="Import from Jellyfin Playback Reporting")
 def import_jellyfin_playback_reporting(file, user_id, mode="new"):
     """Import a Jellyfin Playback Reporting TSV backup."""
-    return import_media(
+    return _run_file_import(
         jellyfin_playback_reporting.importer,
-        _coerce_uploaded_file(file),
+        file,
         user_id,
         mode,
     )

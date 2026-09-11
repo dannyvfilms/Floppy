@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load user_tags %}
 {% load humanize %}
@@ -35,7 +37,7 @@
             {% if album_tracker %}
               {{ album_tracker.status_readable }}
             {% else %}
-              Add to Library
+              {% translate "Add to Library" %}
             {% endif %}
           </div>
           <div class="h-5 mx-2 border-l border-white/30"></div>
@@ -71,7 +73,7 @@
         {% if album.release_type %}
           <span class="px-3 py-1 bg-rose-600 text-white rounded-full text-sm">{{ album.release_type }}</span>
         {% else %}
-          <span class="px-3 py-1 bg-rose-600 text-white rounded-full text-sm">Album</span>
+          <span class="px-3 py-1 bg-rose-600 text-white rounded-full text-sm">{% translate "Album" %}</span>
         {% endif %}
         {% if album.release_date %}
           <span class="px-3 py-1 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-full text-sm">{{ album.release_date|date:"Y" }}</span>
@@ -105,16 +107,16 @@
       {# Stats cards (like scores on Season) #}
       <div class="flex flex-wrap gap-4">
         <div class="bg-[var(--color-surface)] p-3 rounded-lg w-[120px]">
-          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">TRACKS</h3>
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">{% translate "TRACKS" %}</h3>
           <p class="text-lg font-bold text-[var(--color-text)] text-center">{{ total_tracks }}</p>
         </div>
         <div class="bg-[var(--color-surface)] p-3 rounded-lg w-[120px]">
-          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">IN LIBRARY</h3>
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">{% translate "IN LIBRARY" %}</h3>
           <p class="text-lg font-bold text-[var(--color-text)] text-center">{{ library_track_count }}</p>
         </div>
         {% if total_runtime %}
           <div class="bg-[var(--color-surface)] p-3 rounded-lg w-[120px]">
-            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">RUNTIME</h3>
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">{% translate "RUNTIME" %}</h3>
             <p class="text-lg font-bold text-[var(--color-text)] text-center">{{ total_runtime }}</p>
           </div>
         {% endif %}
@@ -124,7 +126,7 @@
             <!-- Rating display -->
             <div @click="showRatingPopup = !showRatingPopup"
                  class="bg-[var(--color-surface)] p-3 rounded-lg cursor-pointer w-[120px]">
-              <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">YOUR SCORE</h3>
+              <h3 class="text-xs font-semibold text-[var(--color-text-muted)] mb-1 text-center">{% translate "YOUR SCORE" %}</h3>
               <div class="flex items-center justify-center">
                 {% include "app/icons/star.svg" with classes="w-5 h-5 mr-1.5 text-yellow-400 fill-yellow-400" %}
                 <template x-if="rating">
@@ -137,7 +139,7 @@
                   <span class="text-lg font-bold text-[var(--color-text-muted)]">-</span>
                 </template>
               </div>
-              <p class="text-xs text-[var(--color-text-muted)] mt-0.5 text-center">Click to edit</p>
+              <p class="text-xs text-[var(--color-text-muted)] mt-0.5 text-center">{% translate "Click to edit" %}</p>
             </div>
 
             <!-- Rating popup -->
@@ -178,24 +180,24 @@
       
       {# Your History #}
       {% if history_stats.first_listened or history_stats.last_listened or library_track_count > 0 %}
-        <h2 class="text-xl font-bold mb-4">Your History</h2>
+        <h2 class="text-xl font-bold mb-4">{% translate "Your History" %}</h2>
         <div class="space-y-4 mb-6">
           <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
             <div class="@container flex flex-col gap-y-1">
               {% if history_stats.first_listened %}
                 <div class="flex @max-[210px]:flex-col justify-between text-sm">
-                  <span class="text-[var(--color-text-muted)]">First listened:</span>
+                  <span class="text-[var(--color-text-muted)]">{% translate "First listened:" %}</span>
                   <span class="text-[var(--color-text-secondary)]">{{ history_stats.first_listened|user_date_format:user }}</span>
                 </div>
               {% endif %}
               {% if history_stats.last_listened %}
                 <div class="flex @max-[210px]:flex-col justify-between text-sm">
-                  <span class="text-[var(--color-text-muted)]">Last listened:</span>
+                  <span class="text-[var(--color-text-muted)]">{% translate "Last listened:" %}</span>
                   <span class="text-[var(--color-text-secondary)]">{{ history_stats.last_listened|user_date_format:user }}</span>
                 </div>
               {% endif %}
               <div class="flex @max-[210px]:flex-col justify-between text-sm">
-                <span class="text-[var(--color-text-muted)]">Progress:</span>
+                <span class="text-[var(--color-text-muted)]">{% translate "Progress:" %}</span>
                 <span class="text-[var(--color-text-secondary)]">{{ library_track_count }} / {{ total_tracks }}</span>
               </div>
             </div>
@@ -204,11 +206,11 @@
       {% endif %}
 
       {# Actions - matching Season layout #}
-      <h2 class="text-xl font-bold mb-4">Actions</h2>
+      <h2 class="text-xl font-bold mb-4">{% translate "Actions" %}</h2>
       <div class="bg-[var(--color-surface)] p-4 md:p-2 lg:p-4 rounded-lg flex items-center justify-center gap-x-5 md:gap-x-2 lg:gap-x-5 mb-6">
         {# Delete all plays (red) #}
         <button type="button"
-                title="Delete all plays for this album"
+                title="{% translate "Delete all plays for this album" %}"
                 class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition duration-300 cursor-pointer disabled:opacity-75"
                 hx-post="{% url 'delete_all_album_plays' album.id %}"
                 hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
@@ -225,13 +227,13 @@
         {# View history - link to history page filtered by album #}
         <a href="{% url 'history' %}?album={{ album.id }}"
            class="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition duration-300 cursor-pointer"
-           title="View your listening history for this album">
+           title="{% translate "View your listening history for this album" %}">
           {% include "app/icons/history.svg" with classes="w-4 h-4" %}
         </a>
 
         {# Sync album metadata (fuchsia like Sync Metadata) #}
         <button type="button"
-                title="Sync album metadata and tracks from MusicBrainz"
+                title="{% translate "Sync album metadata and tracks from MusicBrainz" %}"
                 class="px-4 py-2 bg-fuchsia-600 text-white rounded-md hover:bg-fuchsia-700 transition duration-300 cursor-pointer disabled:opacity-75"
                 hx-post="{% url 'sync_album_metadata' album.id %}"
                 hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
@@ -246,35 +248,35 @@
       </div>
 
       {# Details #}
-      <h2 class="text-xl font-bold mb-4">Details</h2>
+      <h2 class="text-xl font-bold mb-4">{% translate "Details" %}</h2>
       <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">FORMAT</h3>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "FORMAT" %}</h3>
           <p class="text-[var(--color-text-secondary)]">{{ album_details.format }}</p>
         </div>
         
         {% if album.release_date %}
           <div class="mb-4">
-            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">RELEASE DATE</h3>
+            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "RELEASE DATE" %}</h3>
             <p class="text-[var(--color-text-secondary)]">{{ album.release_date|user_date_format:user }}</p>
           </div>
         {% endif %}
         
         <div class="mb-4">
-          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">TRACKS</h3>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "TRACKS" %}</h3>
           <p class="text-[var(--color-text-secondary)]">{{ total_tracks }}</p>
         </div>
         
         {% if total_runtime %}
           <div class="mb-4">
-            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">TOTAL RUNTIME</h3>
+            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "TOTAL RUNTIME" %}</h3>
             <p class="text-[var(--color-text-secondary)]">{{ total_runtime }}</p>
           </div>
         {% endif %}
         
         {% if album_details.musicbrainz_url %}
           <div>
-            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">SOURCE</h3>
+            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "SOURCE" %}</h3>
             <a href="{{ album_details.musicbrainz_url }}"
                class="text-[var(--color-text-secondary)] hover:text-[var(--color-link)] transition-colors duration-200"
                target="_blank">MusicBrainz</a>
@@ -285,7 +287,7 @@
 
     {# Right column - Tracks list (like Episodes on Season page) #}
     <div class="w-full md:w-3/4">
-      <h2 class="text-xl font-bold mb-4">Tracks</h2>
+      <h2 class="text-xl font-bold mb-4">{% translate "Tracks" %}</h2>
       {% if tracks %}
         <div class="space-y-4">
           {% for track_data in tracks %}
@@ -312,8 +314,8 @@
                         <h3 class="text-lg font-semibold mb-1 line-clamp-1">{{ track_data.track.title }}</h3>
                         <p class="text-sm text-[var(--color-text-muted)]">
                           {% if track_data.track.track_number %}
-                            Track {{ track_data.track.track_number }}
-                            {% if track_data.track.disc_number > 1 %} (Disc {{ track_data.track.disc_number }}){% endif %}
+                            {% blocktranslate trimmed with value_1=track_data.track.track_number %}Track {{ value_1 }}{% endblocktranslate %}
+                            {% if track_data.track.disc_number > 1 %} {% blocktranslate trimmed with value_1=track_data.track.disc_number %}(Disc {{ value_1 }}){% endblocktranslate %}{% endif %}
                           {% endif %}
                           {% if track_data.track.duration_formatted %}
                             {% if track_data.track.track_number %} • {% endif %}{{ track_data.track.duration_formatted }}
@@ -326,7 +328,7 @@
                         {# Track Song button - mirrors Track Episode #}
                         <div x-data="{ trackOpen: false }">
                           <button @click="trackOpen = true"
-                                  title="Track Song"
+                                  title="{% translate "Track Song" %}"
                                   class="p-2 {% if track_data.music %}bg-indigo-600 hover:bg-indigo-700{% else %}bg-gray-600 hover:bg-gray-500{% endif %} text-white rounded-full transition duration-300 cursor-pointer">
                             {% if track_data.music %}
                               {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
@@ -342,7 +344,7 @@
                           {# Lists button #}
                           <div x-data="{ listsOpen: false }">
                             <button class="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full transition duration-300 cursor-pointer"
-                                    title="Add to custom lists"
+                                    title="{% translate "Add to custom lists" %}"
                                     hx-get="{% url 'lists_modal' track_data.music.item.source 'music' track_data.music.item.media_id %}?return_url={{ request.get_full_path|urlencode }}"
                                     hx-target="#lists-modal-{{ track_data.track.id }}"
                                     hx-trigger="click once"
@@ -363,7 +365,7 @@
                           {# History button #}
                           <div x-data="{ historyOpen: false }">
                             <button class="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition duration-300 cursor-pointer"
-                                    title="View your activity history"
+                                    title="{% translate "View your activity history" %}"
                                     hx-get="{% url 'history_modal' track_data.music.item.source 'music' track_data.music.item.media_id %}?return_url={{ request.get_full_path|urlencode }}"
                                     hx-target="#history-modal-{{ track_data.track.id }}"
                                     hx-trigger="click once"
@@ -388,13 +390,13 @@
                   {% if track_data.history %}
                     <p id="track-history-{% if track_data.music %}{{ track_data.music.id }}{% else %}{{ track_data.track.id }}{% endif %}"
                        class="text-xs text-[var(--color-text-muted)] mt-2 px-4">
-                      Last listened: {{ track_data.history.0.end_date|datetime_format:user|default_if_none:"No date provided" }}
-                      {% if track_data.history|length > 1 %}• Listened {{ track_data.history|length }} times{% endif %}
-                      {% if track_data.collection_entry and track_data.collection_entry.audio_codec %}• Collected: {{ track_data.collection_entry.audio_codec }}{% endif %}
+                      {% blocktranslate trimmed with value_1=track_data.history.0.end_date|datetime_format:user|default_if_none:_("No date provided") %}Last listened: {{ value_1 }}{% endblocktranslate %}
+                      {% if track_data.history|length > 1 %}{% blocktranslate trimmed with value_1=track_data.history|length %}• Listened {{ value_1 }} times{% endblocktranslate %}{% endif %}
+                      {% if track_data.collection_entry and track_data.collection_entry.audio_codec %}{% blocktranslate trimmed with value_1=track_data.collection_entry.audio_codec %}• Collected: {{ value_1 }}{% endblocktranslate %}{% endif %}
                     </p>
                   {% elif track_data.collection_entry and track_data.collection_entry.audio_codec %}
                     <p class="text-xs text-[var(--color-text-muted)] mt-2 px-4">
-                      Collected: {{ track_data.collection_entry.audio_codec }}
+                      {% blocktranslate trimmed with value_1=track_data.collection_entry.audio_codec %}Collected: {{ value_1 }}{% endblocktranslate %}
                     </p>
                   {% endif %}
                 </div>
@@ -406,14 +408,14 @@
         <div class="bg-[var(--color-surface)] p-6 rounded-lg text-center">
           <p class="text-[var(--color-text-muted)]">
             {% if has_mb_identity %}
-              No tracks found for this album on MusicBrainz yet. Try syncing metadata or searching for tracks manually.
+              {% translate "No tracks found for this album on MusicBrainz yet. Try syncing metadata or searching for tracks manually." %}
             {% else %}
-              This album doesn't have a MusicBrainz ID, so tracks can't be populated automatically.
+              {% translate "This album doesn't have a MusicBrainz ID, so tracks can't be populated automatically." %}
             {% endif %}
           </p>
           <a href="{% url 'search' %}?q={{ album.title|urlencode }}&media_type=music"
              class="inline-block mt-4 px-4 py-2 bg-rose-600 text-white rounded-md hover:bg-rose-700 transition-colors">
-            Search for tracks
+            {% translate "Search for tracks" %}
           </a>
         </div>
       {% endif %}

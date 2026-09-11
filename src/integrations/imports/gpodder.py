@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections import defaultdict
-from datetime import UTC
+from datetime import UTC, timedelta
 
 from django.conf import settings
 from django.utils import timezone
@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 MIN_SIGNIFICANT_PROGRESS_SECONDS = 60
 DUPLICATE_COMPLETION_WINDOW_SECONDS = 300
+FULL_RESYNC_INTERVAL = timedelta(hours=24)
 
 
 def importer(identifier, user, mode):
@@ -101,9 +102,14 @@ class GPodderImporter:
             )
 
         subscriptions = self._load_subscriptions()
+        is_full_resync = (
+            self.account.last_full_resync_at is None
+            or timezone.now() - self.account.last_full_resync_at
+            >= FULL_RESYNC_INTERVAL
+        )
         actions, next_cursor = gpodder_api.fetch_episode_actions(
             self.credentials,
-            since=self.account.episode_actions_since,
+            since=None if is_full_resync else self.account.episode_actions_since,
             device=self.account.device_filter,
         )
 
@@ -129,10 +135,13 @@ class GPodderImporter:
         self.account.last_sync_at = timezone.now()
         self.account.connection_broken = False
         self.account.last_error_message = ""
+        if is_full_resync:
+            self.account.last_full_resync_at = self.account.last_sync_at
         self.account.save(
             update_fields=[
                 "episode_actions_since",
                 "last_sync_at",
+                "last_full_resync_at",
                 "connection_broken",
                 "last_error_message",
                 "updated_at",
@@ -384,10 +393,10 @@ class GPodderImporter:
             )
             return True
 
-        if (
-            latest_completed is not None and is_completed
-        ) and self._is_duplicate_completion(
-            latest_completed, position_seconds, action_time
+        if is_completed and any(
+            entry.end_date is not None
+            and self._is_duplicate_completion(entry, position_seconds, action_time)
+            for entry in latest_entries
         ):
             return False
 

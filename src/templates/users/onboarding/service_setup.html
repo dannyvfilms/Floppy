@@ -1,19 +1,20 @@
 {% extends "users/onboarding/_layout.html" %}
+{% load i18n %}
+
 {% load user_tags %}
 
-{% block step_title %}Connect your services{% endblock step_title %}
+{% block step_title %}{% translate "Connect your services" %}{% endblock step_title %}
 
 {% block step_explanation %}
-  <p>{{ remaining_count }} service{{ remaining_count|pluralize }} left to connect.</p>
+  <p>{% blocktranslate count count=remaining_count %}{{ count }} service left to connect.{% plural %}{{ count }} services left to connect.{% endblocktranslate %}</p>
   {% if current_source.inline_supported %}
-    <p>Connect right here — once it's done, you'll automatically see the next one.</p>
+    <p>{% translate "Connect right here — once it's done, you'll automatically see the next one." %}</p>
   {% else %}
     <p>
-      Connecting opens the normal Import setup for this service in a focused
-      view. Finish there and you'll come right back here for the next one.
+      {% translate "Connecting opens the normal Import setup for this service in a focused view. Finish there and you'll come right back here for the next one." %}
     </p>
   {% endif %}
-  <p>Don't have it handy? Skip it — you can always connect it later from Settings &gt; Import.</p>
+  <p>{% translate "Don't have it handy? Skip it — you can always connect it later from Settings > Import." %}</p>
 {% endblock step_explanation %}
 
 {% block step_options %}
@@ -21,17 +22,17 @@
     {% source_display current_source.slug %}
     <p class="text-sm text-[var(--color-text-muted)]">
       {% if current_source.slug == "trakt" %}
-        Public profile, private profile (OAuth), or a data export file.
+        {% translate "Public profile, private profile (OAuth), or a data export file." %}
       {% elif current_source.is_oauth %}
-        Connect with your account (OAuth).
+        {% translate "Connect with your account (OAuth)." %}
       {% elif current_source.upload_field_name %}
-        Requires uploading an export file.
+        {% translate "Requires uploading an export file." %}
       {% elif current_source.setup_kind == "api_key" %}
-        Requires an API key.
+        {% translate "Requires an API key." %}
       {% elif current_source.setup_kind == "host_url" %}
-        Requires your server URL and an API key.
+        {% translate "Requires your server URL and an API key." %}
       {% else %}
-        Requires your account credentials.
+        {% translate "Requires your account credentials." %}
       {% endif %}
     </p>
     {% if current_source.inline_supported %}
@@ -51,13 +52,13 @@
         {% csrf_token %}
         <button type="submit"
                 class="px-4 py-2 text-sm rounded-md text-[var(--color-text-secondary)] border border-[var(--color-surface-border)] hover:bg-[var(--color-hover-dim)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
-          Skip for now
+          {% translate "Skip for now" %}
         </button>
       </form>
       {% if not current_source.inline_supported %}
         <a href="{% url 'import_data' %}?open={{ current_source.slug }}&onboarding=1"
            class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
-          Connect {{ current_source.slug|source_name }}
+          {% blocktranslate with value1=current_source.slug|source_name %}Connect {{ value1 }}{% endblocktranslate %}
         </a>
       {% endif %}
     </div>

@@ -1,0 +1,18 @@
+[Unit]
+Description=Floppy media tracker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@@RUN_USER@@
+Group=@@RUN_GROUP@@
+WorkingDirectory=@@SRC_DIR@@
+ExecStart=@@RUN_DIR@@/floppy-supervisord
+Restart=on-failure
+RestartSec=10
+KillMode=mixed
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

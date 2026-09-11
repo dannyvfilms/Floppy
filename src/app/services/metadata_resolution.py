@@ -63,6 +63,16 @@ class MetadataProviderOption:
     label: str
 
 
+@dataclass(frozen=True, slots=True)
+class AnimeTMDBIdentity:
+    """One exact TMDB identity resolved from a MAL title."""
+
+    media_id: str
+    media_type: str
+    tvdb_id: str | None = None
+    imdb_id: str | None = None
+
+
 def provider_is_enabled(provider: str, user=None) -> bool:
     """Return whether a provider is configured for live use.
 
@@ -798,6 +808,119 @@ def _reconcile_competing_seasons(canonical_season, stray_season) -> None:
     canonical_season.save(update_fields=["status", "score", "notes"])
 
 
+def _tmdb_identity_from_external_id(
+    external_id: str,
+    external_source: str,
+    *,
+    allowed_media_types: tuple[str, ...],
+) -> AnimeTMDBIdentity | None:
+    """Return one exact TMDB result for an external provider ID."""
+    from app.providers import tmdb
+
+    find_response = tmdb.find(external_id, external_source)
+
+    if not isinstance(find_response, dict):
+        return None
+
+    result_keys = {
+        MediaTypes.TV.value: "tv_results",
+        MediaTypes.MOVIE.value: "movie_results",
+    }
+    identities = {
+        (str(result["id"]), media_type)
+        for media_type in allowed_media_types
+        for result in find_response.get(result_keys[media_type], [])
+        if isinstance(result, dict) and result.get("id") not in (None, "")
+    }
+    if len(identities) != 1:
+        return None
+
+    media_id, media_type = identities.pop()
+    return AnimeTMDBIdentity(media_id=media_id, media_type=media_type)
+
+
+def resolve_mal_tmdb_identity(mal_id: str | int) -> AnimeTMDBIdentity | None:
+    """Resolve one exact TMDB movie or TV identity for a MAL title."""
+    direct_tv_id = anime_mapping.resolve_provider_id(
+        mal_id,
+        Sources.TMDB.value,
+        media_type=MediaTypes.TV.value,
+    )
+    direct_movie_id = anime_mapping.resolve_provider_id(
+        mal_id,
+        Sources.TMDB.value,
+        media_type=MediaTypes.MOVIE.value,
+    )
+    direct_identities = {
+        (direct_tv_id, MediaTypes.TV.value) if direct_tv_id else None,
+        (direct_movie_id, MediaTypes.MOVIE.value) if direct_movie_id else None,
+    } - {None}
+    if len(direct_identities) == 1:
+        media_id, media_type = direct_identities.pop()
+        return AnimeTMDBIdentity(media_id=media_id, media_type=media_type)
+    if len(direct_identities) > 1:
+        return None
+
+    tvdb_id = anime_mapping.resolve_provider_id(mal_id, Sources.TVDB.value)
+    if tvdb_id:
+        identity = _tmdb_identity_from_external_id(
+            tvdb_id,
+            "tvdb_id",
+            allowed_media_types=(MediaTypes.TV.value,),
+        )
+        if identity:
+            return AnimeTMDBIdentity(
+                media_id=identity.media_id,
+                media_type=identity.media_type,
+                tvdb_id=tvdb_id,
+            )
+
+    imdb_id = anime_mapping.resolve_provider_id(mal_id, Sources.IMDB.value)
+    if not imdb_id:
+        return None
+    identity = _tmdb_identity_from_external_id(
+        imdb_id,
+        "imdb_id",
+        allowed_media_types=(MediaTypes.TV.value, MediaTypes.MOVIE.value),
+    )
+    if not identity:
+        return None
+    return AnimeTMDBIdentity(
+        media_id=identity.media_id,
+        media_type=identity.media_type,
+        tvdb_id=tvdb_id,
+        imdb_id=imdb_id,
+    )
+
+
+def persist_mal_tmdb_identity(
+    item: Item,
+    identity: AnimeTMDBIdentity,
+    *,
+    persistence_mode: str = "required",
+    retry_max_retries: int | None = None,
+    on_deferred: Callable[[Exception], None] | None = None,
+) -> None:
+    """Persist an exact MAL-to-TMDB identity through existing provider links."""
+    external_ids = {"tmdb_id": identity.media_id}
+    if identity.tvdb_id:
+        external_ids["tvdb_id"] = identity.tvdb_id
+    if identity.imdb_id:
+        external_ids["imdb_id"] = identity.imdb_id
+    upsert_provider_links(
+        item,
+        {
+            "media_id": identity.media_id,
+            "provider_external_ids": external_ids,
+        },
+        provider=Sources.TMDB.value,
+        provider_media_type=identity.media_type,
+        persistence_mode=persistence_mode,
+        retry_max_retries=retry_max_retries,
+        on_deferred=on_deferred,
+    )
+
+
 def resolve_provider_media_id(
     item: Item | None,
     provider: str,
@@ -838,7 +961,17 @@ def resolve_provider_media_id(
         return provider_link.provider_media_id
 
     external_key = PROVIDER_EXTERNAL_ID_KEYS.get(provider)
-    if external_key:
+    tmdb_id_is_known_movie = (
+        item.source == Sources.MAL.value
+        and route_media_type == MediaTypes.ANIME.value
+        and provider == Sources.TMDB.value
+        and ItemProviderLink.objects.filter(
+            item=item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.MOVIE.value,
+        ).exists()
+    )
+    if external_key and not tmdb_id_is_known_movie:
         external_ids = item.provider_external_ids or {}
         if external_ids.get(external_key):
             return str(external_ids[external_key])
@@ -848,10 +981,32 @@ def resolve_provider_media_id(
         and route_media_type == MediaTypes.ANIME.value
         and provider in GROUPED_ANIME_PROVIDERS
     ):
+        if provider == Sources.TMDB.value:
+            try:
+                identity = resolve_mal_tmdb_identity(item.media_id)
+            except services.ProviderAPIError:
+                logger.warning(
+                    "Skipping TMDB resolution for MAL anime media_id=%s: "
+                    "provider request failed",
+                    item.media_id,
+                )
+                return None
+            if not identity or identity.media_type != MediaTypes.TV.value:
+                return None
+            persist_mal_tmdb_identity(
+                item,
+                identity,
+                persistence_mode=persistence_mode,
+                retry_max_retries=retry_max_retries,
+                on_deferred=on_deferred,
+            )
+            return identity.media_id
+
         mapped_series_id = anime_mapping.resolve_provider_series_id(
             item.media_id,
             provider,
         )
+
         if mapped_series_id:
             run_retryable_db_operation(
                 lambda: update_or_create_race_safe(

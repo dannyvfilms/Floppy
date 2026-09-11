@@ -1,9 +1,11 @@
 {% extends "users/base.html" %}
+{% load i18n %}
+
 {% load static %}
 {% load app_tags %}
 
 {% block title %}
-  RSS - Floppy
+  {% translate "RSS - Floppy" %}
 {% endblock title %}
 
 {% block settings_content %}
@@ -15,14 +17,13 @@
       <h2 class="text-xl font-semibold">RSS</h2>
     </div>
     <p class="text-[var(--color-text-muted)] mb-5 text-sm">
-      Turn a Discover row backed by external metadata (Trakt and other providers) into a feed
-      you can subscribe to, or paste into Radarr's or Sonarr's <span class="text-[var(--color-text-secondary)]">RSS List</span> import.
+      {% translate "Turn a Discover row backed by external metadata (Trakt and other providers) into a feed you can subscribe to, or paste into Radarr's or Sonarr's" %} <span class="text-[var(--color-text-secondary)]">{% translate "RSS List" %}</span> {% translate "import." %}
     </p>
 
     <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
         <div>
-          <label class="block text-sm text-[var(--color-text-muted)] mb-2">Media Type</label>
+          <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Media Type" %}</label>
           <div class="relative">
             <select x-model="mediaType"
                     @change="onMediaTypeChange(); refreshPreview()"
@@ -35,7 +36,7 @@
           </div>
         </div>
         <div>
-          <label class="block text-sm text-[var(--color-text-muted)] mb-2">Row</label>
+          <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Row" %}</label>
           <div class="relative">
             <select x-model="rowKey"
                     @change="refreshPreview()"
@@ -52,11 +53,11 @@
       <div class="flex flex-wrap gap-6 mb-5">
         <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer">
           <input type="checkbox" x-model="skipPlanning" @change="refreshPreview()" class="rounded border-gray-600 bg-[var(--color-surface)] text-indigo-600 focus:ring-indigo-500">
-          Skip Planning
+          {% translate "Skip Planning" %}
         </label>
         <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)] cursor-pointer">
           <input type="checkbox" x-model="skipCollected" @change="refreshPreview()" class="rounded border-gray-600 bg-[var(--color-surface)] text-indigo-600 focus:ring-indigo-500">
-          Skip Collected
+          {% translate "Skip Collected" %}
         </label>
       </div>
 
@@ -73,7 +74,7 @@
 
       <div id="rss-preview" class="mb-5"></div>
 
-      <label class="block text-sm text-[var(--color-text-muted)] mb-2">Feed URL</label>
+      <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Feed URL" %}</label>
       <div class="bg-[var(--color-surface-dim)] p-3 rounded-md">
         <div class="flex items-center gap-2">
           <input readonly
@@ -82,18 +83,17 @@
                  type="text"
                  :value="feedUrl">
           <span class="flex items-center cursor-pointer group pr-3"
-                title="Copy"
+                title="{% translate "Copy" %}"
                 data-copy-target="#rss-feed-url">
             {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
           </span>
         </div>
       </div>
       <p class="text-[var(--color-text-muted)] text-xs mt-3">
-        Compatible with Radarr's and Sonarr's <span class="text-[var(--color-text-muted)]">RSS List</span> import (movies use the
-        <span class="text-[var(--color-text-muted)]">Trending Right Now</span>, <span class="text-[var(--color-text-muted)]">All-Time Greats</span> and
-        <span class="text-[var(--color-text-muted)]">Coming Soon</span> rows for the Movie/TV/Anime media types). This feed uses your
-        account's API token &mdash; regenerating it from
-        <a href="{% url 'integrations' %}" class="text-[var(--color-link)] hover:underline">Integrations</a> invalidates old feed links.
+        {% translate "Compatible with Radarr's and Sonarr's" %} <span class="text-[var(--color-text-muted)]">{% translate "RSS List" %}</span> {% translate "import (movies use the" %}
+        <span class="text-[var(--color-text-muted)]">{% translate "Trending Right Now" %}</span>, <span class="text-[var(--color-text-muted)]">{% translate "All-Time Greats" %}</span> {% translate "and" %}
+        <span class="text-[var(--color-text-muted)]">{% translate "Coming Soon" %}</span> {% translate "rows for the Movie/TV/Anime media types). This feed uses your account's API token — regenerating it from" %}
+        <a href="{% url 'integrations' %}" class="text-[var(--color-link)] hover:underline">{% translate "Integrations" %}</a> {% translate "invalidates old feed links." %}
       </p>
     </div>
   </div>

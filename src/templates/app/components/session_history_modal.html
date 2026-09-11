@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -16,35 +18,35 @@
   <div class="flex items-center justify-between gap-4 border-b border-[var(--color-border)] px-4 py-3 md:px-6">
     <div>
       <h2 id="session-history-title"
-          class="text-lg font-semibold text-[var(--color-text)]">Activity history</h2>
-      <p class="text-xs text-[var(--color-text-muted)]">Select a day to jump to its activity.</p>
+          class="text-lg font-semibold text-[var(--color-text)]">{% translate "Activity history" %}</h2>
+      <p class="text-xs text-[var(--color-text-muted)]">{% translate "Select a day to jump to its activity." %}</p>
     </div>
     <button type="button"
             x-ref="close"
             data-session-history-close
             class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-            aria-label="Close activity history"
+            aria-label="{% translate "Close activity history" %}"
             @click="sessionHistoryOpen = false">{% include "app/icons/x.svg" with classes="h-5 w-5" %}</button>
   </div>
 
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:grid md:grid-cols-[minmax(0,1fr)_18rem]">
     <section x-ref="list"
              class="order-2 min-h-0 flex-1 space-y-6 overflow-y-auto px-3 py-4 md:order-1 md:px-6"
-             aria-label="Activity sessions">
+             aria-label="{% translate "Activity sessions" %}">
       {% if history_days %}
         {% for day in history_days %}
           {% include "app/components/session_history_day.html" with day=day user=user request=request only %}
         {% endfor %}
       {% else %}
         <p class="rounded-lg border border-dashed border-[var(--color-border)] px-4 py-10 text-center text-sm text-[var(--color-text-muted)]">
-          No activity recorded.
+          {% translate "No activity recorded." %}
         </p>
       {% endif %}
     </section>
 
     <aside x-data="{ calendarOpen: false }"
            class="order-1 flex shrink-0 flex-col overflow-y-auto border-b border-[var(--color-border)] px-4 py-4 md:order-2 md:border-b-0 md:border-l md:px-5"
-           aria-label="Activity calendar">
+           aria-label="{% translate "Activity calendar" %}">
       <button type="button"
               class="flex w-full items-center justify-between gap-2 py-1 md:hidden"
               @click="calendarOpen = !calendarOpen"
@@ -53,7 +55,7 @@
         <span class="text-sm font-semibold text-[var(--color-text)]"
               x-text="monthLabel()"></span>
         <span class="flex items-center gap-1 text-xs text-[var(--color-text-muted)]">
-          <span x-text="calendarOpen ? 'Hide calendar' : 'Show calendar'"></span>
+          {% translate "Hide calendar" as media_i18n_51 %}{% translate "Show calendar" as media_i18n_52 %}<span x-text="calendarOpen ? '{{ media_i18n_51|escapejs }}' : '{{ media_i18n_52|escapejs }}'"></span>
           <span class="inline-flex transition-transform duration-150"
                 :class="calendarOpen ? 'rotate-180' : ''">
             {% include "app/icons/chevron-down.svg" with classes="h-4 w-4" %}
@@ -67,11 +69,11 @@
            class="md:!block">{% include "app/components/calendar.html" with calendar_mode="activity" only %}</div>
 
       <div class="mt-auto hidden border-t border-[var(--color-border)] pt-4 md:block">
-        <h3 class="text-sm font-semibold text-[var(--color-text)]">At a glance</h3>
+        <h3 class="text-sm font-semibold text-[var(--color-text)]">{% translate "At a glance" %}</h3>
         <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-4">
           {% for stat in session_history_stats %}
             <div class="min-w-0">
-              <dt class="truncate text-[0.68rem] uppercase tracking-wide text-[var(--color-text-muted)]">{{ stat.label }}</dt>
+              <dt class="truncate text-[0.68rem] uppercase tracking-wide text-[var(--color-text-muted)]">{% translate stat.label %}</dt>
               <dd class="mt-1 truncate text-sm font-semibold text-[var(--color-text)]"
                   title="{{ stat.value }}">
                 {{ stat.value }}
@@ -87,7 +89,7 @@
     <div class="border-t border-[var(--color-border)] px-4 py-3 text-center md:px-6">
       <a class="text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)]"
          href="{% url 'history' %}{% if history_querystring %}?{{ history_querystring }}{% endif %}">
-        View all activity history
+        {% translate "View all activity history" %}
       </a>
     </div>
   {% endif %}

@@ -20,7 +20,6 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 from health_check.mixins import CheckMixin
-from rest_framework import permissions
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
@@ -173,8 +172,6 @@ def _resolve_api_episode_coordinate(
 class CalendarView(drf_views.APIView):
     """Calendar view."""
 
-    permission_classes = [permissions.IsAuthenticated]
-
     def get(self, request):
         """Retrieve calendar events for the authenticated user."""
         start_date = request.GET.get("start_date")
@@ -224,8 +221,6 @@ class CalendarView(drf_views.APIView):
 class CalendarUpdateView(drf_views.APIView):
     """Update calendar view."""
 
-    permission_classes = [permissions.IsAuthenticated]
-
     def post(self, request):
         """Trigger calendar events update for the authenticated user."""
         tasks.reload_calendar.delay(request.user)
@@ -238,8 +233,6 @@ class CalendarUpdateView(drf_views.APIView):
 # /api/v1/changes_history/[media_type]/[history_id]
 class MediaTypeChangesHistoryDetailView(drf_views.APIView):
     """Changes history record view."""
-
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_COMPLETE_PARAM])
     def get(self, request, media_type, history_id):
@@ -336,8 +329,6 @@ class InfoView(drf_views.APIView):
 # /api/v1/lists/
 class ListsView(drf_views.APIView):
     """Lists view."""
-
-    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         """Retrieve the lists for the authenticated user."""
@@ -463,8 +454,6 @@ class ListsView(drf_views.APIView):
 # /api/v1/lists/[list_id]/
 class ListDetailView(drf_views.APIView):
     """List detail view."""
-
-    permission_classes = [permissions.IsAuthenticated]
 
     def delete(self, request, list_id):
         """Delete a specific custom list."""
@@ -915,7 +904,6 @@ class MediaListView(drf_views.APIView):
     """List media with the shared web/API filter contract."""
 
     serializer_class = MediaSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         parameters=MEDIA_LIST_ROOT_PARAMS,
@@ -932,7 +920,6 @@ class MediaTypeListView(drf_views.APIView):
     """List media by type with the shared web/API filter contract."""
 
     serializer_class = MediaSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         parameters=[MEDIA_TYPE_COMPLETE_PARAM, *MEDIA_LIST_FILTER_PARAMS],
@@ -1154,7 +1141,6 @@ class MediaDetailView(drf_views.APIView):
     """Media view."""
 
     serializer_class = MediaSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id):
@@ -1552,8 +1538,6 @@ class MediaDetailView(drf_views.APIView):
 class MediaChangesHistoryView(drf_views.APIView):
     """Media changes history view."""
 
-    permission_classes = [permissions.IsAuthenticated]
-
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
         """Retrieve changes history timeline entries for a specific media."""
@@ -1610,7 +1594,6 @@ class MediaConsumptionHistoryView(drf_views.APIView):
     """Media consumption history view."""
 
     serializer_class = HistorySerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
@@ -1688,7 +1671,6 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
     """Media consumption history entry detail view."""
 
     serializer_class = HistorySerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id, consumption_id):
@@ -2056,7 +2038,6 @@ class MediaRecommendationsView(drf_views.APIView):
     """Media recommendations view."""
 
     serializer_class = MediaSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
@@ -2105,8 +2086,6 @@ class MediaRecommendationsView(drf_views.APIView):
 # /api/v1/media/[media_type]/[source]/[media_id]/seasons/
 class MediaSeasonsView(drf_views.APIView):
     """Media seasons view."""
-
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id):
@@ -2282,8 +2261,6 @@ class MediaSeasonsView(drf_views.APIView):
 class MediaSyncView(drf_views.APIView):
     """Sync media view."""
 
-    permission_classes = [permissions.IsAuthenticated]
-
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def post(self, request, media_type, source, media_id):  # FORK: was `_`
         """Trigger sync of metadata from provider (non-manual sources only)."""
@@ -2318,10 +2295,12 @@ class MediaSyncView(drf_views.APIView):
                     status=HTTP.ACCEPTED,
                 )
 
+        language = metadata_resolution.metadata_language_default(request.user)
         provider_cache_keys = metadata_utils.provider_metadata_cache_keys(
             source,
             media_type,
             media_id,
+            language=language,
         )
         cache_key = provider_cache_keys[0]
 
@@ -2345,7 +2324,7 @@ class MediaSyncView(drf_views.APIView):
                 media_type,
                 media_id,
                 source,
-                language=metadata_resolution.metadata_language_default(request.user),
+                language=language,
             )
 
             # FORK: bucket-aware resolution + localized title fields, mirroring
@@ -2412,7 +2391,6 @@ class MediaSeasonDetailView(drf_views.APIView):
     """Season view."""
 
     serializer_class = MediaSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(self, request, media_type, source, media_id, season_number):
@@ -2731,8 +2709,6 @@ class MediaSeasonDetailView(drf_views.APIView):
 class MediaSeasonChangesHistoryView(drf_views.APIView):
     """Changes history season view."""
 
-    permission_classes = [permissions.IsAuthenticated]
-
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number):
         """Retrieve changes history timeline entries for a season."""
@@ -2797,8 +2773,6 @@ class MediaSeasonChangesHistoryView(drf_views.APIView):
 # /api/v1/media/[media_type]/[source]/[media_id]/[season_number]/episodes/
 class MediaSeasonEpisodesView(drf_views.APIView):
     """Season episodes view."""
-
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number):
@@ -2913,7 +2887,6 @@ class MediaSeasonConsumptionHistoryView(drf_views.APIView):
     """Season consumption history view."""
 
     serializer_class = HistorySerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def get(self, request, media_type, source, media_id, season_number):
@@ -2989,7 +2962,6 @@ class MediaSeasonConsumptionEntryDetailView(drf_views.APIView):
     """Season consumption history entry detail view."""
 
     serializer_class = HistorySerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def delete(
@@ -3402,8 +3374,6 @@ class MediaSeasonListDetailView(drf_views.APIView):
 class MediaSeasonSyncView(drf_views.APIView):
     """Sync season."""
 
-    permission_classes = [permissions.IsAuthenticated]
-
     # FORK: request arg was `_` upstream
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def post(self, request, media_type, source, media_id, season_number):
@@ -3437,11 +3407,13 @@ class MediaSeasonSyncView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
+        language = metadata_resolution.metadata_language_default(request.user)
         provider_cache_keys = metadata_utils.provider_metadata_cache_keys(
             source,
             MediaTypes.SEASON.value,
             media_id,
             season_number=season_number,
+            language=language,
         )
         cache_key = provider_cache_keys[0]
 
@@ -3466,7 +3438,7 @@ class MediaSeasonSyncView(drf_views.APIView):
                 media_id,
                 source,
                 [season_number],
-                language=metadata_resolution.metadata_language_default(request.user),
+                language=language,
             )
 
             # FORK: bucket-aware resolution + localized title fields, mirroring
@@ -3582,7 +3554,6 @@ class MediaEpisodeDetailView(drf_views.APIView):
     """Episode view."""
 
     serializer_class = MediaSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         parameters=[MEDIA_TYPE_PARAM],
@@ -3947,7 +3918,6 @@ class MediaEpisodeChangesHistoryView(drf_views.APIView):
     """Changes history episode view."""
 
     serializer_class = ChangesHistoryEntrySerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         parameters=[MEDIA_TYPE_PARAM],
@@ -4030,7 +4000,6 @@ class MediaEpisodeConsumptionHistoryView(drf_views.APIView):
     """Episode consumption history view."""
 
     serializer_class = HistorySerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         parameters=[MEDIA_TYPE_PARAM],
@@ -4121,7 +4090,6 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
     """Episode consumption history entry detail view."""
 
     serializer_class = HistorySerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         parameters=[MEDIA_TYPE_PARAM],
@@ -4603,8 +4571,6 @@ class MediaEpisodeListDetailView(drf_views.APIView):
 class MediaEpisodeSyncView(drf_views.APIView):
     """Sync episode view."""
 
-    permission_classes = [permissions.IsAuthenticated]
-
     @extend_schema(parameters=[MEDIA_TYPE_PARAM])
     def post(
         self,
@@ -4631,7 +4597,6 @@ class SearchProviderView(drf_views.APIView):
     """Search view."""
 
     serializer_class = MediaSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
         operation_id="searchMedia",
@@ -4828,8 +4793,6 @@ class SearchProviderView(drf_views.APIView):
 # /api/v1/statistics/
 class StatisticsView(drf_views.APIView):
     """Statistics view."""
-
-    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         """Retrieve statistics for the authenticated user."""

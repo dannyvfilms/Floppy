@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load user_tags %}
 
@@ -20,7 +22,7 @@
         <a
           href="{{ history_filter_url }}"
           class="w-full inline-flex items-center justify-center rounded-md bg-amber-600 px-3 py-2 text-sm text-white transition-colors hover:bg-amber-700">
-          {% if is_author %}View Reads in History{% else %}View Plays in History{% endif %}
+          {% if is_author %}{% translate "View Reads in History" %}{% else %}{% translate "View Plays in History" %}{% endif %}
         </a>
       </div>
     </div>
@@ -37,18 +39,18 @@
         {% if tracked_plays_count is not None %}
           {% if is_author %}
             <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
-              {{ watched_book_count }} book{{ watched_book_count|pluralize }}
+              {% blocktranslate trimmed with value_1=watched_book_count count count=watched_book_count %}{{ value_1 }} book{% plural %}{{ value_1 }} books{% endblocktranslate %}
             </span>
           {% else %}
             <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
-              {{ watched_movie_count }} movie{{ watched_movie_count|pluralize }}
+              {% blocktranslate trimmed with value_1=watched_movie_count count count=watched_movie_count %}{{ value_1 }} movie{% plural %}{{ value_1 }} movies{% endblocktranslate %}
             </span>
             <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
-              {{ watched_show_count }} show{{ watched_show_count|pluralize }}
+              {% blocktranslate trimmed with value_1=watched_show_count count count=watched_show_count %}{{ value_1 }} show{% plural %}{{ value_1 }} shows{% endblocktranslate %}
             </span>
           {% endif %}
           <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
-            {{ tracked_plays_count }} tracked {% if is_author %}read{% else %}play{% endif %}{{ tracked_plays_count|pluralize }}
+            {% if is_author %}{% blocktranslate count count=tracked_plays_count %}{{ count }} tracked read{% plural %}{{ count }} tracked reads{% endblocktranslate %}{% else %}{% blocktranslate count count=tracked_plays_count %}{{ count }} tracked play{% plural %}{{ count }} tracked plays{% endblocktranslate %}{% endif %}
           </span>
           {% if tracked_hours_count %}
             <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
@@ -73,35 +75,35 @@
               x-show="isClamped"
               @click="isExpanded = !isExpanded"
               class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
-              <span x-text="isExpanded ? 'Show less' : 'Show more'"></span>
+              {% translate "Show less" as media_i18n_0 %}{% translate "Show more" as media_i18n_1 %}<span x-text="isExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_1|escapejs }}'"></span>
             </button>
           </div>
         {% else %}
-          <p class="text-[var(--color-text-muted)]">No biography available.</p>
+          <p class="text-[var(--color-text-muted)]">{% translate "No biography available." %}</p>
         {% endif %}
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {% if person.birth_date %}
           <div class="bg-[var(--color-surface)] rounded-lg p-3">
-            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Born</h3>
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{% translate "Born" %}</h3>
             <p class="text-sm text-[var(--color-text-secondary)] mt-1">{{ person.birth_date|user_date_format:user }}</p>
           </div>
         {% endif %}
         {% if person.death_date %}
           <div class="bg-[var(--color-surface)] rounded-lg p-3">
-            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Died</h3>
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{% translate "Died" %}</h3>
             <p class="text-sm text-[var(--color-text-secondary)] mt-1">{{ person.death_date|user_date_format:user }}</p>
           </div>
         {% endif %}
         {% if person.place_of_birth %}
           <div class="bg-[var(--color-surface)] rounded-lg p-3">
-            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Place of Birth</h3>
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{% translate "Place of Birth" %}</h3>
             <p class="text-sm text-[var(--color-text-secondary)] mt-1 line-clamp-2">{{ person.place_of_birth }}</p>
           </div>
         {% endif %}
         <div class="bg-[var(--color-surface)] rounded-lg p-3">
-          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Source</h3>
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{% translate "Source" %}</h3>
           <p class="text-sm mt-1">
             {% if source_url %}
               <a
@@ -120,7 +122,7 @@
     </div>
   </div>
 
-  <div x-data="{
+  {% translate "All" as media_i18n_2 %}{% translate "Rated" as media_i18n_3 %}{% translate "Not Rated" as media_i18n_4 %}{% translate "Collected" as media_i18n_5 %}{% translate "Not Collected" as media_i18n_6 %}{% translate "Any" as media_i18n_7 %}{% translate "Not Caught Up" as media_i18n_8 %}{% translate "Caught Up" as media_i18n_9 %}{% translate "Released" as media_i18n_10 %}{% translate "Not Released" as media_i18n_11 %}<div x-data="{
     mediaListUrl: '{{ person_detail_url }}',
     sort: '{{ current_sort|escapejs }}',
     direction: '{{ current_direction|escapejs }}',
@@ -129,10 +131,10 @@
     collection: '{{ current_collection|escapejs }}',
     progress: 'all',
     genre: '{{ current_genre|escapejs }}',
-    impliedGenre: '{{ current_implied_genre|escapejs }}',
+    implied_genre: '{{ current_implied_genre|escapejs }}',
     year: '{{ current_year|escapejs }}',
     release: 'all',
-    sourceFilter: '{{ current_source|escapejs }}',
+    source: '{{ current_source|escapejs }}',
     language: '',
     country: '',
     platform: '',
@@ -153,24 +155,24 @@
     showProgress: false,
     statusLabels: {},
     ratingLabels: {
-      'all': 'All',
-      'rated': 'Rated',
-      'not_rated': 'Not Rated'
+      'all': '{{ media_i18n_2|escapejs }}',
+      'rated': '{{ media_i18n_3|escapejs }}',
+      'not_rated': '{{ media_i18n_4|escapejs }}'
     }, collectionLabels: {
-      'all': 'All',
-      'collected': 'Collected',
-      'not_collected': 'Not Collected'
+      'all': '{{ media_i18n_2|escapejs }}',
+      'collected': '{{ media_i18n_5|escapejs }}',
+      'not_collected': '{{ media_i18n_6|escapejs }}'
     }, progressLabels: {
-      'all': 'Any',
-      'not_caught_up': 'Not Caught Up',
-      'caught_up': 'Caught Up'
+      'all': '{{ media_i18n_7|escapejs }}',
+      'not_caught_up': '{{ media_i18n_8|escapejs }}',
+      'caught_up': '{{ media_i18n_9|escapejs }}'
     }, releaseLabels: {
-      'all': 'Any',
-      'released': 'Released',
-      'not_released': 'Not Released'
+      'all': '{{ media_i18n_7|escapejs }}',
+      'released': '{{ media_i18n_10|escapejs }}',
+      'not_released': '{{ media_i18n_11|escapejs }}'
     }, sortLabels: {
     {% for value, label in sort_choices %}
-      '{{ value }}': '{{ label }}'
+      '{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}'
       {% if not forloop.last %},{% endif %}
 
     {% endfor %}
@@ -219,14 +221,14 @@
       if (this.department) { labels.push(this.department); }
       if (this.year) { labels.push(this.year); }
       if (this.genre) { labels.push(this.genre); }
-      if (this.sourceFilter) { labels.push(this.sourceFilter.toUpperCase()); }
+      if (this.source) { labels.push(this.source.toUpperCase()); }
       if (this.rating !== 'all') { labels.push(this.ratingLabels[this.rating] || this.rating); }
       if (this.collection !== 'all') { labels.push(this.collectionLabels[this.collection] || this.collection); }
       if (this.selectedTags.length) {
         const prefix = this.tagMode === 'not' ? '-' : '+';
         labels.push(prefix + this.selectedTags.join(this.tagMode === 'and' ? ' & ' : ', '));
       }
-      if (labels.length === 0) { return 'All'; }
+      if (labels.length === 0) { return '{{ media_i18n_2|escapejs }}'; }
       if (labels.length === 1) { return labels[0]; }
       return `${labels[0]} +${labels.length - 1}`;
     },
@@ -235,10 +237,10 @@
       this.collection = 'all';
       this.progress = 'all';
       this.genre = '';
-      this.impliedGenre = '';
+      this.implied_genre = '';
       this.year = '';
       this.release = 'all';
-      this.sourceFilter = '';
+      this.source = '';
       this.department = '';
       this.language = '';
       this.country = '';

@@ -17,6 +17,7 @@ from app.interactive_requests import interactive_request_active
 from app.log_safety import exception_summary
 from app.models import Item, MediaTypes, MetadataBackfillField, Sources
 from app.providers import services
+from app.services import metadata_resolution
 from app.task_cooperation import CooperativeRun
 from app.tasks_backfill_state import (
     WATCH_PROVIDERS_BACKFILL_VERSION,
@@ -51,14 +52,25 @@ RECONCILE_KEY = "watch_providers"
 RECONCILE_MAX_CHUNKS_PER_RUN = settings.RECONCILE_MAX_CHUNKS_PER_RUN
 
 
+def _provider_item_scope(prefix: str = ""):
+    """Return items whose watch providers can be supplied by TMDB."""
+    return Q(
+        **{
+            f"{prefix}source": Sources.TMDB.value,
+            f"{prefix}media_type__in": PROVIDER_MEDIA_TYPES,
+        },
+    ) | Q(
+        **{
+            f"{prefix}source": Sources.MAL.value,
+            f"{prefix}media_type": MediaTypes.ANIME.value,
+        },
+    )
+
+
 def _provider_items_queryset(*, for_reconcile: bool = False):
     from app.models import MetadataBackfillState
 
-    queryset = Item.objects.filter(
-        media_type__in=PROVIDER_MEDIA_TYPES,
-        source=Sources.TMDB.value,
-        watch_providers={},
-    )
+    queryset = Item.objects.filter(_provider_item_scope(), watch_providers={})
     queryset = _apply_backfill_state_filters(
         queryset,
         MetadataBackfillField.WATCH_PROVIDERS,
@@ -85,10 +97,34 @@ def _populate_providers_for_items(items):
     run = CooperativeRun("watch_providers_backfill")
     for item in run.iter(items):
         try:
+            provider_media_id = item.media_id
+            provider_source = item.source
+            if (
+                item.source == Sources.MAL.value
+                and item.media_type == MediaTypes.ANIME.value
+            ):
+                identity = metadata_resolution.resolve_mal_tmdb_identity(item.media_id)
+                provider_source = Sources.TMDB.value
+                if not identity:
+                    # No exact mapping is a completed result for this pinned
+                    # mapping strategy. A later strategy-version bump will
+                    # reconsider the item without retrying it every day now.
+                    _record_backfill_success(
+                        item,
+                        MetadataBackfillField.WATCH_PROVIDERS,
+                        strategy_version=WATCH_PROVIDERS_BACKFILL_VERSION,
+                    )
+                    continue
+                metadata_resolution.persist_mal_tmdb_identity(item, identity)
+                provider_media_id = identity.media_id
+                provider_media_type = identity.media_type
+            else:
+                provider_media_type = item.media_type.lower()
+
             metadata = services.get_media_metadata(
-                item.media_type.lower(),
-                item.media_id,
-                item.source,
+                provider_media_type,
+                provider_media_id,
+                provider_source,
             )
             if not isinstance(metadata, dict):
                 error_count += 1
@@ -227,10 +263,9 @@ def enqueue_due_provider_backfill_retries(
             field=MetadataBackfillField.WATCH_PROVIDERS,
             give_up=False,
             last_success_at__isnull=True,
-            item__media_type__in=PROVIDER_MEDIA_TYPES,
-            item__source=Sources.TMDB.value,
             item__watch_providers={},
         )
+        .filter(_provider_item_scope("item__"))
         .filter(Q(next_retry_at__isnull=True) | Q(next_retry_at__lte=now))
         .order_by("next_retry_at", "item_id")
         .values_list("item_id", flat=True)[:batch_size]

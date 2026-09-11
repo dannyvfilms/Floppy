@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -12,7 +14,7 @@
 <section id="detail-notes-section" class="{% if notes_entries or notes_entry %}mb-8{% endif %}" {% if notes_section_oob %}hx-swap-oob="outerHTML"{% endif %}>
   {% if notes_entries or notes_entry %}
     <div class="mb-4 flex items-center gap-2">
-      <h2 class="text-xl font-bold">{% if public_notes_view|default:False %}Notes{% else %}Your Notes{% endif %}</h2>
+      <h2 class="text-xl font-bold">{% if public_notes_view|default:False %}{% translate "Notes" %}{% else %}{% translate "Your Notes" %}{% endif %}</h2>
     </div>
   {% endif %}
 

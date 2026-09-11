@@ -88,8 +88,20 @@ def handle_error(error, user=None):
     raise services.ProviderAPIError(Sources.IGDB.value, error)
 
 
+def enabled(user=None):
+    """Return whether IGDB is configured."""
+    return credentials.is_configured("igdb", user)
+
+
 def get_access_token(user=None):
     """Return the access token for the IGDB API."""
+    if not enabled(user):
+        raise services.ProviderNotConfiguredError(
+            Sources.IGDB.value,
+            "IGDB is not configured. Add your Twitch application's client "
+            "ID and secret in Settings → Metadata providers.",
+        )
+
     suffix = credentials.cache_suffix("igdb", "client_id", "client_secret", user=user)
     cache_key = f"{Sources.IGDB.value}_access_token_{suffix}"
     access_token = cache.get(cache_key)

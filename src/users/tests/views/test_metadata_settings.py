@@ -62,6 +62,25 @@ class MetadataSettingsPageTests(TestCase):
         self.assertEqual(credentials.get("hardcover", "api_key"), "")
 
     @override_settings(HARDCOVER_API="")
+    def test_saved_instance_credential_is_masked_in_the_settings_page(self, _probe):
+        credentials.set_instance("hardcover", {"api_key": "stored-token"})
+        self.client.force_login(self.admin)
+
+        response = self.client.get(reverse("metadata_settings"))
+
+        self.assertContains(response, "••••••••oken")
+        self.assertNotContains(response, "stored-token")
+
+    @override_settings(HARDCOVER_API="")
+    def test_personal_credential_is_not_rendered_in_the_settings_page(self, _probe):
+        credentials.set_user("hardcover", self.user, {"api_key": "personal-token"})
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("metadata_settings"))
+
+        self.assertNotContains(response, 'value="personal-token"')
+
+    @override_settings(HARDCOVER_API="")
     def test_a_normal_user_cannot_write_instance_credentials(self, _probe):
         self.client.force_login(self.user)
 

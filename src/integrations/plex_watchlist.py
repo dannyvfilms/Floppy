@@ -10,6 +10,7 @@ from django.utils import timezone
 from app.mixins import disable_fetch_releases
 from app.models import TV, Item, MediaTypes, Movie, Sources, Status
 from app.providers import services, tmdb
+from integrations import external_references
 from integrations import plex as plex_api
 from integrations.imports.helpers import MediaImportError
 from integrations.models import PlexWatchlistSyncItem
@@ -32,6 +33,7 @@ class PlexWatchlistSyncService:
         self.warnings: list[str] = []
         self.source_username = ""
         self.source_account_id = ""
+        self.source_server_id = ""
 
     def sync(self) -> tuple[dict[str, int], str]:
         """Run the watchlist sync and return counts plus warning text."""
@@ -41,7 +43,11 @@ class PlexWatchlistSyncService:
 
         self.counts = defaultdict(int)
         self.warnings = []
-        self.source_username, self.source_account_id = self._ensure_source_identity()
+        (
+            self.source_username,
+            self.source_account_id,
+            self.source_server_id,
+        ) = self._ensure_source_identity()
         seen_item_ids: set[int] = set()
 
         with disable_fetch_releases():
@@ -55,13 +61,14 @@ class PlexWatchlistSyncService:
         warning_text = "\n".join(dict.fromkeys(self.warnings))
         return dict(self.counts), warning_text
 
-    def _ensure_source_identity(self) -> tuple[str, str]:
+    def _ensure_source_identity(self) -> tuple[str, str, str]:
         """Return and persist the best-known connected Plex account identity."""
         username = (self.account.plex_username or "").strip()
         account_id = str(self.account.plex_account_id or "").strip()
 
+        server_id = str(self.account.machine_identifier or "").strip()
         if username and account_id:
-            return username, account_id
+            return username, account_id, server_id
 
         try:
             account_data = plex_api.fetch_account(self.account.plex_token)
@@ -74,6 +81,11 @@ class PlexWatchlistSyncService:
 
         username = username or (account_data.get("username") or "").strip()
         account_id = account_id or str(account_data.get("id") or "").strip()
+        server_id = server_id or str(
+            account_data.get("machineIdentifier")
+            or account_data.get("machine_identifier")
+            or "",
+        ).strip()
 
         updated_fields = []
         if username and username != self.account.plex_username:
@@ -85,7 +97,7 @@ class PlexWatchlistSyncService:
         if updated_fields:
             self.account.save(update_fields=updated_fields)
 
-        return username, account_id
+        return username, account_id, server_id
 
     def _fetch_watchlist_entries(self) -> list[dict]:
         """Fetch the full watchlist from Plex Discover."""
@@ -132,7 +144,19 @@ class PlexWatchlistSyncService:
 
         guids = self._normalize_guid_list(entry.get("Guid") or entry.get("guid"))
         external_ids = plex_api.extract_external_ids_from_guids(guids)
-        tmdb_id = self._resolve_tmdb_id(media_type, external_ids, entry)
+        reference = external_references.lookup_plex_reference(
+            self.user,
+            self.account,
+            entry,
+            media_type,
+            payload=entry,
+        )
+        if reference and reference.review_status == (
+            external_references.ExternalReferenceReviewStatus.IGNORED.value
+        ):
+            self.counts["skipped_ignored"] += 1
+            return None
+        tmdb_id = self._resolve_tmdb_id(media_type, external_ids, entry, reference)
         if not tmdb_id:
             self.counts["skipped_missing_ids"] += 1
             self._warn(
@@ -161,6 +185,26 @@ class PlexWatchlistSyncService:
             entry=entry,
             created_media=created_media,
         )
+        identity = external_references.plex_identity(entry)
+        if identity:
+            external_references.save_observation(
+                self.user,
+                "plex",
+                external_references.plex_source_account(
+                    self.account,
+                    machine_identifier=self.source_server_id,
+                    payload=entry,
+                ),
+                *identity,
+                media_type,
+                matched_item=item,
+                metadata={
+                    "title": entry.get("title"),
+                    "year": entry.get("year"),
+                    "rating_key": entry.get("ratingKey") or entry.get("ratingkey"),
+                    "guid": external_ids.get("plex_guid"),
+                },
+            )
         return item.id
 
     def _hydrate_entry_with_external_ids(self, entry: dict) -> dict:
@@ -216,8 +260,13 @@ class PlexWatchlistSyncService:
         media_type: str,
         external_ids: dict[str, str],
         entry: dict,
+        reference=None,
     ) -> str | None:
         """Resolve the TMDB ID from Plex GUIDs or TMDB find lookups."""
+        target = external_references.reference_target(reference)
+        if target and target.media_type == media_type:
+            return str(target.media_id)
+
         tmdb_id = external_ids.get("tmdb_id")
         if tmdb_id:
             return str(tmdb_id)
@@ -238,11 +287,13 @@ class PlexWatchlistSyncService:
             if media_type == MediaTypes.MOVIE.value:
                 candidates = find_results.get("movie_results") or []
             else:
-                candidates = (
-                    find_results.get("tv_results")
-                    or find_results.get("tv_episode_results")
-                    or []
-                )
+                candidates = find_results.get("tv_results") or []
+                if not candidates:
+                    candidates = [
+                        {"id": result.get("show_id")}
+                        for result in find_results.get("tv_episode_results") or []
+                        if result.get("show_id")
+                    ]
 
             if not candidates:
                 continue
@@ -359,8 +410,10 @@ class PlexWatchlistSyncService:
             user=self.user,
             item=item,
             source_username=self.source_username,
+            source_server_id=self.source_server_id,
             defaults={
                 "source_account_id": self.source_account_id,
+                "source_server_id": self.source_server_id,
                 "plex_rating_key": rating_key,
                 "plex_guid": plex_guid,
                 "tmdb_id": str(external_ids.get("tmdb_id") or ""),
@@ -378,6 +431,7 @@ class PlexWatchlistSyncService:
         updated_fields = []
         desired_values = {
             "source_account_id": self.source_account_id,
+            "source_server_id": self.source_server_id,
             "plex_rating_key": rating_key,
             "plex_guid": plex_guid,
             "tmdb_id": str(external_ids.get("tmdb_id") or ""),
@@ -405,6 +459,7 @@ class PlexWatchlistSyncService:
             PlexWatchlistSyncItem.objects.filter(
                 user=self.user,
                 source_username=self.source_username,
+                source_server_id=self.source_server_id,
                 is_active=True,
             )
             .exclude(

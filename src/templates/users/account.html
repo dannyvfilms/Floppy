@@ -1,10 +1,12 @@
 {% extends "users/base.html" %}
+{% load i18n %}
+
 
 {% load socialaccount %}
 {% load static %}
 
 {% block title %}
-  Account - Floppy
+  {% translate "Account - Floppy" %}
 {% endblock title %}
 
 {% block settings_content %}
@@ -12,7 +14,7 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-5">
         {% include "app/icons/person.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-        <h2 class="text-xl font-semibold">Profile Information</h2>
+        <h2 class="text-xl font-semibold">{% translate "Profile Information" %}</h2>
       </div>
 
       {% if user_form.non_field_errors %}
@@ -27,7 +29,7 @@
         <input type="password" autocomplete="new-password" style="position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0;" tabindex="-1" aria-hidden="true">
         <div>
           <label for="{{ user_form.username.id_for_label }}"
-                 class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Username</label>
+                 class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Username" %}</label>
           <input id="{{ user_form.username.id_for_label }}"
                  name="{{ user_form.username.html_name }}"
                  class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border {% if user_form.username.errors %}border-red-500{% else %}border-gray-600{% endif %} focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
@@ -43,7 +45,7 @@
           <button type="submit"
                   class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
             {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
-            Save Changes
+            {% translate "Save Changes" %}
           </button>
         </div>
       </form>
@@ -52,7 +54,7 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-5">
         {% include "app/icons/padlock.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-        <h2 class="text-xl font-semibold">Change Password</h2>
+        <h2 class="text-xl font-semibold">{% translate "Change Password" %}</h2>
       </div>
 
       {% if password_form.non_field_errors %}
@@ -67,7 +69,7 @@
         {% csrf_token %}
         <div class="relative">
           <label for="{{ password_form.old_password.id_for_label }}"
-                 class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Current Password</label>
+                 class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Current Password" %}</label>
           <div class="relative">
             <input id="{{ password_form.old_password.id_for_label }}"
                    name="{{ password_form.old_password.html_name }}"
@@ -91,7 +93,7 @@
 
         <div class="relative">
           <label for="{{ password_form.new_password1.id_for_label }}"
-                 class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">New Password</label>
+                 class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "New Password" %}</label>
           <div class="relative">
             <input id="{{ password_form.new_password1.id_for_label }}"
                    name="{{ password_form.new_password1.html_name }}"
@@ -115,7 +117,7 @@
 
         <div class="relative">
           <label for="{{ password_form.new_password2.id_for_label }}"
-                 class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">Confirm New Password</label>
+                 class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Confirm New Password" %}</label>
           <div class="relative">
             <input id="{{ password_form.new_password2.id_for_label }}"
                    name="{{ password_form.new_password2.html_name }}"
@@ -141,7 +143,7 @@
           <button type="submit"
                   class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
             {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
-            Update Password
+            {% translate "Update Password" %}
           </button>
         </div>
       </form>
@@ -150,20 +152,20 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-4">
       <div class="flex items-center">
         {% include "app/icons/shield.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-        <h2 class="text-xl font-semibold">Account Recovery & Authenticator</h2>
+        <h2 class="text-xl font-semibold">{% translate "Account Recovery & Authenticator" %}</h2>
       </div>
 
       <div class="text-sm text-[var(--color-text-secondary)]">
         <p class="mb-3 flex items-start gap-2 text-sm text-[var(--color-text-muted)] leading-relaxed">
           {% include "app/icons/info.svg" with classes="w-4 h-4 text-[var(--color-link)] shrink-0 mt-0.5" %}
-          <span>Floppy cannot send password reset emails or text messages. Authenticator codes, recovery codes, or an admin password reset in the container terminal are the only recovery options.</span>
+          <span>{% translate "Floppy cannot send password reset emails or text messages. Authenticator codes, recovery codes, or an admin password reset in the container terminal are the only recovery options." %}</span>
         </p>
 
         {% if show_authenticator_setup %}
           {% if authenticator_qr_data_uri %}
             <div class="inline-block bg-white p-2 rounded-md mb-4 mx-auto md:float-right md:mx-0 md:ml-6 md:mb-4">
               <img src="{{ authenticator_qr_data_uri }}"
-                   alt="Authenticator setup QR code"
+                   alt="{% translate "Authenticator setup QR code" %}"
                    class="h-[168px] w-[168px] md:h-[173px] md:w-[173px]"
                    width="160"
                    height="160">
@@ -171,26 +173,26 @@
           {% endif %}
 
           <div class="space-y-3">
-            <p>1) Scan this QR code with your authenticator app (recommended). If scanning is unavailable, enter the secret manually.</p>
-            <p class="text-xs text-[var(--color-text-muted)] md:mr-[216px]">Manual entry secret:</p>
+            <p>{% translate "1) Scan this QR code with your authenticator app (recommended). If scanning is unavailable, enter the secret manually." %}</p>
+            <p class="text-xs text-[var(--color-text-muted)] md:mr-[216px]">{% translate "Manual entry secret:" %}</p>
             <p class="font-mono text-xs bg-[var(--color-surface-strong)] p-2 rounded break-all md:mr-[216px]">{{ authenticator_secret }}</p>
-            <p>2) Verify with a 6-digit code to activate authenticator login recovery.</p>
+            <p>{% translate "2) Verify with a 6-digit code to activate authenticator login recovery." %}</p>
           </div>
         {% else %}
-          <p class="mb-3 text-sm text-green-300">Authenticator app is enabled.</p>
+          <p class="mb-3 text-sm text-green-300">{% translate "Authenticator app is enabled." %}</p>
           <p class="mb-4 text-sm text-[var(--color-text-muted)] leading-relaxed">
-            Manage your current authenticator setup here. Add a new authenticator app to replace the active one, or deactivate authenticator access for this account.
+            {% translate "Manage your current authenticator setup here. Add a new authenticator app to replace the active one, or deactivate authenticator access for this account." %}
           </p>
           <div class="flex flex-wrap gap-3">
             <form method="post" class="inline">
               {% csrf_token %}
               <input type="hidden" name="action" value="start_authenticator_setup">
-              <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">Add New Authenticator App</button>
+              <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">{% translate "Add New Authenticator App" %}</button>
             </form>
             <form method="post" class="inline">
               {% csrf_token %}
               <input type="hidden" name="action" value="disable_authenticator">
-              <button type="submit" class="px-4 py-2 bg-red-700 text-white rounded-md hover:bg-red-800 transition-colors text-sm cursor-pointer">Deactivate Authenticator</button>
+              <button type="submit" class="px-4 py-2 bg-red-700 text-white rounded-md hover:bg-red-800 transition-colors text-sm cursor-pointer">{% translate "Deactivate Authenticator" %}</button>
             </form>
           </div>
         {% endif %}
@@ -201,7 +203,7 @@
           {% csrf_token %}
           <input type="hidden" name="action" value="enable_authenticator">
           <div>
-            <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]" for="authenticator_code">Authenticator Code</label>
+            <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]" for="authenticator_code">{% translate "Authenticator Code" %}</label>
             <input id="authenticator_code"
                    name="code"
                    maxlength="6"
@@ -211,15 +213,15 @@
               <p class="mt-1 text-sm text-red-400">{{ authenticator_form.code.errors.0 }}</p>
             {% endif %}
           </div>
-          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">Verify Authenticator</button>
+          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">{% translate "Verify Authenticator" %}</button>
         </form>
       {% endif %}
 
       <div class="clear-both border-t border-gray-700 pt-4 space-y-3">
-        <p class="text-sm text-[var(--color-text-secondary)]">Unused recovery codes: <span class="font-semibold text-[var(--color-text)]">{{ unused_recovery_code_count }}</span></p>
+        <p class="text-sm text-[var(--color-text-secondary)]">{% translate "Unused recovery codes:" %} <span class="font-semibold text-[var(--color-text)]">{{ unused_recovery_code_count }}</span></p>
         {% if fresh_recovery_codes %}
           <div class="p-3 rounded-md border border-amber-500/30 bg-amber-500/10 text-[var(--color-warning-text)] text-sm">
-            Save these recovery codes now. They are shown only once.
+            {% translate "Save these recovery codes now. They are shown only once." %}
           </div>
           <ul class="grid grid-cols-2 gap-2 text-xs font-mono">
             {% for code in fresh_recovery_codes %}
@@ -231,7 +233,7 @@
           {% csrf_token %}
           <input type="hidden" name="action" value="regenerate_recovery_codes">
           <div>
-            <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]" for="regen_current_password">Current Password</label>
+            <label class="block text-sm font-medium mb-2 text-[var(--color-text-secondary)]" for="regen_current_password">{% translate "Current Password" %}</label>
             <input id="regen_current_password"
                    name="current_password"
                    type="password"
@@ -240,7 +242,7 @@
               <p class="mt-1 text-sm text-red-400">{{ recovery_codes_form.current_password.errors.0 }}</p>
             {% endif %}
           </div>
-          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">Regenerate Recovery Codes</button>
+          <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">{% translate "Regenerate Recovery Codes" %}</button>
         </form>
       </div>
     </div>
@@ -250,13 +252,13 @@
       <div class="bg-[var(--color-surface)] rounded-lg p-6">
         <div class="flex items-center mb-5">
           {% include "app/icons/shield.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-          <h2 class="text-xl font-semibold">Third-Party Connections</h2>
+          <h2 class="text-xl font-semibold">{% translate "Third-Party Connections" %}</h2>
         </div>
-        <p class="text-[var(--color-text-muted)] mb-5 text-sm">Manage your connected third-party accounts for easier sign-in.</p>
+        <p class="text-[var(--color-text-muted)] mb-5 text-sm">{% translate "Manage your connected third-party accounts for easier sign-in." %}</p>
         <a href="{% url 'socialaccount_connections' %}"
            class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm">
           {% include "app/icons/link.svg" with classes="w-4 h-4 mr-2" %}
-          Manage Account Connections
+          {% translate "Manage Account Connections" %}
         </a>
       </div>
     {% endif %}

@@ -50,6 +50,27 @@ class SmartRulesTests(FloppyApiTestCase):
         # The base fixtures track three movies for user1.
         self.assertEqual(response.json()["items_count"], 3)
 
+    def test_put_rules_accepts_episode_media_type(self):
+        """Episode is a first-class smart-rule media type and round-trips."""
+        response = self.call_api(
+            "put",
+            "api_list_smart_rules",
+            args=(self.smart_list.id,),
+            payload={"media_types": [MediaTypes.EPISODE.value]},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(
+            response.json()["rules"]["media_types"],
+            [MediaTypes.EPISODE.value],
+        )
+
+        self.smart_list.refresh_from_db()
+        self.assertEqual(
+            self.smart_list.smart_media_types,
+            [MediaTypes.EPISODE.value],
+        )
+
     def test_put_on_regular_list_rejected(self):
         """PUT smart-rules on a non-smart list returns 400."""
         regular = self.lists_by_name["favorites"]

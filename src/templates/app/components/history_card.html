@@ -1,12 +1,14 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
 {# History card component - used for both 2:3 and 1:1 aspect ratio cards #}
 {# Args: entry, card_class (search-result-card or search-result-card-square), history_mode, user #}
 
-<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
+<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
      data-media-type="{{ entry.media_type }}"
-     x-data="{ trackOpen: false, historyOpen: false, listsOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
+     x-data="{ trackOpen: false, historyOpen: false, listsOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay') || !this.$root.querySelector('.media-card-overlay')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
      @click.capture="tapToReveal($event)"
      @media-card-revealed.window="if ($event.detail !== $root) revealed = false"
            @click.window="if (revealed && !$root.contains($event.target)) revealed = false"
@@ -26,7 +28,7 @@
     {% if entry.status or entry.media_type == MediaTypes.EPISODE.value and history_mode != "release" %}
       {% with status_value=entry.status|default:"Completed" %}
         <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md">
-          <span class="sr-only">Status: {{ status_value }}</span>
+          <span class="sr-only">{% blocktranslate trimmed with value_1=status_value %}Status: {{ value_1 }}{% endblocktranslate %}</span>
           <div class="w-4 h-4 {{ status_value|status_color }}" aria-hidden="true">
             {% if status_value == "Completed" %}
               {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}
@@ -62,11 +64,11 @@
            href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
            class="absolute inset-0 z-0"></a>
 
-        <div class="relative z-10 flex items-center justify-center space-x-2.5">
+        <div class="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
           {% if history_mode != "release" %}
             {# Edit Tracking Button #}
             <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
-                    title="Edit tracking"
+                    title="{% translate "Edit tracking" %}"
                     hx-get="{% media_view_url 'track_modal' entry.item %}"
                     hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"{% if entry.instance_id %}, "instance_id": "{{ entry.instance_id }}"{% endif %}, "standard_modal": "1"}'
                     hx-target="#{% component_id 'track' entry.item entry.entry_key %}"
@@ -77,7 +79,7 @@
 
             {# Lists Button #}
             <button class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
-                    title="Add to custom lists"
+                    title="{% translate "Add to custom lists" %}"
                     hx-get="{% media_view_url 'lists_modal' entry.item %}"
                     hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
                     hx-target="#{% component_id 'lists' entry.item entry.entry_key %}"
@@ -88,7 +90,7 @@
 
             {# History View Button #}
             <a class="p-2.5 bg-amber-600 text-white rounded-full hover:bg-amber-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all duration-200 cursor-pointer"
-               title="View your activity history"
+               title="{% translate "View your activity history" %}"
                href="{% url 'history' %}?{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}album={{ entry.album.id }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show %}media_type={{ MediaTypes.PODCAST.value }}&podcast_show={{ entry.show.id }}{% elif entry.media_type == MediaTypes.EPISODE.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ entry.item.media_id|urlencode }}&source={{ entry.item.source|urlencode }}{% if entry.item.season_number %}&season_number={{ entry.item.season_number }}{% endif %}{% else %}media_type={{ entry.media_type }}&media_id={{ entry.item.media_id|urlencode }}&source={{ entry.item.source|urlencode }}{% endif %}{% if entry.media_type == MediaTypes.GAME.value or entry.media_type == MediaTypes.BOARDGAME.value %}&logging_style=sessions{% endif %}">
               {% include "app/icons/history.svg" with classes="w-4 h-4" %}
             </a>
@@ -163,7 +165,7 @@
                   @click.prevent.stop="toggleTooltip()"
                   class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                   type="button"
-                  aria-label="Show alternative title">
+                  aria-label="{% translate "Show alternative title" %}">
             {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
           </button>
           <template x-teleport="body">
@@ -197,20 +199,20 @@
     <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
       {# History-specific info: episode label, play count, or timestamp #}
       {% if history_mode == "release" %}
-        <span class="text-[var(--color-link)] font-medium">Released</span>
+        <span class="text-[var(--color-link)] font-medium">{% translate "Released" %}</span>
         <span class="ml-1">{{ entry.played_at_local|user_date_format:user }}</span>
       {% else %}
         {% if entry.progress_display and entry.media_type == MediaTypes.GAME.value or entry.progress_display and entry.media_type == MediaTypes.BOARDGAME.value %}
           <span class="text-[var(--color-link)] font-medium">{{ entry.progress_display }}</span>
           <span class="ml-1">{{ entry.date_range_display }}</span>
         {% elif entry.media_type == MediaTypes.MOVIE.value %}
-          <span class="text-[var(--color-link)] font-medium">{{ entry.play_count|default:1 }} play{{ entry.play_count|default:1|pluralize }}</span>
+          <span class="text-[var(--color-link)] font-medium">{% blocktranslate trimmed with value_1=entry.play_count|default:1 count count=entry.play_count|default:1 %}{{ value_1 }} play{% plural %}{{ value_1 }} plays{% endblocktranslate %}</span>
           <span class="ml-1">{{ entry.played_at_local|user_datetime_format:user }}</span>
         {% elif entry.media_type == MediaTypes.MUSIC.value %}
-          <span class="text-[var(--color-link)] font-medium">{{ entry.play_count|default:1 }} play{{ entry.play_count|default:1|pluralize }}</span>
+          <span class="text-[var(--color-link)] font-medium">{% blocktranslate trimmed with value_1=entry.play_count|default:1 count count=entry.play_count|default:1 %}{{ value_1 }} play{% plural %}{{ value_1 }} plays{% endblocktranslate %}</span>
           <span class="ml-1">{{ entry.time_range_display }}</span>
         {% elif entry.media_type == MediaTypes.PODCAST.value %}
-          <span class="text-[var(--color-link)] font-medium">{{ entry.play_count|default:1 }} play{{ entry.play_count|default:1|pluralize }}</span>
+          <span class="text-[var(--color-link)] font-medium">{% blocktranslate trimmed with value_1=entry.play_count|default:1 count count=entry.play_count|default:1 %}{{ value_1 }} play{% plural %}{{ value_1 }} plays{% endblocktranslate %}</span>
           <span class="ml-1">{{ entry.played_at_local|user_datetime_format:user }}</span>
         {% elif entry.episode_label %}
           <span class="text-[var(--color-link)] font-medium">{{ entry.episode_label }}</span>

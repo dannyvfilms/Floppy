@@ -406,6 +406,27 @@ def _empty_top_talent_payload(sort_by="plays"):
     }
 
 
+def _has_dateless_movie_or_episode_activity(user) -> bool:
+    """Check for movie/episode rows with no date, missed by day-bucketed play counts.
+
+    The day-based cache only counts a movie/episode toward `plays_by_type` on
+    a day its query can place it on (an exact end_date, or a start/end
+    overlap range); an entry with no date at all never lands in any day's
+    bucket. For "All Time", such entries are still valid activity (see
+    `_require_movie_or_game_date` in `statistics_talent.py`), so top talent
+    must not be skipped just because day-bucketed counts saw nothing.
+    """
+    Movie = apps.get_model("app", "Movie")
+    if Movie.objects.filter(
+        user=user, start_date__isnull=True, end_date__isnull=True
+    ).exists():
+        return True
+    Episode = apps.get_model("app", "Episode")
+    return Episode.objects.filter(
+        related_season__user=user, end_date__isnull=True
+    ).exists()
+
+
 def _empty_reading_consumption(unit_name="Unit", completion_label="Items Finished"):
     return {
         "units": {"total": 0, "per_year": 0, "per_month": 0, "per_day": 0},
@@ -556,6 +577,7 @@ def _aggregate_statistics_from_days(
     credit_backfill_hints: int = 0,
     prebuilt_days=None,
 ):
+    is_all_time_query = start_date is None and end_date is None
     items_by_type = defaultdict(dict)
     top_played_by_type = defaultdict(dict)
     minutes_by_type = defaultdict(float)
@@ -2079,12 +2101,23 @@ def _aggregate_statistics_from_days(
         plays_by_type.get(MediaTypes.MOVIE.value, 0)
         or plays_by_type.get(MediaTypes.TV.value, 0)
     )
+    if (
+        not has_movie_tv_activity
+        and is_all_time_query
+        and _has_dateless_movie_or_episode_activity(user)
+    ):
+        has_movie_tv_activity = True
+    # start_date/end_date may have been narrowed to day_list's bounds above
+    # (for chart axes); `is_all_time_query` (captured before that narrowing)
+    # tells top talent to still skip date filtering for a genuine all-time
+    # query, so dateless entries are included despite the concrete bounds.
     top_talent = (
         _aggregate_top_talent(
             user,
             start_date,
             end_date,
             schedule_missing_backfill=credit_backfill_hints <= 0,
+            is_all_time=is_all_time_query,
         )
         if has_movie_tv_activity
         else _empty_top_talent_payload(

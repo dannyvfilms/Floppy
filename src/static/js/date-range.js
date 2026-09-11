@@ -74,23 +74,23 @@ function dateRangePicker(options = {}) {
   defaultStartDate.setFullYear(defaultStartDate.getFullYear() - 1);
 
   const predefinedRanges = [
-    { name: "Today", displayName: "Today" },
-    { name: "Yesterday", displayName: "Yesterday" },
-    { name: "This Week", displayName: "This week" },
-    { name: "Last 7 Days", displayName: "Last 7 days" },
-    { name: "This Month", displayName: "Month to date" },
-    { name: "Last 30 Days", displayName: "Last 30 days" },
-    { name: "Last 90 Days", displayName: "Last 90 days" },
-    { name: "This Year", displayName: "Year to date" },
-    { name: "Last 6 Months", displayName: "Last 6 months" },
-    { name: "Last 12 Months", displayName: "Last 12 months" },
-    { name: "All Time", displayName: "All time" },
+    { name: "Today", displayName: gettext("Today") },
+    { name: "Yesterday", displayName: gettext("Yesterday") },
+    { name: "This Week", displayName: gettext("This week") },
+    { name: "Last 7 Days", displayName: gettext("Last 7 days") },
+    { name: "This Month", displayName: gettext("Month to date") },
+    { name: "Last 30 Days", displayName: gettext("Last 30 days") },
+    { name: "Last 90 Days", displayName: gettext("Last 90 days") },
+    { name: "This Year", displayName: gettext("Year to date") },
+    { name: "Last 6 Months", displayName: gettext("Last 6 months") },
+    { name: "Last 12 Months", displayName: gettext("Last 12 months") },
+    { name: "All Time", displayName: gettext("All time") },
   ];
 
   const comparisonOptions = [
-    { value: "previous_period", label: "Previous period" },
-    { value: "last_year", label: "Last year" },
-    { value: "none", label: "No comparison" },
+    { value: "previous_period", label: gettext("Previous period") },
+    { value: "last_year", label: gettext("Last year") },
+    { value: "none", label: gettext("No comparison") },
   ];
 
   return {
@@ -104,7 +104,7 @@ function dateRangePicker(options = {}) {
     customRangeLabel: "",
     compareMode: initialCompareMode,
     selectedMediaType: "all",
-    mediaTypeOptions: initialMediaTypeOptions,
+    mediaTypeOptions: initialMediaTypeOptions.map((option) => ({ ...option, label: gettext(option.label) })),
     ratingScaleMax: ratingScaleMax,
     summaryStatsByType: {},
     consumptionStatsByType: {},
@@ -113,18 +113,14 @@ function dateRangePicker(options = {}) {
     comparisonOptions,
 
     get currentTypeSummary() {
-      const key = this.summaryStatsByType[this.selectedMediaType]
-        ? this.selectedMediaType
-        : "all";
-      const s = this.summaryStatsByType[key] || {};
+      const s = this.summaryStatsByType[this.selectedMediaType] || {};
       const start = s.longest_streak_start;
       const end = s.longest_streak_end;
       let dates = "";
       if (start) {
         const fmt = (iso) => {
           const [y, m, d] = iso.split("-").map(Number);
-          const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-          return `${months[m - 1]} ${d}, ${y}`;
+          return new Date(y, m - 1, d).toLocaleDateString(document.documentElement.lang || undefined, { month: "short", day: "numeric", year: "numeric" });
         };
         dates = start === end ? fmt(start) : `${fmt(start)} – ${fmt(end)}`;
       }
@@ -139,7 +135,7 @@ function dateRangePicker(options = {}) {
     },
 
     fmt(value, decimals) {
-      return Number(value ?? 0).toFixed(decimals);
+      return Number(value ?? 0).toLocaleString(document.documentElement.lang || undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
     },
 
     consumptionIconPath(metric) {
@@ -147,7 +143,7 @@ function dateRangePicker(options = {}) {
     },
 
     consumptionUnitAbbr(unit) {
-      return unit === "Hours" ? "hrs" : unit;
+      return unit === "Hours" ? gettext("hrs") : gettext(unit);
     },
 
     consumptionTiles() {
@@ -156,9 +152,9 @@ function dateRangePicker(options = {}) {
       const primary = c.primary;
       const secondary = c.secondary;
       const buckets = [
-        { key: "year", label: "Per Year", field: "per_year" },
-        { key: "month", label: "Per Month", field: "per_month" },
-        { key: "day", label: "Per Day", field: "per_day" },
+        { key: "year", label: gettext("Per Year"), field: "per_year" },
+        { key: "month", label: gettext("Per Month"), field: "per_month" },
+        { key: "day", label: gettext("Per Day"), field: "per_day" },
       ];
       const tiles = buckets.map((b) => ({
         key: b.key,
@@ -167,7 +163,7 @@ function dateRangePicker(options = {}) {
         color: "text-[var(--color-link)]",
         label: b.label,
         value: this.fmt(primary[b.field], 1) + " " + this.consumptionUnitAbbr(primary.unit),
-        caption: secondary ? this.fmt(secondary[b.field], 1) + " " + secondary.unit : "",
+        caption: secondary ? this.fmt(secondary[b.field], 1) + " " + gettext(secondary.unit) : "",
       }));
       (c.bonuses || []).forEach((bonus, i) => {
         tiles.push(this.consumptionBonusTile(bonus, i));
@@ -178,21 +174,21 @@ function dateRangePicker(options = {}) {
     consumptionBonusTile(bonus, i) {
       if (bonus.kind === "playtime") {
         const hrs = bonus.value;
-        const value = hrs < 1 ? Math.round(hrs * 60) + " min" : this.fmt(hrs, 1) + " hrs";
+        const value = hrs < 1 ? Math.round(hrs * 60) + " " + gettext("min") : this.fmt(hrs, 1) + " " + gettext("hrs");
         return {
           key: "bonus-" + i, icon: "gamepad", bg: "bg-emerald-600/20", color: "text-emerald-400",
-          label: "Average Playtime", value, caption: "Per Day",
+          label: gettext("Average Playtime"), value, caption: gettext("Per Day"),
         };
       }
       if (bonus.kind === "length") {
         return {
           key: "bonus-" + i, icon: "book-open", bg: "bg-emerald-600/20", color: "text-emerald-400",
-          label: "Average Length", value: this.fmt(bonus.value, 0), caption: "Pages",
+          label: gettext("Average Length"), value: this.fmt(bonus.value, 0), caption: gettext("Pages"),
         };
       }
       return {
         key: "bonus-" + i, icon: bonus.icon, bg: "bg-emerald-600/20", color: "text-emerald-400",
-        label: bonus.label, value: this.fmt(bonus.value, 2) + " " + bonus.unit, caption: "",
+        label: gettext(bonus.label), value: this.fmt(bonus.value, 2) + " " + gettext(bonus.unit), caption: "",
       };
     },
 
@@ -226,27 +222,27 @@ function dateRangePicker(options = {}) {
 
     get currentTypeLabel() {
       const labels = {
-        all: "titles", movie: "films", tv: "shows", game: "games",
-        book: "books", anime: "titles", music: "albums", podcast: "podcasts",
-        comic: "comics", manga: "manga",
+        all: gettext("titles"), movie: gettext("films"), tv: gettext("shows"), game: gettext("games"),
+        book: gettext("books"), anime: gettext("titles"), music: gettext("albums"), podcast: gettext("podcasts"),
+        comic: gettext("comics"), manga: gettext("manga"),
       };
-      return labels[this.selectedMediaType] || "titles";
+      return labels[this.selectedMediaType] || gettext("titles");
     },
 
     get currentTypeFlavor() {
       const flavors = {
-        all: "stories, ideas, and worlds",
-        movie: "film and storytelling",
-        tv: "episodes and seasons",
-        game: "play and adventure",
-        book: "reading and discovery",
-        anime: "anime and storytelling",
-        music: "music and discovery",
-        podcast: "listening and learning",
-        comic: "comics and art",
-        manga: "manga and art",
+        all: gettext("stories, ideas, and worlds"),
+        movie: gettext("film and storytelling"),
+        tv: gettext("episodes and seasons"),
+        game: gettext("play and adventure"),
+        book: gettext("reading and discovery"),
+        anime: gettext("anime and storytelling"),
+        music: gettext("music and discovery"),
+        podcast: gettext("listening and learning"),
+        comic: gettext("comics and art"),
+        manga: gettext("manga and art"),
       };
-      return flavors[this.selectedMediaType] || "stories, ideas, and worlds";
+      return flavors[this.selectedMediaType] || gettext("stories, ideas, and worlds");
     },
 
     init() {
@@ -352,7 +348,7 @@ function dateRangePicker(options = {}) {
           "Podcast": "podcast",
         };
         chart.data.datasets.forEach((ds) => {
-          const dsType = ds.media_type || labelToType[ds.label];
+          const dsType = ds.media_type || labelToType[ds.source_label || ds.label];
           ds.hidden = type !== "all" && dsType !== type;
         });
         chart.update("none");
@@ -364,9 +360,9 @@ function dateRangePicker(options = {}) {
     },
 
     mediaTypeTriggerLabel() {
-      if (this.selectedMediaType === "all") return "All media";
+      if (this.selectedMediaType === "all") return gettext("All media");
       const opt = this.mediaTypeOptions.find((o) => o.value === this.selectedMediaType);
-      return opt ? opt.label : "All media";
+      return opt ? opt.label : gettext("All media");
     },
 
     hasFiniteRange() {
@@ -396,12 +392,12 @@ function dateRangePicker(options = {}) {
     rangeTriggerLabel() {
       return this.isKnownPredefinedRange(this.selectedRange)
         ? this.getRangeDisplayName(this.selectedRange)
-        : "Custom range";
+        : gettext("Custom range");
     },
 
     currentRangeSummaryLabel() {
       if (!this.hasFiniteRange()) {
-        return "All activity";
+        return gettext("All activity");
       }
       return this.formatDateRange(this.startDate, this.endDate);
     },
@@ -410,7 +406,7 @@ function dateRangePicker(options = {}) {
       const option = this.comparisonOptions.find(
         (entry) => entry.value === this.compareMode,
       );
-      return option ? option.label : "Previous period";
+      return option ? option.label : gettext("Previous period");
     },
 
     comparisonSummaryLabel(mode = this.compareMode) {
@@ -533,7 +529,7 @@ function dateRangePicker(options = {}) {
         return "";
       }
       if (range.start === "all" && range.end === "all") {
-        return "All activity";
+        return gettext("All activity");
       }
       return this.formatDateRange(range.start, range.end);
     },
@@ -587,20 +583,20 @@ function dateRangePicker(options = {}) {
 
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Failed to save compare mode");
+        throw new Error(data.error || gettext("Failed to save compare mode"));
       }
     },
 
     formatDisplayDate(dateString) {
       if (!dateString || dateString === "all") {
-        return "All time";
+        return gettext("All time");
       }
 
       const date = parseLocalDate(dateString);
       const format = this.getDateFormat();
 
       if (!format) {
-        return date.toLocaleDateString(undefined, {
+        return date.toLocaleDateString(document.documentElement.lang || undefined, {
           month: "short",
           day: "numeric",
           year: "numeric",
@@ -644,10 +640,10 @@ function dateRangePicker(options = {}) {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, "0");
       const day = String(date.getDate()).padStart(2, "0");
-      const shortMonth = date.toLocaleString(undefined, { month: "short" });
-      const longMonth = date.toLocaleString(undefined, { month: "long" });
-      const shortWeekday = date.toLocaleString(undefined, { weekday: "short" });
-      const longWeekday = date.toLocaleString(undefined, { weekday: "long" });
+      const shortMonth = date.toLocaleString(document.documentElement.lang || undefined, { month: "short" });
+      const longMonth = date.toLocaleString(document.documentElement.lang || undefined, { month: "long" });
+      const shortWeekday = date.toLocaleString(document.documentElement.lang || undefined, { weekday: "short" });
+      const longWeekday = date.toLocaleString(document.documentElement.lang || undefined, { weekday: "long" });
       const ordinalSuffix = this.getOrdinalSuffix(date.getDate());
 
       const formatters = {
@@ -682,6 +678,7 @@ function dateRangePicker(options = {}) {
     },
 
     getOrdinalSuffix(day) {
+      if ((document.documentElement.lang || "en").startsWith("de")) return ".";
       if (day >= 11 && day <= 13) {
         return "th";
       }
@@ -703,7 +700,7 @@ function dateRangePicker(options = {}) {
       }
 
       if (start === "all" && end === "all") {
-        return "All activity";
+        return gettext("All activity");
       }
 
       const startLabel = this.formatDisplayDate(start);

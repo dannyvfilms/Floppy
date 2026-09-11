@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 <div class="bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg"
@@ -55,7 +57,7 @@
          class="relative shrink-0 self-start overflow-hidden">
       {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block">{% endif %}
       <img src="{{ IMG_NONE }}"
-           alt="E{{ episode.display_episode_number|default:episode.episode_number }}"
+           alt="{% blocktranslate trimmed with value_1=episode.display_episode_number|default:episode.episode_number %}E{{ value_1 }}{% endblocktranslate %}"
            data-src="{{ episode.image|image_url }}"
            data-image-source="{{ episode.image_source|default:'primary' }}"
            class="lazyload {% if media_type == MediaTypes.PODCAST.value %}md:w-40 md:h-40{% else %}md:w-64 md:h-40{% endif %} {% if ep_detail_url %}hover:opacity-90 transition-opacity{% endif %} shrink-0 {% if episode.image != IMG_NONE %}object-cover{% endif %}"
@@ -74,7 +76,7 @@
              style="display:none">
           <button @click.prevent="revealed = true"
                   class="bg-black/70 rounded-full p-3 text-white hover:bg-black/90 transition-colors"
-                  title="Reveal thumbnail">
+                  title="{% translate "Reveal thumbnail" %}">
             {% include "app/icons/eye.svg" with classes="w-5 h-5" %}
           </button>
         </div>
@@ -88,9 +90,9 @@
              x-transition:leave-start="opacity-100"
              x-transition:leave-end="opacity-0"
              style="display:none">
-          <button @click.prevent="toggleBlur()"
+          {% translate "Show all thumbnails" as media_i18n_48 %}{% translate "Hide unseen thumbnails" as media_i18n_49 %}<button @click.prevent="toggleBlur()"
                   class="bg-black/60 rounded-full p-1.5 text-white hover:bg-black/80 transition-colors"
-                  :title="blurActive ? 'Show all thumbnails' : 'Hide unseen thumbnails'">
+                  :title="blurActive ? '{{ media_i18n_48|escapejs }}' : '{{ media_i18n_49|escapejs }}'">
             <span x-show="blurActive">{% include "app/icons/eye.svg" with classes="w-3.5 h-3.5" %}</span>
             <span x-show="!blurActive">{% include "app/icons/eye-closed.svg" with classes="w-3.5 h-3.5" %}</span>
           </button>
@@ -112,7 +114,7 @@
               {% endif %}
             </h2>
             <p class="text-sm text-[var(--color-text-muted)]">
-              {% if episode.display_episode_number|default:episode.episode_number %}Episode {{ episode.display_episode_number|default:episode.episode_number }} • {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:"Unknown date" }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
+              {% if episode.display_episode_number|default:episode.episode_number %}{% blocktranslate trimmed with value_1=episode.display_episode_number|default:episode.episode_number %}Episode {{ value_1 }} •{% endblocktranslate %} {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:"Unknown date" }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
             </p>
           </div>
           {% if ep_detail_url %}</a>{% endif %}
@@ -143,7 +145,7 @@
      style="display:none">
   {# Episode number #}
   <span class="shrink-0 w-9 text-center text-[11px] font-mono text-[var(--color-text-muted)] tabular-nums">
-    {% if episode.display_episode_number|default:episode.episode_number %}E{{ episode.display_episode_number|default:episode.episode_number }}{% endif %}
+    {% if episode.display_episode_number|default:episode.episode_number %}{% blocktranslate trimmed with value_1=episode.display_episode_number|default:episode.episode_number %}E{{ value_1 }}{% endblocktranslate %}{% endif %}
   </span>
 
   {# Title + metadata #}
@@ -159,7 +161,7 @@
       {% endif %}
     </p>
     <p class="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-      {{ episode.air_date|user_date_format:user|default_if_none:"" }}{% if episode.runtime %} · {{ episode.runtime }}{% endif %}{% if not public_view|default:False and episode.all_history %}{% with wc=episode.all_history|watched_count %}{% if wc %} · {% if wc == 1 %}Watched once{% else %}Watched {{ wc }} times{% endif %}{% endif %}{% endwith %}{% endif %}
+      {{ episode.air_date|user_date_format:user|default_if_none:"" }}{% if episode.runtime %} · {{ episode.runtime }}{% endif %}{% if not public_view|default:False and episode.all_history %}{% with wc=episode.all_history|watched_count %}{% if wc %} · {% if wc == 1 %}{% translate "Watched once" %}{% else %}{% blocktranslate trimmed with value_1=wc %}Watched {{ value_1 }} times{% endblocktranslate %}{% endif %}{% endif %}{% endwith %}{% endif %}
     </p>
     {% if ep_detail_url %}</a>{% endif %}
   </div>

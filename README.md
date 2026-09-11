@@ -27,7 +27,17 @@ It runs in Docker, keeps your data on your own hardware, and treats music and po
 
 ## Install
 
-One stack, app plus Redis. Save it as `docker-compose.yml` and run `docker compose up -d`, or paste it straight into a Portainer stack.
+**Guided installer.** One command, no arguments, nothing to edit:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/scripts/install.sh -o /tmp/floppy-install.sh && bash /tmp/floppy-install.sh
+```
+
+It detects the host, asks how and where to run Floppy, installs Docker or a
+source deployment with your permission, and stops at a working login. See
+[docs/install.md](docs/install.md).
+
+**Compose by hand.** One stack, app plus Redis. Save it as `docker-compose.yml` and run `docker compose up -d`, or paste it straight into a Portainer stack.
 
 ```yaml
 services:
@@ -110,7 +120,7 @@ Floppy combines the jobs people often split between a watchlist, a media diary, 
 
 ### Also included
 
-Multi-user accounts with OIDC and social login; calendar and iCalendar feeds for upcoming releases; release notifications through Apprise; Jellyfin, Plex, and Emby playback integrations; imports from Trakt, Simkl, MyAnimeList, AniList, Kitsu, Steam, Goodreads, StoryGraph, Hardcover, IMDb, HowLongToBeat, Grouvee and more; a REST API at `/api/v1` with an MCP server; and CSV export/import so your data is always yours to take elsewhere.
+Multi-user accounts with OIDC and social login; calendar and iCalendar feeds for upcoming releases; release notifications through Apprise; Jellyfin, Plex, and Emby playback integrations; imports from Trakt, Simkl, MyAnimeList, AniList, Kitsu, Steam, Goodreads, StoryGraph, Hardcover, IMDb, HowLongToBeat, Grouvee and more; a REST API at `/api/v1` with an MCP server; and CSV export/import so your data is always yours to take elsewhere. Floppy is also an installable PWA, so you can add it to your phone's Home Screen and launch it like an app ([installation guide](https://github.com/dannyvfilms/Floppy/wiki/2.-User-Guide#installing-floppy-on-your-phone)).
 
 ## Screenshots
 

@@ -1,11 +1,13 @@
+
+{% load i18n %}
 {% if request.GET.q %}
   {% if filtered_items_count %}
     <div class="text-sm text-[var(--color-text-muted)] -mt-4 mb-4">
-      <span class="font-semibold text-[var(--color-text)]">{{ filtered_items_count }}</span> result{{ filtered_items_count|pluralize }}
+      <span class="font-semibold text-[var(--color-text)]">{{ filtered_items_count }}</span> {% blocktranslate trimmed count count=filtered_items_count %}result{% plural %}results{% endblocktranslate %}
       {% if custom_list.can_recommend %}
         <span class="text-[var(--color-text-muted)]">•</span>
         <a href="{% url 'recommend_item' custom_list.id %}"
-           class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">Recommend an item</a>
+           class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">{% translate "Recommend an item" %}</a>
       {% endif %}
     </div>
   {% endif %}

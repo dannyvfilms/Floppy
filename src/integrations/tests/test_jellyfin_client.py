@@ -30,8 +30,8 @@ class JellyfinClientTests(SimpleTestCase):
         called_url = mock_request.call_args.args[1]
         self.assertTrue(called_url.endswith("/System/Info"))
         self.assertEqual(
-            mock_request.call_args.kwargs["headers"]["X-Emby-Token"],
-            "api-key",
+            mock_request.call_args.kwargs["headers"]["Authorization"],
+            'MediaBrowser Token="api-key"',
         )
 
     @patch("integrations.jellyfin_client.requests.request")

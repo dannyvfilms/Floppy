@@ -38,6 +38,7 @@
       <script type="module" src="{% static 'debug_toolbar/js/toolbar.js' %}"></script>
     {% endif %}
 
+    <script src="{% url 'javascript-catalog' %}"></script>
     <script src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
     <script>
       (function() {
@@ -135,12 +136,38 @@
           sizes="16x16"
           href="{% static "favicon/favicon-16x16.png" %}">
     <link rel="manifest" href="{% static "favicon/site.webmanifest" %}">
-    <link rel="mask-icon"
-          href="{% static "favicon/safari-pinned-tab.svg" color="#181a1b" %}">
+    <script>
+      // Capture the install prompt here, in the head, so it is not missed.
+      // beforeinstallprompt can fire before any body script runs, and settings
+      // navigation is hx-boost, which swaps the body and leaves the head
+      // alone. The About page reads this state instead of listening itself.
+      window.floppyPwa = {
+        deferredPrompt: null,
+        installed: false,
+        isStandalone() {
+          return (
+            window.matchMedia("(display-mode: standalone)").matches ||
+            window.matchMedia("(display-mode: window-controls-overlay)").matches ||
+            window.navigator.standalone === true
+          );
+        },
+        announce() {
+          window.dispatchEvent(new CustomEvent("floppy:install-availability"));
+        },
+      };
+      window.addEventListener("beforeinstallprompt", (event) => {
+        event.preventDefault();
+        window.floppyPwa.deferredPrompt = event;
+        window.floppyPwa.announce();
+      });
+      window.addEventListener("appinstalled", () => {
+        window.floppyPwa.deferredPrompt = null;
+        window.floppyPwa.installed = true;
+        window.floppyPwa.announce();
+      });
+    </script>
     <link rel="shortcut icon" href="{% static "favicon/favicon.ico" %}">
     <meta name="msapplication-TileColor" content="#181a1b">
-    <meta name="msapplication-config"
-          content="{% static "favicon/browserconfig.xml" %}">
     {% if user.is_authenticated and user.theme == 'light' %}
       <meta name="theme-color" content="#f8f9fa">
     {% elif user.is_authenticated and user.theme == 'dark' %}
@@ -298,7 +325,7 @@
                         {% include "app/icons/circle-plus.svg" with classes="w-5 h-5" %}
 
                       {% endif %}
-                      <span>{% trans "Custom" %}</span>
+                      <span>{% trans "Custom" context "navigation" %}</span>
                     </a>
                   </li>
 
@@ -427,7 +454,7 @@
                   <div class="relative grow min-w-0 max-w-2xl">
                     <form method="get"
                           action="{% url 'search' %}"
-                          x-data="{ isOpen: false, selectedType: { display: '{{ search_type|media_type_readable_plural }}', value: '{{ search_type }}' }, mediaTypes: {% get_search_media_types user as search_types %}{{ search_types }}, getPlaceholder() { return `Search ${this.selectedType.display.toLowerCase()} in your library or online...` }, barcodeScanning: false, barcodeError: null, barcodePreview: null, explicitSubmitTriggered: false, async handleBarcodeImage(event) { if (!event || !event.target) { console.error('[BARCODE] Invalid event or event.target'); return; } if (event.target.tagName !== 'INPUT' || event.target.type !== 'file') { console.error('[BARCODE] Event not from file input. TagName:', event.target.tagName, 'Type:', event.target.type); return; } if (event.target !== this.$refs.barcodeInput) { console.error('[BARCODE] Event not from barcode input ref'); return; } console.log('handleBarcodeImage called', event); const file = event.target.files?.[0]; if (!file) { console.log('No file selected'); return; } console.log('File selected:', file.name, file.type); this.barcodeScanning = true; this.barcodeError = null; this.barcodePreview = URL.createObjectURL(file); try { console.log('Checking for barcodeScannerUtils:', typeof window.barcodeScannerUtils); if (!window.barcodeScannerUtils) { throw new Error('Barcode scanner utilities not loaded. Please refresh the page.'); } console.log('Starting barcode decode...'); const isbn = await window.barcodeScannerUtils.decodeBarcodeFromFile(file); console.log('Decode result:', isbn); if (isbn) { const barcodeInput = event.target; let form = this.$root; if (!form || form.tagName !== 'FORM' || !form.contains(barcodeInput)) { form = barcodeInput.closest('form'); } if (!form || form.tagName !== 'FORM') { console.error('[FORM] Could not find valid form element'); return; } const searchInput = form.querySelector('input[name=q]'); const formContainsBarcodeInput = form.contains(barcodeInput); if (!searchInput || !formContainsBarcodeInput) { console.error('[FORM] Form validation failed - missing search input or barcode input not in form. Search input:', searchInput, 'Form contains barcode input:', formContainsBarcodeInput); return; } console.log('[FORM] ISBN received, form element:', form, 'tagName:', form.tagName); console.log('[FORM] Search input found:', searchInput); searchInput.value = isbn; console.log('[FORM] Set input value to:', isbn, 'Current value:', searchInput.value); this.explicitSubmitTriggered = true; console.log('[FORM] Submitting form...'); form.submit(); console.log('[FORM] Form submit called'); } else { this.barcodeError = 'Could not read barcode from image. Please try again or enter ISBN manually.'; } } catch (error) { console.error('Barcode scan error:', error); this.barcodeError = 'Error scanning barcode: ' + (error.message || 'Please try again.'); } finally { this.barcodeScanning = false; } }, clearBarcodeError() { this.barcodeError = null; this.barcodePreview = null; if (this.$refs.barcodeInput) { this.$refs.barcodeInput.value = ''; } }, selectType(type) { this.selectedType = type; this.isOpen = false; const input = this.$refs.searchInput; if (input && input.value.trim()) { this.$nextTick(() => this.$root.submit()); } }, handleFormSubmit(event) { if (event.currentTarget !== this.$el) { return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (this.explicitSubmitTriggered) { this.explicitSubmitTriggered = false; return true; } if (event.submitter && event.submitter === this.$refs.searchButton) { return true; } if (!event.submitter) { const searchInput = this.$el.querySelector('input[name=q]'); if (searchInput && document.activeElement === searchInput) { return true; } } console.log('[FORM] Form submission prevented - not from search button or Enter key in search input'); event.preventDefault(); event.stopPropagation(); return false; }, init() { console.log('Search form Alpine.js initialized'); this.explicitSubmitTriggered = false; } }"
+                          x-data="{ isOpen: false, selectedType: { display: '{{ search_type|media_type_readable_plural }}', value: '{{ search_type }}' }, mediaTypes: {% get_search_media_types user as search_types %}{{ search_types }}, getPlaceholder() { return interpolate(gettext('Search %(media)s in your library or online...'), {media: this.selectedType.display}, true) }, barcodeScanning: false, barcodeError: null, barcodePreview: null, explicitSubmitTriggered: false, async handleBarcodeImage(event) { if (!event || !event.target) { console.error('[BARCODE] Invalid event or event.target'); return; } if (event.target.tagName !== 'INPUT' || event.target.type !== 'file') { console.error('[BARCODE] Event not from file input. TagName:', event.target.tagName, 'Type:', event.target.type); return; } if (event.target !== this.$refs.barcodeInput) { console.error('[BARCODE] Event not from barcode input ref'); return; } console.log('handleBarcodeImage called', event); const file = event.target.files?.[0]; if (!file) { console.log('No file selected'); return; } console.log('File selected:', file.name, file.type); this.barcodeScanning = true; this.barcodeError = null; this.barcodePreview = URL.createObjectURL(file); try { console.log('Checking for barcodeScannerUtils:', typeof window.barcodeScannerUtils); if (!window.barcodeScannerUtils) { throw new Error(gettext('Barcode scanner utilities not loaded. Please refresh the page.')); } console.log('Starting barcode decode...'); const isbn = await window.barcodeScannerUtils.decodeBarcodeFromFile(file); console.log('Decode result:', isbn); if (isbn) { const barcodeInput = event.target; let form = this.$root; if (!form || form.tagName !== 'FORM' || !form.contains(barcodeInput)) { form = barcodeInput.closest('form'); } if (!form || form.tagName !== 'FORM') { console.error('[FORM] Could not find valid form element'); return; } const searchInput = form.querySelector('input[name=q]'); const formContainsBarcodeInput = form.contains(barcodeInput); if (!searchInput || !formContainsBarcodeInput) { console.error('[FORM] Form validation failed - missing search input or barcode input not in form. Search input:', searchInput, 'Form contains barcode input:', formContainsBarcodeInput); return; } console.log('[FORM] ISBN received, form element:', form, 'tagName:', form.tagName); console.log('[FORM] Search input found:', searchInput); searchInput.value = isbn; console.log('[FORM] Set input value to:', isbn, 'Current value:', searchInput.value); this.explicitSubmitTriggered = true; console.log('[FORM] Submitting form...'); form.submit(); console.log('[FORM] Form submit called'); } else { this.barcodeError = gettext('Could not read barcode from image. Please try again or enter ISBN manually.'); } } catch (error) { console.error('Barcode scan error:', error); this.barcodeError = gettext('Error scanning barcode: ') + (error.message || gettext('Please try again.')); } finally { this.barcodeScanning = false; } }, clearBarcodeError() { this.barcodeError = null; this.barcodePreview = null; if (this.$refs.barcodeInput) { this.$refs.barcodeInput.value = ''; } }, selectType(type) { this.selectedType = type; this.isOpen = false; const input = this.$refs.searchInput; if (input && input.value.trim()) { this.$nextTick(() => this.$root.submit()); } }, handleFormSubmit(event) { if (event.currentTarget !== this.$el) { return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (event.submitter && !this.$el.contains(event.submitter)) { console.log('[FORM] Submitter not in search form, allowing'); return true; } if (this.explicitSubmitTriggered) { this.explicitSubmitTriggered = false; return true; } if (event.submitter && event.submitter === this.$refs.searchButton) { return true; } if (!event.submitter) { const searchInput = this.$el.querySelector('input[name=q]'); if (searchInput && document.activeElement === searchInput) { return true; } } console.log('[FORM] Form submission prevented - not from search button or Enter key in search input'); event.preventDefault(); event.stopPropagation(); return false; }, init() { console.log('Search form Alpine.js initialized'); this.explicitSubmitTriggered = false; } }"
                           @submit="handleFormSubmit($event)"
                           @click.away="document.getElementById('search-suggestions').innerHTML = ''">
                       <div class="flex">
@@ -463,8 +490,8 @@
                                   @click="$refs.barcodeInput?.click()"
                                   x-bind:disabled="barcodeScanning"
                                   class="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                  title="Scan barcode"
-                                  aria-label="Scan book barcode">
+                                  title="{% translate "Scan barcode" %}"
+                                  aria-label="{% translate "Scan book barcode" %}">
                             <span x-show="barcodeScanning" class="block">
                               <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-[var(--color-text-muted)]"></div>
                             </span>
@@ -519,7 +546,7 @@
                           <p class="text-sm font-medium flex-1" x-text="barcodeError"></p>
                           <button type="button"
                                   class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
-                                  aria-label="Dismiss error"
+                                  aria-label="{% translate "Dismiss error" %}"
                                   @click="clearBarcodeError()">
                             {% include "app/icons/x.svg" with classes="w-4 h-4" %}
                           </button>
@@ -534,8 +561,8 @@
                   <button type="button"
                           onclick="floppyToggleTheme()"
                           class="lg:hidden shrink-0 p-2 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] transition-colors duration-200 cursor-pointer"
-                          title="Toggle theme"
-                          aria-label="Toggle theme">
+                          title="{% translate "Toggle theme" %}"
+                          aria-label="{% translate "Toggle theme" %}">
                     {% include "app/icons/sun.svg" with classes="w-5 h-5 theme-toggle-icon-sun" %}
                     {% include "app/icons/moon.svg" with classes="w-5 h-5 theme-toggle-icon-moon" %}
                   </button>
@@ -547,8 +574,8 @@
               <button type="button"
                       onclick="floppyToggleTheme()"
                       class="hidden lg:block absolute right-4 top-1/2 -translate-y-1/2 shrink-0 p-2 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] transition-colors duration-200 cursor-pointer"
-                      title="Toggle theme"
-                      aria-label="Toggle theme">
+                      title="{% translate "Toggle theme" %}"
+                      aria-label="{% translate "Toggle theme" %}">
                 {% include "app/icons/sun.svg" with classes="w-5 h-5 theme-toggle-icon-sun" %}
                 {% include "app/icons/moon.svg" with classes="w-5 h-5 theme-toggle-icon-moon" %}
               </button>
@@ -597,8 +624,8 @@
               <p class="text-sm font-medium flex-1">{{ message }}</p>
               <button type="button"
                       class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer p-1 rounded focus:outline-none focus:ring-2 focus:ring-white/50"
-                      aria-label="Dismiss message"
-                      title="Dismiss message"
+                      aria-label="{% translate "Dismiss message" %}"
+                      title="{% translate "Dismiss message" %}"
                       @click="$el.parentElement.remove()">
                 {% include "app/icons/x.svg" with classes="w-4 h-4" %}
               </button>
@@ -727,7 +754,7 @@
           element.classList.remove("is-complete");
           element.classList.add("is-active");
           const live = status();
-          if (live) live.textContent = "Loading page";
+          if (live) live.textContent = gettext("Loading page");
         }
 
         function hide() {
@@ -804,5 +831,6 @@
     <script src="{% static 'js/collectionCustomFields.js' %}{% get_static_file_mtime 'js/collectionCustomFields.js' %}"></script>
     <script src="{% static 'js/searchShortcut.js' %}{% get_static_file_mtime 'js/searchShortcut.js' %}"></script>
     <script src="{% static 'js/searchAutocomplete.js' %}{% get_static_file_mtime 'js/searchAutocomplete.js' %}"></script>
+    <script src="{% static 'js/horizontal-scroll.js' %}{% get_static_file_mtime 'js/horizontal-scroll.js' %}"></script>
   </body>
 </html>

@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
+from django.utils.translation import gettext_noop
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
@@ -247,13 +248,16 @@ def _rewatch_action(media, media_type):
 
     Only finished entries can start a pass; an open one can always be ended.
     """
-    if media is None or media_type not in {MediaTypes.TV.value, MediaTypes.SEASON.value}:
+    if media is None or media_type not in {
+        MediaTypes.TV.value,
+        MediaTypes.SEASON.value,
+    }:
         return None
 
     if media.is_rewatching:
-        return {"action": "stop", "label": "End rewatch"}
+        return {"action": "stop", "label": gettext_noop("End rewatch")}
     if media.status == Status.COMPLETED.value:
-        return {"action": "start", "label": "Rewatch"}
+        return {"action": "start", "label": gettext_noop("Rewatch")}
     return None
 
 
@@ -567,7 +571,8 @@ def _render_standard_track_modal(
                     source,
                     [season_number],
                     language=metadata_resolution.metadata_language_default(
-                        request.user, metadata_item,
+                        request.user,
+                        metadata_item,
                     ),
                 )
             except services.ProviderAPIError:
@@ -790,7 +795,9 @@ def _render_standard_track_modal(
         "metadata_language_options": metadata_language_options,
         "selected_metadata_language": selected_metadata_language,
         "can_manage_hardcover_edition": can_manage_hardcover_edition,
-        "hardcover_edition_media_id": media_id if can_manage_hardcover_edition else None,
+        "hardcover_edition_media_id": media_id
+        if can_manage_hardcover_edition
+        else None,
         "hardcover_selected_edition": hardcover_selected_edition,
         "hardcover_edition_id_hint": (
             request.GET.get("edition_id") if can_manage_hardcover_edition else None
@@ -1111,7 +1118,9 @@ def track_modal(
                         if episode.duration
                         else None
                     )
-                    self.runtime_minutes = episode.duration // 60 if episode.duration else ""
+                    self.runtime_minutes = (
+                        episode.duration // 60 if episode.duration else ""
+                    )
                     self.musicbrainz_recording_id = None  # Not used for podcasts
                     self.id = episode.id
                     self.published = episode.published  # For "Published date" button

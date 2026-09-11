@@ -506,23 +506,34 @@ def find_entries_for_mal_id(mal_id: str | int) -> list[dict[str, Any]]:
     return list(load_mapping_snapshot().mal_index.get(normalized, ()))
 
 
+def resolve_provider_id(
+    mal_id: str | int,
+    provider: str,
+    *,
+    media_type: str | None = None,
+) -> str | None:
+    """Resolve one unambiguous provider ID for a MAL title."""
+    fields = {
+        "tvdb": ("tvdb_id",),
+        "imdb": ("imdb_id",),
+        "tmdb": (
+            ("tmdb_movie_id",)
+            if media_type == "movie"
+            else ("tmdb_show_id", "tmdb_id", "tmdb_tv_id")
+        ),
+    }.get(provider)
+    if not fields:
+        return None
+
+    provider_ids = {
+        provider_id
+        for entry in find_entries_for_mal_id(mal_id)
+        for field in fields
+        for provider_id in _normalize_ids(entry.get(field))
+    }
+    return provider_ids.pop() if len(provider_ids) == 1 else None
+
+
 def resolve_provider_series_id(mal_id: str | int, provider: str) -> str | None:
     """Resolve a grouped-provider series ID for a MAL title."""
-    entries = find_entries_for_mal_id(mal_id)
-    if not entries:
-        return None
-
-    if provider == "tvdb":
-        for entry in entries:
-            if entry.get("tvdb_id") not in (None, ""):
-                return str(entry["tvdb_id"])
-        return None
-
-    if provider == "tmdb":
-        for key in ("tmdb_show_id", "tmdb_id", "tmdb_tv_id"):
-            for entry in entries:
-                if entry.get(key) not in (None, ""):
-                    return str(entry[key])
-        return None
-
-    return None
+    return resolve_provider_id(mal_id, provider, media_type="tv")

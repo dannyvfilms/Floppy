@@ -4,6 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from django.utils.translation import gettext_noop
+
 from app.models import MediaTypes
 
 TableType = str
@@ -117,7 +119,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="title",
-        label="Title",
+        label=gettext_noop("Title"),
         th_classes="p-2 pe-8 w-2/5",
         td_classes="p-2 pe-8 font-medium",
         cell_template="app/components/cells/media_title_cell.html",
@@ -127,7 +129,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="author",
-        label="Author",
+        label=gettext_noop("Author"),
         th_classes="p-2 pe-6",
         td_classes="p-2 pe-6 text-gray-200",
         cell_template="app/components/cells/media_author_cell.html",
@@ -137,7 +139,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="media_type",
-        label="Media Type",
+        label=gettext_noop("Media Type"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/media_media_type_cell.html",
@@ -146,7 +148,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="score",
-        label="Score",
+        label=gettext_noop("Score"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/media_score_cell.html",
@@ -155,7 +157,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="critic_rating",
-        label="Critic Rating",
+        label=gettext_noop("Critic Rating"),
         th_classes="p-2 text-center w-28",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/critic_rating_cell.html",
@@ -165,7 +167,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="progress",
-        label="Progress",
+        label=gettext_noop("Progress"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/progress_cell.html",
@@ -175,7 +177,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="episodes_left",
-        label="Episodes Left",
+        label=gettext_noop("Episodes Left"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/episodes_left_cell.html",
@@ -185,7 +187,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="time_left",
-        label="Time Left",
+        label=gettext_noop("Time Left"),
         th_classes="p-2 text-center w-24",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/time_left_cell.html",
@@ -195,7 +197,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="time_to_beat",
-        label="Time to Beat",
+        label=gettext_noop("Time to Beat"),
         th_classes="p-2 text-center w-28",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/time_to_beat_cell.html",
@@ -205,7 +207,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="runtime",
-        label="Runtime",
+        label=gettext_noop("Runtime"),
         th_classes="p-2 text-center w-28",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/runtime_cell.html",
@@ -215,7 +217,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="time_watched",
-        label="Time Watched",
+        label=gettext_noop("Time Watched"),
         th_classes="p-2 text-center w-28",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/time_watched_cell.html",
@@ -225,7 +227,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="popularity",
-        label="Popularity",
+        label=gettext_noop("Popularity"),
         th_classes="p-2 text-center w-24",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/popularity_cell.html",
@@ -235,7 +237,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="user_rating",
-        label="User Rating",
+        label=gettext_noop("User Rating"),
         th_classes="p-2 text-center w-28",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/user_rating_cell.html",
@@ -245,7 +247,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="platform",
-        label="Platform",
+        label=gettext_noop("Platform"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/platform_cell.html",
@@ -255,7 +257,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="last_watched",
-        label="Last Watched",
+        label=gettext_noop("Last Watched"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/last_watched_cell.html",
@@ -265,7 +267,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="genres",
-        label="Genres",
+        label=gettext_noop("Genres"),
         th_classes="p-2 max-w-[16rem]",
         td_classes="p-2 max-w-[16rem]",
         cell_template="app/components/cells/media_genres_cell.html",
@@ -274,7 +276,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="tags",
-        label="Tags",
+        label=gettext_noop("Tags"),
         th_classes="p-2 max-w-[16rem]",
         td_classes="p-2 max-w-[16rem]",
         cell_template="app/components/cells/media_tags_cell.html",
@@ -283,7 +285,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="status",
-        label="Status",
+        label=gettext_noop("Status"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/media_status_cell.html",
@@ -292,7 +294,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="release_date",
-        label="Release Date",
+        label=gettext_noop("Release Date"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/media_release_date_cell.html",
@@ -301,7 +303,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="next_episode_air_date",
-        label="Episode Air Date",
+        label=gettext_noop("Episode Air Date"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/next_episode_air_date_cell.html",
@@ -311,7 +313,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="date_added",
-        label="Date Added",
+        label=gettext_noop("Date Added"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/media_date_added_cell.html",
@@ -320,7 +322,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="start_date",
-        label="Start Date",
+        label=gettext_noop("Start Date"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/media_start_date_cell.html",
@@ -329,7 +331,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="end_date",
-        label="End Date",
+        label=gettext_noop("End Date"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/media_end_date_cell.html",
@@ -338,7 +340,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="notes",
-        label="Notes",
+        label=gettext_noop("Notes"),
         th_classes="p-2",
         td_classes="p-2",
         cell_template="app/components/cells/media_notes_cell.html",
@@ -347,7 +349,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="synopsis",
-        label="Description",
+        label=gettext_noop("Description"),
         th_classes="p-2",
         td_classes="p-2",
         cell_template="app/components/cells/media_synopsis_cell.html",
@@ -366,7 +368,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="artist_name",
-        label="Artist",
+        label=gettext_noop("Artist"),
         th_classes="p-2 pe-8 w-2/5",
         td_classes="p-2 pe-8 font-medium",
         cell_template="app/components/cells/artist_name_cell.html",
@@ -376,7 +378,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="score",
-        label="Score",
+        label=gettext_noop("Score"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/artist_score_cell.html",
@@ -385,7 +387,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="status",
-        label="Status",
+        label=gettext_noop("Status"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/artist_status_cell.html",
@@ -394,7 +396,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="release_date",
-        label="Release Date",
+        label=gettext_noop("Release Date"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/artist_release_date_cell.html",
@@ -403,7 +405,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="date_added",
-        label="Date Added",
+        label=gettext_noop("Date Added"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/artist_date_added_cell.html",
@@ -412,7 +414,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="start_date",
-        label="Start Date",
+        label=gettext_noop("Start Date"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/artist_start_date_cell.html",
@@ -421,7 +423,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="end_date",
-        label="End Date",
+        label=gettext_noop("End Date"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/artist_end_date_cell.html",
@@ -441,7 +443,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="album_title",
-        label="Album",
+        label=gettext_noop("Album"),
         th_classes="p-2 pe-8 w-2/5",
         td_classes="p-2 pe-8 font-medium",
         cell_template="app/components/cells/album_title_cell.html",
@@ -451,7 +453,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="album_artist",
-        label="Artist",
+        label=gettext_noop("Artist"),
         th_classes="p-2 pe-8",
         td_classes="p-2 pe-8",
         cell_template="app/components/cells/album_artist_cell.html",
@@ -460,7 +462,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="album_score",
-        label="Score",
+        label=gettext_noop("Score"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/album_score_cell.html",
@@ -469,7 +471,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="album_status",
-        label="Status",
+        label=gettext_noop("Status"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/album_status_cell.html",
@@ -478,7 +480,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="album_release_date",
-        label="Release Date",
+        label=gettext_noop("Release Date"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/album_release_date_cell.html",
@@ -487,7 +489,7 @@ MEDIA_COLUMNS: list[ColumnDef] = [
     ),
     ColumnDef(
         key="album_date_added",
-        label="Date Added",
+        label=gettext_noop("Date Added"),
         th_classes="p-2 text-center",
         td_classes="p-2 text-center",
         cell_template="app/components/cells/album_date_added_cell.html",

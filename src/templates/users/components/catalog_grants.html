@@ -1,0 +1,83 @@
+{% load app_tags %}
+{# Add-on install credentials. The URL above carries whichever credential is #}
+{# listed first here, falling back to the account token when there is none.  #}
+<div class="mt-4 pt-4 border-t border-[var(--color-border)]">
+  <h4 class="text-sm font-medium mb-2">Install credentials</h4>
+  <p class="text-[var(--color-text-muted)] text-xs mb-3">
+    The install URL carries its credential in the path, so it ends up in logs and
+    browser history. Create one per device: revoking it breaks only that install,
+    where regenerating your account token breaks every integration at once.
+  </p>
+
+  {% if catalog_grants %}
+    <ul class="mb-3 divide-y divide-[var(--color-border)]">
+      {% for grant in catalog_grants %}
+        <li class="py-2 flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-sm truncate">{{ grant.name }}</p>
+            <p class="text-[var(--color-text-muted)] text-xs">
+              Created {{ grant.created_at|datetime_format:user }}
+              {% if grant.last_used_at %}
+                · Last used {{ grant.last_used_at|datetime_format:user }}
+              {% else %}
+                · Never used
+              {% endif %}
+              {% if not grant.allow_playback_start %}· Catalogs only{% endif %}
+            </p>
+          </div>
+          <div class="shrink-0"
+               x-data="{ confirming: false }"
+               @keydown.escape="confirming = false">
+            <button type="button"
+                    x-show="!confirming"
+                    @click="confirming = true"
+                    class="px-2.5 py-1 border border-[var(--color-warning-text)] text-[var(--color-warning-text)] rounded-md hover:bg-[var(--color-surface-dim)] transition-colors text-xs cursor-pointer">
+              Revoke
+            </button>
+            <div x-show="confirming" x-cloak class="flex items-center gap-2">
+              <button type="button"
+                      @click="confirming = false"
+                      class="px-2.5 py-1 border border-gray-600 text-[var(--color-text-secondary)] rounded-md text-xs cursor-pointer">
+                Cancel
+              </button>
+              <form method="post"
+                    action="{% url 'revoke_catalog_grant' grant.id %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-2.5 py-1 bg-[var(--color-warning-text)] text-black rounded-md text-xs cursor-pointer">
+                  Revoke
+                </button>
+              </form>
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-[var(--color-text-muted)] text-xs mb-3">
+      No install credentials yet, so the URL above uses your account token.
+    </p>
+  {% endif %}
+
+  <form method="post" action="{% url 'create_catalog_grant' %}" class="flex flex-wrap items-center gap-2">
+    {% csrf_token %}
+    <input name="name"
+           type="text"
+           required
+           maxlength="255"
+           placeholder="Living room TV"
+           aria-label="Install name"
+           class="flex-1 min-w-40 px-3 py-1.5 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+    <label class="flex items-center gap-2 text-xs text-[var(--color-text-secondary)] cursor-pointer">
+      <input type="checkbox"
+             name="allow_playback_start"
+             checked
+             class="rounded border-gray-600 bg-[var(--color-panel)] text-indigo-600 focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+      Mark items in progress on playback
+    </label>
+    <button type="submit"
+            class="px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+      Create install
+    </button>
+  </form>
+</div>

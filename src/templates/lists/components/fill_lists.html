@@ -1,7 +1,9 @@
 
+{% load i18n %}
+
 <div class="list-modal-root bg-[var(--color-surface)] p-6 rounded-lg max-h-[70svh] overflow-y-auto">
   <div class="flex items-center justify-between mb-6">
-    <h2 class="text-2xl font-bold text-[var(--color-text)]">Lists</h2>
+    <h2 class="text-2xl font-bold text-[var(--color-text)]">{% translate "Lists" %}</h2>
     <button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
             @click="listsOpen = false">{% include "app/icons/x.svg" with classes="w-6 h-6" %}</button>
   </div>
@@ -10,10 +12,10 @@
          x-data="{ open: false, selectedValue: '{{ selected_list_tag|default_if_none:''|escapejs }}', selectedLabel: '{{ selected_list_tag|default:'All lists'|escapejs }}' }">
       <div class="flex items-center justify-between mb-2">
         <label class="block text-sm font-medium text-[var(--color-text-secondary)]" for="list-tag-filter-{{ item.id }}">
-          Filter by tag
+          {% translate "Filter by tag" %}
         </label>
         {% if on_list_count %}
-          <span class="text-sm text-[var(--color-text-secondary)]">On {{ on_list_count }} list{{ on_list_count|pluralize }}</span>
+          <span class="text-sm text-[var(--color-text-secondary)]">{% blocktranslate trimmed with value_1=on_list_count count count=on_list_count %}On {{ value_1 }} list{% plural %}On {{ value_1 }} lists{% endblocktranslate %}</span>
         {% endif %}
       </div>
       <div class="relative">
@@ -36,14 +38,14 @@
              x-transition:leave-start="transform opacity-100 scale-100"
              x-transition:leave-end="transform opacity-0 scale-95"
              class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
-          <button type="button"
-                  @click="selectedValue = ''; selectedLabel = 'All lists'; open = false"
+          {% translate "All lists" as media_i18n_92 %}<button type="button"
+                  @click="selectedValue = ''; selectedLabel = '{{ media_i18n_92|escapejs }}'; open = false"
                   hx-get="{{ request.path }}"
                   hx-target="closest .list-modal-root"
                   hx-swap="outerHTML"
                   hx-vals='{"tag": ""}'
                   class="block w-full px-3 py-2 text-left text-sm transition-colors {% if not selected_list_tag %}bg-[var(--color-surface-strong)] text-[var(--color-text)]{% else %}text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]{% endif %}">
-            All lists
+            {% translate "All lists" %}
           </button>
           {% for tag in list_tags %}
             <button type="button"
@@ -61,7 +63,7 @@
     </div>
   {% elif on_list_count %}
     <div class="mb-4 flex justify-end">
-      <span class="text-sm text-[var(--color-text-secondary)]">On {{ on_list_count }} list{{ on_list_count|pluralize }}</span>
+      <span class="text-sm text-[var(--color-text-secondary)]">{% blocktranslate trimmed with value_1=on_list_count count count=on_list_count %}On {{ value_1 }} list{% plural %}On {{ value_1 }} lists{% endblocktranslate %}</span>
     </div>
   {% endif %}
   <ul class="space-y-3">
@@ -71,7 +73,7 @@
         {% include "lists/components/list_item_button.html" with has_item=custom_list.has_item %}
       </li>
     {% empty %}
-      <li class="text-[var(--color-text-secondary)]">You haven't created any lists yet.</li>
+      <li class="text-[var(--color-text-secondary)]">{% translate "You haven't created any lists yet." %}</li>
     {% endfor %}
   </ul>
 </div>

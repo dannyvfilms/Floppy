@@ -1,9 +1,11 @@
 {% extends base_template %}
+{% load i18n %}
+
 {% load static %}
 {% load app_tags %}
 
 {% block title %}
-  Recommend Item - {{ custom_list.name }} - Floppy
+  {% blocktranslate trimmed with value_1=custom_list.name %}Recommend Item - {{ value_1 }} - Floppy{% endblocktranslate %}
 {% endblock title %}
 
 {# djlint:off #}
@@ -13,18 +15,18 @@
       <a href="{% url 'list_detail' custom_list.public_reference %}"
          class="inline-flex items-center text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors mb-4">
         {% include "app/icons/chevron-left.svg" with classes="w-4 h-4 mr-1" %}
-        Back to {{ custom_list.name }}
+        {% blocktranslate trimmed with value_1=custom_list.name %}Back to {{ value_1 }}{% endblocktranslate %}
       </a>
-      <h1 class="text-3xl font-bold mb-2">Recommend an Item</h1>
-      <p class="text-[var(--color-text-muted)]">Search for media to recommend adding to "{{ custom_list.name }}"</p>
+      <h1 class="text-3xl font-bold mb-2">{% translate "Recommend an Item" %}</h1>
+      <p class="text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=custom_list.name %}Search for media to recommend adding to "{{ value_1 }}"{% endblocktranslate %}</p>
     </div>
 
-    <div class="bg-[var(--color-surface)] rounded-lg p-6"
+    {% translate "Search " as media_i18n_79 %}<div class="bg-[var(--color-surface)] rounded-lg p-6"
          x-data="{
            selectedType: { display: '{{ initial_media_type|media_type_readable }}', value: '{{ initial_media_type }}' },
            mediaTypes: [{% for media_type in media_types %}{ display: '{{ media_type|media_type_readable }}', value: '{{ media_type }}' }{% if not forloop.last %},{% endif %}{% endfor %}],
            isOpen: false,
-           getPlaceholder() { return 'Search ' + this.selectedType.display.toLowerCase() + '...'; }
+           getPlaceholder() { return '{{ media_i18n_79|escapejs }}' + this.selectedType.display.toLowerCase() + '...'; }
          }">
 
       {# Search Bar - matching the main search bar style #}
@@ -89,7 +91,7 @@
           <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
             {% include "app/icons/magnifying-glass.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
           </div>
-          <p>Search for media above to get started</p>
+          <p>{% translate "Search for media above to get started" %}</p>
         </div>
       </div>
     </div>

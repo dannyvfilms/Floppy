@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% if media.aggregated_progress is not None %}
   <div class="font-medium">{{ media.formatted_aggregated_progress }}</div>
@@ -5,7 +7,7 @@
   {% if media.repeats > 1 %}
     {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.BOARDGAME.value or user.game_logging_style != 'sessions' %}
       <div class="text-xs text-[var(--color-link)] mt-1">
-        <span>Total ({{ media.repeats }} repeats)</span>
+        <span>{% blocktranslate trimmed with value_1=media.repeats %}Total ({{ value_1 }} repeats){% endblocktranslate %}</span>
       </div>
     {% endif %}
   {% endif %}

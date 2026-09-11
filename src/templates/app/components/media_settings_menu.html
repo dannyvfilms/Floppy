@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load media_list_entry_grouping %}
 {% media_list_entry_grouping_control request as entry_grouping %}
 <div class="relative filter-control {{ menu_class|default:'' }}"
@@ -5,15 +7,15 @@
      @click.outside="open = false"
      @keydown.escape.window="if (open) { open = false; $refs.trigger.focus(); }">
   <button class="p-2 rounded-md border border-gray-700 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] transition-colors cursor-pointer"
-          title="View settings"
-          aria-label="View settings"
+          title="{% translate "View settings" %}"
+          aria-label="{% translate "View settings" %}"
           :aria-expanded="open.toString()"
           x-ref="trigger"
           @click="open = !open"
           type="button">{% include "app/icons/settings.svg" with classes="w-5 h-5" %}</button>
 
   <div class="absolute right-0 z-40 mt-2 w-64 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
-       aria-label="View settings"
+       aria-label="{% translate "View settings" %}"
        role="group"
        x-cloak
        x-show="open"
@@ -29,7 +31,7 @@
        @click="open = false">
       <span x-show="layout === 'grid'">{% include "app/icons/table.svg" with classes="w-4 h-4" %}</span>
       <span x-show="layout !== 'grid'">{% include "app/icons/four-square.svg" with classes="w-4 h-4" %}</span>
-      <span x-text="layout === 'grid' ? 'Table View' : 'Grid View'"></span>
+      {% translate "Table View" as media_i18n_55 %}{% translate "Grid View" as media_i18n_56 %}<span x-text="layout === 'grid' ? '{{ media_i18n_55|escapejs }}' : '{{ media_i18n_56|escapejs }}'"></span>
     </a>
 
     {% if entry_grouping.supported %}
@@ -46,9 +48,9 @@
                 aria-pressed="{% if entry_grouping.enabled %}true{% else %}false{% endif %}"
                 @click="open = false">
           {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
-          <span>Show matching entries separately</span>
+          <span>{% translate "Show matching entries separately" %}</span>
           <span class="ml-auto text-xs text-[var(--color-text-muted)]">
-            {{ entry_grouping.state_label }}
+            {% translate entry_grouping.state_label %}
           </span>
         </button>
       </form>
@@ -61,14 +63,14 @@
             :disabled="sharing"
             @click="open = false; sharing = true; shareView().finally(() => { sharing = false; })">
       {% include "app/icons/link.svg" with classes="w-4 h-4" %}
-      <span x-text="sharing ? 'Sharing…' : 'Share View'"></span>
+      {% translate "Sharing…" as media_i18n_57 %}{% translate "Share View" as media_i18n_58 %}<span x-text="sharing ? '{{ media_i18n_57|escapejs }}' : '{{ media_i18n_58|escapejs }}'"></span>
     </button>
 
     <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
             type="button"
             @click="open = false; toggleSelectMode()">
       {% include "app/icons/tag.svg" with classes="w-4 h-4" %}
-      <span x-text="selectMode ? 'Cancel Select' : 'Select Items'"></span>
+      {% translate "Cancel Select" as media_i18n_59 %}{% translate "Select Items" as media_i18n_60 %}<span x-text="selectMode ? '{{ media_i18n_59|escapejs }}' : '{{ media_i18n_60|escapejs }}'"></span>
     </button>
   </div>
 </div>

@@ -197,6 +197,10 @@ class Item(CalendarTriggerMixin, models.Model):
         default="",
         help_text="Provider collection/franchise name",
     )
+    # When provider metadata was last written to this row. Null means it has
+    # not been refreshed since this field existed, which is a different claim
+    # from "refreshed long ago" and is reported as such.
+    metadata_refreshed_at = models.DateTimeField(null=True, blank=True)
     provider_external_ids = models.JSONField(
         default=dict, blank=True, help_text="Resolved external ids"
     )

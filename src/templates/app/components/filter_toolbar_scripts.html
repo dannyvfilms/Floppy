@@ -40,6 +40,43 @@
     return params;
   }
 
+  // Every filter control routes its refresh through here.
+  //
+  // Two reasons this is a function call and not the buttons' own hx-get:
+  // option rows rendered by Alpine's x-for are created after htmx has scanned
+  // the DOM, so their hx-get never fires at all; and for the rows htmx did
+  // bind, it serializes the form during the click, before Alpine has flushed
+  // the state change, so the request carries the previous value and the
+  // results land one step behind.
+  //
+  // Callers invoke this from $nextTick, so the form is already up to date.
+  // Summary text for a relative "in the last N units" window, e.g. "Last 7 days".
+  // Returns '' when no window is set, so callers can fall through to the
+  // absolute range or "Any".
+  function relativeWindowLabel(amount, unit) {
+    const n = parseInt(amount, 10);
+    if (!Number.isFinite(n) || n < 1) {
+      return '';
+    }
+    const singular = { days: 'day', weeks: 'week', months: 'month', years: 'year' };
+    const name = singular[unit] || 'day';
+    return `Last ${n} ${name}${n === 1 ? '' : 's'}`;
+  }
+
+  function applyFilterChange(endpoint, target, formId) {
+    if (!window.htmx || !endpoint || !target) {
+      return;
+    }
+    const form = document.getElementById(formId || 'filter-form');
+    htmx.ajax('GET', endpoint, {
+      source: form || document.body,
+      target,
+      swap: 'innerHTML',
+      values: form ? htmx.values(form) : {},
+      indicator: '#loading-indicator',
+    });
+  }
+
   function buildMediaListHref(listPath, form, overrides = {}) {
     const params = buildMediaListFilterParams(form, overrides);
     const query = params.toString();
@@ -48,8 +85,10 @@
 </script>
 
 <script>
-  function mediaFilterMenu() {
-    const dataEl = document.getElementById('media-filter-data');
+  // Shared by the library toolbar and the smart-list rule builder; the caller
+  // names the json_script element holding its own filter options.
+  function mediaFilterMenu(dataElementId = 'media-filter-data') {
+    const dataEl = document.getElementById(dataElementId);
     const data = dataEl ? JSON.parse(dataEl.textContent) : {};
     return {
       open: false,
@@ -70,6 +109,7 @@
       moreProviderSearch: '',
       tagSearch: '',
       departmentSearch: '',
+      listSearch: '',
       genres: data.genres || [],
       impliedGenres: data.implied_genres || [],
       years: data.years || [],
@@ -88,6 +128,7 @@
       tags: data.tags || [],
       tagCounts: data.tag_counts || {},
       departments: data.departments || [],
+      lists: data.lists || [],
       resetSearch() {
         this.genreSearch = '';
         this.impliedGenreSearch = '';
@@ -105,6 +146,7 @@
         this.moreProviderSearch = '';
         this.tagSearch = '';
         this.departmentSearch = '';
+        this.listSearch = '';
       },
       filteredGenres() {
         const term = this.genreSearch.toLowerCase();
@@ -240,6 +282,13 @@
           return this.departments;
         }
         return this.departments.filter(d => d.toLowerCase().includes(term));
+      },
+      filteredLists() {
+        const term = this.listSearch.toLowerCase();
+        if (!term) {
+          return this.lists;
+        }
+        return this.lists.filter(option => option.label.toLowerCase().includes(term));
       },
     };
   }

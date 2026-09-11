@@ -246,7 +246,9 @@ class AppStartupTests(TestCase):
         mock_should_run.assert_not_called()
 
     def test_settings_include_external_ids_backfill_reconcile_fallback_schedule(self):
-        schedule = settings.CELERY_BEAT_SCHEDULE["ensure_external_ids_backfill_reconcile"]
+        schedule = settings.CELERY_BEAT_SCHEDULE[
+            "ensure_external_ids_backfill_reconcile"
+        ]
 
         self.assertEqual(schedule["task"], "Ensure external ID backfill reconcile")
         self.assertEqual(schedule["schedule"], settings.RECONCILE_INTERVAL_SECONDS)
@@ -255,9 +257,10 @@ class AppStartupTests(TestCase):
             settings.EXTERNAL_IDS_RECONCILE_BATCH_SIZE,
         )
         self.assertEqual(
-            schedule["options"]["priority"],
+            settings.CELERY_TASK_ROUTES[schedule["task"]]["priority"],
             settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
+        self.assertNotIn("priority", schedule.get("options", {}))
 
     def test_startup_sweeps_are_staggered(self):
         """Five whole-library sweeps at once used to land on a warming container."""
@@ -279,9 +282,10 @@ class AppStartupTests(TestCase):
             settings.WATCH_PROVIDERS_RECONCILE_BATCH_SIZE,
         )
         self.assertEqual(
-            schedule["options"]["priority"],
+            settings.CELERY_TASK_ROUTES[schedule["task"]]["priority"],
             settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
+        self.assertNotIn("priority", schedule.get("options", {}))
 
     def test_settings_include_genre_backfill_reconcile_fallback_schedule(self):
         schedule = settings.CELERY_BEAT_SCHEDULE["ensure_genre_backfill_reconcile"]
@@ -293,9 +297,10 @@ class AppStartupTests(TestCase):
             settings.GENRE_RECONCILE_BATCH_SIZE,
         )
         self.assertEqual(
-            schedule["options"]["priority"],
+            settings.CELERY_TASK_ROUTES[schedule["task"]]["priority"],
             settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
+        self.assertNotIn("priority", schedule.get("options", {}))
 
     def test_celery_background_routes_and_prefetch_are_enabled(self):
         self.assertEqual(settings.CELERY_WORKER_PREFETCH_MULTIPLIER, 1)
@@ -339,9 +344,10 @@ class AppStartupTests(TestCase):
         # Stretched on smaller hosts; 2h is the standard-tier value.
         self.assertGreaterEqual(schedule["schedule"], 60 * 60 * 2)
         self.assertEqual(
-            schedule["options"]["priority"],
+            settings.CELERY_TASK_ROUTES[schedule["task"]]["priority"],
             settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
+        self.assertNotIn("priority", schedule.get("options", {}))
 
     def test_startup_cache_failure_is_closed_by_default(self):
         """Other startup work must still stop when the cache guard fails."""

@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -41,8 +43,8 @@
          style="display: none;">
       <button type="button"
               class="inline-flex items-center justify-center rounded-md p-1.5 text-[var(--color-text-secondary)] transition-colors duration-200 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] cursor-pointer"
-              title="Edit notes"
-              aria-label="Edit notes"
+              title="{% translate "Edit notes" %}"
+              aria-label="{% translate "Edit notes" %}"
               hx-get="{% if detail_notes_modal_url %}{{ detail_notes_modal_url }}{% else %}{% media_view_url 'track_modal' media %}{% endif %}?instance_id={{ entry.id }}&return_url={{ detail_return_url|urlencode }}"
               hx-target="#{{ notes_modal_target_id }}"
               hx-trigger="click"
@@ -62,7 +64,7 @@
       <button x-show="isClamped"
               @click="isExpanded = !isExpanded"
               class="text-sm text-[var(--color-link)] transition-colors hover:text-[var(--color-link-hover)] focus:outline-none cursor-pointer">
-        <span x-text="isExpanded ? 'Show less' : 'Show more'"></span>
+        {% translate "Show less" as media_i18n_0 %}{% translate "Show more" as media_i18n_1 %}<span x-text="isExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_1|escapejs }}'"></span>
       </button>
     </div>
   </div>

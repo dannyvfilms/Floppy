@@ -28,8 +28,8 @@ METADATA_BACKFILL_BASE_DELAY_SECONDS = 60 * 60  # 1 hour
 METADATA_BACKFILL_MAX_DELAY_SECONDS = 60 * 60 * 24  # 1 day
 METADATA_BACKFILL_MAX_ATTEMPTS = 6
 GENRE_BACKFILL_VERSION = 4
-# Bumped when empty TMDB payloads stopped counting as a completed backfill.
-WATCH_PROVIDERS_BACKFILL_VERSION = 2
+# Bumped when MAL anime became eligible for TMDB watch-provider enrichment.
+WATCH_PROVIDERS_BACKFILL_VERSION = 3
 EXTERNAL_IDS_BACKFILL_VERSION = 1
 
 

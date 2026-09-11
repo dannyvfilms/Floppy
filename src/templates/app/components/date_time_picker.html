@@ -1,3 +1,15 @@
+
+{% load i18n %}
+{% translate field_label|default:_("Date") as translated_field_label %}
+{% if copy_from %}
+  {% translate copy_from_label|default:copy_from as translated_copy_label %}
+  {% blocktranslate with value_1=translated_copy_label asvar copy_empty_message %}{{ value_1 }} is empty{% endblocktranslate %}
+{% endif %}
+{% if suggestion_label == "Release Date" %}
+  {% translate "Release Date" context "date picker shortcut" as translated_suggestion_label %}
+{% else %}
+  {% translate suggestion_label|default:"" as translated_suggestion_label %}
+{% endif %}
 {# djlint:off #}
 <div class="relative flex-1 min-w-0"
      x-data="dateTimePicker({
@@ -5,7 +17,7 @@
        trackTime: {{ track_time|yesno:'true,false' }},
        initialValue: '{{ field_value|default:""|escapejs }}',
        defaultNow: {{ default_now|yesno:'true,false' }},
-       suggestionLabel: '{{ suggestion_label|default:""|escapejs }}',
+       suggestionLabel: '{{ translated_suggestion_label|escapejs }}',
        suggestionDate: '{{ suggestion_date|default:""|escapejs }}',
        suggestionRuntimeMinutes: '{{ suggestion_runtime_minutes|default:""|escapejs }}',
        runtimeMinutes: '{{ runtime_minutes|default:""|escapejs }}',
@@ -20,7 +32,7 @@
   <div class="date-picker-closed-row">
     <div class="date-picker-closed-field flex-1 min-w-0 flex items-stretch border border-gray-600 rounded-md bg-[var(--color-surface-strong)] focus-within:ring-2 focus-within:ring-[var(--color-accent)]">
       {% if mobile_label %}
-        <span class="sm:hidden text-xs text-[var(--color-text-muted)] pl-2 pr-1 flex items-center whitespace-nowrap">{{ mobile_label }}</span>
+        <span class="sm:hidden text-xs text-[var(--color-text-muted)] pl-2 pr-1 flex items-center whitespace-nowrap">{% translate mobile_label %}</span>
       {% endif %}
       <input type="hidden"
              name="{{ field_name }}"
@@ -38,7 +50,7 @@
               @click="togglePicker()"
               aria-haspopup="dialog"
               :aria-expanded="open"
-              aria-label="{{ field_label|default:'Date' }} picker"
+              aria-label="{% blocktranslate trimmed with value_1=translated_field_label %}{{ value_1 }} picker{% endblocktranslate %}"
               class="date-picker-trigger flex-1 flex items-center gap-2 p-2 bg-transparent border-0 outline-none text-[var(--color-text)] text-sm min-w-0 text-left cursor-pointer">
         <span class="truncate" x-text="displayText"></span>
       </button>
@@ -46,23 +58,23 @@
            x-show="!hasValue"
            x-cloak
            role="group"
-           aria-label="{{ field_label|default:'Date' }} quick actions">
+           aria-label="{% blocktranslate trimmed with value_1=translated_field_label %}{{ value_1 }} quick actions{% endblocktranslate %}">
         <button type="button"
                 @click="applyQuickAction('start-now')"
                 class="date-picker-quick-action">
-          Start Now
+          {% translate "Start Now" %}
         </button>
         <button type="button"
                 @click="applyQuickAction('just-finished')"
                 class="date-picker-quick-action">
-          Just Finished
+          {% translate "Just Finished" %}
         </button>
-        <button type="button"
+        {% translate "Release date unavailable" as media_i18n_76 %}<button type="button"
                 @click="applyQuickAction('release-date')"
                 :disabled="!resolvedSuggestionDate()"
-                :title="resolvedSuggestionDate() ? '' : 'Release date unavailable'"
+                :title="resolvedSuggestionDate() ? '' : '{{ media_i18n_76|escapejs }}'"
                 class="date-picker-quick-action">
-          Release Date
+          {% translate "Release Date" context "date picker shortcut" %}
         </button>
       </div>
       <button type="button"
@@ -70,8 +82,8 @@
               @click="togglePicker()"
               aria-haspopup="dialog"
               :aria-expanded="open"
-              aria-label="Open {{ field_label|default:'Date' }} picker"
-              title="Open {{ field_label|default:'Date' }} picker"
+              aria-label="{% blocktranslate trimmed with value_1=translated_field_label %}Open {{ value_1 }} picker{% endblocktranslate %}"
+              title="{% blocktranslate trimmed with value_1=translated_field_label %}Open {{ value_1 }} picker{% endblocktranslate %}"
               class="date-picker-picker-button flex items-center justify-center px-2 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
         {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
       </button>
@@ -80,7 +92,7 @@
               @click="clear()"
               x-show="hasValue"
               x-cloak
-              aria-label="Clear date"
+              aria-label="{% translate "Clear date" %}"
               class="date-picker-clear-button inline-flex items-center text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-muted)] transition-colors px-2 cursor-pointer rounded-r-md">
         {% include "app/icons/x.svg" with classes="w-3.5 h-3.5" %}
       </button>
@@ -96,7 +108,7 @@
        x-ref="panel"
        role="dialog"
        :aria-modal="isMobile ? 'true' : 'false'"
-       aria-label="{{ field_label|default:'Date' }} picker"
+       aria-label="{% blocktranslate trimmed with value_1=translated_field_label %}{{ value_1 }} picker{% endblocktranslate %}"
        @keydown.tab="trapFocus($event)"
        @mousedown.outside="!isMobile && !$refs.trigger.contains($event.target) && !$refs.pickerToggle.contains($event.target) && closePicker()"
        :style="popoverStyle"
@@ -106,8 +118,8 @@
        x-transition:enter-end="opacity-100 translate-y-0">
 
     <div class="flex items-center justify-between mb-3 sm:hidden">
-      <span class="text-sm font-medium text-[var(--color-text-secondary)]">{{ field_label|default:"Date" }}</span>
-      <button type="button" @click="closePicker()" aria-label="Close date picker" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1">
+      <span class="text-sm font-medium text-[var(--color-text-secondary)]">{% translate field_label|default:_("Date") %}</span>
+      <button type="button" @click="closePicker()" aria-label="{% translate "Close date picker" %}" class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1">
         {% include "app/icons/x.svg" with classes="w-4 h-4" %}
       </button>
     </div>
@@ -116,7 +128,7 @@
 
     {% if track_time %}
       <div class="mt-3 pt-3 border-t border-[var(--color-border)]">
-        <label class="text-xs text-[var(--color-text-muted)] mb-1 block">Time</label>
+        <label class="text-xs text-[var(--color-text-muted)] mb-1 block">{% translate "Time" %}</label>
         <div class="flex items-center gap-1.5">
           <select class="date-picker-time-select"
                   x-ref="hourSelect"
@@ -155,11 +167,11 @@
       <div class="date-picker-common-times-row">
         <button type="button" @click="applyNow()" class="date-picker-common-time-button">
           {% include "app/icons/clock.svg" with classes="w-3.5 h-3.5" %}
-          Now
+          {% translate "Now" %}
         </button>
         <button type="button" @click="clear()" class="date-picker-common-time-button">
           {% include "app/icons/x.svg" with classes="w-3.5 h-3.5" %}
-          None
+          {% translate "None" %}
         </button>
         <template x-if="resolvedSuggestionDate()">
           <button type="button" @click="applySuggestion()" class="date-picker-common-time-button">
@@ -171,10 +183,10 @@
         <button type="button"
                 @click="copyFromOther()"
                 :disabled="!copyAvailable"
-                :title="copyAvailable ? '' : '{{ copy_from_label|default:copy_from|escapejs }} is empty'"
+                :title="copyAvailable ? '' : '{{ copy_empty_message|escapejs }}'"
                 class="date-picker-common-time-button">
           {% include "app/icons/copy.svg" with classes="w-3.5 h-3.5" %}
-          Copy from {{ copy_from_label|default:copy_from }}
+          {% blocktranslate trimmed with value_1=translated_copy_label %}Copy from {{ value_1 }}{% endblocktranslate %}
         </button>
         {% endif %}
       </div>

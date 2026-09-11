@@ -1,6 +1,7 @@
 import re
 from datetime import UTC, datetime, timedelta
 from html import unescape
+from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import urlparse
 
@@ -9,7 +10,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db.utils import OperationalError
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import override
@@ -57,7 +58,7 @@ from app.models import (
 )
 from app.providers import services, tmdb
 from app.services import game_lengths as game_length_services
-from app.services.metadata_resolution import MetadataResolutionResult
+from app.services.metadata_resolution import AnimeTMDBIdentity, MetadataResolutionResult
 from integrations.models import PlexAccount
 from lists.models import CustomList, CustomListItem
 from users.models import DateFormatChoices, RatingScaleChoices, TimeFormatChoices
@@ -1137,6 +1138,89 @@ class MediaDetailsViewTests(TestCase):
             f'hx-get="{reverse("artist_track_modal", args=[artist.id])}?instance_id=',
             html=False,
         )
+
+    @patch("app.services.music.needs_discography_sync", return_value=False)
+    @patch("app.services.music_scrobble.dedupe_artist_albums")
+    @patch("app.providers.musicbrainz.get_artist")
+    def test_music_artist_cover_refresh_preserves_scores_and_loaded_covers(
+        self,
+        mock_get_artist,
+        _mock_dedupe_artist_albums,
+        _mock_needs_discography_sync,
+    ):
+        artist = Artist.objects.create(
+            name="Refresh Artist",
+            musicbrainz_id="refresh-artist-mbid",
+            image="http://example.com/artist.jpg",
+            discography_synced_at=timezone.now(),
+        )
+        scored_album = Album.objects.create(
+            title="Scored Album",
+            artist=artist,
+            musicbrainz_release_id="scored-release-mbid",
+            image="http://example.com/scored-album.jpg",
+        )
+        Album.objects.create(
+            title="Missing Cover Album",
+            artist=artist,
+            musicbrainz_release_id="missing-cover-release-mbid",
+            image="",
+        )
+        AlbumTracker.objects.create(
+            user=self.user,
+            album=scored_album,
+            status=Status.COMPLETED.value,
+            score=7.5,
+        )
+        mock_get_artist.return_value = {
+            "type": "Group",
+            "country": "US",
+            "genres": [],
+            "tags": [],
+            "rating": None,
+            "rating_count": 0,
+            "bio": "",
+            "image": "http://example.com/artist.jpg",
+        }
+
+        detail_response = self.client.get(
+            reverse(
+                "music_artist_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "refresh-artist",
+                },
+            ),
+        )
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertContains(detail_response, "7.5")
+        self.assertContains(
+            detail_response,
+            reverse("prefetch_artist_covers", args=[artist.id]),
+        )
+        self.assertContains(
+            detail_response,
+            f'id="album-cover-{scored_album.id}"',
+            html=False,
+        )
+        self.assertContains(detail_response, "hx-preserve", html=False)
+
+        with patch("app.tasks.prefetch_album_covers_batch.delay") as mock_delay:
+            refresh_response = self.client.get(
+                reverse("prefetch_artist_covers", args=[artist.id]),
+            )
+
+        self.assertEqual(refresh_response.status_code, 200)
+        mock_delay.assert_called_once_with([artist.id], limit_per_artist=None)
+        self.assertContains(refresh_response, "7.5")
+        self.assertContains(
+            refresh_response,
+            f'id="album-cover-{scored_album.id}"',
+            html=False,
+        )
+        self.assertContains(refresh_response, "hx-preserve", html=False)
+        self.assertContains(refresh_response, "Refreshing cover art")
 
     @patch("app.services.music.needs_discography_sync", return_value=False)
     @patch("app.services.music_scrobble.dedupe_artist_albums")
@@ -2795,6 +2879,284 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["watch_providers"])
+
+    @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity")
+    @patch("app.providers.services.get_media_metadata")
+    def test_media_details_enriches_mal_anime_with_tmdb_watch_providers(
+        self,
+        mock_get_metadata,
+        mock_resolve_mal_tmdb_identity,
+    ):
+        """A tracked MAL anime should use its mapped TMDB provider payload."""
+        self.user.watch_provider_region = "DE"
+        self.user.save(update_fields=["watch_provider_region"])
+        item = Item.objects.create(
+            media_id="52991",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Frieren",
+            image="https://example.com/frieren.jpg",
+        )
+        Anime.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+        mal_metadata = {
+            "media_id": "52991",
+            "title": "Frieren",
+            "media_type": MediaTypes.ANIME.value,
+            "source": Sources.MAL.value,
+            "image": "https://example.com/frieren.jpg",
+            "details": {"episodes": 28},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+        tmdb_metadata = {
+            **mal_metadata,
+            "media_id": "209867",
+            "source": Sources.TMDB.value,
+            "providers": {
+                "DE": {
+                    "flatrate": [
+                        {
+                            "provider_id": 283,
+                            "provider_name": "Crunchyroll",
+                            "logo_path": "/crunchyroll.jpg",
+                        },
+                    ],
+                },
+            },
+        }
+        mock_get_metadata.side_effect = lambda *args, **_kwargs: (
+            tmdb_metadata if args[2] == Sources.TMDB.value else mal_metadata
+        )
+        mock_resolve_mal_tmdb_identity.return_value = AnimeTMDBIdentity(
+            media_id="209867",
+            media_type=MediaTypes.TV.value,
+            tvdb_id="407407",
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.MAL.value,
+                    "media_type": MediaTypes.ANIME.value,
+                    "media_id": "52991",
+                    "title": "frieren",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            'data-watch-providers-placement="desktop"',
+        )
+        self.assertContains(
+            response,
+            'data-watch-providers-placement="mobile"',
+        )
+        self.assertEqual(
+            response.context["watch_providers"][0]["provider_name"], "Crunchyroll"
+        )
+        item.refresh_from_db()
+        self.assertEqual(
+            item.watch_providers["DE"]["flatrate"][0]["provider_name"],
+            "Crunchyroll",
+        )
+
+    @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity")
+    @patch("app.providers.services.get_media_metadata")
+    def test_untracked_mal_anime_details_show_series_and_movie_providers(
+        self,
+        mock_get_metadata,
+        mock_resolve_mal_tmdb_identity,
+    ):
+        """Search results should show providers before an anime is tracked."""
+        self.user.watch_provider_region = "DE"
+        self.user.save(update_fields=["watch_provider_region"])
+        cases = (
+            (
+                "52991",
+                "Frieren",
+                AnimeTMDBIdentity(
+                    media_id="209867",
+                    media_type=MediaTypes.TV.value,
+                    tvdb_id="407407",
+                ),
+                "Crunchyroll",
+            ),
+            (
+                "199",
+                "Spirited Away",
+                AnimeTMDBIdentity(
+                    media_id="129",
+                    media_type=MediaTypes.MOVIE.value,
+                    imdb_id="tt0245429",
+                ),
+                "Netflix",
+            ),
+        )
+
+        for mal_id, title, identity, provider_name in cases:
+            with self.subTest(title=title):
+                mock_get_metadata.reset_mock()
+                mock_resolve_mal_tmdb_identity.reset_mock()
+                mock_resolve_mal_tmdb_identity.return_value = identity
+
+                def metadata_side_effect(
+                    media_type,
+                    media_id,
+                    source,
+                    expected_identity=identity,
+                    expected_mal_id=mal_id,
+                    expected_title=title,
+                    expected_provider_name=provider_name,
+                    **_kwargs,
+                ):
+                    if source == Sources.TMDB.value:
+                        self.assertEqual(media_type, expected_identity.media_type)
+                        self.assertEqual(media_id, expected_identity.media_id)
+                        return {
+                            "providers": {
+                                "DE": {
+                                    "flatrate": [
+                                        {
+                                            "provider_id": 8,
+                                            "provider_name": expected_provider_name,
+                                            "logo_path": "/provider.jpg",
+                                        },
+                                    ],
+                                },
+                            },
+                        }
+                    return {
+                        "media_id": expected_mal_id,
+                        "title": expected_title,
+                        "media_type": MediaTypes.ANIME.value,
+                        "source": Sources.MAL.value,
+                        "image": "https://example.com/anime.jpg",
+                        "details": {},
+                        "related": {},
+                        "cast": [],
+                        "crew": [],
+                        "studios_full": [],
+                    }
+
+                mock_get_metadata.side_effect = metadata_side_effect
+                response = self.client.get(
+                    reverse(
+                        "media_details",
+                        kwargs={
+                            "source": Sources.MAL.value,
+                            "media_type": MediaTypes.ANIME.value,
+                            "media_id": mal_id,
+                            "title": title.lower().replace(" ", "-"),
+                        },
+                    ),
+                    {"fragment": "secondary"},
+                )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    response.context["watch_providers"][0]["provider_name"],
+                    provider_name,
+                )
+                self.assertFalse(
+                    Item.objects.filter(
+                        media_id=mal_id,
+                        source=Sources.MAL.value,
+                        media_type=MediaTypes.ANIME.value,
+                    ).exists(),
+                )
+
+    @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity")
+    @patch("app.providers.services.get_media_metadata")
+    def test_untracked_mal_anime_details_tolerate_mapping_failure(
+        self,
+        mock_get_metadata,
+        mock_resolve_mal_tmdb_identity,
+    ):
+        """Optional provider enrichment must not make MAL details unavailable."""
+        self.user.watch_provider_region = "DE"
+        self.user.save(update_fields=["watch_provider_region"])
+        mock_get_metadata.return_value = {
+            "media_id": "4081",
+            "title": "Natsume's Book of Friends",
+            "media_type": MediaTypes.ANIME.value,
+            "source": Sources.MAL.value,
+            "image": "https://example.com/natsume.jpg",
+            "details": {"episodes": 13},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+        mock_resolve_mal_tmdb_identity.side_effect = services.ProviderAPIError(
+            "ANIME_MAPPING",
+            RuntimeError("offline"),
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.MAL.value,
+                    "media_type": MediaTypes.ANIME.value,
+                    "media_id": "4081",
+                    "title": "natsume-yuujinchou",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["watch_providers"])
+
+    @patch("app.views.metadata_resolution.resolve_mal_tmdb_identity")
+    @patch("app.providers.services.get_media_metadata")
+    def test_untracked_mal_anime_skips_provider_resolution_when_region_disabled(
+        self,
+        mock_get_metadata,
+        mock_resolve_mal_tmdb_identity,
+    ):
+        """A disabled provider region must not trigger MAL-to-TMDB lookups."""
+        self.user.watch_provider_region = "UNSET"
+        self.user.save(update_fields=["watch_provider_region"])
+        mock_get_metadata.return_value = {
+            "media_id": "4081",
+            "title": "Natsume's Book of Friends",
+            "media_type": MediaTypes.ANIME.value,
+            "source": Sources.MAL.value,
+            "image": "https://example.com/natsume.jpg",
+            "details": {},
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.MAL.value,
+                    "media_type": MediaTypes.ANIME.value,
+                    "media_id": "4081",
+                    "title": "natsume-yuujinchou",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.context["watch_providers"])
+        mock_resolve_mal_tmdb_identity.assert_not_called()
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_persists_movie_recommendation_metadata(
@@ -6577,6 +6939,145 @@ class MediaDetailsViewTests(TestCase):
 
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
+    def test_season_details_secondary_fragment_skips_link_for_unnumbered_episode(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+    ):
+        """An episode with no numeric episode_number must not 500 via NoReverseMatch.
+
+        Regression test for a follow-up finding on issue #1132: coercing a bad
+        provider episode number to None (instead of leaving the raw bad value)
+        must not crash the {% url 'episode_details' ... episode_number=... %}
+        reversal in detail_secondary_content.html, which requires an int.
+        """
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+            },
+        }
+
+        mock_process_episodes.return_value = [
+            {
+                "media_id": "1668",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.EPISODE.value,
+                "season_number": 1,
+                "episode_number": None,
+                "title": "Unannounced episode",
+                "air_date": None,
+                "actions_enabled": False,
+            },
+        ]
+
+        response = self.client.get(
+            reverse(
+                "season_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Unannounced episode")
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
+    def test_season_details_renders_with_non_numeric_sibling_season_max_progress(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+    ):
+        """A sibling season card with a non-numeric max_progress must not 500.
+
+        Regression test for issue #1132: bad provider data (e.g. a non-numeric
+        episode count) previously reached {% blocktranslate count %} unmodified
+        and raised TemplateSyntaxError, 500ing the whole season page.
+        """
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "related": {
+                "seasons": [
+                    {
+                        "media_id": "1668",
+                        "media_type": MediaTypes.SEASON.value,
+                        "source": Sources.TMDB.value,
+                        "season_number": 2,
+                        "title": "Test TV Show",
+                        "season_title": "Season 2",
+                        "image": "http://example.com/season2.jpg",
+                        "max_progress": "TBA",
+                        "episode_count": "TBA",
+                        "progress": 1,
+                    },
+                ],
+            },
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TMDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+                "related": {
+                    "seasons": [
+                        {
+                            "media_id": "1668",
+                            "media_type": MediaTypes.SEASON.value,
+                            "source": Sources.TMDB.value,
+                            "season_number": 2,
+                            "title": "Test TV Show",
+                            "season_title": "Season 2",
+                            "image": "http://example.com/season2.jpg",
+                            "max_progress": "TBA",
+                            "episode_count": "TBA",
+                            "progress": 1,
+                        },
+                    ],
+                },
+            },
+        }
+
+        mock_process_episodes.return_value = []
+
+        response = self.client.get(
+            reverse(
+                "season_details",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
     def test_season_details_persists_and_self_heals_episode_release_datetime(
         self,
         mock_process_episodes,
@@ -10337,3 +10838,16 @@ class AnimeNextEpisodeRedirectTests(TestCase):
         response = self.client.get(self.url)
 
         self.assertRedirects(response, self.detail_url, fetch_redirect_response=False)
+
+
+class EpisodePickerTemplateContractTests(SimpleTestCase):
+    def test_long_title_is_constrained_inside_episode_picker(self):
+        template = Path(
+            settings.BASE_DIR, "templates", "app", "episode_details.html"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('class="relative min-w-0 flex-1 md:max-w-xs"', template)
+        self.assertIn(
+            'class="block min-w-0 flex-1 truncate text-sm font-medium"',
+            template,
+        )

@@ -1,0 +1,197 @@
+{% load app_tags %}
+{# Named, scoped API tokens. The account token above stays for webhooks; these #}
+{# are what a third-party client should be given, because they can be revoked  #}
+{# one at a time and only reach what their permissions name.                   #}
+<div id="app-tokens" class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
+  <div class="flex items-center mb-3">
+    {% include "app/icons/padlock.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+    <h3 class="text-base font-medium">App tokens</h3>
+  </div>
+  <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+    Give each app its own token with only the permissions it needs. Revoking one
+    leaves your other apps connected.
+  </p>
+
+  {% if new_integration_token %}
+    <div class="bg-[var(--color-surface-dim)] border border-[var(--color-link)] p-4 rounded-md mb-4"
+         role="status">
+      <p class="text-sm font-medium mb-1">Token created: {{ new_integration_token.name }}</p>
+      <p class="text-[var(--color-text-muted)] text-sm mb-3">
+        Copy it now. Floppy stores only a hash, so this is the only time it can be shown.
+      </p>
+      <div class="flex items-center gap-2">
+        <input readonly=""
+               id="new-integration-token"
+               aria-label="New token secret"
+               class="flex-1 py-2 pr-2 pl-3 bg-[var(--color-panel)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono"
+               type="text"
+               value="{{ new_integration_token.secret }}">
+        <span class="flex items-center cursor-pointer group pr-3"
+              title="Copy"
+              data-copy-target="#new-integration-token">
+          {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+        </span>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if integration_tokens %}
+    <ul class="mb-4 divide-y divide-[var(--color-border)]">
+      {% for token in integration_tokens %}
+        <li class="py-3 flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <p class="text-sm font-medium truncate">{{ token.name }}</p>
+              {% if token.is_expired %}
+                <span class="shrink-0 bg-[var(--color-surface-dim)] text-[var(--color-warning-text)] rounded px-1.5 py-0.5 text-xs">Expired</span>
+              {% endif %}
+            </div>
+            <p class="text-[var(--color-text-muted)] text-xs font-mono">{{ token.token_prefix }}…</p>
+            <p class="text-[var(--color-text-muted)] text-xs mt-1">
+              Created {{ token.created_at|datetime_format:user }}
+              {% if token.last_used_at %}
+                · Last used {{ token.last_used_at|datetime_format:user }}
+              {% else %}
+                · Never used
+              {% endif %}
+              {% if token.expires_at %}· Expires {{ token.expires_at|datetime_format:user }}{% endif %}
+            </p>
+            <p class="text-[var(--color-text-muted)] text-xs mt-1">
+              {% for scope in token.scopes %}
+                <span class="inline-block bg-[var(--color-surface-dim)] rounded px-1.5 py-0.5 mr-1 mb-1 font-mono">{{ scope }}</span>
+              {% endfor %}
+            </p>
+          </div>
+          <div class="shrink-0"
+               x-data="{ confirming: false }"
+               @keydown.escape="confirming = false">
+            <button type="button"
+                    x-show="!confirming"
+                    @click="confirming = true"
+                    class="px-3 py-1.5 border border-[var(--color-warning-text)] text-[var(--color-warning-text)] rounded-md hover:bg-[var(--color-surface-dim)] transition-colors text-sm cursor-pointer">
+              Revoke
+            </button>
+            <div x-show="confirming" x-cloak class="text-right">
+              <p class="text-[var(--color-text-secondary)] text-xs mb-2">
+                {{ token.name }} stops working immediately. Your other apps are unaffected.
+              </p>
+              <div class="flex justify-end gap-2">
+                <button type="button"
+                        @click="confirming = false"
+                        class="px-3 py-1.5 border border-gray-600 text-[var(--color-text-secondary)] rounded-md hover:bg-[var(--color-surface-dim)] transition-colors text-sm cursor-pointer">
+                  Cancel
+                </button>
+                <form method="post"
+                      action="{% url 'revoke_integration_token' token.id %}">
+                  {% csrf_token %}
+                  <button type="submit"
+                          class="px-3 py-1.5 bg-[var(--color-warning-text)] text-black rounded-md hover:opacity-90 transition-opacity text-sm cursor-pointer">
+                    Revoke
+                  </button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="text-[var(--color-text-muted)] text-sm mb-4">No app tokens yet.</p>
+  {% endif %}
+
+  <details class="bg-[var(--color-surface-dim)] rounded-md p-4">
+    <summary class="text-sm font-medium cursor-pointer">Create an app token</summary>
+    <form method="post"
+          action="{% url 'create_integration_token' %}"
+          class="mt-4"
+          x-data='{ scopes: {{ integration_tracking_preset_json }} }'>
+      {% csrf_token %}
+
+      <div class="mb-4">
+        <label for="integration-token-name"
+               class="block text-[var(--color-text-secondary)] text-sm font-medium mb-2">Name</label>
+        <input id="integration-token-name"
+               name="name"
+               type="text"
+               required
+               maxlength="255"
+               placeholder="Nuvio living room"
+               class="w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+      </div>
+
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[var(--color-text-secondary)] text-sm font-medium">Expires</span>
+          <span class="text-[var(--color-text-muted)] text-xs">Leave as Never for an always-on device.</span>
+        </div>
+        <div class="relative"
+             x-data="{ open: false, selectedValue: '', selectedLabel: 'Never' }">
+          <button type="button"
+                  @click="open = !open"
+                  @click.outside="open = false"
+                  class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
+            <span x-text="selectedLabel"></span>
+            {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
+          </button>
+          <div x-show="open"
+               x-transition:enter="transition ease-out duration-100"
+               x-transition:enter-start="transform opacity-0 scale-95"
+               x-transition:enter-end="transform opacity-100 scale-100"
+               x-transition:leave="transition ease-in duration-75"
+               x-transition:leave-start="transform opacity-100 scale-100"
+               x-transition:leave-end="transform opacity-0 scale-95"
+               class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
+            <button type="button"
+                    @click="selectedValue = ''; selectedLabel = 'Never'; open = false"
+                    class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+              Never
+            </button>
+            <button type="button"
+                    @click="selectedValue = '30'; selectedLabel = '30 days'; open = false"
+                    class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+              30 days
+            </button>
+            <button type="button"
+                    @click="selectedValue = '90'; selectedLabel = '90 days'; open = false"
+                    class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+              90 days
+            </button>
+            <button type="button"
+                    @click="selectedValue = '365'; selectedLabel = '1 year'; open = false"
+                    class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
+              1 year
+            </button>
+          </div>
+          <input type="hidden" name="expires_in_days" x-bind:value="selectedValue">
+        </div>
+      </div>
+
+      <fieldset class="mb-4">
+        <legend class="text-[var(--color-text-secondary)] text-sm font-medium mb-2">Permissions</legend>
+        <p class="text-[var(--color-text-muted)] text-xs mb-3">
+          Pre-selected for a tracking client: scrobbling, resume progress, and saved items.
+        </p>
+        <div class="grid gap-2 sm:grid-cols-2">
+          {% for choice in integration_scope_choices %}
+            <label class="flex items-start gap-2 p-2 rounded-md hover:bg-[var(--color-surface-strong)] cursor-pointer">
+              <input type="checkbox"
+                     name="scopes"
+                     value="{{ choice.value }}"
+                     x-model="scopes"
+                     class="mt-0.5 rounded border-gray-600 bg-[var(--color-panel)] text-indigo-600 focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+              <span class="min-w-0">
+                <span class="block text-sm font-mono">{{ choice.value }}</span>
+                <span class="block text-[var(--color-text-muted)] text-xs">{{ choice.description }}</span>
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <button type="submit"
+              class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+        Create token
+      </button>
+    </form>
+  </details>
+</div>

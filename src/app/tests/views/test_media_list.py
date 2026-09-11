@@ -3667,3 +3667,93 @@ class MediaListViewTests(TestCase):
             ],
             ["Grouped Anime High Critic", "Grouped Anime Low Critic"],
         )
+
+
+class MediaListRelativeCompletedDateTests(TestCase):
+    """"Completed in the last N units" on the library filter toolbar."""
+
+    def setUp(self):
+        """Log in with two movies completed at known distances from today."""
+        cache.clear()
+        self.credentials = {"username": "relative", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+
+        self.recent = Item.objects.create(
+            media_id="rel-recent",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Recent Movie",
+            image="http://example.com/image.jpg",
+        )
+        self.old = Item.objects.create(
+            media_id="rel-old",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Old Movie",
+            image="http://example.com/image.jpg",
+        )
+        Movie.objects.create(
+            item=self.recent,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=timezone.now() - timedelta(days=3),
+        )
+        Movie.objects.create(
+            item=self.old,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=timezone.now() - timedelta(days=200),
+        )
+
+    def _titles(self, **params):
+        response = self.client.get(
+            reverse("medialist", kwargs={"media_type": MediaTypes.MOVIE.value}),
+            params,
+        )
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        return [
+            title for title in ("Recent Movie", "Old Movie") if title in content
+        ]
+
+    def test_window_narrows_the_list(self):
+        """A 7-day window keeps only the recently completed movie."""
+        self.assertEqual(sorted(self._titles()), ["Old Movie", "Recent Movie"])
+
+        self.assertEqual(
+            self._titles(completed_date_within="7", completed_date_within_unit="days"),
+            ["Recent Movie"],
+        )
+
+    def test_wider_window_keeps_both(self):
+        """A one-year window covers both."""
+        self.assertEqual(
+            sorted(
+                self._titles(
+                    completed_date_within="1",
+                    completed_date_within_unit="years",
+                ),
+            ),
+            ["Old Movie", "Recent Movie"],
+        )
+
+    def test_filter_form_carries_the_window_fields(self):
+        """The toolbar must post the window, or the choice never reaches here.
+
+        The form is included separately from the toolbar on this page, so a
+        missing flag silently drops these inputs (and the multi-select platform
+        fields) without breaking any other assertion.
+        """
+        response = self.client.get(
+            reverse("medialist", kwargs={"media_type": MediaTypes.MOVIE.value}),
+        )
+        content = response.content.decode()
+
+        for name in (
+            "completed_date_from",
+            "completed_date_within",
+            "completed_date_within_unit",
+            "platform_mode",
+        ):
+            self.assertIn(f'name="{name}"', content, name)

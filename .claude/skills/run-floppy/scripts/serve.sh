@@ -81,7 +81,19 @@ cmd_start() {
     --config python:config.gunicorn config.wsgi:application \
     >"$LOGDIR/gunicorn.log" 2>&1 &
 
-  if timeout 90 bash -c "until curl -sf -o /dev/null http://localhost:$PORT/health/; do sleep 1; done"; then
+  # Bounded wait without `timeout`: that is GNU coreutils and is absent on a
+  # stock macOS, where it failed as "command not found" and reported the
+  # server unhealthy without ever having checked it.
+  healthy=""
+  for _ in $(seq 1 90); do
+    if curl -sf -o /dev/null "http://localhost:$PORT/health/"; then
+      healthy=1
+      break
+    fi
+    sleep 1
+  done
+
+  if [ -n "$healthy" ]; then
     echo "up on http://localhost:$PORT (logs in $LOGDIR)"
   else
     echo "did not become healthy; see $LOGDIR/gunicorn.log"

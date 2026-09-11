@@ -26,6 +26,7 @@ TVDB_CACHE_NAMESPACE = f"{Sources.TVDB.value}_v4"
 TOKEN_CACHE_KEY = f"{TVDB_CACHE_NAMESPACE}_access_token"
 TOKEN_CACHE_TIMEOUT = 60 * 60 * 12
 TVDB_METADATA_CACHE_TIMEOUT = 60 * 60 * 12
+TVDB_TRANSLATION_FAILURE_CACHE_TIMEOUT = 60
 PREFERRED_TRANSLATION_CODES = ("eng", "en", "eng-us", "en-us")
 
 # TVDB v4 paginates `series/{id}/episodes/default/{lang}` at 500 rows/page;
@@ -37,6 +38,7 @@ EPISODE_TRANSLATIONS_MAX_PAGES = 50
 # the per-entity HTTP fetch) from "a preload was passed and came back empty"
 # (skip the fetch, there's nothing to apply). `None` is a valid empty preload.
 _NO_PRELOADED_TRANSLATION = object()
+_EPISODE_TRANSLATIONS_UNAVAILABLE = "__tvdb_episode_translations_unavailable__"
 
 # ISO 639-1 -> TVDB's ISO 639-2/B three-letter language codes.
 # Covers the languages TMDB_LANG is realistically set to; unmapped codes fall
@@ -62,19 +64,18 @@ def _cache_key(*parts: object) -> str:
     return "_".join([TVDB_CACHE_NAMESPACE, *[str(part) for part in parts]])
 
 
-def _series_extended_cache_key(media_id, routed_media_type, language=None):
+def _series_extended_cache_key(media_id, language=None):
     """Return the cache key for a raw, translated series extended payload."""
     return _cache_key(
         "series_extended",
-        routed_media_type,
         media_id,
         _preferred_language_code(language),
     )
 
 
-def _get_series_extended(media_id, routed_media_type, language=None):
+def _get_series_extended(media_id, language=None):
     """Return one cached, translated series extended payload."""
-    cache_key = _series_extended_cache_key(media_id, routed_media_type, language)
+    cache_key = _series_extended_cache_key(media_id, language)
     data = cache.get(cache_key)
     if data is None:
         data = _with_preferred_translation(
@@ -86,20 +87,45 @@ def _get_series_extended(media_id, routed_media_type, language=None):
     return data
 
 
-def metadata_cache_keys(media_id, season_number=None):
+def _series_episode_translations_cache_key(series_id, language=None):
+    """Return the cache key for a series' bulk episode translations."""
+    return _cache_key(
+        "series_episode_translations",
+        series_id,
+        _preferred_language_code(language),
+    )
+
+
+def metadata_cache_keys(media_id, season_number=None, language=None):
     """Return all versioned TVDB cache keys for a series or season."""
+    preferred_language = _preferred_language_code(language)
     keys = []
     for routed_media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
         keys.extend(
             [
                 _cache_key(routed_media_type, media_id),
-                _series_extended_cache_key(media_id, routed_media_type),
+                _cache_key(routed_media_type, media_id, preferred_language),
+                # Evict route-qualified raw keys written before raw extended
+                # payload ownership was shared between TV and anime routes.
+                _cache_key(
+                    "series_extended",
+                    routed_media_type,
+                    media_id,
+                    preferred_language,
+                ),
             ],
         )
         if season_number is not None:
             keys.append(
-                _season_cache_key(media_id, season_number, routed_media_type),
+                _season_cache_key(
+                    media_id,
+                    season_number,
+                    routed_media_type,
+                    language,
+                ),
             )
+    keys.append(_series_extended_cache_key(media_id, language))
+    keys.append(_series_episode_translations_cache_key(media_id, language))
     return keys
 
 
@@ -419,7 +445,9 @@ def _get_translation(entity_type: str, entity_id: Any, *, language: str | None =
     return payload
 
 
-def _fetch_series_episode_translations(series_id: Any, language: str) -> dict[str, dict]:
+def _fetch_series_episode_translations(
+    series_id: Any, language: str
+) -> dict[str, dict] | None:
     """Return every episode's translated name/overview for a series, id-keyed.
 
     TVDB v4's `series/{id}/episodes/default/{lang}` bulk endpoint returns
@@ -438,8 +466,16 @@ def _fetch_series_episode_translations(series_id: Any, language: str) -> dict[st
                 f"series/{series_id}/episodes/default/{language}",
                 params={"page": page},
             )
-        except services.ProviderAPIError:
-            break
+        except services.ProviderAPIError as error:
+            logger.warning(
+                "TVDB bulk episode translation lookup failed "
+                "series_id=%s language=%s page=%s: %s",
+                series_id,
+                language,
+                page,
+                error,
+            )
+            return None
 
         response = _unwrap_data(raw_response) or {}
         rows = response.get("episodes") or []
@@ -459,25 +495,59 @@ def _fetch_series_episode_translations(series_id: Any, language: str) -> dict[st
                 translations[str(row["id"])] = entry
 
         links = raw_response.get("links") if isinstance(raw_response, dict) else None
-        if not rows or not isinstance(links, dict) or not links.get("next"):
+        if not isinstance(links, dict) or not links.get("next"):
             break
+        if not rows:
+            logger.warning(
+                "TVDB bulk episode translation lookup returned an empty page "
+                "before pagination ended series_id=%s language=%s page=%s",
+                series_id,
+                language,
+                page,
+            )
+            return None
         page += 1
+    else:
+        logger.warning(
+            "TVDB bulk episode translation lookup reached the page limit "
+            "series_id=%s language=%s max_pages=%s",
+            series_id,
+            language,
+            EPISODE_TRANSLATIONS_MAX_PAGES,
+        )
+        return None
 
     return translations
 
 
-def _get_series_episode_translations(series_id: Any, language: str) -> dict[str, dict]:
+def _get_series_episode_translations(
+    series_id: Any, language: str | None = None
+) -> dict[str, dict]:
     """Return a cached id -> translation map for every episode in a series."""
     if not series_id:
         return {}
 
-    cache_key = _cache_key("series_episode_translations", series_id, language)
+    language = _preferred_language_code(language)
+    cache_key = _series_episode_translations_cache_key(series_id, language)
     cached = cache.get(cache_key)
     if cached is not None:
+        if cached == _EPISODE_TRANSLATIONS_UNAVAILABLE:
+            return {}
         return cached
 
     translations = _fetch_series_episode_translations(series_id, language)
-    cache.set(cache_key, translations)
+    if translations is None:
+        # Do not retain a partial result as if it were complete. The short
+        # negative cache prevents every selected season from retrying the same
+        # failed bulk lookup while preserving a later recovery attempt.
+        cache.set(
+            cache_key,
+            _EPISODE_TRANSLATIONS_UNAVAILABLE,
+            timeout=TVDB_TRANSLATION_FAILURE_CACHE_TIMEOUT,
+        )
+        return {}
+
+    cache.set(cache_key, translations, timeout=TVDB_METADATA_CACHE_TIMEOUT)
     return translations
 
 
@@ -841,7 +911,7 @@ def _season_related_entry(
     """Return a related-season card entry."""
     season_no = _season_number(season_data)
     episode_rows = _coerce_list(season_data.get("episodes"))
-    episode_count = season_data.get("episodeCount")
+    episode_count = _coerce_int(season_data.get("episodeCount"))
     if episode_count is None and episode_rows:
         episode_count = len(episode_rows)
     first_air = None
@@ -1139,7 +1209,9 @@ def _normalize_episode_rows(
         )
         normalized.append(
             {
-                "episode_number": episode.get("number") or episode.get("episodeNumber"),
+                "episode_number": _coerce_int(
+                    episode.get("number") or episode.get("episodeNumber"),
+                ),
                 "air_date": air_date,
                 "still_path": None,
                 "image": _get_image(episode, language),
@@ -1290,7 +1362,7 @@ def tv(media_id, *, routed_media_type=MediaTypes.TV.value, language=None):
     )
     data = cache.get(cache_key)
     if data is None:
-        response = _get_series_extended(media_id, routed_media_type, language)
+        response = _get_series_extended(media_id, language)
         data = _build_series_metadata(
             response, media_type=routed_media_type, language=language
         )
@@ -1315,7 +1387,7 @@ def tv_with_seasons(
     if not normalized_numbers:
         return series_metadata
 
-    series_data = _get_series_extended(media_id, routed_media_type, language)
+    series_data = _get_series_extended(media_id, language)
     seasons_by_number = {
         _season_number(season): season
         for season in _pick_series_seasons(series_data)
@@ -1392,7 +1464,7 @@ def series_tmdb_id(series_id):
 
     # Reuse _get_series_extended's own 12h cache instead of independently
     # re-fetching and caching the same endpoint under a separate key.
-    series_data = _get_series_extended(series_id, MediaTypes.TV.value)
+    series_data = _get_series_extended(series_id)
     tmdb_id = _get_remote_ids_map(series_data).get("tmdb_id")
     if not tmdb_id:
         logger.debug("TVDB series metadata has no TMDB ID for %s", series_id)

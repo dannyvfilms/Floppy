@@ -223,6 +223,105 @@ class KoitoCredentialTests(TestCase):
             ).exists(),
         )
 
+    @patch("app.db_retry.time.sleep", return_value=None)
+    @patch("integrations.views.tasks.import_koito_history.delay")
+    @patch("integrations.views.tasks.poll_koito_for_user.delay")
+    @patch("integrations.views.koito_api.validate_connection", return_value=True)
+    def test_connect_retries_after_transient_lock(
+        self,
+        mock_validate,
+        mock_poll,
+        mock_history,
+        mock_sleep,
+    ):
+        """A transient 'database is locked' error is retried, not a 503 (#1112)."""
+        real_update_or_create = KoitoAccount.objects.update_or_create
+        calls = {"count": 0}
+
+        def flaky_update_or_create(*args, **kwargs):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise OperationalError("database is locked")
+            return real_update_or_create(*args, **kwargs)
+
+        with patch(
+            "integrations.views.KoitoAccount.objects.update_or_create",
+            side_effect=flaky_update_or_create,
+        ):
+            response = self.client.post(
+                reverse("koito_connect"),
+                {"base_url": BASE_URL, "api_key": API_KEY},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(calls["count"], 2)
+        self.assertTrue(KoitoAccount.objects.filter(user=self.user).exists())
+
+    @patch("app.db_retry.time.sleep", return_value=None)
+    def test_disconnect_retries_after_transient_lock(self, mock_sleep):
+        """A transient 'database is locked' error is retried on disconnect (#1112)."""
+        KoitoAccount.objects.create(
+            user=self.user,
+            base_url=BASE_URL,
+            api_key=helpers.encrypt(API_KEY),
+        )
+        crontab, _ = CrontabSchedule.objects.get_or_create(
+            minute="*/15",
+            hour="*",
+            day_of_week="*",
+            day_of_month="*",
+            month_of_year="*",
+        )
+        PeriodicTask.objects.create(
+            name=f"Poll Koito for {self.user.username} (every 15 minutes)",
+            task=tasks.KOITO_POLL_TASK_NAME,
+            kwargs=f'{{"user_id": {self.user.id}}}',
+            crontab=crontab,
+        )
+
+        real_filter = KoitoAccount.objects.filter
+        calls = {"count": 0}
+
+        def flaky_filter(*args, **kwargs):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise OperationalError("database is locked")
+            return real_filter(*args, **kwargs)
+
+        with patch(
+            "integrations.views.KoitoAccount.objects.filter",
+            side_effect=flaky_filter,
+        ):
+            response = self.client.post(reverse("koito_disconnect"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertGreaterEqual(calls["count"], 2)
+        self.assertFalse(KoitoAccount.objects.filter(user=self.user).exists())
+        self.assertFalse(
+            PeriodicTask.objects.filter(
+                task=tasks.KOITO_POLL_TASK_NAME,
+                kwargs__contains=f'"user_id": {self.user.id}',
+            ).exists(),
+        )
+
+    @patch("app.db_retry.time.sleep", return_value=None)
+    def test_disconnect_gives_up_after_persistent_lock(self, mock_sleep):
+        """Exhausting retries surfaces the existing 503 page, not a silent partial delete."""
+        KoitoAccount.objects.create(
+            user=self.user,
+            base_url=BASE_URL,
+            api_key=helpers.encrypt(API_KEY),
+        )
+
+        with patch(
+            "integrations.views.KoitoAccount.objects.filter",
+            side_effect=OperationalError("database is locked"),
+        ):
+            response = self.client.post(reverse("koito_disconnect"))
+
+        self.assertEqual(response.status_code, 503)
+        self.assertTrue(KoitoAccount.objects.filter(user=self.user).exists())
+
 
 class KoitoSyncTests(KoitoTestCase):
     """Incremental polling and cursor semantics."""

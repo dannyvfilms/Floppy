@@ -1,5 +1,7 @@
+
+{% load i18n %}
 <div>
-  <label class="block text-sm text-[var(--color-text-secondary)] mb-1">Libraries</label>
+  <label class="block text-sm text-[var(--color-text-secondary)] mb-1">{% translate "Libraries" %}</label>
   <div class="relative" @click.outside="dropdownOpen = false">
     <button type="button"
             class="h-10 px-3 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center gap-2 w-full cursor-pointer"
@@ -22,11 +24,11 @@
          x-transition:leave-end="transform opacity-0 scale-95"
          class="absolute left-0 mt-2 w-full rounded-md bg-[var(--color-surface-strong)] border border-gray-700 shadow-lg overflow-hidden z-40">
       <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700">
-        <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Plex Libraries</div>
+        <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Plex Libraries" %}</div>
         <button type="button"
                 class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
                 @click="toggleAllLibraries()"
-                x-text="allLibrariesSelected() ? 'Hide all' : 'Show all'"></button>
+                x-text="allLibrariesSelected() ? gettext('Hide all') : gettext('Show all')"></button>
       </div>
       <div class="max-h-64 overflow-y-auto">
         <template x-for="library in availableLibraries" :key="library.value">

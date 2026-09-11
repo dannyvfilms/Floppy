@@ -839,6 +839,9 @@
   .h-full {
     height: 100%;
   }
+  .h-px {
+    height: 1px;
+  }
   .h-screen {
     height: 100vh;
   }
@@ -1253,6 +1256,9 @@
   .grid-cols-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+  .grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
   .grid-cols-7 {
     grid-template-columns: repeat(7, minmax(0, 1fr));
   }
@@ -1661,6 +1667,9 @@
   .border-\[var\(--color-text-muted\)\] {
     border-color: var(--color-text-muted);
   }
+  .border-\[var\(--color-warning-text\)\] {
+    border-color: var(--color-warning-text);
+  }
   .border-amber-400\/18 {
     border-color: color-mix(in srgb, oklch(82.8% 0.189 84.429) 18%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1683,6 +1692,12 @@
     border-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 30%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-amber-500) 30%, transparent);
+    }
+  }
+  .border-amber-500\/40 {
+    border-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 40%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-amber-500) 40%, transparent);
     }
   }
   .border-blue-700\/50 {
@@ -2029,6 +2044,9 @@
   }
   .bg-\[var\(--color-surface-strong\)\] {
     background-color: var(--color-surface-strong);
+  }
+  .bg-\[var\(--color-warning-text\)\] {
+    background-color: var(--color-warning-text);
   }
   .bg-amber-400\/10 {
     background-color: color-mix(in srgb, oklch(82.8% 0.189 84.429) 10%, transparent);
@@ -2819,6 +2837,9 @@
   .pl-3 {
     padding-left: calc(var(--spacing) * 3);
   }
+  .pl-4 {
+    padding-left: calc(var(--spacing) * 4);
+  }
   .pl-5 {
     padding-left: calc(var(--spacing) * 5);
   }
@@ -2962,6 +2983,10 @@
     --tw-tracking: -0.01em;
     letter-spacing: -0.01em;
   }
+  .tracking-\[0\.3em\] {
+    --tw-tracking: 0.3em;
+    letter-spacing: 0.3em;
+  }
   .tracking-\[0\.12em\] {
     --tw-tracking: 0.12em;
     letter-spacing: 0.12em;
@@ -3056,6 +3081,9 @@
   }
   .text-amber-400 {
     color: var(--color-amber-400);
+  }
+  .text-black {
+    color: var(--color-black);
   }
   .text-blue-200 {
     color: var(--color-blue-200);
@@ -3269,6 +3297,10 @@
   }
   .opacity-100 {
     opacity: 100%;
+  }
+  .shadow {
+    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
   .shadow-2xl {
     --tw-shadow: 0 25px 50px -12px var(--tw-shadow-color, rgb(0 0 0 / 0.25));
@@ -3765,6 +3797,13 @@
     &:hover {
       @media (hover: hover) {
         background-color: var(--color-surface-border);
+      }
+    }
+  }
+  .hover\:bg-\[var\(--color-surface-dim\)\] {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-surface-dim);
       }
     }
   }
@@ -4391,6 +4430,11 @@
   .focus-visible\:ring-\[var\(--color-accent\)\] {
     &:focus-visible {
       --tw-ring-color: var(--color-accent);
+    }
+  }
+  .focus-visible\:ring-indigo-400 {
+    &:focus-visible {
+      --tw-ring-color: var(--color-indigo-400);
     }
   }
   .focus-visible\:ring-indigo-500 {
@@ -6497,9 +6541,12 @@ html.light .theme-toggle-icon-moon {
   }
 }
 @media (pointer: coarse) {
-  body[data-mobile-grid="compact"] .media-card-overlay.media-card-overlay-revealed {
+  body[data-mobile-grid="compact"] .media-card:not(.media-card-hide-overlay) .media-card-overlay.media-card-overlay-revealed {
     display: flex;
   }
+}
+.media-card.media-card-revealed .media-card-body, .media-card.media-card-revealed .media-status-chip, .media-card.media-card-revealed .media-score-chip, .media-card.media-card-revealed .media-progress-chip, .media-card.media-card-revealed .media-time-left-chip, .media-card.media-card-revealed .media-repeat-chip {
+  z-index: 4;
 }
 @media (pointer: coarse) {
   .search-result-card:hover .media-card-title-row, .search-result-card-square:hover .media-card-title-row {
@@ -7058,6 +7105,19 @@ html.light .theme-toggle-icon-moon {
   font-weight: bold;
   font-size: 15px;
   margin-top: 3px;
+}
+@media (pointer: fine) {
+  [data-horizontal-drag="true"] {
+    cursor: grab;
+  }
+  [data-horizontal-drag="true"].is-horizontal-dragging, [data-horizontal-drag="true"].is-horizontal-dragging * {
+    cursor: grabbing;
+    user-select: none;
+  }
+}
+[data-horizontal-drag="true"]:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
 }
 @property --tw-translate-x {
   syntax: "*";

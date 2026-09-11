@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 {% if error %}
@@ -5,7 +7,7 @@
 {% elif results %}
   <div class="mt-2 space-y-2 rounded-md border border-gray-600 bg-[var(--color-surface)] p-2">
     <p class="px-2 pb-1 text-xs text-[var(--color-text-muted)]">
-      Confirm the exact title before moving your tracking identity.
+      {% translate "Confirm the exact title before moving your tracking identity." %}
     </p>
     {% for result in results %}
       <form method="post"
@@ -39,10 +41,10 @@
             </span>
           </span>
           <span class="shrink-0 rounded bg-indigo-600 px-2 py-1 text-xs text-white">
-            <span x-show="!moving">Move</span>
+            <span x-show="!moving">{% translate "Move" %}</span>
             <span x-show="moving" class="inline-flex items-center gap-1">
               <span class="animate-spin rounded-full h-3 w-3 border-b border-white"></span>
-              Moving...
+              {% translate "Moving..." %}
             </span>
           </span>
         </button>
@@ -50,5 +52,5 @@
     {% endfor %}
   </div>
 {% elif query %}
-  <p class="mt-2 px-2 text-sm text-[var(--color-text-muted)]">No matching titles found.</p>
+  <p class="mt-2 px-2 text-sm text-[var(--color-text-muted)]">{% translate "No matching titles found." %}</p>
 {% endif %}

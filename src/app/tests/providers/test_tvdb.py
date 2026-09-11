@@ -1,10 +1,11 @@
 from unittest.mock import patch
 
+import requests
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 
 from app.models import MediaTypes, Sources
-from app.providers import tvdb
+from app.providers import services, tvdb
 
 
 class TVDBProviderTests(TestCase):
@@ -86,6 +87,45 @@ class TVDBProviderTests(TestCase):
         self.assertIn("details", result["related"]["seasons"][0])
 
     @patch("app.providers.tvdb._request")
+    def test_tv_coerces_non_numeric_episode_count_to_none(self, mock_request):
+        """A non-numeric episodeCount from TVDB should normalize to None, not a string."""
+        mock_request.return_value = {
+            "data": {
+                "id": 81189,
+                "name": {"language": "eng", "name": "Breaking Bad"},
+                "originalName": {"language": "eng", "name": "Breaking Bad"},
+                "overview": "Chemistry teacher becomes kingpin.",
+                "firstAired": "2008-01-20",
+                "lastAired": "2013-09-29",
+                "numberOfEpisodes": 62,
+                "averageRuntime": 47,
+                "status": {"name": "Ended"},
+                "siteRating": "9.5",
+                "siteRatingCount": "1000",
+                "score": 859244,
+                "remoteIds": [],
+                "seasons": [
+                    {
+                        "id": 101,
+                        "number": 0,
+                        "name": "Specials",
+                        "type": {"name": "Aired Order"},
+                        "episodeCount": "TBA",
+                        "episodes": [],
+                    },
+                ],
+                "genres": [{"name": "Drama"}],
+                "characters": [],
+            },
+        }
+
+        result = tvdb.tv("81189")
+
+        season = result["related"]["seasons"][0]
+        self.assertIsNone(season["episode_count"])
+        self.assertIsNone(season["max_progress"])
+
+    @patch("app.providers.tvdb._request")
     def test_tv_with_seasons_reuses_cached_series_extended_payload(
         self,
         mock_request,
@@ -127,6 +167,55 @@ class TVDBProviderTests(TestCase):
         requested_paths = [call.args[0] for call in mock_request.call_args_list]
         self.assertEqual(requested_paths.count("series/81189/extended"), 1)
         self.assertEqual(requested_paths.count("seasons/102/extended"), 1)
+
+    @patch("app.providers.tvdb._request")
+    def test_tv_and_anime_routes_share_raw_series_extended_payload(self, mock_request):
+        """The raw series response should not be fetched once per route type."""
+        mock_request.side_effect = [
+            {
+                "data": {
+                    "id": 81189,
+                    "name": "Breaking Bad",
+                    "seasons": [],
+                    "characters": [],
+                },
+            },
+            {"data": {}},
+        ]
+
+        tvdb.tv("81189")
+        tvdb.tv("81189", routed_media_type=MediaTypes.ANIME.value)
+
+        requested_paths = [call.args[0] for call in mock_request.call_args_list]
+        self.assertEqual(requested_paths.count("series/81189/extended"), 1)
+
+    @patch("app.providers.tvdb._request")
+    def test_tv_keeps_series_cache_entries_separate_by_language(self, mock_request):
+        """Localized series payloads must not reuse another language's cache."""
+        series_payload = {
+            "data": {
+                "id": 81189,
+                "name": "Breaking Bad",
+                "seasons": [],
+                "characters": [],
+            },
+        }
+        mock_request.side_effect = [
+            series_payload,
+            {"data": {}},
+            series_payload,
+            {"data": {}},
+        ]
+
+        tvdb.tv("81189", language="en")
+        tvdb.tv("81189", language="es")
+
+        requested_paths = [call.args[0] for call in mock_request.call_args_list]
+        self.assertEqual(requested_paths.count("series/81189/extended"), 2)
+        self.assertNotEqual(
+            tvdb._series_extended_cache_key("81189", "en"),
+            tvdb._series_extended_cache_key("81189", "es"),
+        )
 
     @patch("app.providers.tvdb._request")
     def test_tv_uses_explicit_metadata_cache_timeout(self, mock_request):
@@ -276,6 +365,70 @@ class TVDBProviderTests(TestCase):
             result["season/0"]["episodes"][0]["image"],
             "https://example.com/special1.jpg",
         )
+
+    @patch("app.providers.tvdb.tv")
+    @patch("app.providers.tvdb._request")
+    def test_tv_with_seasons_coerces_non_numeric_episode_number(
+        self,
+        mock_request,
+        mock_tv,
+    ):
+        """A non-numeric episode number from TVDB should normalize to None, not a string."""
+        mock_tv.return_value = {
+            "media_id": "81189",
+            "source": Sources.TVDB.value,
+            "media_type": MediaTypes.TV.value,
+            "title": "Breaking Bad",
+            "original_title": "Breaking Bad",
+            "localized_title": "Breaking Bad",
+            "image": "https://example.com/show.jpg",
+            "synopsis": "Chemistry teacher becomes kingpin.",
+            "details": {"episodes": 62},
+            "related": {"seasons": [{"season_number": 5}]},
+            "external_links": {
+                "TVDB": "https://www.thetvdb.com/dereferrer/series/81189",
+            },
+        }
+        mock_request.side_effect = [
+            {
+                "data": {
+                    "id": 81189,
+                    "name": "Breaking Bad",
+                    "seasons": [
+                        {
+                            "id": 202,
+                            "number": 5,
+                            "name": "Season 5",
+                            "type": {"name": "Aired Order"},
+                        },
+                    ],
+                },
+            },
+            {"data": {}},
+            {
+                "data": {
+                    "id": 202,
+                    "number": 5,
+                    "name": "Season 5",
+                    "type": {"name": "Aired Order"},
+                    "episodes": [
+                        {
+                            "number": "TBA",
+                            "aired": None,
+                            "name": "Unannounced episode",
+                        },
+                    ],
+                },
+            },
+            {"data": {}},
+            {"data": {"episodes": []}, "links": {"next": None}},
+        ]
+
+        result = tvdb.tv_with_seasons("81189", [5])
+
+        episode = result["season/5"]["episodes"][0]
+        self.assertIsNone(episode["episode_number"])
+        self.assertIsNone(result["season/5"]["max_progress"])
 
     @patch("app.providers.tvdb.tv")
     @patch("app.providers.tvdb._request")
@@ -459,6 +612,147 @@ class TVDBProviderTests(TestCase):
         self.assertEqual(len(mock_request.call_args_list), 5)
         self.assertFalse(
             any(path.startswith("episodes/") for path in requested_paths),
+        )
+
+        warm_result = tvdb.tv_with_seasons(
+            "330000", [1], routed_media_type=MediaTypes.ANIME.value
+        )
+        self.assertEqual(
+            warm_result["season/1"]["episodes"],
+            result["season/1"]["episodes"],
+        )
+        self.assertEqual(len(mock_request.call_args_list), 5)
+
+    @patch("app.providers.tvdb._request")
+    def test_bulk_episode_translations_follow_pagination_and_cache(self, mock_request):
+        """Bulk episode translation pages should be followed once and then cached."""
+        mock_request.side_effect = [
+            {
+                "data": {"episodes": [{"id": 1, "name": "One"}]},
+                "links": {"next": 1},
+            },
+            {
+                "data": {"episodes": [{"id": 2, "name": "Two"}]},
+                "links": {"next": None},
+            },
+        ]
+
+        translations = tvdb._get_series_episode_translations("81189", "eng")
+        cached_translations = tvdb._get_series_episode_translations("81189", "eng")
+
+        self.assertEqual(set(translations), {"1", "2"})
+        self.assertEqual(cached_translations, translations)
+        self.assertEqual(mock_request.call_count, 2)
+        self.assertEqual(mock_request.call_args_list[0].kwargs["params"], {"page": 0})
+        self.assertEqual(mock_request.call_args_list[1].kwargs["params"], {"page": 1})
+
+    def test_missing_bulk_translation_uses_episode_fields_without_refetching(self):
+        """An absent bulk row should preserve the episode's provider fallback fields."""
+        season_data = {
+            "episodes": [
+                {
+                    "id": 1,
+                    "number": 1,
+                    "name": "Translated episode",
+                    "overview": "Translated overview",
+                },
+                {
+                    "id": 2,
+                    "number": 2,
+                    "name": "Original episode",
+                    "overview": "Original overview",
+                },
+            ],
+        }
+        with (
+            patch.object(
+                tvdb,
+                "_get_series_episode_translations",
+                return_value={
+                    "1": {
+                        "name": "Translated episode",
+                        "overview": "Translated overview",
+                        "language": "eng",
+                    },
+                },
+            ),
+            patch.object(tvdb, "_get_translation") as get_translation,
+        ):
+            result = tvdb._normalize_episode_rows(
+                season_data,
+                language="en",
+                series_id="81189",
+            )
+
+        self.assertEqual(result[1]["name"], "Original episode")
+        self.assertEqual(result[1]["overview"], "Original overview")
+        get_translation.assert_not_called()
+
+    def test_failed_bulk_translation_is_not_cached_as_partial_data(self):
+        """A failed page should use raw episode fields and avoid N+1 retries."""
+        provider_error = services.ProviderAPIError(
+            Sources.TVDB.value,
+            requests.exceptions.RequestException("translation service unavailable"),
+        )
+        with (
+            patch.object(
+                tvdb,
+                "_request",
+                side_effect=[
+                    {
+                        "data": {"episodes": [{"id": 1, "name": "Partial"}]},
+                        "links": {"next": 1},
+                    },
+                    provider_error,
+                ],
+            ) as request,
+            patch.object(tvdb, "_get_translation") as get_translation,
+        ):
+            first = tvdb._get_series_episode_translations("81189", "eng")
+            second = tvdb._get_series_episode_translations("81189", "eng")
+            normalized = tvdb._normalize_episode_rows(
+                {
+                    "episodes": [
+                        {
+                            "id": 1,
+                            "number": 1,
+                            "name": "Original episode",
+                            "overview": "Original overview",
+                        },
+                    ],
+                },
+                language="en",
+                series_id="81189",
+            )
+
+        self.assertEqual(first, {})
+        self.assertEqual(second, {})
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args_list[0].kwargs["params"], {"page": 0})
+        self.assertEqual(request.call_args_list[1].kwargs["params"], {"page": 1})
+        self.assertEqual(normalized[0]["name"], "Original episode")
+        self.assertEqual(normalized[0]["overview"], "Original overview")
+        get_translation.assert_not_called()
+        self.assertEqual(
+            cache.get(tvdb._series_episode_translations_cache_key("81189", "eng")),
+            tvdb._EPISODE_TRANSLATIONS_UNAVAILABLE,
+        )
+
+    @patch("app.providers.tvdb._request")
+    def test_bulk_episode_translation_lookup_is_page_bounded(self, mock_request):
+        """A looping pagination link must not create unbounded provider calls."""
+        mock_request.return_value = {
+            "data": {"episodes": [{"id": 1, "name": "One"}]},
+            "links": {"next": 1},
+        }
+
+        translations = tvdb._get_series_episode_translations("81189", "eng")
+
+        self.assertEqual(mock_request.call_count, tvdb.EPISODE_TRANSLATIONS_MAX_PAGES)
+        self.assertEqual(translations, {})
+        self.assertEqual(
+            cache.get(tvdb._series_episode_translations_cache_key("81189", "eng")),
+            tvdb._EPISODE_TRANSLATIONS_UNAVAILABLE,
         )
 
     @override_settings(TVDB_API_KEY="test-tvdb-key")

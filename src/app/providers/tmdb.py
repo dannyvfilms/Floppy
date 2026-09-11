@@ -1922,6 +1922,16 @@ def get_score(score):
     return round(score, 1)
 
 
+def _coerce_int(value) -> int | None:
+    """Return a numeric int when possible."""
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def get_related(related_medias, media_type, parent_response=None, tv_media_id=None):
     """Return list of related media for the selected media."""
     related = []
@@ -1943,7 +1953,7 @@ def get_related(related_medias, media_type, parent_response=None, tv_media_id=No
             "image": season_image,
         }
         if media_type == MediaTypes.SEASON.value:
-            episode_count = media.get("episode_count")
+            episode_count = _coerce_int(media.get("episode_count"))
             data["media_id"] = (
                 tv_media_id if tv_media_id is not None else parent_response["id"]
             )

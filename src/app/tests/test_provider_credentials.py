@@ -6,6 +6,7 @@ from django.test import TestCase, override_settings
 
 from app.models import InstanceProviderCredential, UserProviderCredential
 from app.providers import credentials
+from integrations.imports.helpers import decrypt
 
 
 class ProviderCredentialPrecedenceTests(TestCase):
@@ -75,6 +76,31 @@ class ProviderCredentialPrecedenceTests(TestCase):
             credentials.get("tmdb", "api_key"),
             settings.SHARED_DEFAULT_CREDENTIALS["TMDB_API"],
         )
+
+    def test_shared_defaults_never_include_private_secret_fields(self):
+        from django.conf import settings
+
+        self.assertNotIn("IGDB_SECRET", settings.SHARED_DEFAULT_CREDENTIALS)
+        self.assertNotIn("SIMKL_SECRET", settings.SHARED_DEFAULT_CREDENTIALS)
+
+    @override_settings(HARDCOVER_API="")
+    def test_instance_and_personal_values_are_encrypted_at_rest(self):
+        credentials.set_instance("hardcover", {"api_key": "instance-token"})
+        credentials.set_user("hardcover", self.user, {"api_key": "personal-token"})
+
+        instance_value = InstanceProviderCredential.objects.get(
+            provider="hardcover",
+            field="api_key",
+        ).value
+        personal_value = UserProviderCredential.objects.get(
+            provider="hardcover",
+            field="api_key",
+        ).value
+
+        self.assertNotEqual(instance_value, "instance-token")
+        self.assertNotEqual(personal_value, "personal-token")
+        self.assertEqual(decrypt(instance_value), "instance-token")
+        self.assertEqual(decrypt(personal_value), "personal-token")
 
     def test_instance_value_beats_the_shared_default(self):
         credentials.set_instance("tmdb", {"api_key": "my-own-tmdb-key"})

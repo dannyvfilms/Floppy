@@ -265,6 +265,10 @@ from app.tasks_trakt import (  # noqa: E402
 from app.tasks_tv_provider_migration import (  # noqa: E402
     migrate_tv_shows_to_preferred_provider_task,
 )
+from app.tasks_watch_state import (  # noqa: E402
+    backfill_user_watch_state,
+    backfill_watch_state,
+)
 
 RELEASE_BACKFILL_SOURCES = (
     Sources.TMDB.value,
@@ -1267,6 +1271,8 @@ __all__ = [
     "_provider_items_queryset",
     "_schedule_metadata_statistics_refresh",
     "backfill_podcast_show_websites",
+    "backfill_user_watch_state",
+    "backfill_watch_state",
     "bulk_episode_plays_task",
     "bulk_music_plays_task",
     "convert_anime_library_shape_task",

@@ -1,3 +1,4 @@
+import json
 import logging
 
 from django.contrib import messages
@@ -18,7 +19,7 @@ from app.columns import (
     resolve_default_column_config,
 )
 from app.media_list_views import MEDIA_LIST_NO_STATUS, MEDIA_LIST_NO_STATUS_LABEL
-from app.models import MediaManager, MediaTypes
+from app.models import MediaTypes
 from app.providers import (
     services,  # noqa: F401 — kept so legacy test patches on lists.views.services still work
 )
@@ -31,12 +32,16 @@ from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_media_with_aggregation,
     _build_collection_platforms_by_item_id,
+    _build_list_count_trigger,
     _build_list_url_template,
     _build_media_type_breakdown,
     _date_sort_value,
+    _filter_items_by_media_status,
+    _find_statusless_item_ids,
     _get_completed_item_ids,
     _media_date_value,
     _order_expression,
+    _paginate_python_sorted_items,
     _platform_sort_value,
     _progress_value,
     _rating_value,
@@ -260,15 +265,9 @@ def list_detail(request, list_reference):
         ),
     )
 
-    # Get distinct media types for filtering
-    media_types = items.order_by().values_list("media_type", flat=True).distinct()
-    media_manager = MediaManager()
-    media_by_item_id = {}
-
     # Filter by status if specified. A no-status match includes list items with
     # no tracker row as well as rows whose current status is null.
     if params["status_filter"]:
-        item_ids = items.values_list("id", flat=True)
         real_status_filter = tuple(
             value
             for value in params["status_filter"]
@@ -276,28 +275,23 @@ def list_detail(request, list_reference):
         )
         matching_item_ids = set()
         if real_status_filter:
-            media_by_item_id = media_manager.fetch_media_for_items(
-                media_types,
-                item_ids,
-                media_user,
-                status_filter=real_status_filter,
+            matching_item_ids.update(
+                _filter_items_by_media_status(
+                    items,
+                    media_user,
+                    real_status_filter,
+                ).values_list("id", flat=True)
             )
-            matching_item_ids.update(media_by_item_id)
 
         if MEDIA_LIST_NO_STATUS in params["status_filter"]:
-            status_items = list(items)
-            _attach_media_with_aggregation(status_items, media_user)
             matching_item_ids.update(
-                item.id
-                for item in status_items
-                if item.media is None
-                or (
-                    getattr(item.media, "aggregated_status", None) is None
-                    and getattr(item.media, "status", None) is None
+                _find_statusless_item_ids(
+                    items,
+                    media_user,
                 )
             )
 
-        # Filter items to only those with the specified status
+        # Filter items to only those with the specified status.
         items = items.filter(id__in=matching_item_ids)
     filtered_media_types = list(items.values_list("media_type", flat=True).distinct())
 
@@ -306,6 +300,7 @@ def list_detail(request, list_reference):
         "date_added": [
             _order_expression("customlistitem__date_added", params["direction"]),
             _order_expression("title", params["direction"]),
+            _order_expression("id", params["direction"]),
         ],
         "custom": ["customlistitem__date_added", "customlistitem__id"],
         "title": [
@@ -316,14 +311,19 @@ def list_detail(request, list_reference):
             F("episode_number").asc(nulls_first=True)
             if params["direction"] == "asc"
             else F("episode_number").desc(nulls_last=True),
+            _order_expression("id", params["direction"]),
         ],
-        "media_type": [_order_expression("media_type", params["direction"])],
+        "media_type": [
+            _order_expression("media_type", params["direction"]),
+            _order_expression("id", params["direction"]),
+        ],
         "rating": [
             _order_expression("customlistitem__date_added", params["direction"]),
         ],  # Fallback before media-based sorting
         "release_date": [
             _order_expression("release_datetime", params["direction"]),
             _order_expression("title", params["direction"]),
+            _order_expression("id", params["direction"]),
         ],
     }
 
@@ -365,30 +365,23 @@ def list_detail(request, list_reference):
     collection_platforms_by_item_id = {}
     sort_config = media_sort_config.get(params["sort_by"])
     if sort_config:
-        all_items = list(
-            items.order_by(
-                *sort_mapping.get(
-                    params["sort_by"],
-                    ["-customlistitem__date_added"],
-                ),
-            ),
-        )
-        _attach_media_with_aggregation(all_items, media_user)
-
         if params["sort_by"] == "platform":
-            collection_platforms_by_item_id = _build_collection_platforms_by_item_id(
-                media_user, [item.id for item in all_items]
+            def value_getter(item, platforms):
+                return _platform_sort_value(item, platforms)
+        else:
+            def value_getter(item, _platforms):
+                return sort_config["key"](item)
+        items_page, filtered_items_count, collection_platforms_by_item_id = (
+            _paginate_python_sorted_items(
+                items,
+                media_user,
+                params["page"],
+                16,
+                value_getter,
+                reverse=sort_config["reverse"],
+                needs_collection_platforms=params["sort_by"] == "platform",
             )
-
-        all_items = sorted(
-            all_items,
-            key=sort_config["key"],
-            reverse=sort_config["reverse"],
         )
-
-        paginator = Paginator(all_items, 16)
-        items_page = paginator.get_page(params["page"])
-        filtered_items_count = paginator.count
     else:
         # For database-backed sorts, apply ordering and paginate normally
         items = items.order_by(
@@ -537,9 +530,17 @@ def list_detail(request, list_reference):
     # HTMX partial response
     if layout == "table":
         if is_pagination:
-            return render(request, "app/components/table_items.html", context)
-        return render(request, "lists/components/list_table.html", context)
-    return render(request, "lists/components/media_grid.html", context)
+            template_name = "app/components/table_items.html"
+        else:
+            template_name = "lists/components/list_table.html"
+    else:
+        template_name = "lists/components/media_grid.html"
+
+    response = render(request, template_name, context)
+    response["HX-Trigger"] = json.dumps(
+        _build_list_count_trigger(total_items_count),
+    )
+    return response
 
 
 @login_not_required

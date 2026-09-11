@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -6,7 +8,7 @@
     <tr>
       {% if list_ordering_enabled %}<th class="w-8 px-2" x-cloak x-show="isOrderEditing"></th>{% endif %}
       {% if enable_bulk_select %}<th class="w-8 px-2" x-cloak x-show="selectMode"></th>{% endif %}
-      {% for col in resolved_columns %}<th class="{{ col.th_classes }}">{{ col.label }}</th>{% endfor %}
+      {% for col in resolved_columns %}<th class="{{ col.th_classes }}">{% translate col.label %}</th>{% endfor %}
     </tr>
   </thead>
   <tbody id="{{ table_body_id|default:'media-table-body' }}">
@@ -19,7 +21,7 @@
       {% if list_ordering_enabled %}
         <td class="w-8 px-2 py-3" x-cloak x-show="isOrderEditing">
           <div class="drag-handle cursor-grab flex justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-               title="Drag to reorder">{% include "app/icons/drag-handle.svg" with classes="w-5 h-5" %}</div>
+               title="{% translate "Drag to reorder" %}">{% include "app/icons/drag-handle.svg" with classes="w-5 h-5" %}</div>
         </td>
       {% endif %}
       {% if enable_bulk_select %}

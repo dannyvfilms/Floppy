@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 <div role="listbox"
@@ -30,8 +32,8 @@
       {% endif %}
     {% endfor %}
   {% elif query %}
-    <p class="px-3 py-2 text-sm text-[var(--color-text-muted)]">No editions match &ldquo;{{ query }}&rdquo;.</p>
+    <p class="px-3 py-2 text-sm text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=query %}No editions match &ldquo;{{ value_1 }}&rdquo;.{% endblocktranslate %}</p>
   {% else %}
-    <p class="px-3 py-2 text-sm text-[var(--color-text-muted)]">No editions found.</p>
+    <p class="px-3 py-2 text-sm text-[var(--color-text-muted)]">{% translate "No editions found." %}</p>
   {% endif %}
 </div>

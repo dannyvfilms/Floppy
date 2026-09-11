@@ -68,7 +68,7 @@ function initCopyButtons() {
 
       function showError() {
         alert(
-          "Could not copy to clipboard. Please select the text and press Ctrl+C/Cmd+C to copy."
+          gettext("Could not copy to clipboard. Please select the text and press Ctrl+C/Cmd+C to copy.")
         );
       }
     });

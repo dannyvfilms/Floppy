@@ -17,6 +17,7 @@ from app.models import (
     Sources,
 )
 from app.services import metadata_resolution
+from app.services.metadata_projection import project_item_metadata
 
 from .contract_serializers import DetailErrorSerializer
 from .helpers import (
@@ -85,7 +86,18 @@ class ItemImageView(drf_views.APIView):
 
 # /api/v1/metadata/items/[item_id]/
 class ItemMetadataView(drf_views.APIView):
-    """Override custom metadata for a tracked manual item."""
+    """Read a normalized projection, or override custom metadata."""
+
+    def get(self, request, item_id):
+        """Return the normalized projection with attribution and freshness."""
+        item = _get_owned_tracked_item(request.user, item_id)
+        if item is None:
+            return Response(
+                {"detail": "Item not found in your library."},
+                status=HTTP.NOT_FOUND,
+            )
+
+        return Response(project_item_metadata(item), status=HTTP.OK)
 
     def patch(self, request, item_id):
         """Apply custom-metadata overrides (mirrors update_manual_item_metadata)."""

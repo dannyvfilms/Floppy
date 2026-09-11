@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 {% if collection_entries or is_pagination %}
@@ -14,16 +16,16 @@
       </div>
       <h3 class="text-xl font-semibold mb-2">
         {% if media_type or search_query or format_filter or resolution_filter or hdr_filter or rating_filter != 'all' or completeness_filter != 'all' %}
-          No matches found
+          {% translate "No matches found" %}
         {% else %}
-          Your collection is empty
+          {% translate "Your collection is empty" %}
         {% endif %}
       </h3>
       <p class="text-[var(--color-text-muted)]">
         {% if media_type or search_query or format_filter or resolution_filter or hdr_filter or rating_filter != 'all' or completeness_filter != 'all' %}
-          Try adjusting your filters to see more items.
+          {% translate "Try adjusting your filters to see more items." %}
         {% else %}
-          Add items to your collection from a movie, show, or episode's track modal.
+          {% translate "Add items to your collection from a movie, show, or episode's track modal." %}
         {% endif %}
       </p>
     </div>

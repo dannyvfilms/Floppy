@@ -890,6 +890,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrackedMediaEnvelope'
           description: ''
+      x-required-scope: watchlist:read
   /api/v1/media/{media_type}/:
     get:
       operationId: listTrackedMediaByType
@@ -1116,6 +1117,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrackedMediaEnvelope'
           description: ''
+      x-required-scope: watchlist:read
     post:
       operationId: trackMedia
       description: |-
@@ -1208,6 +1210,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
           description: ''
+      x-required-scope: watchlist:write
   /api/v1/media/{media_type}/{source}/{media_id}/:
     get:
       operationId: retrieveMediaItem
@@ -1280,6 +1283,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
           description: ''
+      x-required-scope: watchlist:read
     patch:
       operationId: updateMediaItem
       description: |-
@@ -1366,6 +1370,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
           description: ''
+      x-required-scope: watchlist:write
     delete:
       operationId: deleteMedia
       description: Delete a tracked media item and all its consumptions.
@@ -1487,6 +1492,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
           description: ''
+      x-required-scope: watchlist:read
     delete:
       operationId: deleteMediaSeason
       description: Delete a tracked season item for the authenticated user.
@@ -1620,6 +1626,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
           description: ''
+      x-required-scope: watchlist:read
     delete:
       operationId: deleteMediaEpisode
       description: Delete a tracked episode item for the authenticated user.
@@ -1883,6 +1890,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
           description: ''
+      x-required-scope: watchlist:write
   /api/v1/media/{media_type}/{source}/{media_id}/lists/{list_id}/:
     put:
       operationId: api_v1_media_lists_update
@@ -2339,6 +2347,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
           description: ''
+      x-required-scope: catalog:read
   /api/v1/statistics/overview/:
     get:
       operationId: api_v1_statistics_overview_retrieve
@@ -2661,6 +2670,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ListenBrainzError'
           description: ''
+      x-required-scope: scrobble:write
   /apis/listenbrainz/1/validate-token/:
     get:
       operationId: validateListenBrainzToken
@@ -2684,6 +2694,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/DetailError'
           description: ''
+      x-required-scope: any
 components:
   schemas:
     CompleteEpisodeResponse:

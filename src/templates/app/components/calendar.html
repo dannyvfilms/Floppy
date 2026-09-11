@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {# Shared calendar controls and fixed 42-cell day grid. The owning Alpine component provides the selection hooks. #}
 <div data-calendar-component>
   {% comment %}
@@ -8,16 +10,16 @@
   <div class="flex items-center justify-between mb-2" x-show="pickerView === 'days'">
     <button type="button"
             @click="gotoPrevMonth()"
-            aria-label="Previous month"
+            aria-label="{% translate "Previous month" %}"
             class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
     <button type="button"
             @click="showMonthsView()"
-            aria-label="Select month"
+            aria-label="{% translate "Select month" %}"
             class="text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] rounded-md px-2 py-1 cursor-pointer"
             x-text="monthLabel()"></button>
     <button type="button"
             @click="gotoNextMonth()"
-            aria-label="Next month"
+            aria-label="{% translate "Next month" %}"
             class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">{% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}</button>
   </div>
 
@@ -26,18 +28,18 @@
       <div class="flex items-center justify-between mb-2">
         <button type="button"
                 @click="gotoPrevYear()"
-                aria-label="Previous year"
+                aria-label="{% translate "Previous year" %}"
                 class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
           {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
         </button>
         <button type="button"
                 @click="showYearsView()"
-                aria-label="Select year"
+                aria-label="{% translate "Select year" %}"
                 class="text-sm font-semibold text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] rounded-md px-2 py-1 cursor-pointer"
                 x-text="viewYear"></button>
         <button type="button"
                 @click="gotoNextYear()"
-                aria-label="Next year"
+                aria-label="{% translate "Next year" %}"
                 class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
           {% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}
         </button>
@@ -55,7 +57,7 @@
         <button type="button"
                 @click="showDaysView()"
                 class="text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline cursor-pointer">
-          Back
+          {% translate "Back" %}
         </button>
       </div>
     </div>
@@ -66,7 +68,7 @@
       <div class="flex items-center justify-between mb-2">
         <button type="button"
                 @click="gotoPrevYearPage()"
-                aria-label="Previous years"
+                aria-label="{% translate "Previous years" %}"
                 class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
           {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
         </button>
@@ -77,10 +79,10 @@
                @keydown.enter.prevent="applyYearInput()"
                @keydown.escape.prevent="showDaysView()"
                class="w-20 text-center text-sm font-semibold text-[var(--color-text)] bg-[var(--color-surface-strong)] border border-gray-600 rounded-md px-2 py-1 outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
-               aria-label="Year">
+               aria-label="{% translate "Year" %}">
         <button type="button"
                 @click="gotoNextYearPage()"
-                aria-label="Next years"
+                aria-label="{% translate "Next years" %}"
                 class="p-2 mx-1 rounded-md hover:bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
           {% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}
         </button>
@@ -98,7 +100,7 @@
         <button type="button"
                 @click="showMonthsView()"
                 class="text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline cursor-pointer">
-          Back
+          {% translate "Back" %}
         </button>
       </div>
     </div>

@@ -81,7 +81,7 @@ class StremioAddonViewTests(TestCase):
         self.assertEqual(response["Access-Control-Allow-Origin"], "*")
         manifest = json.loads(response.content)
         self.assertEqual(manifest["id"], "org.yamtrack.scrobbler")
-        self.assertEqual(manifest["resources"], ["catalog", "subtitles"])
+        self.assertEqual(manifest["resources"], ["catalog", "meta", "subtitles"])
         self.assertEqual(manifest["idPrefixes"], ["tt"])
         self.assertEqual(
             manifest["catalogs"],
@@ -98,6 +98,30 @@ class StremioAddonViewTests(TestCase):
                     "name": "Floppy: Series",
                     "extra": [{"name": "skip", "isRequired": False}],
                 },
+                {
+                    "type": "movie",
+                    "id": "floppy-history-movies",
+                    "name": "Floppy: History",
+                    "extra": [{"name": "skip", "isRequired": False}],
+                },
+                {
+                    "type": "series",
+                    "id": "floppy-history-series",
+                    "name": "Floppy: History",
+                    "extra": [{"name": "skip", "isRequired": False}],
+                },
+                {
+                    "type": "movie",
+                    "id": "floppy-in-progress-movies",
+                    "name": "Floppy: In Progress",
+                    "extra": [{"name": "skip", "isRequired": False}],
+                },
+                {
+                    "type": "series",
+                    "id": "floppy-in-progress-series",
+                    "name": "Floppy: In Progress",
+                    "extra": [{"name": "skip", "isRequired": False}],
+                },
             ],
         )
         self.assertEqual(response["Content-Type"], "application/json")
@@ -111,7 +135,17 @@ class StremioAddonViewTests(TestCase):
         )
 
         names = [catalog["name"] for catalog in response.json()["catalogs"]]
-        self.assertEqual(names, ["Floppy: Watchlist", "Floppy: Watchlist"])
+        self.assertEqual(
+            names,
+            [
+                "Floppy: Watchlist",
+                "Floppy: Watchlist",
+                "Floppy: History",
+                "Floppy: History",
+                "Floppy: In Progress",
+                "Floppy: In Progress",
+            ],
+        )
 
     def test_manifest_invalid_token(self):
         """An unknown token returns 401."""
@@ -442,6 +476,22 @@ class StremioAddonViewTests(TestCase):
             {"id": "tt0108778:1:1", "type": "series"},
             self.user.id,
             "series:tt0108778:1:1",
+        )
+
+    @patch("integrations.views.stremio_queue.reserve_pending", return_value="accepted")
+    @patch("integrations.views.tasks.process_stremio_webhook.delay")
+    def test_subtitles_with_slash_in_extra_path(self, mock_delay, _mock_reserve):
+        """A release filename containing a slash still resolves and scrobbles."""
+        response = self.client.get(
+            "/stremio-addon/test-token/subtitles/movie/"
+            "tt1872181/filename=Novyy Chelovek-pauk / The Amazing Spider-Man 2"
+            " [2014].mp4&videoSize=60913373676.json",
+        )
+        self.assertEqual(response.status_code, 200)
+        mock_delay.assert_called_once_with(
+            {"id": "tt1872181", "type": "movie"},
+            self.user.id,
+            "movie:tt1872181",
         )
 
     @patch("integrations.views.stremio_queue.reserve_pending", return_value="limited")

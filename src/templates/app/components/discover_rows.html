@@ -1,13 +1,15 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 {% if selected_media_type == "hidden" %}
   <div class="space-y-6">
     <div class="flex items-start justify-between gap-4">
       <div>
-        <h2 class="text-2xl font-semibold text-[var(--color-text)]">Hidden From Discover</h2>
-        <p class="mt-1 text-sm text-[var(--color-text-muted)]">Most recently changed first, so forgotten hides are easy to find again.</p>
+        <h2 class="text-2xl font-semibold text-[var(--color-text)]">{% translate "Hidden From Discover" %}</h2>
+        <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Most recently changed first, so forgotten hides are easy to find again." %}</p>
       </div>
-      <span class="shrink-0 text-sm text-[var(--color-text-muted)]">{{ hidden_discover_count }} item{{ hidden_discover_count|pluralize }}</span>
+      <span class="shrink-0 text-sm text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=hidden_discover_count count count=hidden_discover_count %}{{ value_1 }} item{% plural %}{{ value_1 }} items{% endblocktranslate %}</span>
     </div>
 
     {% if hidden_discover_entries %}
@@ -18,8 +20,8 @@
       </div>
     {% else %}
       <div class="rounded-lg border border-gray-700 bg-[var(--color-surface)] p-6 text-center">
-        <h2 class="text-lg font-semibold text-[var(--color-text)]">Nothing hidden right now</h2>
-        <p class="mt-1 text-sm text-[var(--color-text-muted)]">Items you hide from Discover will show up here.</p>
+        <h2 class="text-lg font-semibold text-[var(--color-text)]">{% translate "Nothing hidden right now" %}</h2>
+        <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Items you hide from Discover will show up here." %}</p>
       </div>
     {% endif %}
   </div>
@@ -31,12 +33,12 @@
   </div>
 {% elif discover_loading %}
   <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-6 text-center">
-    <h2 class="text-lg font-semibold text-[var(--color-text)]">Building Discover rows</h2>
-    <p class="mt-1 text-sm text-[var(--color-warning-text)]">Recommendations are refreshing in the background and will appear automatically.</p>
+    <h2 class="text-lg font-semibold text-[var(--color-text)]">{% translate "Building Discover rows" %}</h2>
+    <p class="mt-1 text-sm text-[var(--color-warning-text)]">{% translate "Recommendations are refreshing in the background and will appear automatically." %}</p>
   </div>
 {% else %}
   <div class="rounded-lg border border-gray-700 bg-[var(--color-surface)] p-6 text-center">
-    <h2 class="text-lg font-semibold text-[var(--color-text)]">No Discover rows available</h2>
-    <p class="mt-1 text-sm text-[var(--color-text-muted)]">Try another media type or start tracking more items.</p>
+    <h2 class="text-lg font-semibold text-[var(--color-text)]">{% translate "No Discover rows available" %}</h2>
+    <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Try another media type or start tracking more items." %}</p>
   </div>
 {% endif %}

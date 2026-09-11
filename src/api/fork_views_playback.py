@@ -26,6 +26,10 @@ from app.models import (
     Sources,
     Status,
 )
+from app.services.progress_changes import (
+    record_progress_change,
+    record_progress_deletion,
+)
 from app.services.tracking_hydration import ensure_item_metadata
 from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
@@ -194,6 +198,13 @@ def upsert_playback_progress(
             },
         )
         if created:
+            record_progress_change(
+                user,
+                item,
+                position_seconds=progress.position_seconds,
+                duration_seconds=progress.duration_seconds,
+                completed=progress.completed,
+            )
             return progress
 
         update_fields = []
@@ -215,6 +226,13 @@ def upsert_playback_progress(
 
         if update_fields:
             progress.save(update_fields=[*update_fields, "updated_at"])
+            record_progress_change(
+                user,
+                item,
+                position_seconds=progress.position_seconds,
+                duration_seconds=progress.duration_seconds,
+                completed=progress.completed,
+            )
     return progress
 
 
@@ -747,7 +765,15 @@ class PlaybackProgressView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
-        PlaybackProgress.objects.filter(user=request.user, item=item).delete()
+        with transaction.atomic():
+            removed, _detail = PlaybackProgress.objects.filter(
+                user=request.user,
+                item=item,
+            ).delete()
+            if removed:
+                # Explicit tombstone: a cleared row is simply absent from a
+                # timestamp query, and absence is never a delete.
+                record_progress_deletion(request.user, item)
         return Response(status=HTTP.NO_CONTENT)
 
 

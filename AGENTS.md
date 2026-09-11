@@ -301,10 +301,14 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/media_type_integration.md`: playbook for adding new media types safely.
 - `docs/agents/music_integration.md`: music-specific data model and UI integration notes.
 - `docs/agents/pocketcasts_workflow.md`: Pocket Casts import/schedule workflow details.
+- `docs/agents/clz_import.md`: the CLZ importer's header-mapped contract and the shared custom-field resolution layer it sits on.
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
 - `docs/agents/view_authentication.md`: guide for view authentication and declaring public route exemptions.
 - `docs/architecture/log-redaction.md`: the log boundary contract — where credentials are removed, what the rules match, and what they do not cover.
 - `docs/architecture/theming.md`: the theme resolution contract and the six theme states any colour change must hold.
+- `docs/architecture/api-scopes.md`: the integration-token scope contract — the vocabulary, the enforced view map, and what adding an endpoint requires.
+- `docs/architecture/outbound-fetch.md`: the outbound boundary for user-configured URLs — the SSRF controls, the residual DNS-rebinding gap, and why artwork uses a different path.
+- `docs/integrations/nuvio-client-guide.md`: what a third-party tracking client implements, with `api.tests.test_nuvio_conformance` as its runnable half.
 
 
 ## Local Commands

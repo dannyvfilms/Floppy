@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 {% load humanize %}
@@ -16,7 +18,7 @@
                   @click.outside="tooltipOpen = false"
                   class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                   type="button"
-                  aria-label="Show alternative title">
+                  aria-label="{% translate "Show alternative title" %}">
             {% include "app/icons/info.svg" with classes="w-4 h-4" %}
           </button>
           <div x-show="tooltipOpen"
@@ -47,7 +49,7 @@
           <div class="flex flex-col items-center md:hidden">
             <button type="button"
                     aria-haspopup="listbox"
-                    aria-label="Select season"
+                    aria-label="{% translate "Select season" %}"
                     :aria-expanded="open.toString()"
                     @click="open = !open"
                     class="inline-flex items-center gap-1 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
@@ -57,14 +59,14 @@
           {% if not public_view|default:False and current_instance %}
             <button type="button"
                     aria-haspopup="dialog"
-                    aria-label="View session history"
+                    aria-label="{% translate "View session history" %}"
                     class="mt-3 flex w-full flex-wrap items-center justify-center gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] cursor-pointer md:hidden"
                     hx-get="{% url 'activity_sessions_modal' %}?media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}&season_number={{ season_number }}"
                     hx-target="#session-history-modal-host"
                     hx-swap="innerHTML"
                     @click="$dispatch('open-session-history')">
               <span id="season-progress-mobile-{{ current_instance.id }}" class="text-sm font-medium text-[var(--color-text-muted)]">
-                Progress: {{ current_instance.completed_episode_count }}{% if media.max_progress %}/{{ media.max_progress }}{% endif %}
+                {% blocktranslate trimmed with value_1=current_instance.completed_episode_count %}Progress: {{ value_1 }}{% endblocktranslate %}{% if media.max_progress %}/{{ media.max_progress }}{% endif %}
               </span>
               {% if current_instance.start_date or current_instance.end_date %}
                 <span class="mx-2 text-gray-600">•</span>
@@ -84,7 +86,7 @@
           <div class="hidden flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] md:flex md:text-start">
             <button type="button"
                     aria-haspopup="listbox"
-                    aria-label="Select season"
+                    aria-label="{% translate "Select season" %}"
                     :aria-expanded="open.toString()"
                     @click="open = !open"
                     class="inline-flex items-center gap-1 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
@@ -95,14 +97,14 @@
                 <span class="mx-2 text-gray-600">•</span>
                 <button type="button"
                         aria-haspopup="dialog"
-                        aria-label="View session history"
+                        aria-label="{% translate "View session history" %}"
                         class="flex flex-wrap items-center justify-start gap-y-1 text-center text-sm font-medium text-[var(--color-text-muted)] cursor-pointer md:text-start"
                         hx-get="{% url 'activity_sessions_modal' %}?media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}&season_number={{ season_number }}"
                         hx-target="#session-history-modal-host"
                         hx-swap="innerHTML"
                         @click="$dispatch('open-session-history')">
                   <span id="season-progress-desktop-{{ current_instance.id }}" class="text-sm font-medium text-[var(--color-text-muted)]">
-                    Progress: {{ current_instance.completed_episode_count }}{% if media.max_progress %}/{{ media.max_progress }}{% endif %}
+                    {% blocktranslate trimmed with value_1=current_instance.completed_episode_count %}Progress: {{ value_1 }}{% endblocktranslate %}{% if media.max_progress %}/{{ media.max_progress }}{% endif %}
                   </span>
                   {% if current_instance.start_date or current_instance.end_date %}
                     <span class="mx-2 text-gray-600">•</span>
@@ -148,7 +150,7 @@
                   <div class="flex-1 text-left">
                     <div class="text-sm font-medium">{{ tv_season.season_title|default:tv_season.title }}</div>
                     <div class="text-xs text-[var(--color-text-muted)]">
-                      {{ tv_season.max_progress }} Episode{{ tv_season.max_progress|pluralize }}
+                      {% blocktranslate trimmed with value_1=tv_season.max_progress count count=tv_season.max_progress %}{{ value_1 }} Episode{% plural %}{{ value_1 }} Episodes{% endblocktranslate %}
                       {% if tv_season.first_air_date %}• {{ tv_season.first_air_date|user_date_format:user }}{% endif %}
                     </div>
                   </div>
@@ -179,7 +181,7 @@
                     @click.outside="tooltipOpen = false"
                     class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                     type="button"
-                    aria-label="Show alternative title">
+                    aria-label="{% translate "Show alternative title" %}">
               {% include "app/icons/info.svg" with classes="w-4 h-4" %}
             </button>
             <div x-show="tooltipOpen"
@@ -212,7 +214,7 @@
 
   {% if media_type == MediaTypes.MUSIC.value and music_album %}
     <p class="text-[var(--color-text-muted)] mb-4 text-center md:text-start">
-      from <a href="{{ music_album|music_album_url }}"
+      {% translate "from" %} <a href="{{ music_album|music_album_url }}"
     class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors">{{ music_album.title }}</a>
     </p>
   {% endif %}

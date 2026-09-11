@@ -35,7 +35,7 @@ class AddFieldIfNotExists(migrations.AddField):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("users", "0131_user_playback_webhook_url"),
+        ("users", "0133_user_playback_webhook_url"),
     ]
 
     operations = [

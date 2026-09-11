@@ -46,16 +46,35 @@ def _safe_runtime_minutes(value):
     return minutes
 
 
-def _tv_episode_play_rows(user, start_date, end_date):
+def _require_movie_or_game_date(qs, start_date, end_date, *, is_all_time=None):
+    """Restrict a movie/game queryset to dated entries, unless this is an all-time query.
+
+    "All Time" has no period an entry could fail to belong to, so entries
+    with no recorded date are kept. Any concrete range still needs a date to
+    place the entry within it. `is_all_time` defaults to inferring from
+    `start_date`/`end_date` both being None, but callers that must pass
+    concrete (e.g. day-list-derived) bounds for other reasons while still
+    meaning "all time" for filtering purposes can pass it explicitly.
+    """
+    if is_all_time is None:
+        is_all_time = start_date is None and end_date is None
+    if is_all_time:
+        return qs
+    return qs.filter(Q(end_date__isnull=False) | Q(start_date__isnull=False))
+
+
+def _tv_episode_play_rows(user, start_date, end_date, *, is_all_time=None):
     """Return watched TV episode rows and the season/show items they touch."""
-    episodes_qs = Episode.objects.filter(
-        related_season__user=user,
-        end_date__isnull=False,
-    )
-    if start_date:
-        episodes_qs = episodes_qs.filter(end_date__gte=start_date)
-    if end_date:
-        episodes_qs = episodes_qs.filter(end_date__lte=end_date)
+    if is_all_time is None:
+        is_all_time = start_date is None and end_date is None
+    episodes_qs = Episode.objects.filter(related_season__user=user)
+    if not is_all_time:
+        if start_date or end_date:
+            episodes_qs = episodes_qs.filter(end_date__isnull=False)
+        if start_date:
+            episodes_qs = episodes_qs.filter(end_date__gte=start_date)
+        if end_date:
+            episodes_qs = episodes_qs.filter(end_date__lte=end_date)
 
     episode_play_rows = []
     season_item_ids = set()
@@ -148,11 +167,18 @@ def _cast_bucket_for_person(person) -> str:
 
 
 def _build_person_talent_context(
-    user, start_date=None, end_date=None, schedule_missing_backfill=True
+    user,
+    start_date=None,
+    end_date=None,
+    schedule_missing_backfill=True,
+    *,
+    is_all_time=None,
 ):
     """Build shared watched-item context for per-person talent computations."""
     if not user:
         return None
+    if is_all_time is None:
+        is_all_time = start_date is None and end_date is None
 
     movie_play_counts = Counter()
     movie_watch_minutes = Counter()
@@ -162,6 +188,7 @@ def _build_person_talent_context(
         user,
         start_date,
         end_date,
+        is_all_time=is_all_time,
     )
     episode_play_rows = tv_episode_rows.episode_play_rows
     season_item_ids = tv_episode_rows.season_item_ids
@@ -173,17 +200,15 @@ def _build_person_talent_context(
     season_items_with_writer_credits = tv_episode_rows.season_items_with_writer_credits
     season_items_with_usable_credits = tv_episode_rows.season_items_with_usable_credits
 
-    movies_qs = Movie.objects.filter(
-        user=user,
-    ).filter(
-        Q(end_date__isnull=False) | Q(start_date__isnull=False),
+    movies_qs = _require_movie_or_game_date(
+        Movie.objects.filter(user=user), start_date, end_date, is_all_time=is_all_time
     )
-    if start_date:
+    if not is_all_time and start_date:
         movies_qs = movies_qs.filter(
             Q(end_date__gte=start_date)
             | (Q(end_date__isnull=True) & Q(start_date__gte=start_date)),
         )
-    if end_date:
+    if not is_all_time and end_date:
         movies_qs = movies_qs.filter(
             Q(end_date__lte=end_date)
             | (Q(end_date__isnull=True) & Q(start_date__lte=end_date)),
@@ -197,17 +222,15 @@ def _build_person_talent_context(
 
     from app.stats_time import _calculate_game_time_in_range
 
-    games_qs = Game.objects.filter(
-        user=user,
-    ).filter(
-        Q(end_date__isnull=False) | Q(start_date__isnull=False),
+    games_qs = _require_movie_or_game_date(
+        Game.objects.filter(user=user), start_date, end_date, is_all_time=is_all_time
     )
-    if start_date:
+    if not is_all_time and start_date:
         games_qs = games_qs.filter(
             Q(end_date__gte=start_date)
             | (Q(end_date__isnull=True) & Q(start_date__gte=start_date)),
         )
-    if end_date:
+    if not is_all_time and end_date:
         games_qs = games_qs.filter(
             Q(end_date__lte=end_date)
             | (Q(end_date__isnull=True) & Q(start_date__lte=end_date)),
@@ -547,12 +570,20 @@ def _aggregate_top_talent(
     limit=STATISTICS_TOP_N,
     schedule_missing_backfill=True,
     media_type=None,
+    *,
+    is_all_time=None,
 ):
     """Aggregate top cast/crew/studio rollups from watched movie and TV plays.
 
     media_type restricts the aggregation to one of "movie", "tv", "anime", or
     "game" — None/"all" (the default) keeps the unfiltered cross-type rollup.
+    `is_all_time` defaults to inferring "all time" from start_date/end_date
+    both being None; callers that must pass concrete bounds for other
+    reasons (e.g. day-list-derived aware datetimes) while still meaning "all
+    time" for date filtering can pass it explicitly.
     """
+    if is_all_time is None:
+        is_all_time = start_date is None and end_date is None
     movie_play_counts = Counter()
     movie_watch_minutes = Counter()
     game_play_counts = Counter()
@@ -575,6 +606,7 @@ def _aggregate_top_talent(
         user,
         start_date,
         end_date,
+        is_all_time=is_all_time,
     )
     episode_play_rows = tv_episode_rows.episode_play_rows
     season_item_ids = tv_episode_rows.season_item_ids
@@ -586,18 +618,17 @@ def _aggregate_top_talent(
     season_items_with_writer_credits = tv_episode_rows.season_items_with_writer_credits
     season_items_with_usable_credits = tv_episode_rows.season_items_with_usable_credits
 
-    # Movie plays: count completed/dated movie entries.
-    movies_qs = Movie.objects.filter(
-        user=user,
-    ).filter(
-        Q(end_date__isnull=False) | Q(start_date__isnull=False),
+    # Movie plays: count completed/dated movie entries (all-time includes
+    # entries with no recorded date; a concrete range still requires one).
+    movies_qs = _require_movie_or_game_date(
+        Movie.objects.filter(user=user), start_date, end_date, is_all_time=is_all_time
     )
-    if start_date:
+    if not is_all_time and start_date:
         movies_qs = movies_qs.filter(
             Q(end_date__gte=start_date)
             | (Q(end_date__isnull=True) & Q(start_date__gte=start_date)),
         )
-    if end_date:
+    if not is_all_time and end_date:
         movies_qs = movies_qs.filter(
             Q(end_date__lte=end_date)
             | (Q(end_date__isnull=True) & Q(start_date__lte=end_date)),
@@ -612,17 +643,15 @@ def _aggregate_top_talent(
     # Game plays: same completed/dated filter as movies. Games only have
     # best-effort IMDB-sourced cast (see app.services.imdb_game_credits), so
     # this just needs their item ids folded into played_item_ids below.
-    games_qs = Game.objects.filter(
-        user=user,
-    ).filter(
-        Q(end_date__isnull=False) | Q(start_date__isnull=False),
+    games_qs = _require_movie_or_game_date(
+        Game.objects.filter(user=user), start_date, end_date, is_all_time=is_all_time
     )
-    if start_date:
+    if not is_all_time and start_date:
         games_qs = games_qs.filter(
             Q(end_date__gte=start_date)
             | (Q(end_date__isnull=True) & Q(start_date__gte=start_date)),
         )
-    if end_date:
+    if not is_all_time and end_date:
         games_qs = games_qs.filter(
             Q(end_date__lte=end_date)
             | (Q(end_date__isnull=True) & Q(start_date__lte=end_date)),

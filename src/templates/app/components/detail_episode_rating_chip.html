@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -20,7 +22,7 @@
       <button type="button"
               @click="showRatingPopup = !showRatingPopup"
               class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm transition-colors duration-200 hover:border-amber-300/28 hover:bg-amber-500/[0.11] sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
-        <span class="sr-only">Your score</span>
+        <span class="sr-only">{% translate "Your score" %}</span>
         <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14 sm:h-8 sm:w-8">
           {% include "app/icons/star.svg" with classes="h-3.5 w-3.5 text-yellow-400 fill-yellow-400 sm:h-4 sm:w-4" %}
         </span>
@@ -32,8 +34,8 @@
           <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm"
                 x-cloak
                 x-show="rating">|</span>
-          <span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm"
-                x-text="rating ? 'Edit rating' : 'Add rating'">{% if ep_score is not None %}Edit rating{% else %}Add rating{% endif %}</span>
+          {% translate "Edit rating" as media_i18n_34 %}{% translate "Add rating" as media_i18n_35 %}<span class="text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm"
+                x-text="rating ? '{{ media_i18n_34|escapejs }}' : '{{ media_i18n_35|escapejs }}'">{% if ep_score is not None %}{% translate "Edit rating" %}{% else %}{% translate "Add rating" %}{% endif %}</span>
         </span>
       </button>
       <div x-show="showRatingPopup"

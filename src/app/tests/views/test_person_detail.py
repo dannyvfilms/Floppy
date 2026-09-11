@@ -53,6 +53,50 @@ class PersonDetailViewTests(TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
 
+    @patch("app.providers.tmdb.person")
+    def test_filter_toolbar_omits_filters_this_page_cannot_run(self, mock_person):
+        """The shared filter menu must not render controls with no state here.
+
+        This page has no completed-date support and a single-select platform,
+        so emitting those controls would bind Alpine expressions to variables
+        that do not exist and throw on every render.
+        """
+        mock_person.return_value = {
+            "person_id": "123",
+            "source": Sources.TMDB.value,
+            "name": "Jane Star",
+            "image": "http://example.com/jane.jpg",
+            "biography": "",
+            "known_for_department": "Acting",
+            "gender": "female",
+            "birth_date": "1990-01-01",
+            "death_date": None,
+            "place_of_birth": "Los Angeles",
+            "filmography": [],
+        }
+
+        response = self.client.get(
+            reverse(
+                "person_detail",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "person_id": "123",
+                    "name": "jane-star",
+                },
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+
+        for name in (
+            "completed_date_from",
+            "completed_date_within",
+            "release_date_within",
+            "date_added_within",
+            "platform_mode",
+        ):
+            self.assertNotIn(f'name="{name}"', content, name)
+
     @staticmethod
     def _credit(person, role="Lead", sort_order=0):
         return {

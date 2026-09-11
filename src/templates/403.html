@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load static %}
 {% load app_tags %}
 
 {% block title %}
-  {{ error_page_title|default:"Forbidden" }} - Floppy
+  {% translate error_page_title|default:"Forbidden" as translated_error_title %}{% blocktranslate with value1=translated_error_title %}{{ value1 }} - Floppy{% endblocktranslate %}
 {% endblock title %}
 
 {% block extra_head %}
@@ -16,39 +18,39 @@
     <div class="text-center max-w-md">
       <div class="mb-6">
         <div class="text-9xl font-bold text-red-400">{{ error_status_code|default:"403" }}</div>
-        <h1 class="text-3xl font-bold mt-4 mb-2">{{ error_heading|default:"Access Forbidden" }}</h1>
+        <h1 class="text-3xl font-bold mt-4 mb-2">{% translate error_heading|default:_("Access Forbidden") %}</h1>
         <p class="text-[var(--color-text-muted)] mb-3">
           {% if error_message %}
             {{ error_message }}
           {% else %}
-            You don't have permission to access this resource. Please log in or contact an administrator.
+            {% translate "You don't have permission to access this resource. Please log in or contact an administrator." %}
           {% endif %}
         </p>
         <div class="bg-[var(--color-surface)] p-4 rounded-lg mb-4 text-left">
-          <h3 class="font-medium mb-2 text-[var(--color-text-secondary)]">Quick checks</h3>
+          <h3 class="font-medium mb-2 text-[var(--color-text-secondary)]">{% translate "Quick checks" %}</h3>
           <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1">
-            <li>Confirm you're logged in and your session hasn't expired.</li>
-            <li>Reload the page and try again.</li>
-            <li>If you're using a PWA, open the site in Safari once to refresh cookies.</li>
+            <li>{% translate "Confirm you're logged in and your session hasn't expired." %}</li>
+            <li>{% translate "Reload the page and try again." %}</li>
+            <li>{% translate "If you're using a PWA, open the site in Safari once to refresh cookies." %}</li>
           </ul>
         </div>
         {% include "includes/error_report_panel.html" %}
 
         <p class="text-sm text-[var(--color-text-muted)] mb-6">
-          If you believe this was a bug, please <a href="https://github.com/dannyvfilms/Floppy/issues"
-    class="text-[var(--color-link)] hover:underline">report the issue.</a>
+          {% translate "If you believe this was a bug, please" %} <a href="https://github.com/dannyvfilms/Floppy/issues"
+    class="text-[var(--color-link)] hover:underline">{% translate "report the issue." %}</a>
         </p>
       </div>
       <div class="flex flex-col sm:flex-row gap-4 justify-center">
         <a href="{% url 'account_login' %}"
            class="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
           {% include "app/icons/padlock.svg" with classes="w-5 h-5" %}
-          <span>Log In</span></a>
+          <span>{% translate "Log In" %}</span></a>
 
         <a href="{% url 'home' %}"
            class="flex items-center justify-center gap-2 px-6 py-3 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
           {% include "app/icons/house.svg" with classes="w-5 h-5" %}
-          <span>Back to Home</span></a>
+          <span>{% translate "Back to Home" %}</span></a>
       </div>
     </div>
   </div>

@@ -844,11 +844,7 @@ html.light .theme-toggle-icon-moon {
   z-index: 10;
 }
 
-/*
- * Hide hover overlay on mobile when grid is compact.
- * Simplifies touch: tap anywhere to navigate to details,
- * tap bottom to see title hover.
- */
+/* Keep compact touch overlays hidden until Alpine opens them on first tap. */
 @media (pointer: coarse) {
   body[data-mobile-grid="compact"] .media-card-overlay {
     display: none;
@@ -1171,9 +1167,19 @@ html.light .theme-toggle-icon-moon {
 /* ...unless a first touch tap opened it, which is the one case the compact
    grid does want the actions on screen. */
 @media (pointer: coarse) {
-  body[data-mobile-grid="compact"] .media-card-overlay.media-card-overlay-revealed {
+  body[data-mobile-grid="compact"] .media-card:not(.media-card-hide-overlay) .media-card-overlay.media-card-overlay-revealed {
     display: flex;
   }
+}
+
+/* Keep revealed controls above the title gradient and poster badges. */
+.media-card.media-card-revealed .media-card-body,
+.media-card.media-card-revealed .media-status-chip,
+.media-card.media-card-revealed .media-score-chip,
+.media-card.media-card-revealed .media-progress-chip,
+.media-card.media-card-revealed .media-time-left-chip,
+.media-card.media-card-revealed .media-repeat-chip {
+  z-index: 4;
 }
 
 /*
@@ -1758,4 +1764,21 @@ html.light .theme-toggle-icon-moon {
   font-weight: bold;
   font-size: 15px;
   margin-top: 3px;
+}
+
+@media (pointer: fine) {
+  [data-horizontal-drag="true"] {
+    cursor: grab;
+  }
+
+  [data-horizontal-drag="true"].is-horizontal-dragging,
+  [data-horizontal-drag="true"].is-horizontal-dragging * {
+    cursor: grabbing;
+    user-select: none;
+  }
+}
+
+[data-horizontal-drag="true"]:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 2px;
 }

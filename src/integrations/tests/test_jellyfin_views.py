@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -11,6 +12,7 @@ from integrations.jellyfin_client import JellyfinAuthError
 from integrations.jellyfin_sync import JELLYFIN_PUSH_TASK_NAME
 from integrations.models import JellyfinAccount
 from integrations.tasks import JELLYFIN_PULL_TASK_NAME
+from integrations.upload_staging import discard_staged_upload
 from integrations.views import (
     _ensure_jellyfin_pull_schedule,
     _ensure_jellyfin_push_schedule,
@@ -372,4 +374,8 @@ class JellyfinViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
-        mock_delay.assert_called_once_with(payload, self.user.id, "new")
+        mock_delay.assert_called_once()
+        queued = mock_delay.call_args.args[0]
+        self.addCleanup(discard_staged_upload, queued)
+        self.assertEqual(Path(queued).read_bytes(), payload)
+        self.assertEqual(mock_delay.call_args.args[1:], (self.user.id, "new"))

@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -5,22 +7,22 @@
       {% if game_consumption.has_data %}
       <section class="bg-[var(--color-surface)] rounded-lg p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-8 space-y-4 sm:space-y-6">
         <div class="flex flex-col space-y-1">
-          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">Video Games</span>
-          <h2 class="text-2xl font-semibold text-[var(--color-text)]">Activity Overview</h2>
+          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{% translate "Video Games" %}</span>
+          <h2 class="text-2xl font-semibold text-[var(--color-text)]">{% translate "Activity Overview" %}</h2>
           <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
         </div>
 
         <div class="space-y-4 sm:space-y-6">
           {% if show_year_charts %}
           <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-            <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Game Hours by Year</h3>
+            <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Game Hours by Year" %}</h3>
             {% if game_consumption.charts.by_year.labels|default:False %}
               <div class="h-64">
                 <canvas id="gameHoursByYearChart"></canvas>
               </div>
             {% else %}
               <div class="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
-                <p class="text-sm">No game hours available for this range.</p>
+                <p class="text-sm">{% translate "No game hours available for this range." %}</p>
               </div>
             {% endif %}
           </div>
@@ -28,22 +30,22 @@
 
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Game Hours by Month</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Game Hours by Month" %}</h3>
               {% if game_consumption.charts.by_month.labels|default:False %}
                 <div class="h-64">
                   <canvas id="gameHoursByMonthChart"></canvas>
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No monthly game hours recorded.</p>
+                  <p class="text-sm">{% translate "No monthly game hours recorded." %}</p>
                 </div>
               {% endif %}
             </div>
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
               <div class="flex items-center gap-2 mb-4">
-                <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">Average Daily Playtime</h3>
+                <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Average Daily Playtime" %}</h3>
                 <div class="relative" x-data="{ tooltipOpen: false }">
-                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer" type="button" aria-label="Show information">
+                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer" type="button" aria-label="{% translate "Show information" %}">
                     {% include "app/icons/info.svg" with classes="w-4 h-4" %}
                   </button>
                   <div x-show="tooltipOpen"
@@ -55,7 +57,7 @@
                        x-transition:leave-end="opacity-0 scale-95"
                        class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                        style="display: none;">
-                    <p>Play time per day (total hours ÷ days played) for games during the selected range.</p>
+                    <p>{% translate "Play time per day (total hours ÷ days played) for games during the selected range." %}</p>
                     <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent stats-tooltip-arrow"></div>
                   </div>
                 </div>
@@ -66,7 +68,7 @@
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No daily average data available.</p>
+                  <p class="text-sm">{% translate "No daily average data available." %}</p>
                 </div>
               {% endif %}
             </div>
@@ -77,9 +79,9 @@
             <!-- Most Played -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
               <div class="flex items-center gap-2 mb-4">
-                <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">Most Played</h3>
+                <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Most Played" %}</h3>
                 <div class="relative" x-data="{ tooltipOpen: false }">
-                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer" type="button" aria-label="Show information">
+                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer" type="button" aria-label="{% translate "Show information" %}">
                     {% include "app/icons/info.svg" with classes="w-4 h-4" %}
                   </button>
                   <div x-show="tooltipOpen"
@@ -91,7 +93,7 @@
                        x-transition:leave-end="opacity-0 scale-95"
                        class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                        style="display: none;">
-                    <p>Highest total hours during the selected range (using average daily play time × days in period).</p>
+                    <p>{% translate "Highest total hours during the selected range (using average daily play time × days in period)." %}</p>
                     <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent stats-tooltip-arrow"></div>
                   </div>
                 </div>
@@ -120,7 +122,7 @@
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No game data available.</p>
+                  <p class="text-sm">{% translate "No game data available." %}</p>
                 </div>
               {% endif %}
             </div>
@@ -128,9 +130,9 @@
             <!-- Top Platforms -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
               <div class="flex items-center gap-2 mb-4">
-                <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">Top Platforms</h3>
+                <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Top Platforms" %}</h3>
                 <div class="relative" x-data="{ tooltipOpen: false }">
-                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer" type="button" aria-label="Show information">
+                  <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer" type="button" aria-label="{% translate "Show information" %}">
                     {% include "app/icons/info.svg" with classes="w-4 h-4" %}
                   </button>
                   <div x-show="tooltipOpen"
@@ -142,7 +144,7 @@
                        x-transition:leave-end="opacity-0 scale-95"
                        class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 text-[var(--color-text)] text-xs rounded-lg z-10 stats-tooltip"
                        style="display: none;">
-                    <p>Hours and unique games per platform during the selected range. Platform is determined from your collection data. For games with only one available platform, that platform is used automatically. Multi-platform games with no collection entry are not counted.</p>
+                    <p>{% translate "Hours and unique games per platform during the selected range. Platform is determined from your collection data. For games with only one available platform, that platform is used automatically. Multi-platform games with no collection entry are not counted." %}</p>
                     <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent stats-tooltip-arrow"></div>
                   </div>
                 </div>
@@ -157,14 +159,14 @@
                     </div>
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ platform.name }}</p>
-                      <p class="text-xs text-[var(--color-text-muted)] truncate">{{ platform.formatted_hours }} · {{ platform.games }} game{{ platform.games|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)] truncate">{% blocktranslate trimmed with value_1=platform.formatted_hours value_2=platform.games count count=platform.games %}{{ value_1 }} · {{ value_2 }} game{% plural %}{{ value_1 }} · {{ value_2 }} games{% endblocktranslate %}</p>
                     </div>
                   </div>
                   {% endfor %}
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No platform data available.</p>
+                  <p class="text-sm">{% translate "No platform data available." %}</p>
                 </div>
               {% endif %}
             </div>

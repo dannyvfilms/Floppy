@@ -713,6 +713,67 @@ class AppTagsTests(TestCase):
             content,
         )
 
+    def test_history_modal_actions_are_visible_on_touch_and_keyboard_focus(self):
+        """History actions remain discoverable without a mouse hover."""
+        request = self.request_factory.get("/media/movie/238")
+        request.user = self.user
+        content = render_to_string(
+            "app/components/fill_history.html",
+            {
+                "edit_modal_url": "/track-modal/movie/238",
+                "entry": None,
+                "media_type": MediaTypes.MOVIE.value,
+                "return_url": "/media/movie/238",
+                "timeline": [
+                    SimpleNamespace(
+                        id=12,
+                        instance_id=34,
+                        date=timezone.now(),
+                        media_entry_number=1,
+                        changes=["Completed"],
+                    ),
+                ],
+                "user": self.user,
+            },
+            request=request,
+        )
+
+        self.assertEqual(content.count("pointer-coarse:opacity-100"), 2)
+        self.assertEqual(content.count("focus-visible:opacity-100"), 2)
+        self.assertIn('hx-confirm="Delete this activity entry? This cannot be undone."', content)
+
+    def test_media_card_touch_reveal_respects_overlay_preference_and_bulk_selection(self):
+        """The card handler yields to immediate navigation and bulk selection."""
+        self.user.clickable_media_cards = True
+        request = self.request_factory.get("/media")
+        request.user = self.user
+        content = render_to_string(
+            "app/components/media_card.html",
+            {
+                "item": self.tv_item,
+                "media": SimpleNamespace(
+                    album=None,
+                    artist=None,
+                    status=None,
+                    progress=None,
+                    next_event=None,
+                    episodes_left=0,
+                ),
+                "user": self.user,
+                "title": self.tv_item.title,
+                "from_grid": True,
+                "show_status_chip": False,
+                "show_progress_chip": False,
+                "enable_bulk_select": True,
+            },
+            request=request,
+        )
+
+        self.assertIn("media-card-hide-overlay", content)
+        self.assertIn("this.selectMode", content)
+        self.assertIn("flex-wrap", content)
+        self.assertIn("gap-2.5", content)
+
     def test_history_card_episode_shows_watched_status_and_uses_track_modal(self):
         """Episode history cards show watched status and open the track modal."""
         item = Item.objects.create(
@@ -1868,3 +1929,19 @@ class NextEpisodeUrlTests(TestCase):
                 },
             ),
         )
+
+
+class SafeCountFilterTests(TestCase):
+    """Test the safe_count template filter used as blocktranslate's count arg."""
+
+    def test_passes_through_int(self):
+        self.assertEqual(app_tags.safe_count(5), 5)
+
+    def test_coerces_numeric_string(self):
+        self.assertEqual(app_tags.safe_count("7"), 7)
+
+    def test_none_defaults_to_zero(self):
+        self.assertEqual(app_tags.safe_count(None), 0)
+
+    def test_non_numeric_string_defaults_to_zero(self):
+        self.assertEqual(app_tags.safe_count("TBA"), 0)

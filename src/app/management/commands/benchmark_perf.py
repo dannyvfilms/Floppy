@@ -5,13 +5,17 @@ Run before and after optimizations to measure improvement:
     python manage.py benchmark_perf --username alice --verbose
 """
 
+import resource
 import statistics
+import sys
 import time
+from unittest.mock import patch
 
 from django import conf
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, reset_queries
+from django.db.models import Model
 from django.test import Client
 
 ENDPOINTS = [
@@ -98,10 +102,19 @@ class Command(BaseCommand):
         runs = options["runs"]
         verbose = options["verbose"]
 
-        col_w = [32, 9, 15, 16]
+        def rss_mb():
+            value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            if sys.platform == "darwin":
+                value /= 1024 * 1024
+            else:
+                value /= 1024
+            return value
+
+        col_w = [32, 9, 15, 16, 14, 12]
         header = (
             f"{'Endpoint':<{col_w[0]}} | {'Queries':>{col_w[1]}} | "
-            f"{'SQL time (ms)':>{col_w[2]}} | {'Wall time (ms)':>{col_w[3]}}"
+            f"{'SQL time (ms)':>{col_w[2]}} | {'Python (ms)':>{col_w[3]}} | "
+            f"{'Wall time (ms)':>{col_w[4]}} | {'Hydrated':>{col_w[5]}} | RSS Δ (MB)"
         )
         divider = "-" * len(header)
 
@@ -113,30 +126,59 @@ class Command(BaseCommand):
             wall_times = []
             query_counts = []
             sql_times = []
+            python_times = []
             last_queries = []
+            hydrated_counts = []
+            rss_deltas = []
 
             for _ in range(runs):
                 reset_queries()
-                t0 = time.perf_counter()
-                if method == "GET":
-                    client.get(path)
-                else:
-                    client.post(path)
+                hydrated_objects = 0
+                original_from_db = Model.from_db.__func__
+
+                def counted_from_db(
+                    cls,
+                    db,
+                    field_names,
+                    values,
+                    original_from_db=original_from_db,
+                ):
+                    nonlocal hydrated_objects
+                    if cls._meta.app_label in {"app", "lists"}:
+                        hydrated_objects += 1
+                    return original_from_db(cls, db, field_names, values)
+
+                rss_before_mb = rss_mb()
+                with patch.object(Model, "from_db", classmethod(counted_from_db)):
+                    t0 = time.perf_counter()
+                    if method == "GET":
+                        client.get(path)
+                    else:
+                        client.post(path)
                 wall_ms = (time.perf_counter() - t0) * 1000
                 captured = list(connection.queries)
+                sql_ms = sum(float(q["time"]) * 1000 for q in captured)
                 wall_times.append(wall_ms)
                 query_counts.append(len(captured))
-                sql_times.append(sum(float(q["time"]) * 1000 for q in captured))
+                sql_times.append(sql_ms)
+                python_times.append(max(wall_ms - sql_ms, 0))
+                hydrated_counts.append(hydrated_objects)
+                rss_deltas.append(max(rss_mb() - rss_before_mb, 0))
                 last_queries = captured
 
             label = f"{method} {path}"
             q_median = int(statistics.median(query_counts))
             sql_median = statistics.median(sql_times)
+            python_median = statistics.median(python_times)
             wall_median = statistics.median(wall_times)
+            hydrated_median = int(statistics.median(hydrated_counts))
+            rss_delta_median = statistics.median(rss_deltas)
 
             self.stdout.write(
                 f"{label:<{col_w[0]}} | {q_median:>{col_w[1]}} | "
-                f"{sql_median:>{col_w[2]}.1f} | {wall_median:>{col_w[3]}.1f}"
+                f"{sql_median:>{col_w[2]}.1f} | {python_median:>{col_w[3]}.1f} | "
+                f"{wall_median:>{col_w[4]}.1f} | {hydrated_median:>{col_w[5]}} | "
+                f"{rss_delta_median:.2f}"
             )
 
             if verbose and last_queries:
@@ -170,7 +212,8 @@ class Command(BaseCommand):
                     label = f"{path} page={page}" + (" (first load)" if page == 1 else "")
                     self.stdout.write(
                         f"{label:<{col_w[0]}} | {n_queries:>{col_w[1]}} | "
-                        f"{'':>{col_w[2]}} | {wall_ms:>{col_w[3]}.1f}"
+                        f"{'':>{col_w[2]}} | {'':>{col_w[3]}} | "
+                        f"{wall_ms:>{col_w[4]}.1f} | {'':>{col_w[5]}} |"
                     )
             self.stdout.write(divider)
             self.stdout.write("")

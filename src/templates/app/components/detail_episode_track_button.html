@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 {# djlint:off #}
@@ -10,7 +12,7 @@
     hx-target="#{% component_id 'track' episode %}{{ target_suffix }}"
     hx-trigger="click"
     @click="trackOpen = true"
-    title="Track Episode"
+    title="{% translate "Track Episode" %}"
     class="p-2 {% if watched > 0 %}bg-indigo-600 hover:bg-indigo-700{% elif episode.history %}bg-amber-600 hover:bg-amber-700{% else %}bg-gray-600 hover:bg-gray-500{% endif %} text-white rounded-full transition duration-300 cursor-pointer">
     {% if episode.history %}
       {% include "app/icons/eye.svg" with classes="w-4 h-4" %}

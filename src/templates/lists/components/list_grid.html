@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -21,8 +23,8 @@
                   hx-swap="innerHTML"
                   hx-trigger="click once"
                   @click="showModal = true"
-                  title="Edit list"
-                  aria-label="Edit {{ custom_list.name }}">{% include "app/icons/horizontal-sliders.svg" with classes="w-4 h-4" %}</button>
+                  title="{% translate "Edit list" %}"
+                  aria-label="{% blocktranslate trimmed with value_1=custom_list.name %}Edit {{ value_1 }}{% endblocktranslate %}">{% include "app/icons/horizontal-sliders.svg" with classes="w-4 h-4" %}</button>
         {% endif %}
       </div>
 
@@ -34,8 +36,8 @@
         </div>
         <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
           {% if custom_list.items_count > 0 %}
-            {{ custom_list.items_count }} item{{ custom_list.items_count|pluralize }}
-            {% if custom_list.completion_percent is not None %}· {{ custom_list.completion_percent }}% completed{% endif %}
+            {% blocktranslate trimmed with value_1=custom_list.items_count count count=custom_list.items_count %}{{ value_1 }} item{% plural %}{{ value_1 }} items{% endblocktranslate %}
+            {% if custom_list.completion_percent is not None %}{% blocktranslate trimmed with value_1=custom_list.completion_percent %}· {{ value_1 }}% completed{% endblocktranslate %}{% endif %}
           {% endif %}
         </p>
       </div>
@@ -48,7 +50,7 @@
       {% if custom_list.last_watched_at %}
         <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ custom_list.last_watched_at|user_date_format:user }}</p>
       {% else %}
-        <p class="mt-2 text-sm font-semibold text-[var(--color-text-muted)]">No watched items</p>
+        <p class="mt-2 text-sm font-semibold text-[var(--color-text-muted)]">{% translate "No watched items" %}</p>
       {% endif %}
     {% endif %}
   </div>

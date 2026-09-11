@@ -1,8 +1,10 @@
+
+{% load i18n %}
 <section class="mb-8">
   <div class="flex items-end justify-between gap-3 mb-4">
-    <h2 class="text-xl font-bold">{% if is_author %}Read Content{% else %}Watched Content{% endif %}</h2>
+    <h2 class="text-xl font-bold">{% if is_author %}{% translate "Read Content" %}{% else %}{% translate "Watched Content" %}{% endif %}</h2>
     <p class="text-xs text-[var(--color-text-muted)]">
-      {{ watched_filmography|length }} title{{ watched_filmography|length|pluralize }}
+      {% blocktranslate trimmed with value_1=watched_filmography|length count count=watched_filmography|length %}{{ value_1 }} title{% plural %}{{ value_1 }} titles{% endblocktranslate %}
     </p>
   </div>
   {% if watched_filmography %}
@@ -13,15 +15,15 @@
     </div>
   {% else %}
     <div class="bg-[var(--color-surface)] p-6 rounded-lg text-center">
-      <p class="text-[var(--color-text-muted)]">{% if is_author %}No read titles yet.{% else %}No watched titles yet.{% endif %}</p>
+      <p class="text-[var(--color-text-muted)]">{% if is_author %}{% translate "No read titles yet." %}{% else %}{% translate "No watched titles yet." %}{% endif %}</p>
     </div>
   {% endif %}
 </section>
 
 <section>
   <div class="flex items-end justify-between gap-3 mb-4">
-    <h2 class="text-xl font-bold">{% if is_author %}Bibliography{% else %}Filmography{% endif %}</h2>
-    <p class="text-xs text-[var(--color-text-muted)]">{{ filmography|length }} title{{ filmography|length|pluralize }}</p>
+    <h2 class="text-xl font-bold">{% if is_author %}{% translate "Bibliography" %}{% else %}{% translate "Filmography" %}{% endif %}</h2>
+    <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=filmography|length count count=filmography|length %}{{ value_1 }} title{% plural %}{{ value_1 }} titles{% endblocktranslate %}</p>
   </div>
   {% if filmography %}
     <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
@@ -31,7 +33,7 @@
     </div>
   {% else %}
     <div class="bg-[var(--color-surface)] p-6 rounded-lg text-center">
-      <p class="text-[var(--color-text-muted)]">{% if is_author %}No bibliography available.{% else %}No filmography available.{% endif %}</p>
+      <p class="text-[var(--color-text-muted)]">{% if is_author %}{% translate "No bibliography available." %}{% else %}{% translate "No filmography available." %}{% endif %}</p>
     </div>
   {% endif %}
 </section>

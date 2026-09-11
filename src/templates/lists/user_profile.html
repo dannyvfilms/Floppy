@@ -1,4 +1,6 @@
 {% extends base_template %}
+{% load i18n %}
+
 {% load static %}
 {% load app_tags %}
 
@@ -9,7 +11,7 @@
 {% block content %}
   <div class="mb-8">
     <h1 class="text-3xl font-bold mb-2">{{ profile_user.username }}</h1>
-    <p class="text-[var(--color-text-muted)]">Public Lists</p>
+    <p class="text-[var(--color-text-muted)]">{% translate "Public Lists" %}</p>
   </div>
 
   {% if custom_lists %}
@@ -18,7 +20,7 @@
         <div class="flex items-center gap-2 mb-4">
           <h2 class="text-lg font-semibold text-[var(--color-text)]">{{ section.tag }}</h2>
           <span class="text-xs text-[var(--color-text-muted)]">
-            {{ section.lists|length }} list{{ section.lists|length|pluralize }}
+            {% blocktranslate trimmed with value_1=section.lists|length count count=section.lists|length %}{{ value_1 }} list{% plural %}{{ value_1 }} lists{% endblocktranslate %}
           </span>
         </div>
         <div class="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
@@ -32,8 +34,8 @@
         <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
           {% include "app/icons/list-add.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
         </div>
-        <h3 class="text-xl font-semibold mb-2">No Public Lists</h3>
-        <p class="text-[var(--color-text-muted)]">This user hasn't shared any public lists yet.</p>
+        <h3 class="text-xl font-semibold mb-2">{% translate "No Public Lists" %}</h3>
+        <p class="text-[var(--color-text-muted)]">{% translate "This user hasn't shared any public lists yet." %}</p>
       </div>
     </div>
   {% endif %}

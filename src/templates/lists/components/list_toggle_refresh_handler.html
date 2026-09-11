@@ -26,5 +26,26 @@
       'htmx:afterRequest',
       window.__floppyListToggleRefreshHandler,
     );
+
+    if (window.__floppyListCountUpdatedHandler) {
+      document.body.removeEventListener(
+        'listCountUpdated',
+        window.__floppyListCountUpdatedHandler,
+      );
+    }
+    window.__floppyListCountUpdatedHandler = (event) => {
+      const detail = event.detail || {};
+      if (detail.count === undefined || detail.count === null) {
+        return;
+      }
+      const label = detail.label || String(detail.count);
+      document.querySelectorAll('[data-list-item-count]:not([x-text])').forEach((element) => {
+        element.textContent = label;
+      });
+    };
+    document.body.addEventListener(
+      'listCountUpdated',
+      window.__floppyListCountUpdatedHandler,
+    );
   })();
 </script>

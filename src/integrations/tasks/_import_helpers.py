@@ -6,6 +6,7 @@ from app.models import MediaTypes
 from app.templatetags import app_tags
 from integrations import plex as plex_api
 from integrations.imports import helpers
+from integrations.upload_staging import open_import_file
 
 ERROR_TITLE = "\n\n\n Couldn't import the following media: \n\n"
 IMPORT_COUNT_METRIC_KEYS = frozenset(
@@ -52,6 +53,20 @@ def _coerce_uploaded_file(file):
         return BytesIO(file)
     msg = f"Unsupported uploaded file payload type: {type(file)!r}"
     raise TypeError(msg)
+
+
+def _run_file_import(importer_func, file, user_id, mode, **extra_kwargs):
+    """Run a file-backed importer while cleaning staged task payloads."""
+    from integrations.tasks._media_imports import import_media
+
+    with open_import_file(file) as uploaded_file:
+        return import_media(
+            importer_func,
+            uploaded_file,
+            user_id,
+            mode,
+            **extra_kwargs,
+        )
 
 
 def import_run_counts(imported_counts):

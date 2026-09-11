@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load user_tags %}
 {% load app_tags %}
 
@@ -5,10 +7,10 @@
 <div class="bg-[var(--color-surface)] rounded-lg p-6">
   <div class="flex items-center mb-4">
     {% include "app/icons/clock.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-    <h2 class="text-xl font-semibold">Active Periodic Imports</h2>
+    <h2 class="text-xl font-semibold">{% translate "Active Periodic Imports" %}</h2>
   </div>
   <p class="text-[var(--color-text-muted)] mb-5 text-sm">
-    Automated imports that run on a schedule. These will continue to sync your media until disabled.
+    {% translate "Automated imports that run on a schedule. These will continue to sync your media until disabled." %}
   </p>
   <div class="space-y-3">
     {% for periodic_import in import_tasks.schedules %}
@@ -29,16 +31,16 @@
           </form>
         </div>
         <div class="text-sm text-[var(--color-text-muted)] space-y-1">
-          {% if periodic_import.username %}<div>Username: {{ periodic_import.username }}</div>{% endif %}
-          <div>Mode: {{ periodic_import.mode }}</div>
-          <div>Last Import: {{ periodic_import.last_run|user_datetime_format:user }}</div>
-          <div>Next Import: {{ periodic_import.next_run|user_datetime_format:user }}</div>
+          {% if periodic_import.username %}<div>{% blocktranslate with value1=periodic_import.username %}Username: {{ value1 }}{% endblocktranslate %}</div>{% endif %}
+          <div>{% blocktranslate with value1=periodic_import.mode %}Mode: {{ value1 }}{% endblocktranslate %}</div>
+          <div>{% blocktranslate with value1=periodic_import.last_run|user_datetime_format:user %}Last Import: {{ value1 }}{% endblocktranslate %}</div>
+          <div>{% blocktranslate with value1=periodic_import.next_run|user_datetime_format:user %}Next Import: {{ value1 }}{% endblocktranslate %}</div>
         </div>
       </div>
     {% empty %}
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-6 text-center">
-        <p class="text-[var(--color-text-muted)] text-sm">No periodic imports configured</p>
-        <p class="text-[var(--color-text-muted)] text-xs mt-1">Enable a recurring import or Plex watchlist sync to see it here</p>
+        <p class="text-[var(--color-text-muted)] text-sm">{% translate "No periodic imports configured" %}</p>
+        <p class="text-[var(--color-text-muted)] text-xs mt-1">{% translate "Enable a recurring import or Plex watchlist sync to see it here" %}</p>
       </div>
     {% endfor %}
   </div>
@@ -48,10 +50,10 @@
 <div class="bg-[var(--color-surface)] rounded-lg p-6">
   <div class="flex items-center mb-4">
     {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-    <h2 class="text-xl font-semibold">Import History</h2>
+    <h2 class="text-xl font-semibold">{% translate "Import History" %}</h2>
   </div>
 
-  <p class="text-[var(--color-text-muted)] mb-5 text-sm">Showing import activity from the last 7 days.</p>
+  <p class="text-[var(--color-text-muted)] mb-5 text-sm">{% translate "Showing import activity from the last 7 days." %}</p>
 
   <div class="space-y-3">
     {% for result in import_tasks.results %}
@@ -60,19 +62,19 @@
           <div class="flex items-center gap-3">
             {% if result.status == "SUCCESS" %}
               {% if result.errors %}
-                <span class="px-2 py-1 rounded text-xs font-medium text-emerald-400 bg-emerald-400/10">Finished</span>
+                <span class="px-2 py-1 rounded text-xs font-medium text-emerald-400 bg-emerald-400/10">{% translate "Finished" %}</span>
               {% else %}
-                <span class="px-2 py-1 rounded text-xs font-medium text-green-400 bg-green-400/10">Success</span>
+                <span class="px-2 py-1 rounded text-xs font-medium text-green-400 bg-green-400/10">{% translate "Success" %}</span>
 
               {% endif %}
             {% elif result.status == "STARTED" %}
-              <span class="px-2 py-1 rounded text-xs font-medium text-blue-400 bg-blue-400/10">Started</span>
+              <span class="px-2 py-1 rounded text-xs font-medium text-blue-400 bg-blue-400/10">{% translate "Started" %}</span>
             {% elif result.status == "FAILURE" %}
-              <span class="px-2 py-1 rounded text-xs font-medium text-red-400 bg-red-400/10">Failed</span>
+              <span class="px-2 py-1 rounded text-xs font-medium text-red-400 bg-red-400/10">{% translate "Failed" %}</span>
             {% elif result.status == "REVOKED" %}
-              <span class="px-2 py-1 rounded text-xs font-medium text-[var(--color-text-muted)] bg-[var(--color-surface)]">Cancelled</span>
+              <span class="px-2 py-1 rounded text-xs font-medium text-[var(--color-text-muted)] bg-[var(--color-surface)]">{% translate "Cancelled" %}</span>
             {% else %}
-              <span class="px-2 py-1 rounded text-xs font-medium text-yellow-400 bg-yellow-400/10">Pending</span>
+              <span class="px-2 py-1 rounded text-xs font-medium text-yellow-400 bg-yellow-400/10">{% translate "Pending" %}</span>
             {% endif %}
 
             {% source_display result.source %}
@@ -96,7 +98,7 @@
                 </div>
               {% else %}
                 <div class="text-xs text-[var(--color-text-muted)]">
-                  {{ result.progress_label|default:"Gathering items…" }} ({{ result.progress_current }} found)
+                  {% blocktranslate with value1=result.progress_label|default:"Gathering items…" value2=result.progress_current %}{{ value1 }} ({{ value2 }} found){% endblocktranslate %}
                 </div>
               {% endif %}
             </div>
@@ -107,7 +109,7 @@
               {% if result.status == "SUCCESS" %}
                 <button @click="showDetails = !showDetails"
                         class="text-xs text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors cursor-pointer"
-                        x-text="showDetails ? 'Hide failed items' : 'Show failed items'">Show failed items</button>
+                        x-text="showDetails ? gettext('Hide failed items') : gettext('Show failed items')">{% translate "Show failed items" %}</button>
 
                 <div class="mt-2 space-y-1 text-sm bg-[var(--color-surface)] p-3 rounded overflow-x-auto break-words"
                      x-show="showDetails">
@@ -120,12 +122,12 @@
                 <div class="flex items-center gap-3">
                   <button @click="showDetails = !showDetails"
                           class="text-xs text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors cursor-pointer"
-                          x-text="showDetails ? 'Hide traceback' : 'Show traceback'">Show traceback</button>
+                          x-text="showDetails ? gettext('Hide traceback') : gettext('Show traceback')">{% translate "Show traceback" %}</button>
                   <button x-show="showDetails"
                           @click="navigator.clipboard.writeText($refs.traceback.textContent); copied = true; setTimeout(() => copied = false, 2000)"
                           class="text-xs transition-colors cursor-pointer"
                           :class="copied ? 'text-green-400' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'"
-                          x-text="copied ? 'Copied!' : 'Copy'">Copy</button>
+                          x-text="copied ? gettext('Copied!') : gettext('Copy')">{% translate "Copy" %}</button>
                 </div>
 
                 <div class="mt-2 bg-[var(--color-sidebar)] border border-red-900/40 rounded overflow-auto"
@@ -140,8 +142,8 @@
       </div>
     {% empty %}
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-6 text-center">
-        <p class="text-[var(--color-text-muted)] text-sm">No imports in the last 7 days</p>
-        <p class="text-[var(--color-text-muted)] text-xs mt-1">Import your media from any source to see the history here</p>
+        <p class="text-[var(--color-text-muted)] text-sm">{% translate "No imports in the last 7 days" %}</p>
+        <p class="text-[var(--color-text-muted)] text-xs mt-1">{% translate "Import your media from any source to see the history here" %}</p>
       </div>
     {% endfor %}
   </div>
@@ -152,7 +154,7 @@
   <div class="bg-[var(--color-surface)] rounded-lg p-6">
     <div class="flex items-center mb-4">
       {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-      <h2 class="text-xl font-semibold">Recent Import Runs</h2>
+      <h2 class="text-xl font-semibold">{% translate "Recent Import Runs" %}</h2>
     </div>
     <div class="space-y-3">
       {% for run in import_runs %}
@@ -160,37 +162,37 @@
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
             <div class="flex items-center gap-3">
               {% if run.status == "completed" %}
-                <span class="px-2 py-1 rounded text-xs font-medium text-green-400 bg-green-400/10">Completed</span>
+                <span class="px-2 py-1 rounded text-xs font-medium text-green-400 bg-green-400/10">{% translate "Completed" %}</span>
               {% elif run.status == "running" %}
-                <span class="px-2 py-1 rounded text-xs font-medium text-blue-400 bg-blue-400/10">Running</span>
+                <span class="px-2 py-1 rounded text-xs font-medium text-blue-400 bg-blue-400/10">{% translate "Running" %}</span>
               {% elif run.status == "failed" %}
-                <span class="px-2 py-1 rounded text-xs font-medium text-red-400 bg-red-400/10">Failed</span>
+                <span class="px-2 py-1 rounded text-xs font-medium text-red-400 bg-red-400/10">{% translate "Failed" %}</span>
               {% else %}
-                <span class="px-2 py-1 rounded text-xs font-medium text-yellow-400 bg-yellow-400/10">Cancelled</span>
+                <span class="px-2 py-1 rounded text-xs font-medium text-yellow-400 bg-yellow-400/10">{% translate "Cancelled" %}</span>
               {% endif %}
               {% source_display run.source %}
             </div>
             <span class="text-xs text-[var(--color-text-muted)]">{{ run.started_at|user_datetime_format:user }}</span>
           </div>
           <div class="text-sm text-[var(--color-text-secondary)]">
-            Created: {{ run.created_count }} · Updated: {{ run.updated_count }} · Skipped: {{ run.skipped_count }} · Failed: {{ run.failed_count }}
-            {% if run.remaining_estimate %}· Remaining: {{ run.remaining_estimate }}{% endif %}
+            {% blocktranslate with value1=run.created_count value2=run.updated_count value3=run.skipped_count value4=run.failed_count %}Created: {{ value1 }} · Updated: {{ value2 }} · Skipped: {{ value3 }} · Failed: {{ value4 }}{% endblocktranslate %}
+            {% if run.remaining_estimate %}{% blocktranslate with value1=run.remaining_estimate %}· Remaining: {{ value1 }}{% endblocktranslate %}{% endif %}
           </div>
           {% if run.status == "running" %}
             <form action="{% url 'cancel_import_run' run.id %}"
                   method="post"
                   class="mt-2"
-                  onsubmit="return confirm('Cancel this import?');">
+                  onsubmit="return confirm(gettext('Cancel this import?'));">
               {% csrf_token %}
-              <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">Cancel import</button>
+              <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">{% translate "Cancel import" %}</button>
             </form>
           {% else %}
             <form action="{% url 'rollback_import_run' run.id %}"
                   method="post"
                   class="mt-2"
-                  onsubmit="return confirm('Remove the items this import created? This cannot be undone.');">
+                  onsubmit="return confirm(gettext('Remove the items this import created? This cannot be undone.'));">
               {% csrf_token %}
-              <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">Undo this import</button>
+              <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">{% translate "Undo this import" %}</button>
             </form>
           {% endif %}
         </div>
@@ -204,23 +206,23 @@
   <div class="bg-[var(--color-surface)] rounded-lg p-6">
     <div class="flex items-center mb-4">
       {% include "app/icons/trashcan.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-      <h2 class="text-xl font-semibold">Imported Media by Source</h2>
+      <h2 class="text-xl font-semibold">{% translate "Imported Media by Source" %}</h2>
     </div>
     <p class="text-[var(--color-text-muted)] mb-5 text-sm">
-      Permanently delete everything of a media type imported from one source, e.g. before re-importing from a different source.
+      {% translate "Permanently delete everything of a media type imported from one source, e.g. before re-importing from a different source." %}
     </p>
     <div class="space-y-3">
       {% for row in import_source_media %}
         <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">
             {% source_display row.source %}
-            <span class="text-sm text-[var(--color-text-secondary)]">{{ row.media_type }} · {{ row.count }} item{{ row.count|pluralize }}</span>
+            <span class="text-sm text-[var(--color-text-secondary)]">{% blocktranslate with media_type=row.media_type count count=row.count %}{{ media_type }} · {{ count }} item{% plural %}{{ media_type }} · {{ count }} items{% endblocktranslate %}</span>
           </div>
           <form action="{% url 'bulk_delete_by_import_source' row.media_type row.source %}"
                 method="post"
-                onsubmit="return confirm('Permanently delete all {{ row.media_type }} items imported from this source?{% if row.media_type == 'music' %} Artists and albums left with no tracks are removed from your library too.{% endif %} This cannot be undone.');">
+                onsubmit="return confirm(interpolate(gettext('Permanently delete all %s items imported from this source?'), ['{{ row.media_type|escapejs }}']){% if row.media_type == 'music' %} + ' ' + gettext('Artists and albums left with no tracks are removed from your library too.'){% endif %} + ' ' + gettext('This cannot be undone.'));">
             {% csrf_token %}
-            <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">Delete all</button>
+            <button class="text-xs text-red-400 hover:text-red-300 transition-colors cursor-pointer">{% translate "Delete all" %}</button>
           </form>
         </div>
       {% endfor %}

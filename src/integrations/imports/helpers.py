@@ -486,7 +486,7 @@ def _deduplicate_season_related_tv_item_rows(seasons):
     return deduplicated
 
 
-def bulk_create_media(bulk_media_list, user):
+def bulk_create_media(bulk_media_list, user, *, backfill_completed=True):
     """Bulk create all media objects.
 
     Returns warning messages for any seasons whose Completed-status
@@ -538,11 +538,20 @@ def bulk_create_media(bulk_media_list, user):
     # directly) has been persisted, so the "does this season already have
     # episodes" check below sees the importer's own episodes too.
     bulk_seasons = bulk_media_list.get(MediaTypes.SEASON.value)
-    if bulk_seasons:
+    if bulk_seasons and backfill_completed:
         return retry_on_lock(
             lambda: _backfill_completed_season_episodes(bulk_seasons),
         )
     return []
+
+
+def backfill_completed_seasons(season_ids):
+    """Backfill completed seasons after a multi-batch import has finished."""
+    if not season_ids:
+        return []
+    season_model = apps.get_model(app_label="app", model_name=MediaTypes.SEASON.value)
+    seasons = season_model.objects.filter(pk__in=season_ids)
+    return retry_on_lock(lambda: _backfill_completed_season_episodes(seasons))
 
 
 def create_import_schedule(

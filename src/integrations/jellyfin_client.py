@@ -29,7 +29,7 @@ class JellyfinClient:
 
     def _headers(self) -> dict[str, str]:
         return {
-            "X-Emby-Token": self.api_key,
+            "Authorization": f'MediaBrowser Token="{self.api_key}"',
             "Accept": "application/json",
         }
 
@@ -120,6 +120,50 @@ class JellyfinClient:
             total = payload.get("TotalRecordCount", start_index)
             if not items or start_index >= total:
                 break
+
+    def find_item_by_provider_id(self, provider: str, provider_id: str):
+        """Return the single item matching one provider id, or None.
+
+        Returns None when the query matches nothing *or* more than one thing.
+        An ambiguous match must not become a write: picking one of two
+        candidates would eventually mark the wrong episode watched.
+        """
+        if not self.user_id:
+            msg = "Jellyfin user id is not set"
+            raise JellyfinClientError(msg)
+
+        payload = self._request(
+            "GET",
+            f"/Users/{self.user_id}/Items",
+            params={
+                "Recursive": "true",
+                "IncludeItemTypes": "Movie,Episode",
+                "Fields": "ProviderIds",
+                "AnyProviderIdEquals": f"{provider.lower()}.{provider_id}",
+                "Limit": 2,
+            },
+        ).json()
+
+        items = payload.get("Items") or []
+        if len(items) != 1:
+            return None
+        return items[0]
+
+    def get_item_user_data(self, item_id: str):
+        """Return one item's UserData for the connected user, or None.
+
+        Used to read back what a write actually did, and to check state before
+        retrying an uncertain write.
+        """
+        if not self.user_id:
+            msg = "Jellyfin user id is not set"
+            raise JellyfinClientError(msg)
+
+        payload = self._request(
+            "GET",
+            f"/Users/{self.user_id}/Items/{item_id}",
+        ).json()
+        return payload.get("UserData")
 
     def mark_played(self, item_id: str) -> None:
         """Mark a Jellyfin item as played for the connected user."""

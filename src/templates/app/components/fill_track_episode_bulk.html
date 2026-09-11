@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load widget_tweaks %}
 {% load user_tags %}
 
@@ -56,7 +58,7 @@
                   class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none">
             {% with selected_value=episode_plays_form.first_season_number.value %}
               {% for value, label in episode_plays_form.fields.first_season_number.choices %}
-                <option value="{{ value }}" {% if selected_value|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ value }}" {% if selected_value|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}>{% translate label %}</option>
               {% endfor %}
             {% endwith %}
           </select>
@@ -104,7 +106,7 @@
                   class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none">
             {% with selected_value=episode_plays_form.last_season_number.value %}
               {% for value, label in episode_plays_form.fields.last_season_number.choices %}
-                <option value="{{ value }}" {% if selected_value|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ value }}" {% if selected_value|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}>{% translate label %}</option>
               {% endfor %}
             {% endwith %}
           </select>
@@ -132,15 +134,15 @@
   </div>
 
   {% if episode_plays_domain.lockedSeasonNumber and not episode_plays_domain.hideSeasonSelectors %}
-    <p class="mt-3 text-sm text-[var(--color-text-muted)]">This range is locked to one mapped season.</p>
+    <p class="mt-3 text-sm text-[var(--color-text-muted)]">{% translate "This range is locked to one mapped season." %}</p>
   {% endif %}
 
   <div class="mt-5 rounded-lg border border-[var(--color-surface-strong)] bg-[var(--color-surface)] p-4">
     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
       <div>
         <label class="mb-1 block text-sm font-medium text-[var(--color-text-secondary)]"
-               for="{{ episode_plays_form.start_date.id_for_label }}">Start date</label>
-        {% include "app/components/date_time_picker.html" with field_name=episode_plays_form.start_date.html_name field_value=episode_plays_form.start_date.value|default_if_none:"" field_id=episode_plays_form.start_date.id_for_label field_label="Start date" track_time=TRACK_TIME suggestion_label=episode_plays_domain.dateShortcutLabel|default:"Release Date" suggestion_date_expr="selectedEpisodeAirDate('first')" runtime_minutes_expr="selectedEpisodeRuntime('first')" week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
+               for="{{ episode_plays_form.start_date.id_for_label }}">{% translate "Start date" %}</label>
+        {% include "app/components/date_time_picker.html" with field_name=episode_plays_form.start_date.html_name field_value=episode_plays_form.start_date.value|default_if_none:"" field_id=episode_plays_form.start_date.id_for_label field_label=_("Start date") track_time=TRACK_TIME suggestion_label=episode_plays_domain.dateShortcutLabel|default:"Release Date" suggestion_date_expr="selectedEpisodeAirDate('first')" runtime_minutes_expr="selectedEpisodeRuntime('first')" week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
         {% for error in episode_plays_form.start_date.errors %}
           <p class="mt-1 text-sm text-red-300">{{ error }}</p>
         {% endfor %}
@@ -148,8 +150,8 @@
 
       <div>
         <label class="mb-1 block text-sm font-medium text-[var(--color-text-secondary)]"
-               for="{{ episode_plays_form.end_date.id_for_label }}">End date</label>
-        {% include "app/components/date_time_picker.html" with field_name=episode_plays_form.end_date.html_name field_value=episode_plays_form.end_date.value|default_if_none:"" field_id=episode_plays_form.end_date.id_for_label field_label="End date" track_time=TRACK_TIME suggestion_label=episode_plays_domain.dateShortcutLabel|default:"Release Date" suggestion_date_expr="selectedEpisodeAirDate('last')" runtime_minutes_expr="selectedEpisodeRuntime('last')" week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
+               for="{{ episode_plays_form.end_date.id_for_label }}">{% translate "End date" %}</label>
+        {% include "app/components/date_time_picker.html" with field_name=episode_plays_form.end_date.html_name field_value=episode_plays_form.end_date.value|default_if_none:"" field_id=episode_plays_form.end_date.id_for_label field_label=_("End date") track_time=TRACK_TIME suggestion_label=episode_plays_domain.dateShortcutLabel|default:"Release Date" suggestion_date_expr="selectedEpisodeAirDate('last')" runtime_minutes_expr="selectedEpisodeRuntime('last')" week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format only %}
         {% for error in episode_plays_form.end_date.errors %}
           <p class="mt-1 text-sm text-red-300">{{ error }}</p>
         {% endfor %}
@@ -159,7 +161,7 @@
     <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
       <div>
         <label class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]"
-               for="{{ episode_plays_form.write_mode.id_for_label }}">Play handling</label>
+               for="{{ episode_plays_form.write_mode.id_for_label }}">{% translate "Play handling" %}</label>
         <select id="{{ episode_plays_form.write_mode.id_for_label }}"
                 name="{{ episode_plays_form.write_mode.html_name }}"
                 x-model="writeMode"
@@ -167,7 +169,7 @@
                 class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none">
           {% with selected_value=episode_plays_form.write_mode.value %}
             {% for value, label in episode_plays_form.fields.write_mode.choices %}
-              <option value="{{ value }}" {% if selected_value == value %}selected{% endif %}>{{ label }}</option>
+              <option value="{{ value }}" {% if selected_value == value %}selected{% endif %}>{% translate label %}</option>
             {% endfor %}
           {% endwith %}
         </select>
@@ -178,7 +180,7 @@
 
       <div>
         <label class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]"
-               for="{{ episode_plays_form.distribution_mode.id_for_label }}">Distribution</label>
+               for="{{ episode_plays_form.distribution_mode.id_for_label }}">{% translate "Distribution" %}</label>
         <select id="{{ episode_plays_form.distribution_mode.id_for_label }}"
                 name="{{ episode_plays_form.distribution_mode.html_name }}"
                 x-model="distributionMode"
@@ -186,7 +188,7 @@
                 class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none">
           {% with selected_value=episode_plays_form.distribution_mode.value %}
             {% for value, label in episode_plays_form.fields.distribution_mode.choices %}
-              <option value="{{ value }}" {% if selected_value == value %}selected{% endif %}>{{ label }}</option>
+              <option value="{{ value }}" {% if selected_value == value %}selected{% endif %}>{% translate label %}</option>
             {% endfor %}
           {% endwith %}
         </select>
@@ -207,7 +209,7 @@
   <div class="mt-6 flex justify-end">
     <button type="submit"
             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
-      {{ episode_plays_submit_label|default:"Save plays" }}
+      {% translate episode_plays_submit_label|default:_("Save plays") %}
     </button>
   </div>
 </form>

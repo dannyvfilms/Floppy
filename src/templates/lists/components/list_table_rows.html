@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -53,7 +55,7 @@
       hx-target="this"
       hx-include="#smart-filter-form"
       hx-indicator="#loading-indicator">
-    <td colspan="7" class="px-4 py-4 text-sm text-[var(--color-text-muted)] text-center">Loading more items…</td>
+    <td colspan="7" class="px-4 py-4 text-sm text-[var(--color-text-muted)] text-center">{% translate "Loading more items…" %}</td>
   </tr>
 {% endif %}
 

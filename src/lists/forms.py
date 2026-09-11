@@ -1,6 +1,7 @@
 from django import forms
 from django.db.models import Q
 from django.utils.text import slugify
+from django.utils.translation import gettext_lazy as _
 from django_select2 import forms as s2forms
 
 from lists.models import CustomList
@@ -18,13 +19,17 @@ def validate_public_slug(raw_slug, *, exclude_pk=None):
         return ""
 
     if public_slug.isdigit():
-        msg = "Custom list URLs cannot be only numbers."
+        msg = _("Custom list URLs cannot be only numbers.")
         raise forms.ValidationError(msg)
     if public_slug in RESERVED_PUBLIC_SLUGS:
-        msg = "That URL is reserved."
+        msg = _("That URL is reserved.")
         raise forms.ValidationError(msg)
-    if CustomList.objects.filter(public_slug=public_slug).exclude(pk=exclude_pk).exists():
-        msg = "That URL is already in use."
+    if (
+        CustomList.objects.filter(public_slug=public_slug)
+        .exclude(pk=exclude_pk)
+        .exists()
+    ):
+        msg = _("That URL is already in use.")
         raise forms.ValidationError(msg)
     return public_slug
 
@@ -48,33 +53,33 @@ class CustomListForm(forms.ModelForm):
 
     is_public = forms.BooleanField(
         required=False,
-        label="Public (read-only access)",
-        help_text="Anyone with the link can view this list",
+        label=_("Public (read-only access)"),
+        help_text=_("Anyone with the link can view this list"),
     )
     include_notes = forms.BooleanField(
         required=False,
-        label="Include Notes",
-        help_text="Show the owner's notes on public list pages",
+        label=_("Include Notes"),
+        help_text=_("Show the owner's notes on public list pages"),
     )
     is_smart = forms.BooleanField(
         required=False,
-        label="Smart List",
-        help_text="Automatically updates based on media types and filters",
+        label=_("Smart List"),
+        help_text=_("Automatically updates based on media types and filters"),
     )
     public_slug = forms.CharField(
         required=False,
         max_length=255,
-        label="Custom URL",
-        help_text="Optional custom slug used for public list links.",
+        label=_("Custom URL"),
+        help_text=_("Optional custom slug used for public list links."),
     )
     tags = TagsField(
         required=False,
-        label="List Tags",
-        help_text="Group lists on your public profile",
+        label=_("List Tags"),
+        help_text=_("Group lists on your public profile"),
         widget=s2forms.Select2TagWidget(
             attrs={
                 "data-minimum-input-length": 1,
-                "data-placeholder": "Start typing to add tags...",
+                "data-placeholder": _("Start typing to add tags..."),
                 "data-allow-clear": "false",
             },
         ),
@@ -84,6 +89,7 @@ class CustomListForm(forms.ModelForm):
         """Bind form to model."""
 
         model = CustomList
+        labels = {"collaborators": _("Collaborators")}
         fields = [
             "name",
             "description",
@@ -99,7 +105,7 @@ class CustomListForm(forms.ModelForm):
             "collaborators": CollaboratorsWidget(
                 attrs={
                     "data-minimum-input-length": 1,
-                    "data-placeholder": "Search users to add...",
+                    "data-placeholder": _("Search users to add..."),
                     "data-allow-clear": "false",
                 },
             ),

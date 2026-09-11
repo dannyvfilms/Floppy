@@ -422,6 +422,10 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
         ),
         ("api.fork_views_podcast.PodcastShowsView", "serializer-unresolved"),
         (
+            "api.fork_views_progress_changes.ProgressChangeFeedView",
+            "serializer-unresolved",
+        ),
+        (
             "api.fork_views_statistics.StatisticsOverviewView",
             "serializer-unresolved",
         ),
@@ -429,6 +433,17 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
             "api.fork_views_statistics.StatisticsRefreshView",
             "serializer-unresolved",
         ),
+        (
+            "api.fork_views_watched_state.SyncConflictResolveView",
+            "serializer-unresolved",
+        ),
+        ("api.fork_views_watched_state.SyncConflictsView", "serializer-unresolved"),
+        ("api.fork_views_watched_state.SyncConnectionsView", "serializer-unresolved"),
+        (
+            "api.fork_views_watched_state.WatchedStateChangeFeedView",
+            "serializer-unresolved",
+        ),
+        ("api.fork_views_watched_state.WatchedStateView", "serializer-unresolved"),
         ("api.fork_views_tracking.HistoryRecordView", "serializer-unresolved"),
         ("api.fork_views_tracking.HistoryView", "serializer-unresolved"),
         ("api.fork_views_tracking.MediaEpisodeBulkView", "serializer-unresolved"),

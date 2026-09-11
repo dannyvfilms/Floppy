@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 {# Shared card grid for band members / "also in" related artists. #}
@@ -41,7 +43,7 @@
 
         {% if not relation.is_current %}
           <div class="media-status-chip absolute top-2 right-2 bg-gray-600/90 text-white text-xs px-2 py-1 rounded-md shadow-md">
-            Former
+            {% translate "Former" %}
           </div>
         {% endif %}
       </div>

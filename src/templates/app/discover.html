@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load static %}
 
 {% block title %}
-  Discover - Floppy
+  {% translate "Discover - Floppy" %}
 {% endblock title %}
 
 {% block content %}
@@ -12,19 +14,19 @@
        class="space-y-6">
     <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-[var(--color-text)]">Discover</h1>
-        <p class="mt-1 text-sm text-[var(--color-text-muted)]">[UNDER CONSTRUCTION] Recommendations powered by global trends and your local activity.</p>
+        <h1 class="text-3xl font-bold text-[var(--color-text)]">{% translate "Discover" %}</h1>
+        <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "[UNDER CONSTRUCTION] Recommendations powered by global trends and your local activity." %}</p>
       </div>
       <div x-cloak x-show="!isHiddenView()" class="flex items-center gap-2">
-        <button type="button"
+        {% translate "Show Fewer Rows" as media_i18n_37 %}{% translate "Show More Rows" as media_i18n_38 %}<button type="button"
                 @click="toggleShowMore()"
                 class="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 cursor-pointer"
-                x-text="showMore ? 'Show Fewer Rows' : 'Show More Rows'"></button>
+                x-text="showMore ? '{{ media_i18n_37|escapejs }}' : '{{ media_i18n_38|escapejs }}'"></button>
         <button type="button"
                 @click="refreshRows()"
                 :disabled="refreshing"
                 class="inline-flex items-center justify-center rounded-md bg-[var(--color-surface)] p-2 text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] disabled:opacity-50 disabled:cursor-not-allowed border border-gray-700 cursor-pointer"
-                title="Refresh recommendations">
+                title="{% translate "Refresh recommendations" %}">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" :class="{'animate-spin': refreshing}">
             <path d="M21.5 2v6h-6"></path>
             <path d="M21.34 15.57a10 10 0 1 1-.57-8.38"></path>
@@ -43,7 +45,7 @@
                 :class="selectedMedia === '{{ option.value }}'
                   ? 'border-indigo-500 bg-indigo-600 text-white'
                   : 'border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'">
-          {{ option.label }}
+          {% translate option.label %}
         </button>
       {% endfor %}
     </div>
@@ -51,7 +53,7 @@
     <div x-cloak
          x-show="cacheRefreshing"
          class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-[var(--color-warning-text)]">
-      Refreshing recommendations in background...
+      {% translate "Refreshing recommendations in background..." %}
     </div>
 
     <div x-cloak
@@ -61,7 +63,7 @@
          aria-live="polite"
          class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
       <div class="flex items-center justify-between gap-3">
-        <span x-text="refreshStatusMessage">Recommendations refreshed.</span>
+        <span x-text="refreshStatusMessage">{% translate "Recommendations refreshed." %}</span>
         <button type="button"
                 @click="dismissRefreshStatus()"
                 class="text-emerald-100/80 transition-colors hover:text-[var(--color-text)] cursor-pointer">
@@ -84,7 +86,7 @@
                   type="button"
                   @click="undoAction()"
                   class="shrink-0 rounded-md bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-400 cursor-pointer">
-            Undo
+            {% translate "Undo" %}
           </button>
           <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                   @click="dismissToast()">
@@ -102,7 +104,7 @@
 
 {% block js %}
   <script src="{% static 'js/cache-updater.js' %}"></script>
-  <script>
+  {% translate "Recommendations refreshed." as media_i18n_36 %}<script>
     function discoverPage(initialMedia, initialShowMore, initialDebug, initialCacheRefreshing, initialActivityVersion) {
       return {
         selectedMedia: initialMedia || "all",
@@ -421,7 +423,7 @@
             if (showRefreshComplete) {
               this.manualRefreshPending = false;
               this.resetRefreshState();
-              this.showRefreshStatus("Recommendations refreshed.");
+              this.showRefreshStatus("{{ media_i18n_36|escapejs }}");
             }
             this.checkCacheStatus();
           });

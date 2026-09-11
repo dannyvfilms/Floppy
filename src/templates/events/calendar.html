@@ -1,16 +1,19 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load static %}
 {% load user_tags %}
 {% load app_tags %}
+{% load events_tags %}
 
 {% block title %}
-  Calendar - Floppy
+  {% translate "Calendar - Floppy" %}
 {% endblock title %}
 
 {% block content %}
   <div class="mb-8">
-    <h1 class="text-3xl font-bold mb-2">Calendar</h1>
-    <p class="text-[var(--color-text-muted)]">Track upcoming releases from your list.</p>
+    <h1 class="text-3xl font-bold mb-2">{% translate "Calendar" %}</h1>
+    <p class="text-[var(--color-text-muted)]">{% translate "Track upcoming releases from your list." %}</p>
   </div>
 
   <div class="bg-[var(--color-surface)] rounded-lg p-6 mb-6" x-data="calendarFilters()">
@@ -29,7 +32,7 @@
         </div>
         <a class="hidden sm:flex w-10 h-10 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex-col items-center justify-center leading-none"
            href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}&view={{ view_type }}"
-           aria-label="Go to Today">
+           aria-label="{% translate "Go to Today" %}">
           <span class="text-xl font-bold leading-none">{{ today|date:"j" }}</span>
           <span class="uppercase text-[var(--color-text-secondary)]/90 mt-0.5"
                 style="font-size: 9px; font-weight: 400; letter-spacing: 0.04em; line-height: 1;">
@@ -41,7 +44,7 @@
       <div class="flex items-center gap-2 flex-wrap justify-end">
         <a class="sm:hidden w-10 h-10 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex flex-col items-center justify-center leading-none shrink-0"
            href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}&view={{ view_type }}"
-           aria-label="Go to Today">
+           aria-label="{% translate "Go to Today" %}">
           <span class="text-xl font-bold leading-none">{{ today|date:"j" }}</span>
           <span class="uppercase text-[var(--color-text-secondary)]/90 mt-0.5"
                 style="font-size: 9px; font-weight: 400; letter-spacing: 0.04em; line-height: 1;">
@@ -76,7 +79,7 @@
                class="absolute right-0 mt-2 w-64 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
             <div x-show="!statusSubmenuType" x-cloak>
               <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--color-border)]">
-                <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Media Types</div>
+                <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Media Types" %}</div>
                 <button type="button"
                         class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
                         @click="toggleAllTypes()"
@@ -84,11 +87,12 @@
               </div>
               <div class="max-h-64 overflow-y-auto">
                 <template x-for="type in availableMediaTypes" :key="type.value">
-                  <div class="flex items-center w-full text-sm text-[var(--color-text-secondary)]">
+                  <div class="flex items-center w-full text-sm text-[var(--color-text-secondary)]"
+                       :class="{ 'opacity-50': !type.inMonth }">
                     <button type="button"
                             class="flex items-center flex-1 min-w-0 px-4 py-2 text-left transition-colors cursor-pointer hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                             @click="toggleMediaType(type.value)">
-                      <span x-text="type.label"></span>
+                      <span x-text="mediaTypeLabel(type)"></span>
                       <span class="ml-auto" x-show="isTypeSelected(type.value)">
                         {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                       </span>
@@ -101,6 +105,12 @@
                             :aria-label="`Filter ${type.label} by status`">
                       {% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}
                     </button>
+                    <span class="shrink-0 p-2 mr-2 inline-flex items-center justify-center invisible pointer-events-none"
+                          x-show="!hasStatusOptions(type.value)"
+                          x-cloak
+                          aria-hidden="true">
+                      {% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}
+                    </span>
                   </div>
                 </template>
               </div>
@@ -110,7 +120,7 @@
                 <button type="button"
                         class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                         @click="closeStatusSubmenu()"
-                        aria-label="Back to media types">
+                        aria-label="{% translate "Back to media types" %}">
                   {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
                 </button>
                 <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]"
@@ -124,6 +134,7 @@
                 <template x-for="status in (availableStatusesByType[statusSubmenuType] || [])" :key="status.value">
                   <button type="button"
                           class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                          :class="{ 'opacity-50': !status.inMonth }"
                           @click="toggleStatus(statusSubmenuType, status.value)">
                     <span x-text="status.label"></span>
                     <span class="ml-auto" x-show="isStatusSelected(statusSubmenuType, status.value)">
@@ -138,8 +149,8 @@
 
         <div class="relative" @click.outside="actionsOpen = false">
           <button type="button"
-                  aria-label="Calendar Actions"
-                  title="Calendar Actions"
+                  aria-label="{% translate "Calendar Actions" %}"
+                  title="{% translate "Calendar Actions" %}"
                   class="w-10 h-10 text-sm bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex items-center justify-center cursor-pointer"
                   @click="dropdownOpen = false; actionsOpen = !actionsOpen"
                   :aria-expanded="actionsOpen">
@@ -161,14 +172,14 @@
                       class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                       @click="actionsOpen = false">
                 {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-4 h-4 mr-3" %}
-                <span>Fetch New Releases</span>
+                <span>{% translate "Fetch New Releases" %}</span>
               </button>
             </form>
             <a class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] border-t border-[var(--color-border)]"
                href="{% url 'download_calendar' token=user.token %}"
                @click="actionsOpen = false">
               {% include "app/icons/download.svg" with classes="w-4 h-4 mr-3" %}
-              <span>Download Calendar</span>
+              <span>{% translate "Download Calendar" %}</span>
             </a>
           </div>
         </div>
@@ -229,19 +240,19 @@
        }">
     <div class="flex items-center mb-3">
       {% include "app/icons/link.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-      <h3 class="text-base font-medium">Export link</h3>
+      <h3 class="text-base font-medium">{% translate "Export link" %}</h3>
     </div>
     <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-      This link can be used to integrate your calendar into any of your calendar applications.
+      {% translate "This link can be used to integrate your calendar into any of your calendar applications." %}
     </p>
 
     <div class="mb-4">
       <div class="flex items-center mb-3">
         {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h4 class="text-sm font-semibold">Media Types</h4>
+        <h4 class="text-sm font-semibold">{% translate "Media Types" %}</h4>
       </div>
       <p class="text-[var(--color-text-muted)] mb-3 text-xs">
-        Choose which media types to include in this calendar URL.
+        {% translate "Choose which media types to include in this calendar URL." %}
       </p>
       <div class="grid gap-3 md:grid-cols-3">
         {% for media_type in media_types %}
@@ -269,10 +280,10 @@
     <div class="mb-4">
       <div class="flex items-center mb-3">
         {% include "app/icons/circle-check.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h4 class="text-sm font-semibold">Status</h4>
+        <h4 class="text-sm font-semibold">{% translate "Status" %}</h4>
       </div>
       <p class="text-[var(--color-text-muted)] mb-3 text-xs">
-        Choose which statuses to include in this calendar URL.
+        {% translate "Choose which statuses to include in this calendar URL." %}
       </p>
       <div class="grid gap-3 md:grid-cols-3">
         {% for status in event_statuses %}
@@ -309,27 +320,38 @@
         dropdownOpen: false,
         statusSubmenuType: null,
         actionsOpen: false,
+        storageKey: 'yamtrack.calendar.filters.{{ user.id }}',
         availableMediaTypes: [
-          {% for media_type in available_media_types %}
-            { value: '{{ media_type }}', label: '{{ media_type|media_type_readable|escapejs }}' }{% if not forloop.last %},{% endif %}
+          {% for media_type in filter_media_types %}
+            {
+              value: '{{ media_type }}',
+              label: '{{ media_type|media_type_readable|escapejs }}',
+              inMonth: {% if media_type in available_media_types %}true{% else %}false{% endif %},
+            }{% if not forloop.last %},{% endif %}
           {% endfor %}
         ],
         selectedMediaTypes: [
-          {% for media_type in available_media_types %}
+          {% for media_type in filter_media_types %}
             '{{ media_type }}'{% if not forloop.last %},{% endif %}
           {% endfor %}
         ],
         availableStatusesByType: {
-          {% for media_type, statuses in available_statuses_by_type.items %}
+          {% for media_type, statuses in filter_statuses_by_type.items %}
             '{{ media_type }}': [
               {% for status in statuses %}
-                { value: '{{ status }}', label: '{{ status|media_status_readable|escapejs }}' }{% if not forloop.last %},{% endif %}
+                {% with month_statuses=available_statuses_by_type|get_item:media_type %}
+                {
+                  value: '{{ status }}',
+                  label: '{{ status|media_status_readable|escapejs }}',
+                  inMonth: {% if month_statuses and status in month_statuses %}true{% else %}false{% endif %},
+                }{% if not forloop.last %},{% endif %}
+                {% endwith %}
               {% endfor %}
             ]{% if not forloop.last %},{% endif %}
           {% endfor %}
         },
         selectedStatusesByType: {
-          {% for media_type, statuses in available_statuses_by_type.items %}
+          {% for media_type, statuses in filter_statuses_by_type.items %}
             '{{ media_type }}': [
               {% for status in statuses %}
                 '{{ status }}'{% if not forloop.last %},{% endif %}
@@ -341,14 +363,83 @@
         filteredGridHtml: '',
         filteredListHtml: '',
         init() {
-          this.$watch('selectedMediaTypes', () => this.applyFilter());
-          this.$watch('selectedStatusesByType', () => this.applyFilter());
+          this.loadSavedFilters();
+          this.$watch('selectedMediaTypes', () => {
+            this.applyFilter();
+            this.persistFilters();
+          });
+          this.$watch('selectedStatusesByType', () => {
+            this.applyFilter();
+            this.persistFilters();
+          }, { deep: true });
           this.applyFilter();
+        },
+        loadSavedFilters() {
+          try {
+            const raw = window.localStorage.getItem(this.storageKey);
+            if (!raw) {
+              return;
+            }
+
+            const saved = JSON.parse(raw);
+            const validTypes = new Set(this.availableMediaTypes.map(type => type.value));
+
+            if (Array.isArray(saved.selectedMediaTypes)) {
+              this.selectedMediaTypes = saved.selectedMediaTypes.filter(
+                mediaType => validTypes.has(mediaType),
+              );
+            }
+
+            if (
+              saved.selectedStatusesByType
+              && typeof saved.selectedStatusesByType === 'object'
+            ) {
+              const mergedStatusesByType = {};
+
+              this.availableMediaTypes.forEach((type) => {
+                const availableStatuses = (
+                  this.availableStatusesByType[type.value] || []
+                ).map(status => status.value);
+                const savedStatuses = saved.selectedStatusesByType[type.value];
+
+                if (Array.isArray(savedStatuses)) {
+                  mergedStatusesByType[type.value] = savedStatuses.filter(
+                    status => availableStatuses.includes(status),
+                  );
+                } else {
+                  mergedStatusesByType[type.value] = availableStatuses;
+                }
+              });
+
+              this.selectedStatusesByType = mergedStatusesByType;
+            }
+          } catch (error) {
+            // Ignore storage failures (private mode or disabled storage).
+          }
+        },
+        persistFilters() {
+          try {
+            window.localStorage.setItem(this.storageKey, JSON.stringify({
+              selectedMediaTypes: this.selectedMediaTypes,
+              selectedStatusesByType: this.selectedStatusesByType,
+            }));
+          } catch (error) {
+            // Ignore storage failures (private mode or disabled storage).
+          }
+        },
+        hasPartialStatusFilter(mediaType) {
+          return (
+            this.hasStatusOptions(mediaType)
+            && !this.allStatusesSelectedForType(mediaType)
+          );
+        },
+        mediaTypeLabel(type) {
+          const statusMarker = this.hasPartialStatusFilter(type.value) ? ' ·' : '';
+          return `${type.label}${statusMarker}`;
         },
         dropdownLabel() {
           const statusFiltered = this.selectedMediaTypes.some(
-            mediaType => this.hasStatusOptions(mediaType)
-              && !this.allStatusesSelectedForType(mediaType),
+            mediaType => this.hasPartialStatusFilter(mediaType),
           );
           const statusMarker = statusFiltered ? ' ·' : '';
           if (this.allTypesSelected()) {

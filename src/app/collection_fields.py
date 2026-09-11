@@ -12,6 +12,7 @@ from django.utils import timezone
 from app.models import (
     CollectionField,
     CollectionFieldGroup,
+    CollectionFieldSource,
     CollectionFieldType,
     MediaTypes,
 )
@@ -30,6 +31,7 @@ class CollectionFieldNotFoundError(Exception):
 def serialize_collection_field_schema(user):
     """Return the user's custom field schema as plain data, ordered by position."""
     groups = CollectionFieldGroup.objects.filter(user=user).prefetch_related("fields")
+    provenance = _field_provenance(user)
     return [
         {
             "id": group.id,
@@ -41,12 +43,32 @@ def serialize_collection_field_schema(user):
                     "field_type": field.field_type,
                     "options": field.options,
                     "media_types": field.media_types,
+                    "provenance": provenance.get(field.id, []),
                 }
                 for field in group.fields.all()
             ],
         }
         for group in groups
     ]
+
+
+def _field_provenance(user):
+    """Map field id -> the import sources that write to it."""
+    provenance = {}
+    mappings = CollectionFieldSource.objects.filter(user=user).order_by(
+        "source",
+        "source_key",
+    )
+    for mapping in mappings:
+        provenance.setdefault(mapping.field_id, []).append(
+            {
+                "source": mapping.source,
+                "source_label": mapping.source_label or mapping.source_key,
+                "created_field": mapping.created_field,
+                "import_run_id": mapping.created_by_import_run_id,
+            },
+        )
+    return provenance
 
 
 def _clean_str(value, *, field_name, max_length):
@@ -154,6 +176,14 @@ def _clean_schema_payload(payload):
 
     cleaned_groups = [_clean_group_payload(raw_group) for raw_group in raw_groups]
 
+    known_field_ids = payload.get("known_field_ids")
+    if known_field_ids is not None:
+        if not isinstance(known_field_ids, list):
+            msg = "known_field_ids must be a list"
+            raise CollectionFieldValidationError(msg)
+        known_field_ids = {_clean_id(raw_id) for raw_id in known_field_ids}
+        known_field_ids.discard(None)
+
     seen_group_ids = set()
     seen_field_ids = set()
     for group in cleaned_groups:
@@ -169,7 +199,7 @@ def _clean_schema_payload(payload):
                     raise CollectionFieldValidationError(msg)
                 seen_field_ids.add(field["id"])
 
-    return cleaned_groups
+    return cleaned_groups, known_field_ids
 
 
 @transaction.atomic
@@ -182,7 +212,7 @@ def save_collection_field_schema(user, payload):
     the user's own existing rows, so a payload naming another user's row
     raises CollectionFieldNotFoundError rather than touching it.
     """
-    cleaned_groups = _clean_schema_payload(payload)
+    cleaned_groups, known_field_ids = _clean_schema_payload(payload)
 
     existing_groups = {
         group.id: group for group in CollectionFieldGroup.objects.filter(user=user)
@@ -271,10 +301,23 @@ def save_collection_field_schema(user, payload):
         seen_field_ids.update(field.id for field in created_fields)
 
     stale_field_ids = set(existing_fields) - seen_field_ids
+    if known_field_ids is not None:
+        # The client can only intend to delete what it was rendered with.
+        # Fields created after the form was built (by an import, or another
+        # tab) are left alone instead of being wiped by a stale submission.
+        stale_field_ids &= known_field_ids
     if stale_field_ids:
         CollectionField.objects.filter(id__in=stale_field_ids, group__user=user).delete()
 
     stale_group_ids = set(existing_groups) - seen_group_ids
+    if known_field_ids is not None:
+        # Keep any group that still holds fields the client never saw.
+        surviving = set(
+            CollectionField.objects.filter(
+                group_id__in=stale_group_ids,
+            ).values_list("group_id", flat=True),
+        )
+        stale_group_ids -= surviving
     if stale_group_ids:
         CollectionFieldGroup.objects.filter(id__in=stale_group_ids, user=user).delete()
 

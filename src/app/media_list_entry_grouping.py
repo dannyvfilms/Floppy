@@ -62,6 +62,11 @@ def show_separate_entries(user, media_type: str) -> bool:
     return bool(field_name and getattr(user, field_name, False))
 
 
+def entry_grouping_is_separate() -> bool:
+    """Return whether the current request must preserve separate tracker rows."""
+    return _ENTRY_GROUPING_MODE.get() is True
+
+
 @contextmanager
 def entry_grouping_mode(enabled: bool | None):
     """Set the list-entry grouping mode for one request context."""

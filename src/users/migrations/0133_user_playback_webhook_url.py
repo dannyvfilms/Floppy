@@ -35,7 +35,7 @@ class AddFieldIfNotExists(migrations.AddField):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("users", "0130_remove_user_hardcover_api_key"),
+        ("users", "0132_user_appearance"),
     ]
 
     operations = [

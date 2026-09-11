@@ -16,6 +16,7 @@ from app.models import (
     ItemProviderLink,
     MediaTypes,
     Movie,
+    PlaybackProgress,
     Season,
     Sources,
     Status,
@@ -1351,8 +1352,13 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(Movie.objects.count(), 1)
 
     @tag("network")
-    def test_mark_unplayed_event_deletes_movie_when_enabled(self):
-        """Test MarkUnplayed events delete the tracked movie once opted in."""
+    def test_mark_unplayed_event_reverts_movie_when_enabled(self):
+        """MarkUnplayed reverts the movie's state and keeps its history.
+
+        This used to delete the tracking row outright, which took every
+        rewatch with it. Marking unwatched and deleting history are separate
+        operations, and only the first is what a media server is asking for.
+        """
         self.user.jellyfin_mark_unplayed_enabled = True
         self.user.save(update_fields=["jellyfin_mark_unplayed_enabled"])
 
@@ -1381,11 +1387,14 @@ class JellyfinWebhookTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Movie.objects.count(), 0)
+        self.assertEqual(Movie.objects.count(), 1, "the row must survive")
+        movie = Movie.objects.get()
+        self.assertNotEqual(movie.status, Status.COMPLETED.value)
+        self.assertIsNone(movie.end_date)
 
     @tag("network")
-    def test_mark_unplayed_event_deletes_episode_when_enabled(self):
-        """Test MarkUnplayed events delete the tracked episode once opted in."""
+    def test_mark_unplayed_event_retracts_episode_when_enabled(self):
+        """MarkUnplayed retracts the latest episode play, not every play."""
         self.user.jellyfin_mark_unplayed_enabled = True
         self.user.save(update_fields=["jellyfin_mark_unplayed_enabled"])
 
@@ -1424,6 +1433,8 @@ class JellyfinWebhookTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        # One play existed, so retracting it leaves none -- but the retraction
+        # removed that single play rather than every row matching the title.
         self.assertFalse(
             Episode.objects.filter(
                 item__media_id="1668",
@@ -1989,6 +2000,200 @@ class JellyfinWebhookTests(TestCase):
         if result != expected:
             msg = f"Expected {expected}, got {result}"
             raise AssertionError(msg)
+
+    @patch("app.providers.tmdb.movie")
+    def test_play_stop_play_with_stale_played_flag_stays_in_progress(
+        self,
+        mock_movie,
+    ):
+        """Playback events must not turn low-progress stale flags into watches."""
+        mock_movie.return_value = {
+            "title": "The Matrix",
+            "image": "https://example.com/matrix.jpg",
+            "max_progress": 1,
+            "provider_external_ids": {},
+        }
+        processor = JellyfinWebhookProcessor()
+
+        def payload(event, position):
+            return {
+                "Event": event,
+                "Item": {
+                    "Name": "The Matrix",
+                    "Type": "Movie",
+                    "Id": "jellyfin-movie-1",
+                    "ProviderIds": {"Tmdb": "603"},
+                    "RunTimeTicks": 100 * 10_000_000,
+                    "UserData": {"Played": True},
+                },
+                "PlaybackPositionTicks": position * 10_000_000,
+            }
+
+        with patch("app.live_playback._attach_resolved_image"):
+            processor.process_payload(payload("Play", 10), self.user)
+            processor.process_payload(payload("Stop", 20), self.user)
+            processor.process_payload(payload("Play", 25), self.user)
+
+        movie = Movie.objects.get(item__media_id="603", user=self.user)
+        self.assertEqual(Movie.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(movie.status, Status.IN_PROGRESS.value)
+        self.assertIsNone(movie.end_date)
+        progress = PlaybackProgress.objects.get(user=self.user, item=movie.item)
+        self.assertEqual(progress.position_seconds, 20)
+        self.assertFalse(progress.completed)
+
+    @patch("app.providers.tmdb.movie")
+    def test_completed_jellyfin_stops_are_deduplicated_and_rewatches_survive(
+        self,
+        mock_movie,
+    ):
+        """The shared timestamp window suppresses repeats but permits rewatches."""
+        mock_movie.return_value = {
+            "title": "The Matrix",
+            "image": "https://example.com/matrix.jpg",
+            "max_progress": 1,
+            "provider_external_ids": {},
+        }
+        processor = JellyfinWebhookProcessor()
+
+        def payload(last_played_date):
+            return {
+                "Event": "Stop",
+                "Item": {
+                    "Name": "The Matrix",
+                    "Type": "Movie",
+                    "Id": "jellyfin-movie-2",
+                    "ProviderIds": {"Tmdb": "603"},
+                    "RunTimeTicks": 100 * 10_000_000,
+                    "UserData": {
+                        "Played": True,
+                        "LastPlayedDate": last_played_date,
+                    },
+                },
+                "PlaybackPositionTicks": 80 * 10_000_000,
+            }
+
+        processor.process_payload(payload("2026-08-06T15:30:00Z"), self.user)
+        processor.process_payload(payload("2026-08-06T15:30:00Z"), self.user)
+        processor.process_payload(payload("2026-08-06T20:30:00Z"), self.user)
+
+        self.assertEqual(Movie.objects.filter(item__media_id="603").count(), 2)
+        self.assertEqual(
+            PlaybackProgress.objects.get(
+                user=self.user,
+                item__media_id="603",
+            ).completed,
+            True,
+        )
+
+    def test_progress_qualified_false_stop_tracks_movie_and_ignores_old_timestamp(self):
+        """A completed stop from progress gets a fresh timestamp, not old history."""
+        processor = JellyfinWebhookProcessor()
+        payload = {
+            "Event": "Stop",
+            "Item": {
+                "Name": "The Matrix",
+                "Type": "Movie",
+                "Id": "jellyfin-movie-3",
+                "ProviderIds": {"Tmdb": "603"},
+                "RunTimeTicks": 100 * 10_000_000,
+                "UserData": {
+                    "Played": False,
+                    "LastPlayedDate": "2020-01-01T00:00:00Z",
+                },
+            },
+            "PlaybackPositionTicks": 80 * 10_000_000,
+        }
+
+        with (
+            patch("app.live_playback._attach_resolved_image"),
+            patch(
+                "app.providers.tmdb.movie",
+                return_value={
+                    "title": "The Matrix",
+                    "image": "https://example.com/matrix.jpg",
+                    "max_progress": 1,
+                    "provider_external_ids": {},
+                },
+            ),
+        ):
+            processor.process_payload(payload, self.user)
+
+        movie = Movie.objects.get(item__media_id="603", user=self.user)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertGreater(movie.end_date, datetime(2020, 1, 1, tzinfo=UTC))
+        progress = PlaybackProgress.objects.get(user=self.user, item=movie.item)
+        self.assertTrue(progress.completed)
+
+    @patch.object(
+        JellyfinWebhookProcessor,
+        "_find_tv_media_id",
+        return_value=("1668", None, None),
+    )
+    @patch("app.providers.tmdb.get_tvdb_episode_image_map", return_value={})
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_progress_qualified_false_stop_tracks_episode_and_progress(
+        self,
+        mock_tv_with_seasons,
+        _mock_episode_images,
+        _mock_find_tv_media_id,
+    ):
+        """Episode history and durable progress use the same completion result."""
+        self.user.anime_enabled = False
+        mock_tv_with_seasons.return_value = {
+            "media_id": "1668",
+            "title": "Friends",
+            "image": "https://example.com/friends.jpg",
+            "tvdb_id": "79175",
+            "provider_external_ids": {"tmdb_id": "1668", "tvdb_id": "79175"},
+            "season/1": {
+                "season_number": 1,
+                "image": "https://example.com/friends-s1.jpg",
+                "episodes": [
+                    {
+                        "episode_number": 1,
+                        "runtime": 22,
+                        "air_date": None,
+                        "still_path": None,
+                        "name": "The Pilot",
+                        "overview": "",
+                    },
+                    {"episode_number": 2},
+                ],
+            },
+        }
+        payload = {
+            "Event": "Stop",
+            "Item": {
+                "Type": "Episode",
+                "Name": "The Pilot",
+                "SeriesName": "Friends",
+                "ParentIndexNumber": 1,
+                "IndexNumber": 1,
+                "ProviderIds": {"Tmdb": "1668"},
+                "RunTimeTicks": 100 * 10_000_000,
+                "UserData": {
+                    "Played": False,
+                    "LastPlayedDate": "2020-01-01T00:00:00Z",
+                },
+            },
+            "PlaybackPositionTicks": 80 * 10_000_000,
+        }
+
+        with patch("app.live_playback._attach_resolved_image"):
+            JellyfinWebhookProcessor().process_payload(payload, self.user)
+
+        episode = Episode.objects.get(
+            item__media_id="1668",
+            item__season_number=1,
+            item__episode_number=1,
+            related_season__user=self.user,
+        )
+        self.assertGreater(episode.end_date, datetime(2020, 1, 1, tzinfo=UTC))
+        progress = PlaybackProgress.objects.get(user=self.user, item=episode.item)
+        self.assertEqual(progress.position_seconds, 80)
+        self.assertEqual(progress.duration_seconds, 100)
+        self.assertTrue(progress.completed)
 
     @patch("app.providers.tmdb.find")
     def test_play_event_stores_live_playback_state(self, mock_find):

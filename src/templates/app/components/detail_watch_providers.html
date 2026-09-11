@@ -1,0 +1,21 @@
+{% load i18n %}
+{% load app_tags %}
+
+{% if watch_provider_region != "UNSET" and watch_providers is not None %}
+  <div class="bg-[var(--color-surface)] p-4 rounded-lg my-4"
+       data-watch-providers-placement="{{ placement }}">
+    <h3 class="text-sm font-semibold text-[var(--color-text-muted)] mb-2">{% translate "STREAMING" %}</h3>
+    <div class="flex flex-wrap items-center gap-2 place-content-evenly">
+      {% if watch_providers %}
+        {% for provider in watch_providers %}
+          <img class="size-10 rounded-md"
+               src="{{ provider.image|image_url }}"
+               title="{{ provider.provider_name }}"
+               alt="{{ provider.provider_name }}" />
+        {% endfor %}
+      {% else %}
+        <p>{% translate "No watch providers" %}</p>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}

@@ -1,10 +1,11 @@
 {% extends "users/base.html" %}
+{% load i18n %}
 
 {% load socialaccount %}
 {% load static %}
 
 {% block title %}
-  About - Floppy
+  {% translate "About - Floppy" %}
 {% endblock title %}
 
 {% block settings_content %}
@@ -36,7 +37,7 @@
             this.modalLoading = false;
           })
           .catch(err => {
-            this.modalContent = 'Error loading schema: ' + err.message;
+            this.modalContent = gettext('Error loading schema: ') + err.message;
             this.modalLoading = false;
           });
       },
@@ -50,29 +51,153 @@
   }"
   @keydown.escape.window="schemaModalOpen = false"
   class="bg-[var(--color-surface)] rounded-lg p-6 relative">
-    <h2 class="text-2xl font-bold mb-6 text-[var(--color-text)]">About Floppy</h2>
+    <h2 class="text-2xl font-bold mb-6 text-[var(--color-text)]">{% translate "About Floppy" %}</h2>
 
     <div class="space-y-8">
       {# Description #}
       <section aria-labelledby="about-description-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
           {% include "app/icons/info.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
-          <h3 id="about-description-heading">Description</h3>
+          <h3 id="about-description-heading">{% translate "Description" %}</h3>
         </div>
         <div class="space-y-3 pl-7">
           <p class="text-[var(--color-text-secondary)] leading-relaxed">
-            Floppy is an open-source, self-hosted media tracker and personal diary. Track, rate, and organize movies, shows, video games, books, music, podcasts, anime, comics, and more in one unified library.
+            {% translate "Floppy is an open-source, self-hosted media tracker and personal diary. Track, rate, and organize movies, shows, video games, books, music, podcasts, anime, comics, and more in one unified library." %}
           </p>
           <p class="text-[var(--color-text-muted)] text-sm leading-relaxed">
-            Floppy began as a fork of
+            {% translate "Floppy began as a fork of" %}
             <a href="https://github.com/FuzzyGrim/Yamtrack"
                target="_blank"
                rel="noopener noreferrer"
                class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">
-              Yamtrack
+              {% translate "Yamtrack" %}
+              <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
+            </a>
+            {% translate "and has diverged substantially since. Yamtrack CSV exports import directly." %}
+          </p>
+        </div>
+      </section>
+
+      {# Install #}
+      <section aria-labelledby="about-install-heading"
+               class="space-y-3"
+               x-data="{
+                 canInstall: false,
+                 status: '',
+                 // Server-rendered as 'all' so a browser without JavaScript
+                 // keeps every platform's steps. Narrowed on init.
+                 platform: 'all',
+                 detectPlatform() {
+                   const ua = navigator.userAgent || '';
+                   if (/Android/i.test(ua)) return 'android';
+                   const iosDevice = /iPad|iPhone|iPod/.test(ua);
+                   // iPadOS 13+ reports a Mac user agent; touch points betray it.
+                   const iPadDesktopUA = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+                   return iosDevice || iPadDesktopUA ? 'ios' : 'desktop';
+                 },
+                 shows(name) {
+                   return this.platform === 'all' || this.platform === name;
+                 },
+                 sync() {
+                   const pwa = window.floppyPwa;
+                   this.canInstall = !!(pwa && pwa.deferredPrompt) && !pwa.isStandalone();
+                 },
+                 async install() {
+                   const pwa = window.floppyPwa;
+                   const prompt = pwa && pwa.deferredPrompt;
+                   if (!prompt) {
+                     this.canInstall = false;
+                     return;
+                   }
+                   // Consume the event either way: it is single-use.
+                   pwa.deferredPrompt = null;
+                   this.canInstall = false;
+                   try {
+                     await prompt.prompt();
+                     const choice = await prompt.userChoice;
+                     this.status = choice.outcome === 'accepted'
+                       ? gettext('Installing Floppy. Look for it alongside your other apps.')
+                       : gettext('Installation dismissed. You can still add Floppy using the steps below.');
+                   } catch (error) {
+                     this.status = gettext('Your browser could not open the install prompt. Use the steps below instead.');
+                   }
+                 }
+               }"
+               x-init="platform = detectPlatform(); sync()"
+               @floppy:install-availability.window="sync()">
+        <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
+          {% include "app/icons/download.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
+          <h3 id="about-install-heading">{% translate "Install Floppy" %}</h3>
+        </div>
+        <div class="space-y-4 pl-7">
+          <p class="text-[var(--color-text-secondary)] leading-relaxed">
+            {% translate "Floppy is an installable PWA. Add it to your Home Screen to launch it like an app directly from your browser." %}
+          </p>
+
+          <div x-show="canInstall" style="display: none;" class="space-y-2">
+            <button type="button"
+                    @click="install()"
+                    class="inline-flex items-center gap-2 px-3 py-2 rounded-md font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+              {% include "app/icons/download.svg" with classes="w-4 h-4" %}
+              <span>{% translate "Install Floppy" %}</span>
+            </button>
+          </div>
+          <p x-show="status"
+             style="display: none;"
+             role="status"
+             aria-live="polite"
+             class="text-sm text-[var(--color-text-muted)]"
+             x-text="status"></p>
+
+          <div class="grid gap-4" :class="platform === 'all' ? 'sm:grid-cols-2' : ''">
+            <div x-show="shows('ios')"
+                 class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-strong)] p-4 space-y-2">
+              <h4 class="text-sm font-semibold text-[var(--color-text)]">{% translate "iOS and iPadOS" %}</h4>
+              <ol class="list-decimal pl-4 space-y-1 text-sm text-[var(--color-text-muted)] leading-relaxed">
+                <li>{% translate "Open this instance in Safari." %}</li>
+                <li>{% translate "Tap the Share button." %}</li>
+                <li>{% blocktranslate %}Choose <span class="font-medium text-[var(--color-text)]">Add to Home Screen</span>.{% endblocktranslate %}</li>
+                <li>
+                  {% blocktranslate %}Turn on <span class="font-medium text-[var(--color-text)]">Open as Web App</span> if it is shown, then tap Add.{% endblocktranslate %}
+                </li>
+              </ol>
+            </div>
+
+            <div x-show="shows('android')"
+                 class="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-strong)] p-4 space-y-2">
+              <h4 class="text-sm font-semibold text-[var(--color-text)]">{% translate "Android" %}</h4>
+              <ol class="list-decimal pl-4 space-y-1 text-sm text-[var(--color-text-muted)] leading-relaxed">
+                <li>{% translate "Open this instance in Chrome." %}</li>
+                <li>{% translate "Open the browser menu." %}</li>
+                <li>{% blocktranslate %}Choose <span class="font-medium text-[var(--color-text)]">Add to Home screen</span>.{% endblocktranslate %}</li>
+                <li>{% translate "Confirm with Install, following your browser's wording." %}</li>
+              </ol>
+            </div>
+          </div>
+
+          <p x-show="platform === 'desktop'"
+             style="display: none;"
+             class="text-[var(--color-text-muted)] text-sm leading-relaxed">
+            Installing on a phone instead? The
+            <a href="https://github.com/dannyvfilms/Floppy/wiki/2.-User-Guide#installing-floppy-on-your-phone"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">
+              installation guide
               <span class="sr-only">(opens in a new tab)</span>
             </a>
-            and has diverged substantially since. Yamtrack CSV exports import directly.
+            has the iOS and Android steps.
+          </p>
+
+          <p class="text-[var(--color-text-muted)] text-sm leading-relaxed">
+            {% translate "No install control anywhere? Serve the instance over HTTPS and open it in a full browser rather than an in-app one. Tracking still needs a connection to your Floppy server." %}
+            <a href="https://github.com/dannyvfilms/Floppy/wiki/2.-User-Guide#installing-floppy-on-your-phone"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">
+              {% translate "Installation guide" %}
+              <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
+            </a>
           </p>
         </div>
       </section>
@@ -81,34 +206,35 @@
       <section aria-labelledby="about-links-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
           {% include "app/icons/external-link.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
-          <h3 id="about-links-heading">Project Resources</h3>
+          <h3 id="about-links-heading">{% translate "Project Resources" %}</h3>
         </div>
 
         <div class="pl-7">
-          <div class="overflow-x-auto rounded-lg border border-[var(--color-border)]">
+          {# relative: contains the absolutely positioned sr-only spans, which would otherwise escape this scroller and widen the page #}
+<div class="relative overflow-x-auto rounded-lg border border-[var(--color-border)]">
             <table class="w-full text-left text-sm text-[var(--color-text-secondary)]">
               <thead class="bg-[var(--color-surface-strong)] text-xs uppercase tracking-wider text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
                 <tr>
-                  <th scope="col" class="px-4 py-3 font-semibold">Resource</th>
-                  <th scope="col" class="px-4 py-3 font-semibold">Purpose</th>
-                  <th scope="col" class="px-4 py-3 font-semibold text-right">Destination</th>
+                  <th scope="col" class="px-4 py-3 font-semibold">{% translate "Resource" %}</th>
+                  <th scope="col" class="px-4 py-3 font-semibold">{% translate "Purpose" %}</th>
+                  <th scope="col" class="px-4 py-3 font-semibold text-right">{% translate "Destination" %}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-[var(--color-border)] bg-[var(--color-surface)]">
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
                   <td class="px-4 py-3 font-medium text-[var(--color-text)] flex items-center gap-2">
                     {% include "app/icons/globe.svg" with classes="w-4 h-4 text-[var(--color-link)] shrink-0" %}
-                    <span>Project Website</span>
+                    <span>{% translate "Project Website" %}</span>
                   </td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Official documentation, guides, and live release announcements</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Official documentation, guides, and live release announcements" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://dannyvfilms.github.io/floppy/"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="inline-flex items-center gap-1 text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs">
-                      <span>Visit Site</span>
+                      <span>{% translate "Visit Site" %}</span>
                       {% include "app/icons/external-link.svg" with classes="w-3 h-3" %}
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -116,17 +242,17 @@
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
                   <td class="px-4 py-3 font-medium text-[var(--color-text)] flex items-center gap-2">
                     {% include "app/icons/github.svg" with classes="w-4 h-4 text-[var(--color-link)] shrink-0" %}
-                    <span>Source Code</span>
+                    <span>{% translate "Source Code" %}</span>
                   </td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">GitHub repository, issue tracker, pull requests, and releases</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "GitHub repository, issue tracker, pull requests, and releases" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://github.com/dannyvfilms/Floppy"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="inline-flex items-center gap-1 text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs">
-                      <span>GitHub</span>
+                      <span>{% translate "GitHub" %}</span>
                       {% include "app/icons/external-link.svg" with classes="w-3 h-3" %}
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -134,17 +260,17 @@
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
                   <td class="px-4 py-3 font-medium text-[var(--color-text)] flex items-center gap-2">
                     {% include "app/icons/book-open.svg" with classes="w-4 h-4 text-[var(--color-link)] shrink-0" %}
-                    <span>Documentation</span>
+                    <span>{% translate "Documentation" %}</span>
                   </td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Community wiki, container deployment, reverse proxy setup, and guides</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Community wiki, container deployment, reverse proxy setup, and guides" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://github.com/dannyvfilms/Floppy/wiki"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="inline-flex items-center gap-1 text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs">
-                      <span>Open Wiki</span>
+                      <span>{% translate "Open Wiki" %}</span>
                       {% include "app/icons/external-link.svg" with classes="w-3 h-3" %}
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -152,17 +278,17 @@
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
                   <td class="px-4 py-3 font-medium text-[var(--color-text)] flex items-center gap-2">
                     {% include "app/icons/bug.svg" with classes="w-4 h-4 text-[var(--color-link)] shrink-0" %}
-                    <span>Bug Reports</span>
+                    <span>{% translate "Bug Reports" %}</span>
                   </td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Report bugs, submit sanitized logs, and request new features</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Report bugs, submit sanitized logs, and request new features" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://github.com/dannyvfilms/Floppy/issues"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="inline-flex items-center gap-1 text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs">
-                      <span>Issues</span>
+                      <span>{% translate "Issues" %}</span>
                       {% include "app/icons/external-link.svg" with classes="w-3 h-3" %}
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -170,17 +296,17 @@
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
                   <td class="px-4 py-3 font-medium text-[var(--color-text)] flex items-center gap-2">
                     {% include "app/icons/persons.svg" with classes="w-4 h-4 text-[var(--color-link)] shrink-0" %}
-                    <span>Community Discord</span>
+                    <span>{% translate "Community Discord" %}</span>
                   </td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Connect with homelab users, share setups, and get live help</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Connect with homelab users, share setups, and get live help" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://discord.gg/uFgha7Kb6n"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="inline-flex items-center gap-1 text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs">
-                      <span>Join Discord</span>
+                      <span>{% translate "Join Discord" %}</span>
                       {% include "app/icons/external-link.svg" with classes="w-3 h-3" %}
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -194,17 +320,18 @@
       <section aria-labelledby="about-api-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
           {% include "app/icons/page.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
-          <h3 id="about-api-heading">Developer &amp; API Specifications</h3>
+          <h3 id="about-api-heading">{% translate "Developer & API Specifications" %}</h3>
         </div>
 
         <div class="pl-7">
-          <div class="overflow-x-auto rounded-lg border border-[var(--color-border)]">
+          {# relative: contains the absolutely positioned sr-only spans, which would otherwise escape this scroller and widen the page #}
+<div class="relative overflow-x-auto rounded-lg border border-[var(--color-border)]">
             <table class="w-full text-left text-sm text-[var(--color-text-secondary)]">
               <thead class="bg-[var(--color-surface-strong)] text-xs uppercase tracking-wider text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
                 <tr>
-                  <th scope="col" class="px-4 py-3 font-semibold">Specification</th>
-                  <th scope="col" class="px-4 py-3 font-semibold">Format / Standard</th>
-                  <th scope="col" class="px-4 py-3 font-semibold text-right">Actions</th>
+                  <th scope="col" class="px-4 py-3 font-semibold">{% translate "Specification" %}</th>
+                  <th scope="col" class="px-4 py-3 font-semibold">{% translate "Format / Standard" %}</th>
+                  <th scope="col" class="px-4 py-3 font-semibold text-right">{% translate "Actions" %}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-[var(--color-border)] bg-[var(--color-surface)]">
@@ -213,17 +340,17 @@
                     <a href="{% url 'swagger-ui' %}"
                        class="inline-flex items-center gap-2 text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors font-medium">
                       {% include "app/icons/book-open.svg" with classes="w-4 h-4 text-[var(--color-link)]" %}
-                      <span>API Reference</span>
+                      <span>{% translate "API Reference" %}</span>
                     </a>
-                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">Interactive index, tasks, authentication recipes, and curl cheat sheets</p>
+                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">{% translate "Interactive index, tasks, authentication recipes, and curl cheat sheets" %}</p>
                   </td>
                   <td class="px-4 py-3">
-                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] border border-[var(--color-border)]">HTML Docs</span>
+                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] border border-[var(--color-border)]">{% translate "HTML Docs" %}</span>
                   </td>
                   <td class="px-4 py-3 text-right">
                     <a href="{% url 'swagger-ui' %}"
                        class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]">
-                      <span>Open Docs</span>
+                      <span>{% translate "Open Docs" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -231,27 +358,27 @@
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
                   <td class="px-4 py-3">
                     <a href="{% url 'openapi-contract' %}"
-                       @click.prevent="openSchemaViewer('{% url 'openapi-contract' %}', 'Verified API Schema (OpenAPI 3.0.3)', 'YAML', 'openapi.yaml')"
+                       @click.prevent="openSchemaViewer('{% url 'openapi-contract' %}', gettext('Verified API Schema (OpenAPI 3.0.3)'), 'YAML', 'openapi.yaml')"
                        class="inline-flex items-center gap-2 text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors font-medium">
                       {% include "app/icons/page.svg" with classes="w-4 h-4 text-[var(--color-link)]" %}
-                      <span>Verified API Schema</span>
+                      <span>{% translate "Verified API Schema" %}</span>
                     </a>
-                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">Reviewed 41-operation subset for stable integrations and MCP grounding</p>
+                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">{% translate "Reviewed 41-operation subset for stable integrations and MCP grounding" %}</p>
                   </td>
                   <td class="px-4 py-3">
-                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] border border-[var(--color-border)]">OpenAPI 3.0.3 (YAML)</span>
+                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] border border-[var(--color-border)]">{% translate "OpenAPI 3.0.3 (YAML)" %}</span>
                   </td>
                   <td class="px-4 py-3 text-right space-x-1.5">
-                    <button @click="openSchemaViewer('{% url 'openapi-contract' %}', 'Verified API Schema (OpenAPI 3.0.3)', 'YAML', 'openapi.yaml')"
+                    <button @click="openSchemaViewer('{% url 'openapi-contract' %}', gettext('Verified API Schema (OpenAPI 3.0.3)'), 'YAML', 'openapi.yaml')"
                             class="px-2.5 py-1 rounded text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]">
-                      Preview
+                      {% translate "Preview" %}
                     </button>
                     <a href="{% url 'openapi-contract' %}"
                        download="openapi.yaml"
                        class="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]"
-                       title="Download openapi.yaml">
+                       title="{% translate "Download openapi.yaml" %}">
                       {% include "app/icons/download.svg" with classes="w-3.5 h-3.5" %}
-                      <span>Download</span>
+                      <span>{% translate "Download" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -259,27 +386,27 @@
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
                   <td class="px-4 py-3">
                     <a href="{% url 'jsonld-context' %}"
-                       @click.prevent="openSchemaViewer('{% url 'jsonld-context' %}', 'Domain Context (JSON-LD 1.1)', 'JSON-LD', 'context.jsonld')"
+                       @click.prevent="openSchemaViewer('{% url 'jsonld-context' %}', gettext('Domain Context (JSON-LD 1.1)'), 'JSON-LD', 'context.jsonld')"
                        class="inline-flex items-center gap-2 text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors font-medium">
                       {% include "app/icons/page.svg" with classes="w-4 h-4 text-[var(--color-link)]" %}
-                      <span>Domain Context (JSON-LD)</span>
+                      <span>{% translate "Domain Context (JSON-LD)" %}</span>
                     </a>
-                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">Semantic RDF / schema.org vocabulary mapping for Floppy entities</p>
+                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">{% translate "Semantic RDF / schema.org vocabulary mapping for Floppy entities" %}</p>
                   </td>
                   <td class="px-4 py-3">
-                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] border border-[var(--color-border)]">JSON-LD 1.1</span>
+                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] border border-[var(--color-border)]">{% translate "JSON-LD 1.1" %}</span>
                   </td>
                   <td class="px-4 py-3 text-right space-x-1.5">
-                    <button @click="openSchemaViewer('{% url 'jsonld-context' %}', 'Domain Context (JSON-LD 1.1)', 'JSON-LD', 'context.jsonld')"
+                    <button @click="openSchemaViewer('{% url 'jsonld-context' %}', gettext('Domain Context (JSON-LD 1.1)'), 'JSON-LD', 'context.jsonld')"
                             class="px-2.5 py-1 rounded text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]">
-                      Preview
+                      {% translate "Preview" %}
                     </button>
                     <a href="{% url 'jsonld-context' %}"
                        download="context.jsonld"
                        class="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]"
-                       title="Download context.jsonld">
+                       title="{% translate "Download context.jsonld" %}">
                       {% include "app/icons/download.svg" with classes="w-3.5 h-3.5" %}
-                      <span>Download</span>
+                      <span>{% translate "Download" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -287,27 +414,27 @@
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
                   <td class="px-4 py-3">
                     <a href="{% url 'schema' %}"
-                       @click.prevent="openSchemaViewer('{% url 'schema' %}', 'Full Diagnostic API Schema (Live OpenAPI)', 'Live', 'openapi-live.yaml')"
+                       @click.prevent="openSchemaViewer('{% url 'schema' %}', gettext('Full Diagnostic API Schema (Live OpenAPI)'), gettext('Live'), 'openapi-live.yaml')"
                        class="inline-flex items-center gap-2 text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors font-medium">
                       {% include "app/icons/page.svg" with classes="w-4 h-4 text-[var(--color-link)]" %}
-                      <span>Full Diagnostic API Schema</span>
+                      <span>{% translate "Full Diagnostic API Schema" %}</span>
                     </a>
-                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">Dynamically generated OpenAPI schema covering all active routes on this instance</p>
+                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">{% translate "Dynamically generated OpenAPI schema covering all active routes on this instance" %}</p>
                   </td>
                   <td class="px-4 py-3">
-                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] border border-[var(--color-border)]">Live OpenAPI (YAML)</span>
+                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] border border-[var(--color-border)]">{% translate "Live OpenAPI (YAML)" %}</span>
                   </td>
                   <td class="px-4 py-3 text-right space-x-1.5">
-                    <button @click="openSchemaViewer('{% url 'schema' %}', 'Full Diagnostic API Schema (Live OpenAPI)', 'Live', 'openapi-live.yaml')"
+                    <button @click="openSchemaViewer('{% url 'schema' %}', gettext('Full Diagnostic API Schema (Live OpenAPI)'), gettext('Live'), 'openapi-live.yaml')"
                             class="px-2.5 py-1 rounded text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]">
-                      Preview
+                      {% translate "Preview" %}
                     </button>
                     <a href="{% url 'schema' %}"
                        download="openapi-live.yaml"
                        class="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]"
-                       title="Download openapi-live.yaml">
+                       title="{% translate "Download openapi-live.yaml" %}">
                       {% include "app/icons/download.svg" with classes="w-3.5 h-3.5" %}
-                      <span>Download</span>
+                      <span>{% translate "Download" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -315,27 +442,27 @@
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
                   <td class="px-4 py-3">
                     <a href="{% url 'asyncapi-contract' %}"
-                       @click.prevent="openSchemaViewer('{% url 'asyncapi-contract' %}', 'Asynchronous Channels (AsyncAPI 3.0.0)', 'AsyncAPI', 'asyncapi.json')"
+                       @click.prevent="openSchemaViewer('{% url 'asyncapi-contract' %}', gettext('Asynchronous Channels (AsyncAPI 3.0.0)'), gettext('AsyncAPI'), 'asyncapi.json')"
                        class="inline-flex items-center gap-2 text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors font-medium">
                       {% include "app/icons/page.svg" with classes="w-4 h-4 text-[var(--color-link)]" %}
-                      <span>Asynchronous Channels (AsyncAPI)</span>
+                      <span>{% translate "Asynchronous Channels (AsyncAPI)" %}</span>
                     </a>
-                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">Inbound webhook routes, Celery queues, and worker concurrency profiles</p>
+                    <p class="text-xs text-[var(--color-text-muted)] mt-0.5">{% translate "Inbound webhook routes, Celery queues, and worker concurrency profiles" %}</p>
                   </td>
                   <td class="px-4 py-3">
-                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] border border-[var(--color-border)]">AsyncAPI 3.0.0 (JSON)</span>
+                    <span class="text-xs font-mono px-2 py-0.5 rounded bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] border border-[var(--color-border)]">{% translate "AsyncAPI 3.0.0 (JSON)" %}</span>
                   </td>
                   <td class="px-4 py-3 text-right space-x-1.5">
-                    <button @click="openSchemaViewer('{% url 'asyncapi-contract' %}', 'Asynchronous Channels (AsyncAPI 3.0.0)', 'AsyncAPI', 'asyncapi.json')"
+                    <button @click="openSchemaViewer('{% url 'asyncapi-contract' %}', gettext('Asynchronous Channels (AsyncAPI 3.0.0)'), gettext('AsyncAPI'), 'asyncapi.json')"
                             class="px-2.5 py-1 rounded text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]">
-                      Preview
+                      {% translate "Preview" %}
                     </button>
                     <a href="{% url 'asyncapi-contract' %}"
                        download="asyncapi.json"
                        class="inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]"
-                       title="Download asyncapi.json">
+                       title="{% translate "Download asyncapi.json" %}">
                       {% include "app/icons/download.svg" with classes="w-3.5 h-3.5" %}
-                      <span>Download</span>
+                      <span>{% translate "Download" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -349,92 +476,93 @@
       <section aria-labelledby="about-attribution-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
           {% include "app/icons/page.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
-          <h3 id="about-attribution-heading">Metadata &amp; Attributions</h3>
+          <h3 id="about-attribution-heading">{% translate "Metadata & Attributions" %}</h3>
         </div>
         <div class="pl-7">
-          <div class="overflow-x-auto rounded-lg border border-[var(--color-border)]">
+          {# relative: contains the absolutely positioned sr-only spans, which would otherwise escape this scroller and widen the page #}
+<div class="relative overflow-x-auto rounded-lg border border-[var(--color-border)]">
             <table class="w-full text-left text-sm text-[var(--color-text-secondary)]">
               <thead class="bg-[var(--color-surface-strong)] text-xs uppercase tracking-wider text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
                 <tr>
-                  <th scope="col" class="px-4 py-3 font-semibold">Provider / Service</th>
-                  <th scope="col" class="px-4 py-3 font-semibold">Supported Media</th>
-                  <th scope="col" class="px-4 py-3 font-semibold text-right">Attribution Link</th>
+                  <th scope="col" class="px-4 py-3 font-semibold">{% translate "Provider / Service" %}</th>
+                  <th scope="col" class="px-4 py-3 font-semibold">{% translate "Supported Media" %}</th>
+                  <th scope="col" class="px-4 py-3 font-semibold text-right">{% translate "Attribution Link" %}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-[var(--color-border)] bg-[var(--color-surface)]">
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
-                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">The Movie Database (TMDB)</td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Movies, TV Shows, Seasons, Episodes &amp; Cast/Crew Credits</td>
+                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">{% translate "The Movie Database (TMDB)" %}</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Movies, TV Shows, Seasons, Episodes & Cast/Crew Credits" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs underline">
                       themoviedb.org
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
 
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
                   <td class="px-4 py-3 font-medium text-[var(--color-text)]">IGDB</td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Video Games, Platforms, Developers &amp; Publishers</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Video Games, Platforms, Developers & Publishers" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://www.igdb.com/" target="_blank" rel="noopener noreferrer" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs underline">
                       igdb.com
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
 
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
-                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">MusicBrainz</td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Music Releases, Artists, Discographies &amp; Tracklists</td>
+                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">{% translate "MusicBrainz" %}</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Music Releases, Artists, Discographies & Tracklists" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://musicbrainz.org/" target="_blank" rel="noopener noreferrer" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs underline">
                       musicbrainz.org
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
 
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
-                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">Hardcover &amp; Open Library</td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Books, Authors, Editions &amp; Page Counts</td>
+                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">{% translate "Hardcover & Open Library" %}</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Books, Authors, Editions & Page Counts" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://hardcover.app/" target="_blank" rel="noopener noreferrer" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs underline">
                       hardcover.app
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
 
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
-                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">JustWatch</td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Streaming, Rent &amp; Buy Availability Across Regions</td>
+                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">{% translate "JustWatch" %}</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Streaming, Rent & Buy Availability Across Regions" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://www.justwatch.com/" target="_blank" rel="noopener noreferrer" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs underline">
                       justwatch.com
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
 
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
-                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">OpenSubtitles</td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Multilingual Subtitles Synchronization</td>
+                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">{% translate "OpenSubtitles" %}</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Multilingual Subtitles Synchronization" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://www.opensubtitles.com/" target="_blank" rel="noopener noreferrer" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs underline">
                       opensubtitles.com
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
 
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
-                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">Pocket Casts</td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">Podcast RSS Directories, Episode Feeds &amp; Artwork</td>
+                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">{% translate "Pocket Casts" %}</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Podcast RSS Directories, Episode Feeds & Artwork" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://pocketcasts.com/" target="_blank" rel="noopener noreferrer" class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs underline">
                       pocketcasts.com
-                      <span class="sr-only">(opens in a new tab)</span>
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -448,42 +576,43 @@
       <section aria-labelledby="about-license-heading" class="space-y-3">
         <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
           {% include "app/icons/page.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
-          <h3 id="about-license-heading">License &amp; Legal</h3>
+          <h3 id="about-license-heading">{% translate "License & Legal" %}</h3>
         </div>
         <div class="pl-7">
-          <div class="overflow-x-auto rounded-lg border border-[var(--color-border)]">
+          {# relative: contains the absolutely positioned sr-only spans, which would otherwise escape this scroller and widen the page #}
+<div class="relative overflow-x-auto rounded-lg border border-[var(--color-border)]">
             <table class="w-full text-left text-sm text-[var(--color-text-secondary)]">
               <thead class="bg-[var(--color-surface-strong)] text-xs uppercase tracking-wider text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
                 <tr>
-                  <th scope="col" class="px-4 py-3 font-semibold">Subject</th>
-                  <th scope="col" class="px-4 py-3 font-semibold">License / Terms</th>
-                  <th scope="col" class="px-4 py-3 font-semibold text-right">Details</th>
+                  <th scope="col" class="px-4 py-3 font-semibold">{% translate "Subject" %}</th>
+                  <th scope="col" class="px-4 py-3 font-semibold">{% translate "License / Terms" %}</th>
+                  <th scope="col" class="px-4 py-3 font-semibold text-right">{% translate "Details" %}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-[var(--color-border)] bg-[var(--color-surface)]">
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
-                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">Floppy Application</td>
-                  <td class="px-4 py-3 text-xs text-[var(--color-text-muted)]">GNU Affero General Public License v3.0 (AGPL-3.0)</td>
+                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">{% translate "Floppy Application" %}</td>
+                  <td class="px-4 py-3 text-xs text-[var(--color-text-muted)]">{% translate "GNU Affero General Public License v3.0 (AGPL-3.0)" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://github.com/dannyvfilms/Floppy/blob/release/LICENSE"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs underline">
-                      View License
-                      <span class="sr-only">(opens in a new tab)</span>
+                      {% translate "View License" %}
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
                 <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
-                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">Upstream Heritage</td>
-                  <td class="px-4 py-3 text-xs text-[var(--color-text-muted)]">Yamtrack (Original codebase fork; CSV exports supported)</td>
+                  <td class="px-4 py-3 font-medium text-[var(--color-text)]">{% translate "Upstream Heritage" %}</td>
+                  <td class="px-4 py-3 text-xs text-[var(--color-text-muted)]">{% translate "Yamtrack (Original codebase fork; CSV exports supported)" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://github.com/FuzzyGrim/Yamtrack"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs underline">
-                      Upstream Repo
-                      <span class="sr-only">(opens in a new tab)</span>
+                      {% translate "Upstream Repo" %}
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>
                   </td>
                 </tr>
@@ -496,8 +625,8 @@
       {# Version Footer #}
       <div class="mt-8 pt-4 border-t border-[var(--color-border)]">
         <p class="text-[var(--color-text-muted)] text-sm">
-          Version: <span class="font-mono">{{ version }}</span>
-          {% if commit %}<span class="text-[var(--color-text-muted)] px-1">|</span><span class="font-mono">Commit: {{ commit }}</span>{% endif %}
+          {% translate "Version:" %} <span class="font-mono">{{ version }}</span>
+          {% if commit %}<span class="text-[var(--color-text-muted)] px-1">|</span><span class="font-mono">{% blocktranslate %}Commit: {{ commit }}{% endblocktranslate %}</span>{% endif %}
         </p>
       </div>
     </div>
@@ -523,25 +652,25 @@
             <a :href="modalUrl"
                :download="modalDownloadName"
                class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]"
-               title="Download Schema File">
+               title="{% translate "Download Schema File" %}">
               {% include "app/icons/download.svg" with classes="w-3.5 h-3.5" %}
-              <span>Download</span>
+              <span>{% translate "Download" %}</span>
             </a>
             <button @click="copyContent()"
                     class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text)] transition-colors border border-[var(--color-border)]"
-                    :title="copied ? 'Copied to clipboard!' : 'Copy to clipboard'">
+                    :title="copied ? gettext('Copied to clipboard!') : gettext('Copy to clipboard')">
               <span x-show="!copied" class="flex items-center gap-1.5">
                 {% include "app/icons/page.svg" with classes="w-3.5 h-3.5" %}
-                <span>Copy</span>
+                <span>{% translate "Copy" %}</span>
               </span>
               <span x-show="copied" class="flex items-center gap-1.5 text-emerald-500 font-semibold" style="display: none;">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                <span>Copied!</span>
+                <span>{% translate "Copied!" %}</span>
               </span>
             </button>
             <button @click="schemaModalOpen = false"
                     class="p-1.5 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors"
-                    aria-label="Close modal">
+                    aria-label="{% translate "Close modal" %}">
               {% include "app/icons/x.svg" with classes="w-5 h-5" %}
             </button>
           </div>
@@ -555,7 +684,7 @@
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <span>Loading schema definition...</span>
+            <span>{% translate "Loading schema definition..." %}</span>
           </div>
           <pre x-show="!modalLoading"
                class="font-mono text-xs text-[var(--color-text)] whitespace-pre-wrap select-all leading-relaxed"
@@ -565,21 +694,21 @@
         {# Modal Footer #}
         <div class="flex items-center justify-between p-3 border-t border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-text-muted)] shrink-0">
           <div class="flex items-center gap-2">
-            <span>Press <kbd class="px-1.5 py-0.5 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] font-mono text-[10px]">Esc</kbd> to close</span>
+            <span>{% translate "Press" %} <kbd class="px-1.5 py-0.5 rounded bg-[var(--color-surface-muted)] border border-[var(--color-border)] font-mono text-[10px]">{% translate "Esc" %}</kbd> {% translate "to close" %}</span>
           </div>
           <div class="flex items-center gap-2">
             <a :href="modalUrl"
                :download="modalDownloadName"
                class="px-3 py-1.5 rounded-md font-medium text-[var(--color-text)] bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border)] transition-colors">
-              Download File
+              {% translate "Download File" %}
             </a>
             <button @click="schemaModalOpen = false"
                     class="px-3 py-1.5 rounded-md font-medium text-white bg-indigo-600 hover:bg-indigo-500 transition-colors">
-              Done
+              {% translate "Done" %}
             </button>
           </div>
         </div>
-        <div class="sr-only" role="status" aria-live="polite" x-text="copied ? 'Schema copied to clipboard' : ''"></div>
+        <div class="sr-only" role="status" aria-live="polite" x-text="copied ? gettext('Schema copied to clipboard') : ''"></div>
       </div>
     </div>
   </div>

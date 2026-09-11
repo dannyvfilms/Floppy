@@ -1832,6 +1832,16 @@ class PocketCastsImporter:
         )
         return show
 
+    def _coerce_nonnegative_int(self, value):
+        """Return a provider number suitable for a non-negative integer field."""
+        if value in (None, ""):
+            return None
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return None
+        return number if number >= 0 else None
+
     def _sync_catalog_episode(self, episode_data, show=None):
         """Create or update catalog metadata for a Pocket Casts episode."""
         episode_uuid = episode_data.get("uuid")
@@ -1855,6 +1865,14 @@ class PocketCastsImporter:
                 logger.debug("Failed to parse published date: %s", published_raw)
 
         duration = episode_data.get("duration", 0)
+        raw_episode_number = episode_data.get("episodeNumber")
+        if raw_episode_number is None:
+            raw_episode_number = episode_data.get("episode_number")
+        episode_number = self._coerce_nonnegative_int(raw_episode_number)
+        raw_season_number = episode_data.get("episodeSeason")
+        if raw_season_number is None:
+            raw_season_number = episode_data.get("season_number")
+        season_number = self._coerce_nonnegative_int(raw_season_number)
         is_deleted = episode_data.get("isDeleted", False)
         created = False
 
@@ -1929,8 +1947,8 @@ class PocketCastsImporter:
                     episode = matching_episodes.first()
                     episode_uuid = self._resolve_episode_uuid(episode, episode_uuid)
 
-            if not episode and published and episode_data.get("episodeNumber"):
-                ep_num = episode_data["episodeNumber"]
+            if not episode and published and episode_number is not None:
+                ep_num = episode_number
                 matching_episodes = PodcastEpisode.objects.filter(
                     show=show,
                     episode_number=ep_num,
@@ -1955,10 +1973,8 @@ class PocketCastsImporter:
                     published=published,
                     duration=duration,
                     audio_url=episode_data.get("url", ""),
-                    episode_number=episode_data.get("episodeNumber")
-                    or episode_data.get("episode_number", 0),
-                    season_number=episode_data.get("episodeSeason")
-                    or episode_data.get("season_number", 0),
+                    episode_number=episode_number,
+                    season_number=season_number,
                     file_type=episode_data.get("fileType", ""),
                     episode_type=episode_data.get("episodeType", ""),
                     is_deleted=is_deleted,
@@ -1994,20 +2010,20 @@ class PocketCastsImporter:
                 episode.slug = episode_data.get("slug", "")
                 updated = True
                 update_fields.append("slug")
-            if episode_data.get(
-                "episodeNumber"
-            ) is not None and episode.episode_number != episode_data.get(
-                "episodeNumber"
+            if (
+                raw_episode_number is not None
+                and episode_number is not None
+                and episode.episode_number != episode_number
             ):
-                episode.episode_number = episode_data.get("episodeNumber")
+                episode.episode_number = episode_number
                 updated = True
                 update_fields.append("episode_number")
-            if episode_data.get(
-                "episodeSeason"
-            ) is not None and episode.season_number != episode_data.get(
-                "episodeSeason"
+            if (
+                raw_season_number is not None
+                and season_number is not None
+                and episode.season_number != season_number
             ):
-                episode.season_number = episode_data.get("episodeSeason")
+                episode.season_number = season_number
                 updated = True
                 update_fields.append("season_number")
             if episode_data.get(

@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -10,9 +12,9 @@
           {% if show_format_header != False %}
             <p class="text-sm tracking-wide text-[var(--color-text-muted)]">
               {% if collection_entry.media_type %}
-                Format: {{ collection_entry.media_type|title_preserve_acronyms }}
+                {% blocktranslate trimmed with value_1=collection_entry.media_type|title_preserve_acronyms %}Format: {{ value_1 }}{% endblocktranslate %}
               {% else %}
-                Collected
+                {% translate "Collected" %}
               {% endif %}
             </p>
           {% endif %}
@@ -21,9 +23,9 @@
       {% elif show_format_header != False %}
         <p class="text-sm tracking-wide text-[var(--color-text-muted)]">
           {% if collection_entry.media_type %}
-            Format: {{ collection_entry.media_type|title_preserve_acronyms }}
+            {% blocktranslate trimmed with value_1=collection_entry.media_type|title_preserve_acronyms %}Format: {{ value_1 }}{% endblocktranslate %}
           {% else %}
-            Collected
+            {% translate "Collected" %}
           {% endif %}
         </p>
       {% endif %}
@@ -43,7 +45,7 @@
       {% if entry_source_labels or show_inline_quality and inline_quality %}
         <p class="mt-1 text-xs tracking-wide text-[var(--color-text-muted)] uppercase">
           {% if entry_source_labels %}
-            Source{% if entry_source_labels|length != 1 %}s{% endif %}: {{ entry_source_labels|join:" • " }}
+            {% translate "Source" %}{% if entry_source_labels|length != 1 %}{% translate "s" %}{% endif %}: {{ entry_source_labels|join:" • " }}
           {% endif %}
           {% if show_inline_quality and inline_quality %}
             {% if entry_source_labels %} • {% endif %}
@@ -63,7 +65,7 @@
             {% elif collection_entry.hdr %}
               {{ collection_entry.hdr }}
             {% else %}
-              Collection Entry
+              {% translate "Collection Entry" %}
             {% endif %}
           </p>
         {% else %}
@@ -75,22 +77,22 @@
             {% elif collection_entry.hdr %}
               {{ collection_entry.hdr }}
             {% else %}
-              Collection Entry
+              {% translate "Collection Entry" %}
             {% endif %}
           </p>
         {% endif %}
         {% if format_with_subtitle and collection_entry.media_type %}
           <p class="mt-0.5 text-sm text-[var(--color-text-muted)] leading-tight">
-            Format: {{ collection_entry.media_type|title_preserve_acronyms }}{% if collection_entry.hdr %} • {{ collection_entry.hdr }}{% if "edition" not in collection_entry.hdr|lower %} Edition{% endif %}{% endif %}
+            {% blocktranslate trimmed with value_1=collection_entry.media_type|title_preserve_acronyms %}Format: {{ value_1 }}{% endblocktranslate %}{% if collection_entry.hdr %} • {{ collection_entry.hdr }}{% if "edition" not in collection_entry.hdr|lower %} {% translate "Edition" %}{% endif %}{% endif %}
           </p>
         {% elif collection_entry.hdr %}
           {% if source_style_game_meta %}
             <p class="mt-1 text-sm leading-tight text-[var(--color-text-secondary)] whitespace-nowrap">
-              <span class="font-semibold text-[var(--color-text-muted)]">{{ collection_entry.hdr }}{% if "edition" not in collection_entry.hdr|lower %} Edition{% endif %}</span>
+              <span class="font-semibold text-[var(--color-text-muted)]">{{ collection_entry.hdr }}{% if "edition" not in collection_entry.hdr|lower %} {% translate "Edition" %}{% endif %}</span>
             </p>
           {% else %}
             <p class="mt-0.5 text-sm text-[var(--color-text-muted)] leading-tight">
-              {{ collection_entry.hdr }}{% if "edition" not in collection_entry.hdr|lower %} Edition{% endif %}
+              {{ collection_entry.hdr }}{% if "edition" not in collection_entry.hdr|lower %} {% translate "Edition" %}{% endif %}
             </p>
           {% endif %}
         {% endif %}
@@ -101,8 +103,8 @@
             {% if collection_entry.hdr %}{% if collection_entry.resolution %} • {% endif %}{{ collection_entry.hdr }}{% endif %}
             {% if collection_entry.audio_codec %}{% if collection_entry.resolution or collection_entry.hdr %} • {% endif %}{{ collection_entry.audio_codec }}{% endif %}
             {% if collection_entry.audio_channels %}{% if collection_entry.resolution or collection_entry.hdr or collection_entry.audio_codec %} • {% endif %}{{ collection_entry.audio_channels }}{% endif %}
-            {% if collection_entry.bitrate %}{% if collection_entry.resolution or collection_entry.hdr or collection_entry.audio_codec or collection_entry.audio_channels %} • {% endif %}{{ collection_entry.bitrate }} kbps{% endif %}
-            {% if collection_entry.is_3d %}{% if collection_entry.resolution or collection_entry.hdr or collection_entry.audio_codec or collection_entry.audio_channels or collection_entry.bitrate %} • {% endif %}3D{% endif %}
+            {% if collection_entry.bitrate %}{% if collection_entry.resolution or collection_entry.hdr or collection_entry.audio_codec or collection_entry.audio_channels %} • {% endif %}{% blocktranslate trimmed with value_1=collection_entry.bitrate %}{{ value_1 }} kbps{% endblocktranslate %}{% endif %}
+            {% if collection_entry.is_3d %}{% if collection_entry.resolution or collection_entry.hdr or collection_entry.audio_codec or collection_entry.audio_channels or collection_entry.bitrate %} • {% endif %}{% translate "3D" %}{% endif %}
           </p>
         {% endif %}
       {% endif %}
@@ -127,8 +129,8 @@
                   hx-swap="none"
                   hx-on::after-request="if(event.detail.successful){window.location.reload()}"
                   class="inline-flex h-8 w-8 items-center justify-center rounded-md text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors cursor-pointer"
-                  title="Remove collection entry"
-                  aria-label="Remove collection entry">
+                  title="{% translate "Remove collection entry" %}"
+                  aria-label="{% translate "Remove collection entry" %}">
             {% include "app/icons/trashcan.svg" with classes="w-4 h-4" %}
           </button>
         {% endif %}
@@ -143,8 +145,8 @@
               hx-swap="none"
               hx-on::after-request="if(event.detail.successful){window.location.reload()}"
               class="inline-flex h-8 w-8 items-center justify-center rounded-md text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors cursor-pointer"
-              title="Remove collection entry"
-              aria-label="Remove collection entry">
+              title="{% translate "Remove collection entry" %}"
+              aria-label="{% translate "Remove collection entry" %}">
         {% include "app/icons/trashcan.svg" with classes="w-4 h-4" %}
       </button>
     </div>

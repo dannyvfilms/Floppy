@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -5,7 +7,7 @@
      class="border-b border-[var(--color-border)] last:border-b-0">
   <button type="button"
           class="flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-[var(--color-surface-muted)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-          aria-label="View activity for {{ entry.display_title|default:entry.title }}"
+          aria-label="{% blocktranslate trimmed with value_1=entry.display_title|default:entry.title %}View activity for {{ value_1 }}{% endblocktranslate %}"
           hx-get="{% media_view_url 'track_modal' entry.item %}"
           hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"{% if entry.instance_id is not None %}, "instance_id": "{{ entry.instance_id }}"{% endif %}, "standard_modal": "1"}'
           hx-target="#session-track-modal-{{ entry.media_type }}-{{ entry.entry_key }}"
@@ -31,13 +33,13 @@
 
       <span class="mt-1 block text-xs text-[var(--color-text-muted)]">
         {% if entry.media_type == MediaTypes.MUSIC.value %}
-          {{ entry.play_count|default:1 }} play{{ entry.play_count|default:1|pluralize }}{% if entry.time_range_display %} · {{ entry.time_range_display }}{% endif %}
+          {% blocktranslate trimmed with value_1=entry.play_count|default:1 count count=entry.play_count|default:1 %}{{ value_1 }} play{% plural %}{{ value_1 }} plays{% endblocktranslate %}{% if entry.time_range_display %} · {{ entry.time_range_display }}{% endif %}
         {% elif entry.episode_label %}
           {{ entry.episode_label }}{% if entry.played_at_local %} · {{ entry.played_at_local|user_datetime_format:user }}{% endif %}
         {% elif entry.played_at_local %}
           {{ entry.played_at_local|user_datetime_format:user }}
         {% else %}
-          Date not recorded
+          {% translate "Date not recorded" %}
         {% endif %}
         {% if entry.media_type == MediaTypes.PODCAST.value and entry.progress_display %}
           · {{ entry.progress_display }}{% if entry.runtime_display %} / {{ entry.runtime_display }}{% endif %}
@@ -65,8 +67,8 @@
                   @click.stop="noteExpanded = !noteExpanded"
                   @keydown.enter.prevent.stop="noteExpanded = !noteExpanded"
                   @keydown.space.prevent.stop="noteExpanded = !noteExpanded">
-              <span x-show="!noteExpanded">Show more</span>
-              <span x-show="noteExpanded">Show less</span>
+              <span x-show="!noteExpanded">{% translate "Show more" %}</span>
+              <span x-show="noteExpanded">{% translate "Show less" %}</span>
             </span>
           {% endif %}
         {% endwith %}

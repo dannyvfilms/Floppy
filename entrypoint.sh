@@ -324,5 +324,23 @@ else
 fi
 echo "[entrypoint] celery workers background=on(${FLOPPY_CELERY_QUEUES}) interactive=${interactive_topology} discover=${discover_topology}" >&2
 
+# Docker 25+ and recent containerd give a container an effectively unlimited
+# RLIMIT_NOFILE, so SC_OPEN_MAX inside it reads as 2147483584. Celery's
+# embedded beat calls billiard's close_open_fds() during startup, which closes
+# every descriptor up to that number one at a time: the process pins a core for
+# hours before "beat: Starting..." appears, and no scheduled task runs until it
+# does (celery/celery#8306, still open). Lower the soft limit here, once, so
+# every supervised child inherits it. The hard limit is untouched, so an
+# operator who needs more can raise FLOPPY_NOFILE_LIMIT or the soft limit again.
+NOFILE_SOFT=${FLOPPY_NOFILE_LIMIT:-65536}
+current_nofile=$(ulimit -n 2>/dev/null || echo unlimited)
+if [ "$current_nofile" = "unlimited" ] || [ "$current_nofile" -gt "$NOFILE_SOFT" ] 2>/dev/null; then
+    if ulimit -n "$NOFILE_SOFT" 2>/dev/null; then
+        echo "[entrypoint] Open-file soft limit lowered from ${current_nofile} to ${NOFILE_SOFT} (celery/celery#8306)" >&2
+    else
+        echo "[entrypoint] WARNING: open-file soft limit is ${current_nofile} and could not be lowered; celery beat may take hours to start" >&2
+    fi
+fi
+
 echo "[entrypoint] Starting services" >&2
 exec supervisord -c /etc/supervisord.conf

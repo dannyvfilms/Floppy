@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load events_tags %}
 {% load user_tags %}
@@ -12,7 +14,7 @@
     {% endfor %}
   </div>
 
-  <div class="grid grid-cols-7 gap-1" role="grid" aria-label="Monthly calendar">
+  <div class="grid grid-cols-7 gap-1" role="grid" aria-label="{% translate "Monthly calendar" %}">
     {% for week in calendar %}
       {% for day in week %}
         {% if day == 0 %}
@@ -42,7 +44,7 @@
 
   <div class="mt-4 bg-[var(--color-surface-muted)] rounded-lg overflow-hidden">
     <div class="px-4 py-3 font-medium flex items-center justify-between bg-gray-600 text-gray-100" data-agenda-header>
-      <span data-agenda-title>Agenda</span>
+      <span data-agenda-title>{% translate "Agenda" %}</span>
       <span class="text-xs text-gray-300" data-agenda-count></span>
     </div>
 
@@ -72,7 +74,7 @@
           {% endfor %}
           <div data-mobile-empty-state
                class="p-3 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-muted)] {% if releases %}hidden{% endif %}">
-            No releases scheduled for this day.
+            {% translate "No releases scheduled for this day." %}
           </div>
         </div>
       {% endwith %}
@@ -109,7 +111,7 @@
                   </div>
                 </a>
               {% endfor %}
-              <div data-empty-state class="hidden text-xs text-[var(--color-text-muted)] px-1 py-0.5">No releases</div>
+              <div data-empty-state class="hidden text-xs text-[var(--color-text-muted)] px-1 py-0.5">{% translate "No releases" %}</div>
             </div>
           </div>
         {% endif %}

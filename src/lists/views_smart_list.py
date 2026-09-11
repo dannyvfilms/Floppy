@@ -9,6 +9,7 @@ Smart lists use rule-based membership (smart_rules module) rather than
 manually curated items, and have their own template (smart_list_detail.html).
 """
 
+import json
 import logging
 
 from django.core.paginator import Paginator
@@ -31,11 +32,13 @@ from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_media_with_aggregation,
     _build_collection_platforms_by_item_id,
+    _build_list_count_trigger,
     _build_list_url_template,
     _build_media_type_breakdown,
     _date_sort_value,
     _media_date_value,
     _order_expression,
+    _paginate_python_sorted_items,
     _platform_sort_value,
     _progress_value,
     _rating_value,
@@ -149,6 +152,19 @@ def _smart_list_detail_response(
                     "date_added_to",
                     saved_rules["date_added_to"],
                 ),
+                "completed_date_from": request.GET.get(
+                    "completed_date_from",
+                    saved_rules["completed_date_from"],
+                ),
+                "completed_date_to": request.GET.get(
+                    "completed_date_to",
+                    saved_rules["completed_date_to"],
+                ),
+                **{
+                    key: request.GET.get(key, saved_rules[key])
+                    for field in smart_rules.RELATIVE_DATE_FIELDS
+                    for key in (f"{field}_within", f"{field}_within_unit")
+                },
                 "source": request.GET.get("source", saved_rules["source"]),
                 "language": request.GET.get("language", saved_rules["language"]),
                 "country": request.GET.get("country", saved_rules["country"]),
@@ -201,6 +217,7 @@ def _smart_list_detail_response(
         ListDetailSortChoices.DATE_ADDED: [
             _order_expression("list_date_added", direction),
             _order_expression("title", direction),
+            _order_expression("id", direction),
         ],
         ListDetailSortChoices.TITLE: [
             _order_expression("title", direction),
@@ -210,9 +227,11 @@ def _smart_list_detail_response(
             F("episode_number").asc(nulls_first=True)
             if direction == "asc"
             else F("episode_number").desc(nulls_last=True),
+            _order_expression("id", direction),
         ],
         ListDetailSortChoices.MEDIA_TYPE: [
             _order_expression("media_type", direction),
+            _order_expression("id", direction),
         ],
         ListDetailSortChoices.RATING: [
             _order_expression("list_date_added", direction),
@@ -223,6 +242,7 @@ def _smart_list_detail_response(
         ListDetailSortChoices.RELEASE_DATE: [
             _order_expression("release_datetime", direction),
             _order_expression("title", direction),
+            _order_expression("id", direction),
         ],
         ListDetailSortChoices.START_DATE: [
             _order_expression("list_date_added", direction),
@@ -265,26 +285,23 @@ def _smart_list_detail_response(
     collection_platforms_by_item_id = {}
     sort_config = media_sort_config.get(sort_by)
     if sort_config:
-        all_items = list(
-            items.order_by(
-                *sort_mapping.get(
-                    sort_by, sort_mapping[ListDetailSortChoices.DATE_ADDED]
-                )
-            )
-        )
-        _attach_media_with_aggregation(all_items, media_user)
         if sort_by == ListDetailSortChoices.PLATFORM:
-            collection_platforms_by_item_id = _build_collection_platforms_by_item_id(
-                media_user, [item.id for item in all_items]
+            def value_getter(item, platforms):
+                return _platform_sort_value(item, platforms)
+        else:
+            def value_getter(item, _platforms):
+                return sort_config["key"](item)
+        items_page, filtered_items_count, collection_platforms_by_item_id = (
+            _paginate_python_sorted_items(
+                items,
+                media_user,
+                page,
+                16,
+                value_getter,
+                reverse=sort_config["reverse"],
+                needs_collection_platforms=sort_by == ListDetailSortChoices.PLATFORM,
             )
-        all_items = sorted(
-            all_items,
-            key=sort_config["key"],
-            reverse=sort_config["reverse"],
         )
-        paginator = Paginator(all_items, 16)
-        items_page = paginator.get_page(page)
-        filtered_items_count = paginator.count
     else:
         items = items.order_by(
             *sort_mapping.get(sort_by, sort_mapping[ListDetailSortChoices.DATE_ADDED])
@@ -357,6 +374,12 @@ def _smart_list_detail_response(
             active_rules.get("release_date_to"),
             active_rules.get("date_added_from"),
             active_rules.get("date_added_to"),
+            active_rules.get("completed_date_from"),
+            active_rules.get("completed_date_to"),
+            *(
+                active_rules.get(f"{field}_within")
+                for field in smart_rules.RELATIVE_DATE_FIELDS
+            ),
             active_rules.get("source"),
             active_rules.get("language"),
             active_rules.get("country"),
@@ -454,9 +477,17 @@ def _smart_list_detail_response(
     if is_partial:
         if layout == "table":
             if is_pagination:
-                return render(request, "app/components/table_items.html", context)
-            return render(request, "lists/components/list_table.html", context)
-        return render(request, "lists/components/media_grid.html", context)
+                template_name = "app/components/table_items.html"
+            else:
+                template_name = "lists/components/list_table.html"
+        else:
+            template_name = "lists/components/media_grid.html"
+
+        response = render(request, template_name, context)
+        response["HX-Trigger"] = json.dumps(
+            _build_list_count_trigger(total_items_count),
+        )
+        return response
 
     context["media_type_breakdown"] = _build_media_type_breakdown(custom_list)
     if can_edit:

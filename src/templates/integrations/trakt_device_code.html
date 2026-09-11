@@ -1,17 +1,18 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 
 {% block title %}
-  Connect Trakt
+  {% translate "Connect Trakt" %}
 {% endblock title %}
 
 {% block content %}
   <div class="mx-auto max-w-md py-10"
        x-data="{ copied: false }">
     <div class="bg-[var(--color-surface)] rounded-lg p-6 text-center">
-      <h1 class="text-2xl font-bold mb-2">Connect Trakt</h1>
+      <h1 class="text-2xl font-bold mb-2">{% translate "Connect Trakt" %}</h1>
       <p class="text-sm text-[var(--color-text-muted)] mb-6">
-        This instance is not served over HTTPS, so Trakt will not accept a browser redirect.
-        Enter this code on Trakt instead.
+        {% translate "This instance is not served over HTTPS, so Trakt will not accept a browser redirect. Enter this code on Trakt instead." %}
       </p>
 
       <div class="bg-[var(--color-sidebar)] rounded-md py-4 px-3 mb-3">
@@ -22,13 +23,13 @@
               @click="navigator.clipboard.writeText('{{ user_code }}'); copied = true; setTimeout(() => copied = false, 2000)"
               class="text-xs mb-6 transition-colors cursor-pointer"
               :class="copied ? 'text-green-400' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'"
-              x-text="copied ? 'Copied!' : 'Copy code'">Copy code</button>
+              x-text="copied ? gettext('Copied!') : gettext('Copy code')">{% translate "Copy code" %}</button>
 
       <a href="https://trakt.tv/activate/{{ user_code }}"
          target="_blank"
          rel="noopener noreferrer"
          class="block w-full px-4 py-2 mb-3 text-sm rounded-md transition-colors bg-indigo-600 text-white hover:bg-indigo-700">
-        Open {{ verification_url }}
+        {% blocktranslate %}Open {{ verification_url }}{% endblocktranslate %}
       </a>
 
       <div class="flex items-center justify-center gap-2 text-sm text-[var(--color-text-muted)] mb-4"
@@ -36,11 +37,11 @@
            hx-trigger="every {{ interval }}s"
            hx-swap="none">
         {% include "app/icons/pulse.svg" with classes="w-4 h-4" %}
-        <span>Waiting for you to authorize Floppy…</span>
+        <span>{% translate "Waiting for you to authorize Floppy…" %}</span>
       </div>
 
       <a href="{{ cancel_url }}"
-         class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]">Cancel</a>
+         class="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]">{% translate "Cancel" %}</a>
     </div>
   </div>
 {% endblock content %}

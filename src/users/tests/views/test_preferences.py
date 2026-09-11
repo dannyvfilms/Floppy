@@ -106,28 +106,43 @@ class PreferencesViewTests(TestCase):
         )
 
     def test_tracking_dropdown_labels_are_valid_alpine_expressions(self):
-        """Choice labels must not contain template whitespace in x-data."""
+        """Localized choice labels remain valid gettext calls without newlines."""
         self.user.quick_season_update_mobile = "next_episode"
         self.user.save(update_fields=["quick_season_update_mobile"])
 
-        response = self.client.get(reverse("preferences"))
-        soup = BeautifulSoup(response.content, "html.parser")
+        labels_by_language = {
+            "en": ("Next Episode button only", "2 weeks"),
+            "de": ("Nur Schaltfläche für die nächste Folge", "2 Wochen"),
+        }
+        for language, (quick_label, session_label) in labels_by_language.items():
+            with self.subTest(language=language):
+                self.user.ui_language = language
+                self.user.save(update_fields=["ui_language"])
+                response = self.client.get(reverse("preferences"))
+                self.assertEqual(response.status_code, 200)
+                soup = BeautifulSoup(response.content, "html.parser")
 
-        quick_input = soup.find("input", {"name": "quick_season_update_mobile"})
-        quick_control = quick_input.find_parent("div", class_="relative")
-        self.assertIn(
-            "selectedValue: 'next_episode', selectedLabel: 'Next Episode button only'",
-            quick_control["x-data"],
-        )
-        self.assertNotIn("selectedLabel: '\n", quick_control["x-data"])
-
-        session_input = soup.find("input", {"name": "session_duration"})
-        session_control = session_input.find_parent("div", class_="relative")
-        self.assertIn(
-            "selectedLabel: '2 weeks'",
-            session_control["x-data"],
-        )
-        self.assertNotIn("selectedLabel: '\n", session_control["x-data"])
+                controls = (
+                    ("quick_season_update_mobile", "next_episode", quick_label),
+                    ("session_duration", "1209600", session_label),
+                )
+                for field, value, label in controls:
+                    with self.subTest(field=field):
+                        field_input = soup.find("input", {"name": field})
+                        control = field_input.find_parent("div", class_="relative")
+                        expression = control["x-data"]
+                        self.assertIn(f"selectedValue: '{value}'", expression)
+                        self.assertIn(
+                            f"selectedLabel: gettext('{label}')",
+                            expression,
+                        )
+                        # A JavaScript string literal cannot contain a raw newline.
+                        # Keep the original whitespace-regression guard inside the
+                        # gettext wrapper now used for localized Alpine labels.
+                        self.assertRegex(
+                            expression,
+                            r"selectedLabel: gettext\('[^'\r\n]*'\)",
+                        )
 
     def test_preferences_save_bar_renders_with_dirty_tracking_and_a11y(self):
         """Regression test for #796.

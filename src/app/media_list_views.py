@@ -5,6 +5,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from types import SimpleNamespace
 
 from django.apps import apps as django_apps
 from django.conf import settings
@@ -25,7 +26,9 @@ from app.columns import (
     resolve_default_column_config,
     sanitize_column_prefs,
 )
+from app.media_list_entry_grouping import entry_grouping_is_separate
 from app.media_list_filters import (
+    MediaListFilters,
     apply_media_list_collection_filter,
     apply_media_list_progress_filter,
     apply_media_list_rating_filter,
@@ -34,6 +37,7 @@ from app.media_list_filters import (
 from app.media_list_filters import (
     normalize_completed_date_filter as _normalize_completed_date_filter,
 )
+from app.media_list_pagination import can_paginate_in_sql
 from app.models import (
     TV,
     BasicMedia,
@@ -51,6 +55,7 @@ from app.search_views import _mark_grouped_anime_route
 from app.services import metadata_resolution
 from app.templatetags import app_tags
 from app.tv_sort import _sort_tv_media_by_time_left
+from lists import smart_rules
 from users.models import (
     MediaSortChoices,
     MediaStatusChoices,
@@ -616,7 +621,32 @@ def build_filter_data_from_items(
         "show_formats": False,
         "show_authors": False,
         "show_providers": False,
+        "relative_date_units": [
+            {"value": value, "label": label}
+            for value, label in smart_rules.RELATIVE_DATE_UNIT_CHOICES
+        ],
     }
+
+
+def build_filter_data_from_item_values(
+    item_values,
+    *,
+    collection_formats_by_item_id=None,
+    collection_platforms_by_item_id=None,
+    region=None,
+    pinned_providers=None,
+    include_providers=True,
+):
+    """Build filter data from ``Item.values()`` rows without ORM hydration."""
+    projected_items = (SimpleNamespace(**row) for row in item_values)
+    return build_filter_data_from_items(
+        projected_items,
+        collection_formats_by_item_id=collection_formats_by_item_id,
+        collection_platforms_by_item_id=collection_platforms_by_item_id,
+        region=region,
+        pinned_providers=pinned_providers,
+        include_providers=include_providers,
+    )
 
 
 def _build_media_list_tag_data(user, media_items):
@@ -993,6 +1023,24 @@ def media_list(request, media_type):
     completed_date_to = _normalize_completed_date_filter(
         request.GET.get("completed_date_to"),
     )
+    # "Completed in the last N units" is relative, so resolve it per request.
+    # Same helper the smart-list rules use, to keep one definition of the window.
+    # The raw amount/unit go back to the template so the choice round-trips;
+    # only the filtering below sees the resolved dates.
+    completed_window_raw = {
+        "completed_date_within": request.GET.get("completed_date_within", ""),
+        "completed_date_within_unit": request.GET.get("completed_date_within_unit", ""),
+    }
+    completed_window = smart_rules.resolve_relative_date_windows(completed_window_raw)
+    completed_date_within = ""
+    completed_date_within_unit = "days"
+    if completed_window.get("completed_date_from"):
+        completed_date_from = completed_window["completed_date_from"]
+        completed_date_to = completed_window["completed_date_to"]
+        completed_date_within = str(completed_window_raw["completed_date_within"]).strip()
+        completed_date_within_unit = smart_rules.normalize_relative_unit(
+            completed_window_raw["completed_date_within_unit"],
+        )
     release_filter = (request.GET.get("release") or "all").strip().lower()
     valid_release_filters = {"all", "released", "not_released"}
     if release_filter not in valid_release_filters:
@@ -1181,6 +1229,44 @@ def media_list(request, media_type):
         "tag_excluded_ids": tag_excluded_ids,
     }
     provider_media_types = PROVIDER_MEDIA_TYPES
+    sql_media_filters = MediaListFilters(
+        statuses=tuple(
+            value for value in status_filter if value != MEDIA_LIST_NO_STATUS
+        ),
+        include_no_status=MEDIA_LIST_NO_STATUS in status_filter,
+        search=search_query,
+        rating=rating_filter,
+        collection=collection_filter,
+        progress=progress_filter,
+        genre=genre_filter,
+        implied_genre=implied_genre_filter,
+        year=year_filter,
+        completed_date_from=completed_date_from,
+        completed_date_to=completed_date_to,
+        release=release_filter,
+        source=source_filter,
+        media_status=media_status_filter,
+        language=language_filter,
+        country=country_filter,
+        platforms=platform_values,
+        platform_mode=platform_mode,
+        origin=origin_filter,
+        format=format_filter,
+        author=author_filter,
+        provider=provider_filter,
+        provider_region=watch_provider_region or "",
+        pinned_providers=tuple(request.user.pinned_watch_providers or ()),
+        tags=tag_values,
+        tag_mode=tag_mode,
+        sort=sort_filter,
+        direction=direction,
+        media_type=media_type,
+    )
+    use_sql_media_pagination = can_paginate_in_sql(
+        sql_media_filters,
+        media_type,
+        sort_filter,
+    ) and not entry_grouping_is_separate()
 
     anime_library_mode = getattr(
         request.user,
@@ -1581,9 +1667,160 @@ def media_list(request, media_type):
     # two caches are written together on every rebuild, so a filter_data miss
     # here means the order cache is stale relative to it and both should be
     # rebuilt together rather than drifting apart.
+    _sql_media_page = None
     _media_list_full = None
     _cached_media_list_order = None
-    if _media_list_cached is None:
+    if use_sql_media_pagination:
+        items_per_page = 32
+        safe_page = max(page, 1)
+
+        def _load_sql_page(offset):
+            return BasicMedia.objects.get_media_list(
+                user=request.user,
+                media_type=media_type,
+                status_filter=tracked_status_filter,
+                sort_filter=query_sort_filter,
+                search=search_query,
+                direction=direction,
+                list_sql_filters=list_sql_filters,
+                sql_limit=items_per_page,
+                sql_offset=offset,
+            )
+
+        page_media, page_total = _load_sql_page((safe_page - 1) * items_per_page)
+        page_paginator = Paginator(range(page_total), items_per_page)
+        media_page = page_paginator.get_page(safe_page)
+        # Paginator.get_page() clamps an out-of-range request to the last page;
+        # repeat only that one narrow SQL slice so the rendered page keeps the
+        # existing Django pagination behavior.
+        if media_page.number != safe_page:
+            page_media, page_total = _load_sql_page(
+                (media_page.number - 1) * items_per_page
+            )
+            page_paginator = Paginator(range(page_total), items_per_page)
+            media_page = page_paginator.get_page(media_page.number)
+        media_page.object_list = [
+            MediaListEntry.from_media(media) for media in page_media
+        ]
+        _sql_media_page = media_page
+        media_list = []
+        _media_list_full = []
+
+        if filter_data is None:
+            filter_data_rows = list(
+                BasicMedia.objects.get_media_list_item_values(
+                    user=request.user,
+                    media_type=media_type,
+                    status_filter=tracked_status_filter,
+                    search=search_query,
+                    list_sql_filters=list_sql_filters,
+                ),
+            )
+            if media_type == MediaTypes.GAME.value and platform_values:
+                filter_data_filters = {
+                    **list_sql_filters,
+                    "platform_values": (),
+                    "platform_mode": "or",
+                }
+                filter_data_rows = list(
+                    BasicMedia.objects.get_media_list_item_values(
+                        user=request.user,
+                        media_type=media_type,
+                        status_filter=tracked_status_filter,
+                        search=search_query,
+                        list_sql_filters=filter_data_filters,
+                    ),
+                )
+
+            item_ids = {row["id"] for row in filter_data_rows}
+            if media_type == MediaTypes.GAME.value and item_ids:
+                for item_id, collection_platform in CollectionEntry.objects.filter(
+                    user=request.user,
+                    item_id__in=item_ids,
+                ).values_list("item_id", "resolution"):
+                    platform_value = str(collection_platform or "").strip()
+                    if platform_value:
+                        collection_platforms_by_item_id[item_id].add(platform_value)
+            if media_type in AUTHOR_MEDIA_TYPES and item_ids:
+                for item_id, collection_format in (
+                    CollectionEntry.objects.filter(
+                        user=request.user,
+                        item_id__in=item_ids,
+                    )
+                    .exclude(media_type="")
+                    .values_list("item_id", "media_type")
+                ):
+                    normalized_collection_format = _normalize_filter_value(
+                        collection_format
+                    )
+                    if normalized_collection_format:
+                        collection_formats_by_item_id[item_id].add(
+                            normalized_collection_format
+                        )
+
+            filter_data = build_filter_data_from_item_values(
+                filter_data_rows,
+                collection_formats_by_item_id=collection_formats_by_item_id,
+                collection_platforms_by_item_id=collection_platforms_by_item_id,
+                region=watch_provider_region,
+                pinned_providers=request.user.pinned_watch_providers,
+                include_providers=media_type in provider_media_types,
+            )
+            filter_data["show_languages"] = media_type in (
+                MediaTypes.TV.value,
+                MediaTypes.MOVIE.value,
+                MediaTypes.ANIME.value,
+                MediaTypes.PODCAST.value,
+            )
+            filter_data["show_countries"] = media_type in (
+                MediaTypes.TV.value,
+                MediaTypes.MOVIE.value,
+                MediaTypes.ANIME.value,
+                MediaTypes.PODCAST.value,
+            )
+            filter_data["show_platforms"] = media_type == MediaTypes.GAME.value
+            filter_data["show_origins"] = media_type == MediaTypes.MUSIC.value
+            filter_data["show_formats"] = media_type in AUTHOR_MEDIA_TYPES
+            filter_data["show_authors"] = media_type in AUTHOR_MEDIA_TYPES
+            filter_data["show_providers"] = media_type in provider_media_types and bool(
+                (watch_provider_region and watch_provider_region != "UNSET")
+                or request.user.pinned_watch_providers
+            )
+            filter_data["show_progress"] = media_type in PROGRESS_MEDIA_TYPES
+
+            tag_rows = filter_data_rows
+            if tag_included_ids is not None or tag_excluded_ids is not None:
+                tag_free_filters = {
+                    **list_sql_filters,
+                    "tag_included_ids": None,
+                    "tag_excluded_ids": None,
+                }
+                tag_rows = list(
+                    BasicMedia.objects.get_media_list_item_values(
+                        user=request.user,
+                        media_type=media_type,
+                        status_filter=tracked_status_filter,
+                        search=search_query,
+                        list_sql_filters=tag_free_filters,
+                    ),
+                )
+            filter_data.update(
+                _build_media_list_tag_data(
+                    request.user,
+                    [SimpleNamespace(**row) for row in tag_rows],
+                ),
+            )
+            if _media_list_filter_cache_key:
+                cache.set(
+                    _media_list_filter_cache_key,
+                    filter_data,
+                    cache_utils.MEDIA_LIST_FILTER_CACHE_TTL,
+                )
+                cache_utils.register_media_list_cache_key(
+                    request.user.id,
+                    _media_list_filter_cache_key,
+                )
+    elif _media_list_cached is None:
         media_queryset = BasicMedia.objects.get_media_list(
             user=request.user,
             media_type=media_type,
@@ -2118,7 +2355,9 @@ def media_list(request, media_type):
     else:
         # Paginate results normally
         items_per_page = 32
-        if _cached_media_list_order is not None:
+        if _sql_media_page is not None:
+            media_page = _sql_media_page
+        elif _cached_media_list_order is not None:
             # Fast path: paginate the compact cached order and hydrate only
             # this page's rows from the DB — no library-wide materialization.
             paginator = Paginator(_cached_media_list_order, items_per_page)
@@ -2194,8 +2433,10 @@ def media_list(request, media_type):
         "current_genre": genre_filter,
         "current_implied_genre": implied_genre_filter,
         "current_year": year_filter,
-        "current_completed_date_from": completed_date_from,
-        "current_completed_date_to": completed_date_to,
+        "current_completed_date_from": "" if completed_date_within else completed_date_from,
+        "current_completed_date_to": "" if completed_date_within else completed_date_to,
+        "current_completed_date_within": completed_date_within,
+        "current_completed_date_within_unit": completed_date_within_unit,
         "current_release": release_filter,
         "current_source": source_filter,
         "current_media_status": media_status_filter,

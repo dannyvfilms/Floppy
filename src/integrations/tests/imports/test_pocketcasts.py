@@ -532,6 +532,80 @@ class PocketCastsImportFlowTests(TestCase):
         self.assertEqual(statuses["uuid-inprogress"], Status.IN_PROGRESS.value)
         self.assertNotIn("uuid-unplayed", statuses)
 
+    def test_import_keeps_malformed_catalog_episode_and_continues(self):
+        """Invalid provider numbering must not abort the rest of the import."""
+        podcast_list = {
+            "podcasts": [
+                {
+                    "uuid": "show-1",
+                    "title": "Test Show",
+                    "author": "Test Author",
+                    "description": "",
+                    "url": "",
+                }
+            ],
+        }
+        play_states = {
+            "uuid-valid": {
+                "uuid": "uuid-valid",
+                "playingStatus": 3,
+                "playedUpTo": 1800,
+                "duration": 1800,
+            },
+        }
+        metadata = {
+            "uuid-moved": {
+                "uuid": "uuid-moved",
+                "title": "This podcast has moved",
+                "published": "2026-01-01T00:00:00Z",
+                "duration": 0,
+                "season": -1,
+                "number": -1,
+                "url": "",
+            },
+            "uuid-valid": {
+                "uuid": "uuid-valid",
+                "title": "Valid Episode",
+                "published": "2026-01-02T00:00:00Z",
+                "duration": 1800,
+                "season": 1,
+                "number": 2,
+                "url": "https://example.com/valid.mp3",
+            },
+        }
+
+        with (
+            self._artwork_patches(),
+            patch.object(PocketCastsImporter, "_ensure_valid_token"),
+            patch.object(PocketCastsImporter, "_get_access_token", return_value="fake"),
+            patch(
+                "integrations.pocketcasts_api.get_podcast_list",
+                return_value=podcast_list,
+            ),
+            patch.object(
+                PocketCastsImporter, "_fetch_show_play_states", return_value=play_states
+            ),
+            patch.object(
+                PocketCastsImporter,
+                "_fetch_show_full_metadata",
+                return_value=metadata,
+            ),
+        ):
+            importer = PocketCastsImporter(self.user, "new")
+            importer.import_data()
+
+        show = PodcastShow.objects.get(podcast_uuid="show-1")
+        moved_episode = PodcastEpisode.objects.get(
+            show=show, episode_uuid="uuid-moved"
+        )
+        self.assertIsNone(moved_episode.season_number)
+        self.assertIsNone(moved_episode.episode_number)
+        self.assertTrue(
+            Podcast.objects.filter(
+                user=self.user, item__media_id="uuid-valid"
+            ).exists()
+        )
+
     def test_ensure_show_repairs_authenticated_image_url(self):
         """Re-imports replace old Pocket Casts API image URLs with public URLs."""
         PodcastShow.objects.create(
@@ -931,6 +1005,53 @@ class PocketCastsIdentityAmbiguityTests(TestCase):
 
         self.assertEqual(result["episode"].id, episode.id)
         self.assertEqual(PodcastEpisode.objects.filter(show=self.show).count(), 1)
+
+    def test_sync_catalog_episode_clears_invalid_numbers_for_new_episode(self):
+        """Negative provider sentinels are stored as unknown numbering."""
+        published = datetime(2025, 1, 1, tzinfo=UTC)
+        result = self.importer._sync_catalog_episode(
+            {
+                "uuid": "uuid-invalid-numbers",
+                "podcastUuid": "show-1",
+                "title": "Moved Feed Notice",
+                "published": int(published.timestamp()),
+                "episodeSeason": -1,
+                "episodeNumber": -1,
+            },
+            show=self.show,
+        )
+
+        self.assertIsNone(result["episode"].season_number)
+        self.assertIsNone(result["episode"].episode_number)
+
+    def test_sync_catalog_episode_does_not_clear_valid_numbers_with_invalid_data(self):
+        """Invalid provider numbers never replace valid stored metadata."""
+        published = datetime(2025, 1, 1, tzinfo=UTC)
+        episode = PodcastEpisode.objects.create(
+            show=self.show,
+            episode_uuid="uuid-existing",
+            title="Moved Feed Notice",
+            published=published,
+            episode_number=4,
+            season_number=2,
+        )
+
+        result = self.importer._sync_catalog_episode(
+            {
+                "uuid": "uuid-new",
+                "podcastUuid": "show-1",
+                "title": "Moved Feed Notice",
+                "published": int(published.timestamp()),
+                "episodeSeason": -1,
+                "episodeNumber": -1,
+            },
+            show=self.show,
+        )
+
+        episode.refresh_from_db()
+        self.assertEqual(result["episode"].id, episode.id)
+        self.assertEqual(episode.season_number, 2)
+        self.assertEqual(episode.episode_number, 4)
 
 
 class PocketCastsCleanupDuplicatesTests(TestCase):

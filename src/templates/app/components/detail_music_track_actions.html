@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags user_tags %}
 
 <div id="music-track-actions-{{ track_data.track.id }}"
@@ -7,7 +9,7 @@
     {# Lists button #}
     <div x-data="{ listsOpen: false }">
       <button class="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full transition duration-300 cursor-pointer"
-              title="Add to custom lists"
+              title="{% translate "Add to custom lists" %}"
               hx-get="{% media_view_url 'lists_modal' track_data.music.item %}"
               hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
               hx-target="#lists-modal-{{ track_data.track.id }}"
@@ -30,7 +32,7 @@
     {# History button #}
     <div x-data="{ historyOpen: false }">
       <button class="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-full transition duration-300 cursor-pointer"
-              title="View your activity history"
+              title="{% translate "View your activity history" %}"
               hx-get="{% media_view_url 'history_modal' track_data.music.item %}"
               hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
               hx-target="#history-modal-{{ track_data.track.id }}"

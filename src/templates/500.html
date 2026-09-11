@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load static %}
 {% load app_tags %}
 
 {% block title %}
-  {{ error_page_title|default:"Server Error" }} - Floppy
+  {% translate error_page_title|default:"Server Error" as translated_error_title %}{% blocktranslate with value1=translated_error_title %}{{ value1 }} - Floppy{% endblocktranslate %}
 {% endblock title %}
 
 {% block extra_head %}
@@ -16,18 +18,18 @@
     <div class="text-center max-w-md">
       <div class="mb-6">
         <div class="text-9xl font-bold text-red-500">{{ error_status_code|default:"500" }}</div>
-        <h1 class="text-3xl font-bold mt-4 mb-3">{{ error_heading|default:"Something Went Wrong" }}</h1>
+        <h1 class="text-3xl font-bold mt-4 mb-3">{% translate error_heading|default:_("Something Went Wrong") %}</h1>
         <p class="text-[var(--color-text-muted)] mb-4">
           {% if error_message %}
             {{ error_message }}
           {% else %}
-            We're sorry, but there was an error processing your request.
+            {% translate "We're sorry, but there was an error processing your request." %}
           {% endif %}
         </p>
         {% if error_support_text %}
           <div class="mb-4 rounded-lg border border-amber-400/30 bg-amber-400/10 p-4 text-left">
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-200/80">
-              {{ error_support_title|default:"Provider note" }}
+              {% translate error_support_title|default:_("Provider note") %}
             </p>
             <p class="mt-2 text-sm leading-6 text-amber-50">
               {{ error_support_text }}
@@ -35,7 +37,7 @@
             {% if error_support_url %}
               <a href="{{ error_support_url }}"
                  class="mt-3 inline-flex items-center gap-2 text-sm font-medium text-amber-200 hover:text-amber-100 hover:underline">
-                <span>{{ error_support_link_label|default:"Open documentation" }}</span>
+                <span>{% translate error_support_link_label|default:_("Open documentation") %}</span>
                 {% include "app/icons/external-link.svg" with classes="h-4 w-4" %}
               </a>
             {% endif %}
@@ -43,20 +45,20 @@
         {% endif %}
         {% include "includes/error_report_panel.html" %}
         <p class="text-sm text-[var(--color-text-muted)] mb-6">
-          If you believe this was a bug, please <a href="https://github.com/dannyvfilms/Floppy/issues"
-    class="text-[var(--color-link)] hover:underline">report the issue.</a>
+          {% translate "If you believe this was a bug, please" %} <a href="https://github.com/dannyvfilms/Floppy/issues"
+    class="text-[var(--color-link)] hover:underline">{% translate "report the issue." %}</a>
         </p>
       </div>
       <div class="flex flex-col sm:flex-row gap-4 justify-center">
         <a href="{{ request.path }}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}"
            class="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
           {% include "app/icons/circle-spinning-counter-clockwise.svg" with classes="w-5 h-5" %}
-          <span>Try Again</span>
+          <span>{% translate "Try Again" %}</span>
         </a>
         <a href="{% url 'home' %}"
            class="flex items-center justify-center gap-2 px-6 py-3 bg-[var(--color-surface-strong)] text-[var(--color-text)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
           {% include "app/icons/house.svg" with classes="w-5 h-5" %}
-          <span>Back to Home</span></a>
+          <span>{% translate "Back to Home" %}</span></a>
       </div>
     </div>
   </div>

@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 from django.urls import reverse
 
+from integrations.upload_staging import discard_staged_upload
+
 from .base import FloppyApiTestCase
 
 
@@ -75,7 +77,9 @@ class ImportDispatchTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.ACCEPTED)
         self.assertEqual(response.json()["task_id"], "csv-task-1")
-        self.assertIn("file", mock_delay.call_args.kwargs)
+        queued = mock_delay.call_args.kwargs["file"]
+        self.addCleanup(discard_staged_upload, queued)
+        self.assertTrue(queued.endswith(".csv"))
 
     def test_file_missing_rejected(self):
         """File services without an upload return 400."""

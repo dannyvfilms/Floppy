@@ -1681,8 +1681,43 @@ def media_details(
         MediaTypes.MOVIE.value,
         MediaTypes.ANIME.value,
     ]:
+        watch_provider_region = (
+            request.user.watch_provider_region
+            if request.user.is_authenticated
+            else None
+        )
         watch_provider_payload = media_metadata.get("providers")
+        tmdb_media_id = None
+        tmdb_media_type = media_type
         if (
+            render_secondary_only
+            and media_type == MediaTypes.ANIME.value
+            and source == Sources.MAL.value
+            and not watch_provider_payload
+            and watch_provider_region != "UNSET"
+        ):
+            try:
+                identity = metadata_resolution.resolve_mal_tmdb_identity(media_id)
+            except (services.ProviderAPIError, TypeError, ValueError) as error:
+                logger.warning(
+                    "Skipping watch providers for MAL anime media_id=%s: "
+                    "mapping resolution failed: %s",
+                    media_id,
+                    exception_summary(error),
+                )
+                identity = None
+            if identity:
+                tmdb_media_id = identity.media_id
+                tmdb_media_type = identity.media_type
+                if detail_item:
+                    metadata_resolution.persist_mal_tmdb_identity(
+                        detail_item,
+                        identity,
+                        persistence_mode="best_effort",
+                        retry_max_retries=detail_db_max_retries,
+                        on_deferred=_mark_detail_persistence_deferred,
+                    )
+        elif (
             render_secondary_only
             and detail_item
             and media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value)
@@ -1696,29 +1731,30 @@ def media_details(
                 retry_max_retries=detail_db_max_retries,
                 on_deferred=_mark_detail_persistence_deferred,
             )
-            if tmdb_media_id:
-                try:
-                    tmdb_metadata = services.get_media_metadata(
-                        media_type,
-                        tmdb_media_id,
-                        Sources.TMDB.value,
-                        language=metadata_resolution.metadata_language_default(
-                            request.user, detail_item
-                        ),
-                    )
-                except services.ProviderAPIError:
-                    # Watch providers are TMDB-only enrichment. A dead TMDB
-                    # mapping must not take down a page the tracking provider
-                    # can render on its own.
-                    logger.warning(
-                        "Skipping watch providers for %s media_id=%s: mapped TMDB "
-                        "ID %s could not be fetched",
-                        source,
-                        media_id,
-                        tmdb_media_id,
-                    )
-                else:
-                    watch_provider_payload = tmdb_metadata.get("providers")
+
+        if tmdb_media_id:
+            try:
+                tmdb_metadata = services.get_media_metadata(
+                    tmdb_media_type,
+                    tmdb_media_id,
+                    Sources.TMDB.value,
+                    language=metadata_resolution.metadata_language_default(
+                        request.user, detail_item
+                    ),
+                )
+            except services.ProviderAPIError:
+                # Watch providers are TMDB-only enrichment. A dead TMDB
+                # mapping must not take down a page the tracking provider
+                # can render on its own.
+                logger.warning(
+                    "Skipping watch providers for %s media_id=%s: mapped TMDB "
+                    "ID %s could not be fetched",
+                    source,
+                    media_id,
+                    tmdb_media_id,
+                )
+            else:
+                watch_provider_payload = tmdb_metadata.get("providers")
 
         if (
             detail_item
@@ -1736,9 +1772,7 @@ def media_details(
         watch_providers = (
             tmdb.filter_providers(
                 watch_provider_payload,
-                request.user.watch_provider_region
-                if request.user.is_authenticated
-                else None,
+                watch_provider_region,
             )
             if watch_provider_payload is not None
             else None
@@ -1836,6 +1870,7 @@ def media_details(
         "user": request.user,
         "media": media_metadata,
         "media_type": media_type,
+        "match_item": detail_item,
         "authors_linked": authors_linked,
         "author_detail_keys": author_detail_keys,
         "studios_linked": studios_linked,

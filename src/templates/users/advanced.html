@@ -1,4 +1,6 @@
 {% extends "users/base.html" %}
+{% load i18n %}
+
 
 {% load app_tags %}
 {% load socialaccount %}
@@ -6,7 +8,7 @@
 {% load server_port_tags %}
 
 {% block title %}
-  Advanced - Floppy
+  {% translate "Advanced - Floppy" %}
 {% endblock title %}
 
 {% block settings_content %}
@@ -15,32 +17,30 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-5">
         {% include "app/icons/vertical-sliders.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-        <h2 class="text-xl font-semibold">Advanced</h2>
+        <h2 class="text-xl font-semibold">{% translate "Advanced" %}</h2>
       </div>
 
       <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
         <div class="flex items-center mb-3">
           {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-          <h3 class="text-base font-medium">Logs &amp; Bug Reports</h3>
+          <h3 class="text-base font-medium">{% translate "Logs & Bug Reports" %}</h3>
         </div>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-          Download recent application logs with tokens, passwords, and API keys automatically
-          redacted — safe to attach to a bug report.
+          {% translate "Download recent application logs with tokens, passwords, and API keys automatically redacted — safe to attach to a bug report." %}
           <br>
-          If this Floppy instance is shared with other users, the logs may still include their
-          activity, just not their secrets.
+          {% translate "If this Floppy instance is shared with other users, the logs may still include their activity, just not their secrets." %}
         </p>
         <div class="flex flex-wrap gap-3">
           <a href="{% url 'export_logs' %}"
              class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm">
             {% include "app/icons/vertical-sliders.svg" with classes="w-4 h-4 mr-2" %}
-            Download Sanitized Logs
+            {% translate "Download Sanitized Logs" %}
           </a>
           <a href="https://github.com/dannyvfilms/Floppy/issues/new?title={{ bug_report_title|urlencode }}&body={{ bug_report_body|urlencode }}"
              target="_blank"
              rel="noopener noreferrer"
              class="flex items-center px-4 py-2 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm">
-            File a Bug Report
+            {% translate "File a Bug Report" %}
           </a>
         </div>
       </div>
@@ -48,28 +48,23 @@
       <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
         <div class="flex items-center mb-3">
           {% include "app/icons/image.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-          <h3 class="text-base font-medium">External Image Caching</h3>
+          <h3 class="text-base font-medium">{% translate "External Image Caching" %}</h3>
         </div>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-          Proxy artwork from approved metadata providers through Floppy so browsers and API
-          clients do not need direct access to those providers. Cached images use disk space and
-          are removed automatically after 30 days without access.
+          {% translate "Proxy artwork from approved metadata providers through Floppy so browsers and API clients do not need direct access to those providers. Cached images use disk space and are removed automatically after 30 days without access." %}
         </p>
         <div class="grid gap-3 sm:grid-cols-2 mb-4 text-sm">
           <div class="rounded-md bg-[var(--color-surface)] px-4 py-3">
-            <span class="block text-xs text-[var(--color-text-muted)]">Cached images</span>
+            <span class="block text-xs text-[var(--color-text-muted)]">{% translate "Cached images" %}</span>
             <span class="block font-medium">{{ image_cache_stats.count }}</span>
           </div>
           <div class="rounded-md bg-[var(--color-surface)] px-4 py-3">
-            <span class="block text-xs text-[var(--color-text-muted)]">Disk usage</span>
+            <span class="block text-xs text-[var(--color-text-muted)]">{% translate "Disk usage" %}</span>
             <span class="block font-medium">{{ image_cache_size }}</span>
           </div>
         </div>
         <p class="text-xs text-[var(--color-text-muted)] mb-4">
-          Only known provider image hosts are cached (including TMDB, TVDB, MyAnimeList, IGDB,
-          Open Library, Hardcover, ComicVine, BoardGameGeek, MusicBrainz, Pocket Casts, iTunes,
-          Kitsu, and AniList). Manual URLs, local services, placeholders, and unknown hosts stay
-          unchanged.
+          {% translate "Only known provider image hosts are cached (including TMDB, TVDB, MyAnimeList, IGDB, Open Library, Hardcover, ComicVine, BoardGameGeek, MusicBrainz, Pocket Casts, iTunes, Kitsu, and AniList). Manual URLs, local services, placeholders, and unknown hosts stay unchanged." %}
         </p>
         {% if request.user.is_superuser %}
           <div class="flex flex-wrap items-center gap-3">
@@ -81,26 +76,26 @@
                        value="1"
                        {% if image_caching_enabled %}checked{% endif %}
                        class="rounded border-gray-600 bg-[var(--color-surface)] text-indigo-600 focus:ring-indigo-500">
-                Enable external image caching
+                {% translate "Enable external image caching" %}
               </label>
               <button type="submit"
                       class="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm">
-                Save
+                {% translate "Save" %}
               </button>
             </form>
             <form method="post"
                   action="{% url 'clear_image_cache' %}"
-                  onsubmit="return window.confirm('Clear all cached external images? They will be downloaded again if caching remains enabled.');">
+                  onsubmit="return window.confirm(gettext('Clear all cached external images? They will be downloaded again if caching remains enabled.'));">
               {% csrf_token %}
               <button type="submit"
                       class="px-3 py-2 bg-red-600/10 border border-red-600/40 text-[var(--color-error-text)] rounded-md hover:bg-red-600/20 transition-colors text-sm">
-                Clear Image Cache
+                {% translate "Clear Image Cache" %}
               </button>
             </form>
           </div>
         {% else %}
-          <p class="text-sm text-[var(--color-text-muted)]">Only a superuser can change this setting or clear the cache.</p>
-          <p class="text-sm mt-1">Status: <span class="font-medium">{% if image_caching_enabled %}Enabled{% else %}Disabled{% endif %}</span></p>
+          <p class="text-sm text-[var(--color-text-muted)]">{% translate "Only a superuser can change this setting or clear the cache." %}</p>
+          <p class="text-sm mt-1">{% translate "Status:" %} <span class="font-medium">{% if image_caching_enabled %}{% translate "Enabled" %}{% else %}{% translate "Disabled" %}{% endif %}</span></p>
         {% endif %}
       </div>
 
@@ -108,13 +103,10 @@
            x-data="{ confirmOpen: false, pending: null, openConfirm(key) { this.pending = key; this.confirmOpen = true; }, closeConfirm() { this.confirmOpen = false; this.pending = null; }, }">
         <div class="flex items-center mb-3">
           {% include "app/icons/trashcan.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-          <h3 class="text-base font-medium">Cache Management</h3>
+          <h3 class="text-base font-medium">{% translate "Cache Management" %}</h3>
         </div>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-          Floppy caches computed pages (History, Statistics, Discover) and provider search
-          results so they load fast. If one looks stale or wrong, clearing it forces a
-          rebuild from your actual data — nothing about your library, watch history,
-          ratings, or lists is touched by any of these.
+          {% translate "Floppy caches computed pages (History, Statistics, Discover) and provider search results so they load fast. If one looks stale or wrong, clearing it forces a rebuild from your actual data — nothing about your library, watch history, ratings, or lists is touched by any of these." %}
         </p>
 
         <div class="grid gap-3 sm:grid-cols-2">
@@ -122,8 +114,8 @@
                   @click="openConfirm('search')"
                   class="flex items-start justify-between gap-3 px-4 py-3 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm cursor-pointer text-left">
             <span>
-              <span class="block font-medium">Search Cache</span>
-              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">Provider search results — shared instance-wide</span>
+              <span class="block font-medium">{% translate "Search Cache" %}</span>
+              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">{% translate "Provider search results — shared instance-wide" %}</span>
             </span>
             {% include "app/icons/trashcan.svg" with classes="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-text-muted)]" %}
           </button>
@@ -132,8 +124,8 @@
                   @click="openConfirm('history')"
                   class="flex items-start justify-between gap-3 px-4 py-3 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm cursor-pointer text-left">
             <span>
-              <span class="block font-medium">History Cache</span>
-              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">Your cached History page — just you</span>
+              <span class="block font-medium">{% translate "History Cache" %}</span>
+              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">{% translate "Your cached History page — just you" %}</span>
             </span>
             {% include "app/icons/trashcan.svg" with classes="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-text-muted)]" %}
           </button>
@@ -142,8 +134,8 @@
                   @click="openConfirm('statistics')"
                   class="flex items-start justify-between gap-3 px-4 py-3 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm cursor-pointer text-left">
             <span>
-              <span class="block font-medium">Statistics Cache</span>
-              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">Your cached Statistics page — just you</span>
+              <span class="block font-medium">{% translate "Statistics Cache" %}</span>
+              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">{% translate "Your cached Statistics page — just you" %}</span>
             </span>
             {% include "app/icons/trashcan.svg" with classes="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-text-muted)]" %}
           </button>
@@ -152,8 +144,8 @@
                   @click="openConfirm('discover')"
                   class="flex items-start justify-between gap-3 px-4 py-3 bg-[var(--color-surface)] border border-gray-600 rounded-md hover:border-indigo-500 transition-colors text-sm cursor-pointer text-left">
             <span>
-              <span class="block font-medium">Discover Cache</span>
-              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">Your recommendation rows &amp; taste profile — just you</span>
+              <span class="block font-medium">{% translate "Discover Cache" %}</span>
+              <span class="block text-xs text-[var(--color-text-muted)] mt-0.5">{% translate "Your recommendation rows & taste profile — just you" %}</span>
             </span>
             {% include "app/icons/trashcan.svg" with classes="w-4 h-4 shrink-0 mt-0.5 text-[var(--color-text-muted)]" %}
           </button>
@@ -164,7 +156,7 @@
                   @click="openConfirm('all')"
                   class="flex items-center px-4 py-2 bg-red-600/10 border border-red-600/40 text-[var(--color-error-text)] rounded-md hover:bg-red-600/20 transition-colors text-sm cursor-pointer">
             {% include "app/icons/warning.svg" with classes="w-4 h-4 mr-2" %}
-            Clear All Caches
+            {% translate "Clear All Caches" %}
           </button>
         </div>
 
@@ -210,28 +202,28 @@
                 <div class="p-6">
                   <div class="flex items-center gap-2 mb-3">
                     {% include "app/icons/warning.svg" with classes="w-5 h-5 text-[var(--color-warning-text)] shrink-0" %}
-                    <h3 class="text-lg font-semibold">Clear Search Cache?</h3>
+                    <h3 class="text-lg font-semibold">{% translate "Clear Search Cache?" %}</h3>
                   </div>
                   <p class="text-sm text-[var(--color-text-secondary)] mb-3">
-                    This is the one shared cache here — clearing it affects
-                    <strong>every user</strong> on this Floppy instance, not just you.
+                    {% translate "This is the one shared cache here — clearing it affects" %}
+                    <strong>{% translate "every user" %}</strong> {% translate "on this Floppy instance, not just you." %}
                   </p>
                   <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1 mb-5">
-                    <li>No data is lost — this only affects search/lookup results, not your library.</li>
+                    <li>{% translate "No data is lost — this only affects search/lookup results, not your library." %}</li>
                     <li>
-                      The next search anyone makes will be a bit slower while it re-fetches from TMDB, TVDB, and the other providers.
+                      {% translate "The next search anyone makes will be a bit slower while it re-fetches from TMDB, TVDB, and the other providers." %}
                     </li>
                   </ul>
                   <div class="flex justify-end gap-2">
                     <button type="button"
                             @click="closeConfirm()"
                             class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">
-                      Cancel
+                      {% translate "Cancel" %}
                     </button>
                     <button type="button"
                             @click="document.getElementById('clear-search-cache-form').submit()"
                             class="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 cursor-pointer">
-                      Clear Search Cache
+                      {% translate "Clear Search Cache" %}
                     </button>
                   </div>
                 </div>
@@ -241,23 +233,23 @@
                 <div class="p-6">
                   <div class="flex items-center gap-2 mb-3">
                     {% include "app/icons/warning.svg" with classes="w-5 h-5 text-[var(--color-warning-text)] shrink-0" %}
-                    <h3 class="text-lg font-semibold">Clear History Cache?</h3>
+                    <h3 class="text-lg font-semibold">{% translate "Clear History Cache?" %}</h3>
                   </div>
-                  <p class="text-sm text-[var(--color-text-secondary)] mb-3">Only affects your own account.</p>
+                  <p class="text-sm text-[var(--color-text-secondary)] mb-3">{% translate "Only affects your own account." %}</p>
                   <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1 mb-5">
-                    <li>Your watch history itself is not touched — this only clears the cached, day-by-day rendering of it.</li>
-                    <li>The History page will rebuild itself the next time you open it, which may take a moment the first time.</li>
+                    <li>{% translate "Your watch history itself is not touched — this only clears the cached, day-by-day rendering of it." %}</li>
+                    <li>{% translate "The History page will rebuild itself the next time you open it, which may take a moment the first time." %}</li>
                   </ul>
                   <div class="flex justify-end gap-2">
                     <button type="button"
                             @click="closeConfirm()"
                             class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">
-                      Cancel
+                      {% translate "Cancel" %}
                     </button>
                     <button type="button"
                             @click="document.getElementById('clear-history-cache-form').submit()"
                             class="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 cursor-pointer">
-                      Clear History Cache
+                      {% translate "Clear History Cache" %}
                     </button>
                   </div>
                 </div>
@@ -267,26 +259,26 @@
                 <div class="p-6">
                   <div class="flex items-center gap-2 mb-3">
                     {% include "app/icons/warning.svg" with classes="w-5 h-5 text-[var(--color-warning-text)] shrink-0" %}
-                    <h3 class="text-lg font-semibold">Clear Statistics Cache?</h3>
+                    <h3 class="text-lg font-semibold">{% translate "Clear Statistics Cache?" %}</h3>
                   </div>
-                  <p class="text-sm text-[var(--color-text-secondary)] mb-3">Only affects your own account.</p>
+                  <p class="text-sm text-[var(--color-text-secondary)] mb-3">{% translate "Only affects your own account." %}</p>
                   <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1 mb-5">
-                    <li>No underlying data is touched — only the cached charts/totals.</li>
+                    <li>{% translate "No underlying data is touched — only the cached charts/totals." %}</li>
                     <li>
-                      Unlike History, Statistics rebuilds in the background rather than on your next page load — expect placeholder
-                      <code class="px-1 py-0.5 bg-black/20 rounded">--</code> values for a bit until that finishes.
+                      {% translate "Unlike History, Statistics rebuilds in the background rather than on your next page load — expect placeholder" %}
+                      <code class="px-1 py-0.5 bg-black/20 rounded">--</code> {% translate "values for a bit until that finishes." %}
                     </li>
                   </ul>
                   <div class="flex justify-end gap-2">
                     <button type="button"
                             @click="closeConfirm()"
                             class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">
-                      Cancel
+                      {% translate "Cancel" %}
                     </button>
                     <button type="button"
                             @click="document.getElementById('clear-statistics-cache-form').submit()"
                             class="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 cursor-pointer">
-                      Clear Statistics Cache
+                      {% translate "Clear Statistics Cache" %}
                     </button>
                   </div>
                 </div>
@@ -296,25 +288,25 @@
                 <div class="p-6">
                   <div class="flex items-center gap-2 mb-3">
                     {% include "app/icons/warning.svg" with classes="w-5 h-5 text-[var(--color-warning-text)] shrink-0" %}
-                    <h3 class="text-lg font-semibold">Clear Discover Cache?</h3>
+                    <h3 class="text-lg font-semibold">{% translate "Clear Discover Cache?" %}</h3>
                   </div>
-                  <p class="text-sm text-[var(--color-text-secondary)] mb-3">Only affects your own account.</p>
+                  <p class="text-sm text-[var(--color-text-secondary)] mb-3">{% translate "Only affects your own account." %}</p>
                   <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1 mb-5">
                     <li>
-                      Your recommendation rows and taste profile get recomputed from scratch — rows may look different or take a moment to repopulate.
+                      {% translate "Your recommendation rows and taste profile get recomputed from scratch — rows may look different or take a moment to repopulate." %}
                     </li>
-                    <li>Shared provider data other users' Discover pages also draw on is not affected.</li>
+                    <li>{% translate "Shared provider data other users' Discover pages also draw on is not affected." %}</li>
                   </ul>
                   <div class="flex justify-end gap-2">
                     <button type="button"
                             @click="closeConfirm()"
                             class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">
-                      Cancel
+                      {% translate "Cancel" %}
                     </button>
                     <button type="button"
                             @click="document.getElementById('clear-discover-cache-form').submit()"
                             class="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700 cursor-pointer">
-                      Clear Discover Cache
+                      {% translate "Clear Discover Cache" %}
                     </button>
                   </div>
                 </div>
@@ -324,36 +316,34 @@
                 <div class="p-6">
                   <div class="flex items-center gap-2 mb-3">
                     {% include "app/icons/warning.svg" with classes="w-6 h-6 text-[var(--color-error-text)] shrink-0" %}
-                    <h3 class="text-lg font-semibold text-[var(--color-error-text)]">Clear All Caches?</h3>
+                    <h3 class="text-lg font-semibold text-[var(--color-error-text)]">{% translate "Clear All Caches?" %}</h3>
                   </div>
                   <p class="text-sm text-[var(--color-text-secondary)] mb-3 font-medium">
-                    This runs all four clears above at once: Search (instance-wide) plus your
-                    History, Statistics, and Discover caches.
+                    {% translate "This runs all four clears above at once: Search (instance-wide) plus your History, Statistics, and Discover caches." %}
                   </p>
                   <ul class="text-sm text-[var(--color-text-muted)] list-disc list-inside space-y-1.5 mb-5">
                     <li>
-                      Search results go stale for <strong>every user</strong> on this instance until re-fetched.
+                      {% translate "Search results go stale for" %} <strong>{% translate "every user" %}</strong> {% translate "on this instance until re-fetched." %}
                     </li>
-                    <li>Your History and Discover pages will look empty for a moment and rebuild as you browse them.</li>
+                    <li>{% translate "Your History and Discover pages will look empty for a moment and rebuild as you browse them." %}</li>
                     <li>
-                      Your Statistics page will show placeholder
-                      <code class="px-1 py-0.5 bg-black/20 rounded">--</code> values until a background task
-                      finishes rebuilding it — this is the slowest of the four to recover.
+                      {% translate "Your Statistics page will show placeholder" %}
+                      <code class="px-1 py-0.5 bg-black/20 rounded">--</code> {% translate "values until a background task finishes rebuilding it — this is the slowest of the four to recover." %}
                     </li>
                     <li>
-                      No watch history, ratings, lists, or tracked media is deleted by any of this — only cached, computed views of it.
+                      {% translate "No watch history, ratings, lists, or tracked media is deleted by any of this — only cached, computed views of it." %}
                     </li>
                   </ul>
                   <div class="flex justify-end gap-2">
                     <button type="button"
                             @click="closeConfirm()"
                             class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">
-                      Cancel
+                      {% translate "Cancel" %}
                     </button>
                     <button type="button"
                             @click="document.getElementById('clear-all-caches-form').submit()"
                             class="px-4 py-2 text-sm rounded-md bg-red-700 text-white hover:bg-red-800 font-medium cursor-pointer">
-                      Clear All Caches
+                      {% translate "Clear All Caches" %}
                     </button>
                   </div>
                 </div>
@@ -364,7 +354,7 @@
         </template>
       </div>
 
-      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6" x-data="{ open: false, confirmOpen: false, selectedMediaType: '', selectedMediaLabel: 'Choose a media type...', deleteConfirmation: '', deleteMetadata: false, options: [
+      <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6" x-data="{ open: false, confirmOpen: false, selectedMediaType: '', selectedMediaLabel: gettext('Choose a media type...'), deleteConfirmation: '', deleteMetadata: false, options: [
         {% for media_type in media_types %}
           { value: '{{ media_type|escapejs }}', label: '{{ media_type|media_type_readable_plural|escapejs }}' }
           {% if not forloop.last %},{% endif %}
@@ -373,16 +363,15 @@
         ] }">
         <div class="flex items-center mb-3">
           {% include "app/icons/warning.svg" with classes="w-5 h-5 text-[var(--color-error-text)] mr-2" %}
-          <h3 class="text-base font-medium text-[var(--color-error-text)]">Danger Zone</h3>
+          <h3 class="text-base font-medium text-[var(--color-error-text)]">{% translate "Danger Zone" %}</h3>
         </div>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-          Permanently delete every tracked entry for one media type in your account, including
-          its progress, ratings, notes, and history. This cannot be undone.
+          {% translate "Permanently delete every tracked entry for one media type in your account, including its progress, ratings, notes, and history. This cannot be undone." %}
         </p>
 
         <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div class="relative flex-1">
-            <label class="block text-[var(--color-text-secondary)] text-sm font-medium mb-2">Media type to delete</label>
+            <label class="block text-[var(--color-text-secondary)] text-sm font-medium mb-2">{% translate "Media type to delete" %}</label>
             <button type="button"
                     @click="open = !open"
                     @click.outside="open = false"
@@ -423,7 +412,7 @@
                   :class="selectedMediaType ? 'bg-red-600 text-white hover:bg-red-700 cursor-pointer' : 'bg-red-900/40 text-red-200/50 cursor-not-allowed'"
                   class="flex items-center justify-center px-4 py-2 text-sm rounded-md transition-colors whitespace-nowrap">
             {% include "app/icons/trashcan.svg" with classes="w-4 h-4 mr-2" %}
-            Delete Selected Type
+            {% translate "Delete Selected Type" %}
           </button>
         </div>
 
@@ -446,23 +435,21 @@
               <div class="p-6">
                 <div class="flex items-center gap-2 mb-3">
                   {% include "app/icons/warning.svg" with classes="w-5 h-5 text-[var(--color-error-text)] shrink-0" %}
-                  <h3 class="text-lg font-semibold text-[var(--color-error-text)]">Are you sure?</h3>
+                  <h3 class="text-lg font-semibold text-[var(--color-error-text)]">{% translate "Are you sure?" %}</h3>
                 </div>
                 <p class="text-sm text-[var(--color-text-secondary)] mb-3">
-                  You are about to permanently delete every tracked
+                  {% translate "You are about to permanently delete every tracked" %}
                   <strong x-text="selectedMediaLabel.toLowerCase()"></strong>
-                  entry in your account. This removes its progress, ratings, notes, and history.
+                  {% translate "entry in your account. This removes its progress, ratings, notes, and history." %}
                 </p>
                 <p x-show="selectedMediaType === 'music'"
                    x-cloak
                    class="text-sm text-[var(--color-text-secondary)] mb-3">
-                  For music this covers your whole library page: the followed artists and albums as
-                  well as the individual tracks and their play counts.
+                  {% translate "For music this covers your whole library page: the followed artists and albums as well as the individual tracks and their play counts." %}
                 </p>
                 <label class="flex items-center justify-between p-3 mb-3 bg-[var(--color-panel)] rounded-md cursor-pointer">
                   <span class="text-sm text-[var(--color-text-secondary)] pr-3">
-                    Also delete cached metadata (posters, cast/crew, and for music, artists &amp; albums)
-                    with no remaining tracked entries.
+                    {% translate "Also delete cached metadata (posters, cast/crew, and for music, artists & albums) with no remaining tracked entries." %}
                   </span>
                   <span class="relative inline-flex items-center shrink-0">
                     <input class="sr-only peer" type="checkbox" x-model="deleteMetadata">
@@ -471,12 +458,11 @@
                   </span>
                 </label>
                 <p x-show="deleteMetadata" x-cloak class="text-sm text-[var(--color-error-text)] mb-3">
-                  Metadata deletion also removes any custom list entries, collections, or calendar
-                  events still pointing at that now-untracked media.
+                  {% translate "Metadata deletion also removes any custom list entries, collections, or calendar events still pointing at that now-untracked media." %}
                 </p>
-                <p class="text-sm text-[var(--color-error-text)] font-medium mb-4">This action cannot be undone.</p>
+                <p class="text-sm text-[var(--color-error-text)] font-medium mb-4">{% translate "This action cannot be undone." %}</p>
                 <label class="block text-sm text-[var(--color-text-secondary)] mb-2">
-                  Type <strong>DELETE</strong> to confirm.
+                  {% translate "Type" %} <strong>DELETE</strong> {% translate "to confirm." %}
                 </label>
                 <input type="text"
                        x-model="deleteConfirmation"
@@ -486,13 +472,13 @@
                   <button type="button"
                           @click="confirmOpen = false; deleteConfirmation = ''"
                           class="px-4 py-2 text-sm rounded-md border border-gray-600 hover:border-gray-500 cursor-pointer">
-                    Cancel
+                    {% translate "Cancel" %}
                   </button>
                   <button type="button"
                           :disabled="deleteConfirmation !== 'DELETE'"
                           @click="document.getElementById('delete-media-type-form').submit()"
                           :class="deleteConfirmation === 'DELETE' ? 'bg-red-700 text-white hover:bg-red-800 cursor-pointer' : 'bg-red-900/40 text-red-200/50 cursor-not-allowed'"
-                          class="px-4 py-2 text-sm rounded-md transition-colors">Permanently Delete</button>
+                          class="px-4 py-2 text-sm rounded-md transition-colors">{% translate "Permanently Delete" %}</button>
                 </div>
               </div>
             </div>
@@ -504,18 +490,18 @@
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center">
             {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-            <h3 class="text-base font-medium">TMDB Proxy</h3>
+            <h3 class="text-base font-medium">{% translate "TMDB Proxy" %}</h3>
           </div>
           {% if tmdb_proxy_configured %}
-            <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Configured</span>
+            <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">{% translate "Configured" %}</span>
           {% else %}
-            <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Not configured</span>
+            <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Not configured" %}</span>
           {% endif %}
         </div>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-          If TMDB is blocked from this server, route TMDB requests through a proxy (HTTP or SOCKS5).
+          {% translate "If TMDB is blocked from this server, route TMDB requests through a proxy (HTTP or SOCKS5)." %}
           <br>
-          Leave blank and save to remove it.
+          {% translate "Leave blank and save to remove it." %}
         </p>
         <form method="post"
               action="{% url 'update_tmdb_proxy' %}"
@@ -524,10 +510,10 @@
           <input type="text"
                  name="tmdb_proxy_url"
                  class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                 placeholder="socks5://user:pass@host:port">
+                 placeholder="{% translate "socks5://user:pass@host:port" %}">
           <button type="submit"
                   class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-            Save
+            {% translate "Save" %}
           </button>
         </form>
       </div>

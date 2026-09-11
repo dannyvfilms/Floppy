@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% comment %}
   Reusable horizontal scrolling row with HTMX infinite-scroll loading.
 
@@ -54,7 +56,7 @@
                   hx-target="closest [data-home-row-wrapper]"
                   hx-swap="outerHTML"
                   data-home-row-sort-toggle="true"
-                  aria-label="Toggle sort direction for {{ row.title }}"
+                  aria-label="{% blocktranslate trimmed with value_1=row.title %}Toggle sort direction for {{ value_1 }}{% endblocktranslate %}"
                   class="home-row-heading-sort-form home-row-heading-sort-button inline-flex items-center ml-3.5 text-sm font-medium leading-none text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text-secondary)] focus:outline-none focus:ring-2 focus:ring-indigo-500 rounded-sm">
             <span class="home-row-heading-sort-label">{{ row.summary_inline }}</span>
             {% if row.direction == 'asc' %}
@@ -97,14 +99,14 @@
       <button type="button"
               data-scroll-dir="prev"
               data-scroll-target="media-grid-row-{{ row.row_id }}"
-              aria-label="Scroll left"
+              aria-label="{% translate "Scroll left" %}"
               class="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors opacity-0 pointer-events-none">
         {% include "app/icons/chevron-left.svg" with classes="w-5 h-5" %}
       </button>
       <button type="button"
               data-scroll-dir="next"
               data-scroll-target="media-grid-row-{{ row.row_id }}"
-              aria-label="Scroll right"
+              aria-label="{% translate "Scroll right" %}"
               class="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors">
         {% include "app/icons/chevron-right.svg" with classes="w-5 h-5" %}
       </button>
@@ -113,7 +115,7 @@
               class="flex items-center justify-center p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer ml-1"
               @click="open = !open"
               :aria-expanded="open.toString()"
-              aria-label="Toggle section">
+              aria-label="{% translate "Toggle section" %}">
         <div class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': open }">
           {% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}
         </div>
@@ -134,6 +136,10 @@
   <div id="media-grid-row-{{ row.row_id }}"
        class="flex flex-nowrap gap-4 overflow-x-auto pb-3 pr-2 home-row-scrollbar-hidden{% if 'square' in row.grid_class|default:'' %} items-start{% endif %}"
        data-home-row="true"
+       data-horizontal-drag="true"
+       tabindex="0"
+       role="region"
+       aria-label="{% firstof row.title row.title_main %}"
        data-loaded-count="{{ row.loaded_count }}"
        data-loading="false"
        data-row-id="{{ row.row_id }}"
@@ -154,7 +160,7 @@
   </div>
   {% endif %}
   {% if row.poll_for_covers %}
-    <p class="text-xs text-[var(--color-text-muted)] mt-1">Refreshing artwork...</p>
+    <p class="text-xs text-[var(--color-text-muted)] mt-1">{% translate "Refreshing artwork..." %}</p>
   {% endif %}
 </div>
 {% if collapse_key %}

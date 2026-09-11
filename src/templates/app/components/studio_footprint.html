@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% comment %}
   Studio Footprint — self-contained card with its own Time/Plays dropdown
   (mirrors Taste Signals' pattern) and media-type-filter awareness. Wraps
@@ -11,7 +13,7 @@
   Required context: studio_footprint (from stats_cast_crew.get_studio_footprint),
   studio_sort_by, selected_range_name, start_date_str, end_date_str.
 {% endcomment %}
-<div x-data="{
+{% translate "Time" as media_i18n_61 %}{% translate "Plays" as media_i18n_62 %}<div x-data="{
        open: false,
        selectedSort: '{{ studio_sort_by|default:"plays"|escapejs }}',
        selectedLabel: '',
@@ -21,7 +23,7 @@
        currentEndDate: '{{ end_date_str|default:""|escapejs }}',
        selectedMediaType: 'all',
        init() {
-         this.selectedLabel = this.selectedSort === 'time' ? 'Time' : 'Plays';
+         this.selectedLabel = this.selectedSort === 'time' ? '{{ media_i18n_61|escapejs }}' : '{{ media_i18n_62|escapejs }}';
          this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
          window.addEventListener('stats-media-type-changed', () => {
            this.selectedMediaType = new URLSearchParams(window.location.search).get('media-type') || 'all';
@@ -94,8 +96,8 @@
      }">
   <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
     <div class="flex flex-col space-y-1">
-      <h2 class="text-xl font-semibold text-[var(--color-text)]">Studio Footprint</h2>
-      <p class="text-sm text-[var(--color-text-muted)]">Studios that appear most often.</p>
+      <h2 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Studio Footprint" %}</h2>
+      <p class="text-sm text-[var(--color-text-muted)]">{% translate "Studios that appear most often." %}</p>
     </div>
 
     <div class="w-full sm:w-auto sm:min-w-32 sm:ml-auto">
@@ -126,15 +128,15 @@
              x-transition:leave-start="transform opacity-100 scale-100"
              x-transition:leave-end="transform opacity-0 scale-95"
              class="absolute right-0 z-10 mt-2 min-w-full py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden border border-gray-600">
-          <button type="button"
-                  @click="setSort('plays', 'Plays')"
+          {% translate "Plays" as media_i18n_62 %}<button type="button"
+                  @click="setSort('plays', '{{ media_i18n_62|escapejs }}')"
                   class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-            Plays
+            {% translate "Plays" %}
           </button>
-          <button type="button"
-                  @click="setSort('time', 'Time')"
+          {% translate "Time" as media_i18n_61 %}<button type="button"
+                  @click="setSort('time', '{{ media_i18n_61|escapejs }}')"
                   class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-            Time
+            {% translate "Time" %}
           </button>
         </div>
       </div>
@@ -143,7 +145,7 @@
 
   <div class="flex items-center gap-2 mb-3">
     {% include "app/icons/camera.svg" with classes="w-4 h-4 text-[var(--color-link)]" %}
-    <span class="text-sm font-semibold text-[var(--color-text)]">Top Studios</span>
+    <span class="text-sm font-semibold text-[var(--color-text)]">{% translate "Top Studios" %}</span>
   </div>
   <div x-ref="studioFootprintGrid">
     {% include "app/components/studio_footprint_grid.html" %}

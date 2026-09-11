@@ -1,25 +1,27 @@
+
+{% load i18n %}
 {% load app_tags %}
 
       <!-- Music Consumption Section -->
       {% if user.music_enabled and music_consumption.has_data %}
       <section class="bg-[var(--color-surface)] rounded-lg p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-8 space-y-4 sm:space-y-6">
         <div class="flex flex-col space-y-1">
-          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">Music</span>
-          <h2 class="text-2xl font-semibold text-[var(--color-text)]">Activity Overview</h2>
+          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{% translate "Music" %}</span>
+          <h2 class="text-2xl font-semibold text-[var(--color-text)]">{% translate "Activity Overview" %}</h2>
           <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
         </div>
 
         <div class="space-y-4 sm:space-y-6">
           {% if show_year_charts %}
           <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-            <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Music Plays by Year</h3>
+            <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Music Plays by Year" %}</h3>
             {% if music_consumption.charts.by_year.labels %}
               <div class="h-64">
                 <canvas id="musicPlaysByYearChart"></canvas>
               </div>
             {% else %}
               <div class="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
-                <p class="text-sm">No music plays available for this range.</p>
+                <p class="text-sm">{% translate "No music plays available for this range." %}</p>
               </div>
             {% endif %}
           </div>
@@ -29,7 +31,7 @@
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
             <!-- Top Artists -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Top {{ music_consumption.top_artists|length|default:0 }} Artists</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% blocktranslate trimmed with value_1=music_consumption.top_artists|length|default:0 %}Top {{ value_1 }} Artists{% endblocktranslate %}</h3>
               {% if music_consumption.top_artists %}
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for artist in music_consumption.top_artists %}
@@ -46,21 +48,21 @@
                     {% endif %}
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ artist.name }}</p>
-                      <p class="text-xs text-[var(--color-text-muted)]">{{ artist.formatted_duration }} · {{ artist.plays }} play{{ artist.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=artist.formatted_duration value_2=artist.plays count count=artist.plays %}{{ value_1 }} · {{ value_2 }} play{% plural %}{{ value_1 }} · {{ value_2 }} plays{% endblocktranslate %}</p>
                     </div>
                   </a>
                   {% endfor %}
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No artist data available.</p>
+                  <p class="text-sm">{% translate "No artist data available." %}</p>
                 </div>
               {% endif %}
             </div>
 
             <!-- Top Albums -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Top {{ music_consumption.top_albums|length|default:0 }} Albums</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% blocktranslate trimmed with value_1=music_consumption.top_albums|length|default:0 %}Top {{ value_1 }} Albums{% endblocktranslate %}</h3>
               {% if music_consumption.top_albums %}
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for album in music_consumption.top_albums %}
@@ -77,21 +79,21 @@
                     {% endif %}
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ album.title }}</p>
-                      <p class="text-xs text-[var(--color-text-muted)]">{{ album.formatted_duration }} · {{ album.plays }} play{{ album.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=album.formatted_duration value_2=album.plays count count=album.plays %}{{ value_1 }} · {{ value_2 }} play{% plural %}{{ value_1 }} · {{ value_2 }} plays{% endblocktranslate %}</p>
                     </div>
                   </a>
                   {% endfor %}
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No album data available.</p>
+                  <p class="text-sm">{% translate "No album data available." %}</p>
                 </div>
               {% endif %}
             </div>
 
             <!-- Top Tracks -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Top {{ music_consumption.top_tracks|length|default:0 }} Tracks</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% blocktranslate trimmed with value_1=music_consumption.top_tracks|length|default:0 %}Top {{ value_1 }} Tracks{% endblocktranslate %}</h3>
               {% if music_consumption.top_tracks %}
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for track in music_consumption.top_tracks %}
@@ -112,7 +114,7 @@
                     {% endif %}
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ track.title }}</p>
-                      <p class="text-xs text-[var(--color-text-muted)]">{{ track.formatted_duration }} · {{ track.plays }} play{{ track.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=track.formatted_duration value_2=track.plays count count=track.plays %}{{ value_1 }} · {{ value_2 }} play{% plural %}{{ value_1 }} · {{ value_2 }} plays{% endblocktranslate %}</p>
                     </div>
                   {% if track.album_id %}
                   </a>
@@ -123,7 +125,7 @@
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No track data available.</p>
+                  <p class="text-sm">{% translate "No track data available." %}</p>
                 </div>
               {% endif %}
             </div>
@@ -133,7 +135,7 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <!-- Top Decades -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Top {{ music_consumption.top_decades|length|default:0 }} Decades</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% blocktranslate trimmed with value_1=music_consumption.top_decades|length|default:0 %}Top {{ value_1 }} Decades{% endblocktranslate %}</h3>
               {% if music_consumption.top_decades %}
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for decade in music_consumption.top_decades %}
@@ -143,22 +145,22 @@
                       {{ decade.label|default:""|slice:":-1" }}
                     </div>
                     <div class="flex-1 min-w-0">
-                      <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ decade.label|default:"Unknown" }}</p>
-                      <p class="text-xs text-[var(--color-text-muted)] truncate">{{ decade.formatted_duration }} · {{ decade.plays }} play{{ decade.plays|pluralize }}</p>
+                      <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ decade.label|default:_("Unknown") }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)] truncate">{% blocktranslate trimmed with value_1=decade.formatted_duration value_2=decade.plays count count=decade.plays %}{{ value_1 }} · {{ value_2 }} play{% plural %}{{ value_1 }} · {{ value_2 }} plays{% endblocktranslate %}</p>
                     </div>
                   </div>
                   {% endfor %}
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No decade data available.</p>
+                  <p class="text-sm">{% translate "No decade data available." %}</p>
                 </div>
               {% endif %}
             </div>
 
             <!-- Top Countries -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Top {{ music_consumption.top_countries|length|default:0 }} Countries</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% blocktranslate trimmed with value_1=music_consumption.top_countries|length|default:0 %}Top {{ value_1 }} Countries{% endblocktranslate %}</h3>
               {% if music_consumption.top_countries %}
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for country in music_consumption.top_countries %}
@@ -171,14 +173,14 @@
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">
                         {% if country.name %}{{ country.name }}{% else %}{{ country.code|upper }}{% endif %}
                       </p>
-                      <p class="text-xs text-[var(--color-text-muted)] truncate">{{ country.formatted_duration }} · {{ country.plays }} play{{ country.plays|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)] truncate">{% blocktranslate trimmed with value_1=country.formatted_duration value_2=country.plays count count=country.plays %}{{ value_1 }} · {{ value_2 }} play{% plural %}{{ value_1 }} · {{ value_2 }} plays{% endblocktranslate %}</p>
                     </div>
                   </div>
                   {% endfor %}
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No country data available.</p>
+                  <p class="text-sm">{% translate "No country data available." %}</p>
                 </div>
               {% endif %}
             </div>

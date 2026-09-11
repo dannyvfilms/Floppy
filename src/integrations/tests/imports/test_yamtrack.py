@@ -267,6 +267,79 @@ class ImportYamtrackEpisodeHistoryDate(TestCase):
         self.assertIsNotNone(game.history.get().history_date)
 
 
+class ImportYamtrackRaggedRows(TestCase):
+    """A CSV row with more columns than the header is skipped, not misparsed.
+
+    Regression test for #1106: csv.DictReader silently drops extra values
+    under a None key instead of raising, which otherwise means an unescaped
+    delimiter earlier in the row shifted every field after it into the
+    wrong column - landing a completely unrelated value (e.g. a timestamp)
+    in a field like end_date or score. A *short* row (fewer columns than
+    the header) is intentionally not flagged: it's a pattern this codebase's
+    own exports rely on (e.g. list-item rows omitting trailing columns; see
+    ImportListCsvViewTests in lists/tests/test_csv_export_import.py) and
+    csv.DictReader fills the gap safely via `restval`.
+    """
+
+    def setUp(self):
+        """Create an importing user."""
+        self.user = get_user_model().objects.create_user(
+            username="test",
+            password="12345",
+        )
+
+    def test_row_with_extra_column_is_skipped(self):
+        """A row with one more comma-separated value than the header is skipped."""
+        csv_data = (
+            "media_id,source,media_type,title,image,season_number,episode_number,"
+            "score,status,notes,start_date,end_date,progress,created_at,progressed_at\n"
+            "10086,hardcover,book,Doomsday Book,https://image.url,,,,,,Planning,,,,0,"
+            "2025-12-28T15:26:52+00:00,2025-12-28T15:09:49+00:00\n"
+        )
+
+        counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+
+        self.assertIn("Skipping row 1", warnings)
+        self.assertFalse(Book.objects.filter(user=self.user).exists())
+
+    def test_row_with_missing_trailing_column_still_imports(self):
+        """A row with fewer columns than the header (omitted trailing fields) still imports."""
+        csv_data = (
+            "media_id,source,media_type,title,image,season_number,episode_number,"
+            "score,status,notes,start_date,end_date,progress,created_at,progressed_at\n"
+            "1010490,hardcover,book,Terminal Peace,https://image.url,,,6.0,Completed,,,"
+            "2023-01-09T05:00:00+00:00,336,2025-12-28T15:26:52+00:00\n"
+        )
+
+        counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+
+        self.assertEqual(warnings, "")
+        book = Book.objects.get(user=self.user)
+        self.assertEqual(book.score, 6.0)
+        self.assertEqual(book.progress, 336)
+
+    def test_well_formed_row_still_imports(self):
+        """A properly-shaped row (same column count as the header) is unaffected."""
+        csv_data = (
+            "media_id,source,media_type,title,image,season_number,episode_number,"
+            "score,status,notes,start_date,end_date,progress,created_at,progressed_at\n"
+            "1010490,hardcover,book,Terminal Peace,https://image.url,,,6.0,Completed,,,"
+            "2023-01-09T05:00:00+00:00,336,2025-12-28T15:26:52+00:00,"
+            "2025-12-28T15:09:47+00:00\n"
+        )
+
+        counts, warnings = yamtrack.importer(BytesIO(csv_data.encode()), self.user, "new")
+
+        self.assertEqual(warnings, "")
+        book = Book.objects.get(user=self.user)
+        self.assertEqual(book.score, 6.0)
+        self.assertEqual(book.progress, 336)
+        self.assertEqual(
+            book.end_date,
+            datetime(2023, 1, 9, 5, 0, 0, tzinfo=UTC),
+        )
+
+
 @tag("network")
 class ImportYamtrackPartials(TestCase):
     """Test importing yamtrack media with no ID."""

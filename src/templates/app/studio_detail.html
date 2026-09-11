@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load user_tags %}
 
@@ -21,13 +23,13 @@
             target="_blank"
             rel="noopener noreferrer"
             class="w-full inline-flex items-center justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm text-white transition-colors hover:bg-indigo-700">
-            Visit Website
+            {% translate "Visit Website" %}
           </a>
         </div>
       {% endif %}
 
       <div class="mt-4 p-3 bg-[var(--color-surface)] rounded-lg">
-        <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Source</h3>
+        <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{% translate "Source" %}</h3>
         <p class="text-sm text-[var(--color-text-secondary)] mt-1">{{ source|source_readable }}</p>
       </div>
     </div>
@@ -44,17 +46,17 @@
               {{ studio_games_count }} {{ credited_media_type|media_type_readable_plural|lower }}
             {% endif %}
           {% else %}
-            {{ studio_games_count }} title{{ studio_games_count|pluralize }}
+            {% blocktranslate trimmed with value_1=studio_games_count count count=studio_games_count %}{{ value_1 }} title{% plural %}{{ value_1 }} titles{% endblocktranslate %}
           {% endif %}
         </span>
         {% if studio_developed_count is not None %}
           <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
-            {{ studio_developed_count }} developed
+            {% blocktranslate trimmed with value_1=studio_developed_count %}{{ value_1 }} developed{% endblocktranslate %}
           </span>
         {% endif %}
         {% if studio_published_count is not None %}
           <span class="px-3 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] rounded-full text-sm">
-            {{ studio_published_count }} published
+            {% blocktranslate trimmed with value_1=studio_published_count %}{{ value_1 }} published{% endblocktranslate %}
           </span>
         {% endif %}
       </div>
@@ -73,37 +75,37 @@
           x-show="isClamped"
           @click="isExpanded = !isExpanded"
           class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer">
-          <span x-text="isExpanded ? 'Show less' : 'Show more'"></span>
+          {% translate "Show less" as media_i18n_0 %}{% translate "Show more" as media_i18n_1 %}<span x-text="isExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_1|escapejs }}'"></span>
         </button>
       </div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {% if studio_founded %}
           <div class="bg-[var(--color-surface)] rounded-lg p-3">
-            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Founded</h3>
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{% translate "Founded" %}</h3>
             <p class="text-sm text-[var(--color-text-secondary)] mt-1">{{ studio_founded|user_date_format:user }}</p>
           </div>
         {% endif %}
         <div class="bg-[var(--color-surface)] rounded-lg p-3">
           <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
-            {% if credited_media_type %}{{ credited_media_type|media_type_readable_plural }}{% else %}Titles{% endif %}
+            {% if credited_media_type %}{{ credited_media_type|media_type_readable_plural }}{% else %}{% translate "Titles" %}{% endif %}
           </h3>
           <p class="text-sm text-[var(--color-text-secondary)] mt-1">{{ studio_games_count }}</p>
         </div>
         {% if studio_developed_count is not None %}
           <div class="bg-[var(--color-surface)] rounded-lg p-3">
-            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Developed</h3>
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{% translate "Developed" %}</h3>
             <p class="text-sm text-[var(--color-text-secondary)] mt-1">{{ studio_developed_count }}</p>
           </div>
         {% endif %}
         {% if studio_published_count is not None %}
           <div class="bg-[var(--color-surface)] rounded-lg p-3">
-            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Published</h3>
+            <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{% translate "Published" %}</h3>
             <p class="text-sm text-[var(--color-text-secondary)] mt-1">{{ studio_published_count }}</p>
           </div>
         {% endif %}
         <div class="bg-[var(--color-surface)] rounded-lg p-3">
-          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Source</h3>
+          <h3 class="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">{% translate "Source" %}</h3>
           <p class="text-sm text-[var(--color-text-secondary)] mt-1">{{ source|source_readable }}</p>
         </div>
       </div>
@@ -113,7 +115,7 @@
   <section>
     <div class="flex items-end justify-between gap-3 mb-4">
       <h2 class="text-xl font-bold">
-        {% if credited_media_type %}{{ credited_media_type|media_type_readable_plural }}{% else %}Titles{% endif %}
+        {% if credited_media_type %}{{ credited_media_type|media_type_readable_plural }}{% else %}{% translate "Titles" %}{% endif %}
       </h2>
       <p class="text-xs text-[var(--color-text-muted)]">
         {% if credited_media_type %}
@@ -123,7 +125,7 @@
             {{ credited_titles|length }} {{ credited_media_type|media_type_readable_plural|lower }}
           {% endif %}
         {% else %}
-          {{ credited_titles|length }} title{{ credited_titles|length|pluralize }}
+          {% blocktranslate trimmed with value_1=credited_titles|length count count=credited_titles|length %}{{ value_1 }} title{% plural %}{{ value_1 }} titles{% endblocktranslate %}
         {% endif %}
       </p>
     </div>
@@ -136,7 +138,7 @@
     {% else %}
       <div class="bg-[var(--color-surface)] p-6 rounded-lg text-center">
         <p class="text-[var(--color-text-muted)]">
-          No {% if credited_media_type %}{{ credited_media_type|media_type_readable_plural|lower }}{% else %}titles{% endif %} available.
+          {% translate "No" context "available titles" %} {% if credited_media_type %}{{ credited_media_type|media_type_readable_plural|lower }}{% else %}{% translate "titles" %}{% endif %} {% translate "available." %}
         </p>
       </div>
     {% endif %}

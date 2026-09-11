@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% comment %}
   Restores scroll position and loaded-episode extent when a user returns
   to the episode list (#episodes-list) via the browser Back button.
@@ -13,7 +15,7 @@
 
   Include once per page that renders #episodes-list.
 {% endcomment %}
-<script>
+{% translate "Show more" as media_i18n_1 %}<script>
   (function() {
     function scrollRestoreKey() {
       return 'floppy-episode-scroll:' + location.pathname + location.search;
@@ -49,7 +51,7 @@
       container.dataset.loadedBatches = container.dataset.loadedBatches || '0';
 
       // beforeRequest (not afterSwap): the triggering element for an
-      // outerHTML swap (TV/comic "Show more") is detached from the DOM by
+      // outerHTML swap (TV/comic "{{ media_i18n_1|escapejs }}") is detached from the DOM by
       // the time afterSwap fires, so a containment check there always
       // misses. The requesting element is still attached at beforeRequest.
       // Only count the pagination trigger itself - the track/lists/history
@@ -69,7 +71,7 @@
         if (!link || !container.contains(link)) {
           return;
         }
-        // The "Show more" link is intercepted by HTMX (no real navigation),
+        // The "{{ media_i18n_1|escapejs }}" link is intercepted by HTMX (no real navigation),
         // so it must not overwrite the saved state for an actual departure.
         if (link.closest('[data-episode-load-more]')) {
           return;

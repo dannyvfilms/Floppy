@@ -25,6 +25,7 @@ from app.providers import services
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.trakt_export import TraktExportArchive, importer
+from integrations.upload_staging import discard_staged_upload
 from lists.models import CustomList, CustomListItem
 
 
@@ -688,7 +689,9 @@ class TraktExportUploadViewTests(TestCase):
         self._post(upload)
 
         mock_delay.assert_called_once()
-        self.assertEqual(mock_delay.call_args.kwargs["file"], payload)
+        queued = mock_delay.call_args.kwargs["file"]
+        self.addCleanup(discard_staged_upload, queued)
+        self.assertTrue(queued.endswith(".zip"))
 
     @patch("integrations.views.tasks.import_trakt_export.delay")
     def test_loose_json_uploads_are_repackaged_as_a_zip(self, mock_delay):
@@ -701,7 +704,8 @@ class TraktExportUploadViewTests(TestCase):
         self._post(uploads)
 
         queued = mock_delay.call_args.kwargs["file"]
-        with zipfile.ZipFile(BytesIO(queued)) as archive:
+        self.addCleanup(discard_staged_upload, queued)
+        with zipfile.ZipFile(queued) as archive:
             self.assertEqual(
                 sorted(archive.namelist()),
                 ["ratings-shows.json", "watched-history-1.json"],
@@ -719,14 +723,21 @@ class TraktExportUploadViewTests(TestCase):
         self._post(upload)
 
         mock_delay.assert_called_once()
+        self.addCleanup(
+            discard_staged_upload,
+            mock_delay.call_args.kwargs["file"],
+        )
 
     @patch("integrations.views.tasks.import_trakt_export.delay")
-    def test_oversize_upload_is_rejected(self, mock_delay):
-        """An upload above the size cap is refused before queueing anything."""
-        with patch("integrations.views.TRAKT_EXPORT_MAX_UPLOAD_BYTES", 10):
-            self._post(SimpleUploadedFile("export.zip", b"x" * 100, "application/zip"))
+    def test_large_upload_is_queued(self, mock_delay):
+        """Large uploads are staged instead of rejected by an application cap."""
+        self._post(SimpleUploadedFile("export.zip", b"x" * 100, "application/zip"))
 
-        mock_delay.assert_not_called()
+        mock_delay.assert_called_once()
+        self.addCleanup(
+            discard_staged_upload,
+            mock_delay.call_args.kwargs["file"],
+        )
 
     @patch("integrations.views.tasks.import_trakt_export.delay")
     def test_missing_file_is_rejected(self, mock_delay):

@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils.translation import gettext_noop
 
 
 class Sources(models.TextChoices):
@@ -21,25 +22,25 @@ class Sources(models.TextChoices):
     AUDIOBOOKSHELF = "audiobookshelf", "Audiobookshelf"
     STORYTELLER = "storyteller", "Storyteller"
     PLEX = "plex", "Plex"
-    MANUAL = "manual", "Manual"
+    MANUAL = "manual", gettext_noop("Manual")
 
 
 class MediaTypes(models.TextChoices):
     """Choices for the media type of the item."""
 
-    TV = "tv", "TV Show"
-    SEASON = "season", "TV Season"
-    EPISODE = "episode", "Episode"
-    MOVIE = "movie", "Movie"
-    ANIME = "anime", "Anime"
-    MANGA = "manga", "Manga"
-    GAME = "game", "Game"
-    BOOK = "book", "Book"
-    COMIC = "comic", "Comic"
-    COMIC_ISSUE = "comicissue", "Comic Issue"
-    BOARDGAME = "boardgame", "Board Game"
-    MUSIC = "music", "Music"
-    PODCAST = "podcast", "Podcast"
+    TV = "tv", gettext_noop("TV Show")
+    SEASON = "season", gettext_noop("TV Season")
+    EPISODE = "episode", gettext_noop("Episode")
+    MOVIE = "movie", gettext_noop("Movie")
+    ANIME = "anime", gettext_noop("Anime")
+    MANGA = "manga", gettext_noop("Manga")
+    GAME = "game", gettext_noop("Game")
+    BOOK = "book", gettext_noop("Book")
+    COMIC = "comic", gettext_noop("Comic")
+    COMIC_ISSUE = "comicissue", gettext_noop("Comic Issue")
+    BOARDGAME = "boardgame", gettext_noop("Board Game")
+    MUSIC = "music", gettext_noop("Music")
+    PODCAST = "podcast", gettext_noop("Podcast")
 
 
 class ProviderMetadataStatus(models.TextChoices):
@@ -47,15 +48,15 @@ class ProviderMetadataStatus(models.TextChoices):
 
     LOCAL_ONLY_MISSING_SEASON = (
         "local_only_missing_season",
-        "Local only: missing season metadata",
+        gettext_noop("Local only: missing season metadata"),
     )
 
 
 class Status(models.TextChoices):
     """Choices for item status."""
 
-    COMPLETED = "Completed", "Completed"
-    IN_PROGRESS = "In progress", "In Progress"
-    PLANNING = "Planning", "Planning"
-    PAUSED = "Paused", "Paused"
-    DROPPED = "Dropped", "Dropped"
+    COMPLETED = "Completed", gettext_noop("Completed")
+    IN_PROGRESS = "In progress", gettext_noop("In Progress")
+    PLANNING = "Planning", gettext_noop("Planning")
+    PAUSED = "Paused", gettext_noop("Paused")
+    DROPPED = "Dropped", gettext_noop("Dropped")

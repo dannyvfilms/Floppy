@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import expect, sync_playwright
 
+from app.discover.schemas import RowResult
 from app.models import Game, Item, MediaTypes, Movie, Sources, Status
 from app.tests.views.test_track_modal import _tv_with_seasons_payload
 from users.models import DateFormatChoices
@@ -121,6 +122,67 @@ class IntegrationTest(StaticLiveServerTestCase):
         """
         self.page.locator("#global-search").fill(query)
         self.page.locator('form:has(#global-search) button[type="submit"]').click()
+
+    def test_touch_media_card_reveals_and_executes_wrapped_actions(self):
+        """A coarse-pointer card reveals, dismisses, and accepts an action tap."""
+        touch_context = self.browser.new_context(
+            storage_state=self.context.storage_state(),
+            has_touch=True,
+            is_mobile=True,
+            viewport={"width": 390, "height": 844},
+        )
+        try:
+            touch_page = touch_context.new_page()
+            touch_page.goto(self.live_server_url + "/")
+            touch_page.locator("#global-search").fill("breaking bad")
+            touch_page.locator('form:has(#global-search) button[type="submit"]').click()
+            expect(touch_page.locator("h2", has_text="Search Results")).to_be_visible()
+
+            card = touch_page.locator(
+                '.media-card:has(a.media-card-title[title="Breaking Bad"])',
+            ).first
+            overlay = card.locator(".media-card-overlay")
+            expect(card).to_be_visible()
+            expect(overlay).not_to_be_visible()
+            card.evaluate("element => { element.style.width = '96px'; }")
+
+            card.locator(".media-card-poster").click()
+            expect(overlay).to_be_visible()
+            self.assertIn(
+                "media-card-revealed",
+                card.get_attribute("class") or "",
+            )
+            lists_action = card.get_by_title("Add to custom lists")
+            expect(lists_action).to_be_visible()
+            action_group = overlay.locator("div.relative.z-10.flex").first
+            self.assertEqual(
+                action_group.evaluate("element => getComputedStyle(element).flexWrap"),
+                "wrap",
+            )
+            card_box = card.bounding_box()
+            self.assertIsNotNone(card_box)
+            for action in overlay.locator("[title]").all():
+                action_box = action.bounding_box()
+                self.assertIsNotNone(action_box)
+                self.assertGreaterEqual(action_box["x"], card_box["x"])
+                self.assertLessEqual(
+                    action_box["x"] + action_box["width"],
+                    card_box["x"] + card_box["width"],
+                )
+
+            touch_page.locator("h2", has_text="Search Results").click()
+            self.assertNotIn(
+                "media-card-revealed",
+                card.get_attribute("class") or "",
+            )
+
+            card.locator(".media-card-poster").click()
+            with touch_page.expect_request(
+                lambda request: "lists_modal" in request.url,
+            ):
+                card.get_by_title("Add to custom lists").click()
+        finally:
+            touch_context.close()
 
     def set_date_input(self, locator, value):
         """Set a hidden date-picker input and dispatch its change events."""
@@ -520,14 +582,28 @@ class IntegrationTest(StaticLiveServerTestCase):
 
         end_date_input = create_modal.locator('input[name="end_date"]')
         start_date_input = create_modal.locator('input[name="start_date"]')
-        clear_buttons = create_modal.get_by_role("button", name="Clear date")
-        clear_buttons.first.click()
         end_quick_actions = create_modal.get_by_role(
             "group", name="End date quick actions"
         )
         start_quick_actions = create_modal.get_by_role(
             "group", name="Start date quick actions"
         )
+        end_clear = (
+            create_modal.locator(".date-picker-closed-field")
+            .nth(1)
+            .get_by_role("button", name="Clear date")
+        )
+        start_clear = (
+            create_modal.locator(".date-picker-closed-field")
+            .first
+            .get_by_role("button", name="Clear date")
+        )
+        # mediaForm may auto-fill end_date after the create modal opens.
+        expect(end_clear.or_(end_quick_actions)).to_be_visible()
+        if end_clear.is_visible():
+            end_clear.click()
+        if start_clear.is_visible():
+            start_clear.click()
         expect(end_quick_actions).to_be_visible()
         expect(start_quick_actions).to_be_visible()
         expect(create_modal.get_by_text("Select date", exact=True)).to_have_count(0)
@@ -813,7 +889,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.get_by_role("button", name="More tracking actions").click()
         self.page.get_by_role("button", name="Add new entry").click()
         track_modal = self.page.locator("[data-track-modal-root]:visible").first
-        track_modal.get_by_role("button", name="End date picker").click()
+        track_modal.get_by_role("button", name="Open End date picker").click()
         date_picker = track_modal.get_by_role("dialog", name="End date picker")
         date_picker.get_by_role("button", name="Select month").click()
         date_picker.get_by_role("button", name="Select year").click()
@@ -1000,3 +1076,83 @@ class IntegrationTest(StaticLiveServerTestCase):
         )
         self.assertLessEqual(desktop_layout["documentWidth"], desktop_layout["viewportWidth"])
         self.assertEqual(desktop_layout["chartWidth"], 150)
+
+    @patch("app.discover_views.discover.get_discover_rows")
+    def test_discover_match_signal_wraps_without_page_overflow(self, mock_get_discover_rows):
+        """Long Discover row metadata stays inside the viewport on mobile."""
+        match_signal = (
+            "Driven by your current 90-109 Minutes, 2010s, Adventure phase "
+            "with recent favorites"
+        )
+        mock_get_discover_rows.return_value = [
+            RowResult(
+                key="top_picks_for_you",
+                title="Top Picks For You",
+                mission="Mission",
+                why="New-to-you movies tailored to your taste.",
+                source="local",
+                items=[],
+                match_signal=match_signal,
+            ),
+        ]
+
+        self.page.set_viewport_size({"width": 390, "height": 774})
+        self.page.goto(
+            self.live_server_url
+            + reverse("discover")
+            + "?media_type=movie&discover_debug=1",
+        )
+
+        signal = self.page.locator(
+            "#discover-row-top_picks_for_you p.shrink-0",
+        )
+        expect(signal).to_have_text(match_signal)
+        mobile_layout = self.page.evaluate(
+            """() => ({
+                viewportWidth: window.innerWidth,
+                documentWidth: document.documentElement.scrollWidth,
+                bodyWidth: document.body.scrollWidth,
+            })""",
+        )
+        self.assertLessEqual(
+            mobile_layout["documentWidth"], mobile_layout["viewportWidth"]
+        )
+        self.assertLessEqual(mobile_layout["bodyWidth"], mobile_layout["viewportWidth"])
+        mobile_signal_box = signal.bounding_box()
+        mobile_row_box = self.page.locator(
+            "#discover-row-top_picks_for_you",
+        ).bounding_box()
+        self.assertIsNotNone(mobile_signal_box)
+        self.assertIsNotNone(mobile_row_box)
+        self.assertLessEqual(
+            mobile_signal_box["x"] + mobile_signal_box["width"],
+            mobile_row_box["x"] + mobile_row_box["width"],
+        )
+        self.assertGreater(mobile_signal_box["height"], 16)
+
+        self.page.set_viewport_size({"width": 1440, "height": 774})
+        self.page.reload()
+        desktop_layout = self.page.evaluate(
+            """() => ({
+                viewportWidth: window.innerWidth,
+                documentWidth: document.documentElement.scrollWidth,
+                bodyWidth: document.body.scrollWidth,
+            })""",
+        )
+        self.assertLessEqual(
+            desktop_layout["documentWidth"], desktop_layout["viewportWidth"]
+        )
+        self.assertLessEqual(
+            desktop_layout["bodyWidth"], desktop_layout["viewportWidth"]
+        )
+        desktop_signal_box = signal.bounding_box()
+        desktop_row_box = self.page.locator(
+            "#discover-row-top_picks_for_you",
+        ).bounding_box()
+        self.assertIsNotNone(desktop_signal_box)
+        self.assertIsNotNone(desktop_row_box)
+        self.assertLessEqual(
+            desktop_signal_box["x"] + desktop_signal_box["width"],
+            desktop_row_box["x"] + desktop_row_box["width"],
+        )
+        self.assertEqual(desktop_signal_box["height"], 16)

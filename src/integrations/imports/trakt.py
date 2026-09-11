@@ -15,9 +15,10 @@ from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
 from app.providers import credentials, services, tvdb
 from app.services import grouped_anime, item_merge
-from integrations import import_progress
+from integrations import external_references, import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
+from integrations.matching import unique_title_match
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +302,18 @@ class TraktMetadataResolverMixin:
 
     def _get_tmdb_id(self, entry_data, media_type):
         """Extract TMDB ID from entry data, falling back to a title search."""
+        reference = self._get_trakt_reference(entry_data, media_type)
+        self._last_external_reference = (entry_data, media_type, reference)
+        if reference and reference.review_status == external_references.ExternalReferenceReviewStatus.IGNORED.value:
+            return None
+        target = external_references.reference_target(reference)
+        target_type = (
+            MediaTypes.TV.value
+            if media_type == MediaTypes.SEASON.value
+            else media_type
+        )
+        if target and target.media_type == target_type:
+            return str(target.media_id)
         if (
             "ids" in entry_data
             and "tmdb" in entry_data["ids"]
@@ -315,7 +328,63 @@ class TraktMetadataResolverMixin:
         self.warnings.append(
             f"{entry_data['title']}: No {Sources.TMDB.label} ID found.",
         )
+        identity = external_references.trakt_identity(entry_data)
+        if identity and getattr(self, "external_reference_integration", None):
+            external_references.save_observation(
+                self.user,
+                "trakt",
+                self._trakt_reference_source_account(),
+                *identity,
+                media_type,
+                metadata=entry_data,
+                needs_review=True,
+            )
         return None
+
+    def _trakt_reference_source_account(self):
+        """Return the stable source-account scope for this Trakt import."""
+        return str(getattr(self, "username", "")).strip().casefold()
+
+    def _get_trakt_reference(self, entry_data, media_type):
+        """Look up a saved Trakt decision when this importer supports it."""
+        if not getattr(self, "external_reference_integration", None):
+            return None
+        identity = external_references.trakt_identity(entry_data)
+        if not identity:
+            return None
+        reference = external_references.lookup_reference(
+            self.user,
+            "trakt",
+            self._trakt_reference_source_account(),
+            *identity,
+            media_type,
+        )
+        if reference is None and media_type == MediaTypes.SEASON.value:
+            reference = external_references.lookup_reference(
+                self.user,
+                "trakt",
+                self._trakt_reference_source_account(),
+                *identity,
+                MediaTypes.TV.value,
+                include_show_for_episode=False,
+            )
+        return reference
+
+    def _remember_trakt_reference(self, entry_data, media_type, item):
+        """Record the source identity after its destination Item exists."""
+        if not getattr(self, "external_reference_integration", None):
+            return
+        identity = external_references.trakt_identity(entry_data)
+        if identity:
+            external_references.save_observation(
+                self.user,
+                "trakt",
+                self._trakt_reference_source_account(),
+                *identity,
+                media_type,
+                matched_item=item,
+                metadata=entry_data,
+            )
 
     def _search_tmdb_id_by_title(self, media_type, entry_data):
         """Best-effort TMDB title search when Trakt has no tmdb id (#965).
@@ -337,13 +406,12 @@ class TraktMetadataResolverMixin:
         except services.ProviderAPIError:
             return None
 
-        year = entry_data.get("year")
-        if year:
-            for result in results:
-                if result.get("year") == year:
-                    return str(result["media_id"])
-
-        return str(results[0]["media_id"]) if results else None
+        result = unique_title_match(
+            results,
+            title,
+            year=entry_data.get("year"),
+        )
+        return str(result.get("media_id") or result.get("id")) if result else None
 
     def _get_metadata(self, media_type, tmdb_id, title, season_number=None):
         """Get metadata for a media item."""
@@ -500,6 +568,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         """
         self.username = username
         self.user = user
+        self.external_reference_integration = "trakt"
         self.mode = mode
         self.refresh_token = refresh_token
         self.is_oauth_import = bool(refresh_token)
@@ -836,6 +905,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             return
 
         item = self._get_or_create_item(MediaTypes.MOVIE.value, tmdb_id, metadata)
+        self._remember_trakt_reference(movie, MediaTypes.MOVIE.value, item)
         watched_at = entry["watched_at"]
         watched_at_dt = _parse_watched_at(watched_at)
 
@@ -881,6 +951,12 @@ class TraktImporter(TraktMetadataResolverMixin):
         # Extract episode data
         season_number = entry["episode"]["season"]
         episode_number = entry["episode"]["number"]
+        reference = self._get_trakt_reference(show, MediaTypes.TV.value)
+        season_number, episode_number = external_references.map_episode_coordinates(
+            reference,
+            season_number,
+            episode_number,
+        )
         watched_at = entry["watched_at"]
         watched_at_dt = _parse_watched_at(watched_at)
         episode_watch_key = (tmdb_id, season_number, episode_number, watched_at_dt)
@@ -969,6 +1045,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             tv_metadata,
             library_media_type=anime_bucket,
         )
+        self._remember_trakt_reference(show, MediaTypes.TV.value, tv_item)
         tv_key = f"{tmdb_id}"
 
         if tv_key not in self.media_instances[MediaTypes.TV.value]:
@@ -1054,6 +1131,11 @@ class TraktImporter(TraktMetadataResolverMixin):
             season_number,
             episode_number,
             library_media_type=anime_bucket,
+        )
+        self._remember_trakt_reference(
+            entry.get("episode") or {},
+            MediaTypes.EPISODE.value,
+            episode_item,
         )
 
         ep_key = f"{tmdb_id}:{season_number}:{episode_number}"
@@ -1253,6 +1335,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             return
 
         item = self._get_or_create_item(MediaTypes.MOVIE.value, tmdb_id, metadata)
+        self._remember_trakt_reference(movie, MediaTypes.MOVIE.value, item)
         trakt_collection.upsert_collection_entry(
             self.user,
             item,
@@ -1282,9 +1365,18 @@ class TraktImporter(TraktMetadataResolverMixin):
             tv_metadata,
             library_media_type=anime_bucket,
         )
+        self._remember_trakt_reference(show, MediaTypes.TV.value, tv_item)
+        show_reference = self._get_trakt_reference(show, MediaTypes.TV.value)
 
         for season_entry in entry.get("seasons", []):
             season_number = season_entry["number"]
+            mapped_season, _ = external_references.map_episode_coordinates(
+                show_reference,
+                season_number,
+                1,
+            )
+            if show_reference and show_reference.episode_mapping:
+                season_number = mapped_season
             season_metadata = self._get_metadata(
                 MediaTypes.SEASON.value,
                 tmdb_id,
@@ -1303,6 +1395,13 @@ class TraktImporter(TraktMetadataResolverMixin):
 
             for episode_entry in season_entry.get("episodes", []):
                 episode_number = episode_entry["number"]
+                season_number, episode_number = (
+                    external_references.map_episode_coordinates(
+                        show_reference,
+                        season_entry["number"],
+                        episode_number,
+                    )
+                )
                 episode_exists = any(
                     ep["episode_number"] == episode_number
                     for ep in season_metadata["episodes"]
@@ -1331,6 +1430,11 @@ class TraktImporter(TraktMetadataResolverMixin):
                     season_number,
                     episode_number,
                     library_media_type=anime_bucket,
+                )
+                self._remember_trakt_reference(
+                    episode_entry,
+                    MediaTypes.EPISODE.value,
+                    episode_item,
                 )
                 trakt_collection.upsert_collection_entry(
                     self.user,
@@ -1454,6 +1558,12 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         season_number = episode_data["season"]
         episode_number = episode_data["number"]
+        reference = self._get_trakt_reference(show_data, MediaTypes.TV.value)
+        season_number, episode_number = external_references.map_episode_coordinates(
+            reference,
+            season_number,
+            episode_number,
+        )
 
         season_obj = app.models.Season.objects.filter(
             item__media_id=str(tmdb_id),
@@ -1574,6 +1684,7 @@ class TraktImporter(TraktMetadataResolverMixin):
             key = f"{key}:{season_number}"
 
         item = self._get_or_create_item(media_type, tmdb_id, metadata, season_number)
+        self._remember_trakt_reference(media_data, media_type, item)
 
         if key in self.media_instances[media_type]:
             self._update_instance(media_type, key, defaults)

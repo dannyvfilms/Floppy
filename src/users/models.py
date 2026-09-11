@@ -10,6 +10,7 @@ from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from django_celery_beat.models import PeriodicTask
 from django_celery_results.models import TaskResult
 
@@ -74,34 +75,34 @@ class FloppyUserManager(DjangoUserManager):
 class HomeSortChoices(models.TextChoices):
     """Choices for home page sort options."""
 
-    UPCOMING = "upcoming", "Upcoming"
-    RECENT = "recent", "Recent"
-    COMPLETION = "completion", "Completion"
-    EPISODES_LEFT = "episodes_left", "Episodes Left"
-    TITLE = "title", "Title"
-    RANDOM = "random", "Random"
+    UPCOMING = "upcoming", _("Upcoming")
+    RECENT = "recent", _("Recent")
+    COMPLETION = "completion", _("Completion")
+    EPISODES_LEFT = "episodes_left", _("Episodes Left")
+    TITLE = "title", _("Title")
+    RANDOM = "random", _("Random")
 
 
 class MediaSortChoices(models.TextChoices):
     """Choices for media list sort options."""
 
-    SCORE = "score", "Rating"
-    CRITIC_RATING = "critic_rating", "Critic Rating"
-    TITLE = "title", "Title"
-    AUTHOR = "author", "Author"
-    POPULARITY = "popularity", "Popularity"
-    PROGRESS = "progress", "Progress"
-    RUNTIME = "runtime", "Runtime"
-    TIME_TO_BEAT = "time_to_beat", "Time to Beat"
-    PLATFORM = "platform", "Platform"
-    PLAYS = "plays", "Plays"
-    TIME_WATCHED = "time_watched", "Time Watched"
-    RELEASE_DATE = "release_date", "Release Date"
-    DATE_ADDED = "date_added", "Date Added"
-    START_DATE = "start_date", "Start Date"
-    END_DATE = "end_date", "Last Watched"
-    NEXT_EPISODE_AIR_DATE = "next_episode_air_date", "Episode Air Date"
-    TIME_LEFT = "time_left", "Time Left"
+    SCORE = "score", _("Rating")
+    CRITIC_RATING = "critic_rating", _("Critic Rating")
+    TITLE = "title", _("Title")
+    AUTHOR = "author", _("Author")
+    POPULARITY = "popularity", _("Popularity")
+    PROGRESS = "progress", _("Progress")
+    RUNTIME = "runtime", _("Runtime")
+    TIME_TO_BEAT = "time_to_beat", _("Time to Beat")
+    PLATFORM = "platform", _("Platform")
+    PLAYS = "plays", _("Plays")
+    TIME_WATCHED = "time_watched", _("Time Watched")
+    RELEASE_DATE = "release_date", _("Release Date")
+    DATE_ADDED = "date_added", _("Date Added")
+    START_DATE = "start_date", _("Start Date")
+    END_DATE = "end_date", _("Last Watched")
+    NEXT_EPISODE_AIR_DATE = "next_episode_air_date", _("Episode Air Date")
+    TIME_LEFT = "time_left", _("Time Left")
 
 
 GAME_LIKE_MEDIA_TYPES = {MediaTypes.GAME.value, MediaTypes.BOARDGAME.value}
@@ -115,15 +116,15 @@ LISTENING_MEDIA_TYPES = {MediaTypes.MUSIC.value, MediaTypes.PODCAST.value}
 
 def relabel_end_date_sort_choice(media_type, choices):
     """Use media-type-appropriate wording for the END_DATE sort choice."""
-    end_date_label = "Last Watched"
+    end_date_label = None
     if media_type in GAME_LIKE_MEDIA_TYPES:
-        end_date_label = "Last Played"
+        end_date_label = _("Last Played")
     elif media_type in READING_MEDIA_TYPES:
-        end_date_label = "Last Read"
+        end_date_label = _("Last Read")
     elif media_type in LISTENING_MEDIA_TYPES:
-        end_date_label = "Last Listened"
+        end_date_label = _("Last Listened")
 
-    if end_date_label == "Last Watched":
+    if end_date_label is None:
         return choices
     return [
         (value, end_date_label)
@@ -136,280 +137,318 @@ def relabel_end_date_sort_choice(media_type, choices):
 class MediaStatusChoices(models.TextChoices):
     """Choices for media list status options."""
 
-    ALL = "All", "All"
-    COMPLETED = Status.COMPLETED.value, Status.COMPLETED.label
-    IN_PROGRESS = Status.IN_PROGRESS.value, Status.IN_PROGRESS.label
-    PLANNING = Status.PLANNING.value, Status.PLANNING.label
-    PAUSED = Status.PAUSED.value, Status.PAUSED.label
-    DROPPED = Status.DROPPED.value, Status.DROPPED.label
+    ALL = "All", _("All")
+    COMPLETED = Status.COMPLETED.value, _("Completed")
+    IN_PROGRESS = Status.IN_PROGRESS.value, _("In Progress")
+    PLANNING = Status.PLANNING.value, _("Planning")
+    PAUSED = Status.PAUSED.value, _("Paused")
+    DROPPED = Status.DROPPED.value, _("Dropped")
 
 
 class DirectionChoices(models.TextChoices):
     """Choices for sort direction options."""
 
-    ASC = "asc", "Ascending"
-    DESC = "desc", "Descending"
+    ASC = "asc", _("Ascending")
+    DESC = "desc", _("Descending")
 
 
 class LayoutChoices(models.TextChoices):
     """Choices for media list layout options."""
 
-    GRID = "grid", "Grid"
-    TABLE = "table", "Table"
+    GRID = "grid", _("Grid")
+    TABLE = "table", _("Table")
 
 
 class CalendarLayoutChoices(models.TextChoices):
     """Choices for calendar layout options."""
 
-    GRID = "grid", "Grid"
-    LIST = "list", "List"
+    GRID = "grid", _("Grid")
+    LIST = "list", _("List")
 
 
 class ListSortChoices(models.TextChoices):
     """Choices for list sort options."""
 
-    LAST_ITEM_ADDED = "last_item_added", "Last Item Added"
-    LAST_WATCHED = "last_watched", "Last Watched"
-    NAME = "name", "Name"
-    ITEMS_COUNT = "items_count", "Items Count"
-    NEWEST_FIRST = "newest_first", "Newest First"
+    LAST_ITEM_ADDED = "last_item_added", _("Last Item Added")
+    LAST_WATCHED = "last_watched", _("Last Watched")
+    NAME = "name", _("Name")
+    ITEMS_COUNT = "items_count", _("Items Count")
+    NEWEST_FIRST = "newest_first", _("Newest First")
 
 
 class ListDetailSortChoices(models.TextChoices):
     """Choices for list detail sort options."""
 
-    DATE_ADDED = "date_added", "Date Added"
-    CUSTOM = "custom", "Custom"
-    TITLE = "title", "Title"
-    MEDIA_TYPE = "media_type", "Media Type"
-    RATING = "rating", "Rating"
-    PROGRESS = "progress", "Progress"
-    STATUS = "status", "Status"
-    RELEASE_DATE = "release_date", "Release Date"
-    START_DATE = "start_date", "Start Date"
-    END_DATE = "end_date", "End Date"
-    PLATFORM = "platform", "Platform"
+    DATE_ADDED = "date_added", _("Date Added")
+    CUSTOM = "custom", _("Custom")
+    TITLE = "title", _("Title")
+    MEDIA_TYPE = "media_type", _("Media Type")
+    RATING = "rating", _("Rating")
+    PROGRESS = "progress", _("Progress")
+    STATUS = "status", _("Status")
+    RELEASE_DATE = "release_date", _("Release Date")
+    START_DATE = "start_date", _("Start Date")
+    END_DATE = "end_date", _("End Date")
+    PLATFORM = "platform", _("Platform")
 
 
 class DateFormatChoices(models.TextChoices):
     """Choices for date format preferences."""
 
-    SYSTEM_DEFAULT = "system_default", "System default"
-    ISO_8601 = "iso_8601", "ISO 8601"
-    MONTH_D_YYYY = "month_d_yyyy", "Month D, YYYY"
-    D_MON_YYYY = "d_mon_yyyy", "D Mon YYYY"
-    M_D_YYYY = "m_d_yyyy", "M/D/YYYY"
-    D_M_YYYY = "d_m_yyyy", "D/M/YYYY"
-    DD_MM_YYYY = "dd_mm_yyyy", "DD.MM.YYYY"
-    YYYY_MM_DD = "yyyy_mm_dd", "YYYY/MM/DD"
-    LONG_EU = "long_eu", "18 Jan, 2026"
+    SYSTEM_DEFAULT = "system_default", _("System default")
+    ISO_8601 = "iso_8601", _("ISO 8601")
+    MONTH_D_YYYY = "month_d_yyyy", _("Month D, YYYY")
+    D_MON_YYYY = "d_mon_yyyy", _("D Mon YYYY")
+    M_D_YYYY = "m_d_yyyy", _("M/D/YYYY")
+    D_M_YYYY = "d_m_yyyy", _("D/M/YYYY")
+    DD_MM_YYYY = "dd_mm_yyyy", _("DD.MM.YYYY")
+    YYYY_MM_DD = "yyyy_mm_dd", _("YYYY/MM/DD")
+    LONG_EU = "long_eu", _("18 Jan, 2026")
 
 
 class ThemeChoices(models.TextChoices):
     """Choices for UI theme preference."""
 
-    SYSTEM = "system", "System default"
-    DARK = "dark", "Dark"
-    LIGHT = "light", "Light"
+    SYSTEM = "system", _("System default")
+    LIGHT = "light", _("Light")
+    DARK = "dark", _("Dark")
+    CATPPUCCIN_MOCHA = "catppuccin_mocha", _("Catppuccin Mocha")
+    DRACULA = "dracula", _("Dracula")
+    NORD = "nord", _("Nord")
+    GRUVBOX = "gruvbox", _("Gruvbox")
+    OLED = "oled", _("OLED")
+    GLASS = "glass", _("Glass cinema")
+    PLEX = "plex", _("Plex inspired")
+    PROJECTOR = "projector", _("Projector")
+    VIDEO_STORE = "video_store", _("Video store")
+    CUSTOM = "custom", _("Custom palette")
 
 
 class UiLanguageChoices(models.TextChoices):
     """Choices for UI display language preference."""
 
-    AUTO = "auto", "Auto (browser language)"
+    AUTO = "auto", _("Auto (browser language)")
     EN = "en", "English"
+    DE = "de", "Deutsch"
     ES = "es", "Español"
 
 
 class LogoStyleChoices(models.TextChoices):
     """Choices for the Floppy logo style preference."""
 
-    COLORFUL = "colorful", "Colorful"
-    MONOCHROME = "monochrome", "Monochrome"
+    COLORFUL = "colorful", _("Original color")
+    MONOCHROME = "monochrome", _("Monochrome")
+    TEXT = "text", _("Text")
+    CUSTOM = "custom", _("Custom image")
+    HIDDEN = "hidden", _("Hidden")
+
+
+class LogoTextFontChoices(models.TextChoices):
+    """Safe local font stacks available to text wordmarks."""
+
+    DISPLAY = "display", _("Floppy display")
+    SANS = "sans", _("Clean sans")
+    SERIF = "serif", _("Editorial serif")
+    MONO = "mono", _("Technical mono")
+
+
+class LogoTextWeightChoices(models.IntegerChoices):
+    """Font weights available to text wordmarks."""
+
+    REGULAR = 400, _("Regular")
+    MEDIUM = 500, _("Medium")
+    SEMIBOLD = 600, _("Semibold")
+    BOLD = 700, _("Bold")
+    EXTRABOLD = 800, _("Extra bold")
+    BLACK = 900, _("Black")
+
+
+LOGO_TEXT_SIZES = tuple(range(16, 41))
+LOGO_TEXT_SPACINGS = tuple(range(-2, 7))
 
 
 class TimeFormatChoices(models.TextChoices):
     """Choices for time format preferences."""
 
-    SYSTEM_DEFAULT = "system_default", "System default"
-    H_MM_AMPM = "h_mm_ampm", "12-hour (h:mm AM/PM)"
-    HH_MM_AMPM = "hh_mm_ampm", "12-hour, leading zero (hh:mm AM/PM)"
-    HH_MM = "hh_mm", "24-hour (HH:mm)"
-    HH_MM_SS = "hh_mm_ss", "24-hour with seconds (HH:mm:ss)"
+    SYSTEM_DEFAULT = "system_default", _("System default")
+    H_MM_AMPM = "h_mm_ampm", _("12-hour (h:mm AM/PM)")
+    HH_MM_AMPM = "hh_mm_ampm", _("12-hour, leading zero (hh:mm AM/PM)")
+    HH_MM = "hh_mm", _("24-hour (HH:mm)")
+    HH_MM_SS = "hh_mm_ss", _("24-hour with seconds (HH:mm:ss)")
 
 
 class WeekStartDayChoices(models.TextChoices):
     """Choices for week start day preference."""
 
-    MONDAY = "monday", "Monday"
-    SUNDAY = "sunday", "Sunday"
+    MONDAY = "monday", _("Monday")
+    SUNDAY = "sunday", _("Sunday")
 
 
 class RatingScaleChoices(models.TextChoices):
     """Choices for rating scale preferences."""
 
-    TEN = "10", "1-10 stars"
-    FIVE = "5", "1-5 stars"
+    TEN = "10", _("1-10 stars")
+    FIVE = "5", _("1-5 stars")
 
 
 class ActivityHistoryViewChoices(models.TextChoices):
     """Choices for which activity history view to show on the statistics page."""
 
-    HEATMAP = "heatmap", "Activity Heatmap"
-    STACKED = "stacked", "Stacked Bar Chart"
+    HEATMAP = "heatmap", _("Activity Heatmap")
+    STACKED = "stacked", _("Stacked Bar Chart")
 
 
 class DurationFormatChoices(models.TextChoices):
     """Choices for how long durations are displayed."""
 
-    HOURS_MINUTES = "hours_minutes", "Hours and minutes (500h 30min)"
-    LONG_UNITS = "long_units", "Days and hours (20d 20h 30min)"
+    HOURS_MINUTES = "hours_minutes", _("Hours and minutes (500h 30min)")
+    LONG_UNITS = "long_units", _("Days and hours (20d 20h 30min)")
 
 
 class StatisticsRangeChoices(models.TextChoices):
     """Choices for predefined statistics date ranges."""
 
-    TODAY = "Today", "Today"
-    YESTERDAY = "Yesterday", "Yesterday"
-    THIS_WEEK = "This Week", "This Week"
-    LAST_7_DAYS = "Last 7 Days", "Last 7 Days"
-    THIS_MONTH = "This Month", "This Month"
-    LAST_30_DAYS = "Last 30 Days", "Last 30 Days"
-    LAST_90_DAYS = "Last 90 Days", "Last 90 Days"
-    THIS_YEAR = "This Year", "This Year"
-    LAST_6_MONTHS = "Last 6 Months", "Last 6 Months"
-    LAST_12_MONTHS = "Last 12 Months", "Last 12 Months"
-    ALL_TIME = "All Time", "All Time"
+    TODAY = "Today", _("Today")
+    YESTERDAY = "Yesterday", _("Yesterday")
+    THIS_WEEK = "This Week", _("This Week")
+    LAST_7_DAYS = "Last 7 Days", _("Last 7 Days")
+    THIS_MONTH = "This Month", _("This Month")
+    LAST_30_DAYS = "Last 30 Days", _("Last 30 Days")
+    LAST_90_DAYS = "Last 90 Days", _("Last 90 Days")
+    THIS_YEAR = "This Year", _("This Year")
+    LAST_6_MONTHS = "Last 6 Months", _("Last 6 Months")
+    LAST_12_MONTHS = "Last 12 Months", _("Last 12 Months")
+    ALL_TIME = "All Time", _("All Time")
 
 
 class ImportFrequencyChoices(models.TextChoices):
     """Import frequency choices."""
 
-    ONCE = "once", "One Time Import"
-    DAILY = "daily", "Every Day"
-    TWO_DAYS = "2days", "Every 2 Days"
+    ONCE = "once", _("One Time Import")
+    DAILY = "daily", _("Every Day")
+    TWO_DAYS = "2days", _("Every 2 Days")
 
 
 class ImportModeChoices(models.TextChoices):
     """Import mode choices."""
 
-    NEW = "new", "Only Sync New Items"
-    OVERWRITE = "overwrite", "Sync New Items and Overwrite Existing"
-    WATCHLIST = "watchlist", "Import Watchlist Data Only"
-    UPDATE_COLLECTION = "update_collection", "Update Collection Metadata Only"
+    NEW = "new", _("Only Sync New Items")
+    OVERWRITE = "overwrite", _("Sync New Items and Overwrite Existing")
+    WATCHLIST = "watchlist", _("Import Watchlist Data Only")
+    UPDATE_COLLECTION = "update_collection", _("Update Collection Metadata Only")
 
 
 class OnboardingStatusChoices(models.TextChoices):
     """Progress state for the first-run setup wizard."""
 
-    NOT_STARTED = "not_started", "Not Started"
-    IN_PROGRESS = "in_progress", "In Progress"
-    COMPLETED = "completed", "Completed"
+    NOT_STARTED = "not_started", _("Not Started")
+    IN_PROGRESS = "in_progress", _("In Progress")
+    COMPLETED = "completed", _("Completed")
 
 
 class OnboardingStepChoices(models.TextChoices):
     """Step to resume the first-run setup wizard on."""
 
-    MEDIA_TYPES = "media_types", "Choose Media Types"
-    SERVICES = "services", "Choose Services"
-    SERVICES_SUMMARY = "services_summary", "Review Services"
-    SERVICE_SETUP = "service_setup", "Connect Services"
-    IMPORT_STATUS = "import_status", "Import Status"
-    INTEGRATION_SETUP = "integration_setup", "Set Up Scrobbling"
-    DONE = "done", "Done"
+    MEDIA_TYPES = "media_types", _("Choose Media Types")
+    SERVICES = "services", _("Choose Services")
+    SERVICES_SUMMARY = "services_summary", _("Review Services")
+    SERVICE_SETUP = "service_setup", _("Connect Services")
+    IMPORT_STATUS = "import_status", _("Import Status")
+    INTEGRATION_SETUP = "integration_setup", _("Set Up Scrobbling")
+    DONE = "done", _("Done")
 
 
 class TopTalentSortChoices(models.TextChoices):
     """Choices for sorting top cast/crew/studio cards on statistics."""
 
-    PLAYS = "plays", "Plays"
-    TIME = "time", "Time"
-    TITLES = "titles", "Titles"
+    PLAYS = "plays", _("Plays")
+    TIME = "time", _("Time")
+    TITLES = "titles", _("Titles")
 
 
 class GenreSortChoices(models.TextChoices):
     """Choices for sorting the Taste Signals Top Genres panel on statistics."""
 
-    TIME = "time", "Time"
-    PLAYS = "plays", "Plays"
+    TIME = "time", _("Time")
+    PLAYS = "plays", _("Plays")
 
 
 class StatisticsCompareChoices(models.TextChoices):
     """Choices for the default comparison mode on the statistics page."""
 
-    PREVIOUS_PERIOD = "previous_period", "Previous period"
-    LAST_YEAR = "last_year", "Last year"
-    NONE = "none", "No comparison"
+    PREVIOUS_PERIOD = "previous_period", _("Previous period")
+    LAST_YEAR = "last_year", _("Last year")
+    NONE = "none", _("No comparison")
 
 
 class GameLoggingStyleChoices(models.TextChoices):
     """Choices for how game history entries are displayed."""
 
-    SESSIONS = "sessions", "Sessions"
-    REPEATS = "repeats", "Repeats"
+    SESSIONS = "sessions", _("Sessions")
+    REPEATS = "repeats", _("Repeats")
 
 
 class MobileGridLayoutChoices(models.TextChoices):
     """Choices for mobile grid layout preference."""
 
-    COMFORTABLE = "comfortable", "Comfortable (2 columns)"
-    COMPACT = "compact", "Compact (3 columns)"
+    COMFORTABLE = "comfortable", _("Comfortable (2 columns)")
+    COMPACT = "compact", _("Compact (3 columns)")
 
 
 class QuickSeasonUpdateChoices(models.TextChoices):
     """Controls quick season update buttons and the next-episode pill on home cards."""
 
-    NONE = "none", "None"
-    SEASON_UPDATE = "season_update", "Quick Season Update buttons only"
-    NEXT_EPISODE = "next_episode", "Next Episode button only"
-    BOTH = "both", "Both"
+    NONE = "none", _("None")
+    SEASON_UPDATE = "season_update", _("Quick Season Update buttons only")
+    NEXT_EPISODE = "next_episode", _("Next Episode button only")
+    BOTH = "both", _("Both")
 
 
 class MediaCardSubtitleDisplayChoices(models.TextChoices):
     """Choices for media card subtitle visibility."""
 
-    HOVER = "hover", "On hover"
-    ALWAYS = "always", "Always visible"
+    HOVER = "hover", _("On hover")
+    ALWAYS = "always", _("Always visible")
 
 
 class TitleDisplayPreferenceChoices(models.TextChoices):
     """Choices for how item titles are displayed across the app."""
 
-    LOCALIZED = "localized", "Show Localized Titles"
-    ORIGINAL = "original", "Show Original Titles"
-    AUTO = "auto", "Auto (if available)"
+    LOCALIZED = "localized", _("Show Localized Titles")
+    ORIGINAL = "original", _("Show Original Titles")
+    AUTO = "auto", _("Auto (if available)")
 
 
 class PlannedHomeDisplayChoices(models.TextChoices):
     """Choices for how planned items are displayed on home page."""
 
-    DISABLED = "disabled", "Disabled"
-    COMBINED = "combined", "Combined"
-    SEPARATED = "separated", "Separated"
+    DISABLED = "disabled", _("Disabled")
+    COMBINED = "combined", _("Combined")
+    SEPARATED = "separated", _("Separated")
 
 
 class HomeScreenRowTypeChoices(models.TextChoices):
     """Supported row sources for the configurable home screen."""
 
-    LIBRARY_QUERY = "library_query", "Library Row"
-    CUSTOM_LIST = "custom_list", "List / Smart List"
-    RECENTLY_UNRATED = "recently_unrated", "Recently Played - Not Rated"
+    LIBRARY_QUERY = "library_query", _("Library Row")
+    CUSTOM_LIST = "custom_list", _("List / Smart List")
+    RECENTLY_UNRATED = "recently_unrated", _("Recently Played - Not Rated")
 
 
 # kept: unrenamed model field/class names and help_text below (avoids a migration; see plan)
 class JellyseerrDefaultAddedStatusChoices(models.TextChoices):
     """Choices for status applied to media added via Jellyseerr webhook."""
 
-    PLANNING = Status.PLANNING.value, Status.PLANNING.label
-    IN_PROGRESS = Status.IN_PROGRESS.value, Status.IN_PROGRESS.label
+    PLANNING = Status.PLANNING.value, _("Planning")
+    IN_PROGRESS = Status.IN_PROGRESS.value, _("In Progress")
 
 
 class QuickWatchDateChoices(models.TextChoices):
     """Choices for quick watch date behavior when bulk-marking media as completed."""
 
-    CURRENT_DATE = "current_date", "Current Date"
-    RELEASE_DATE = "release_date", "Release Date"
-    NO_DATE = "no_date", "No Date"
+    CURRENT_DATE = "current_date", _("Current Date")
+    RELEASE_DATE = "release_date", _("Release Date")
+    NO_DATE = "no_date", _("No Date")
 
 
 class MetadataSourceDefaultChoices(models.TextChoices):
@@ -423,19 +462,19 @@ class MetadataSourceDefaultChoices(models.TextChoices):
 class AnimeLibraryModeChoices(models.TextChoices):
     """Choices for where grouped anime should surface in the UI."""
 
-    ANIME = MediaTypes.ANIME.value, "Anime Library"
-    TV = MediaTypes.TV.value, "TV Library"
-    BOTH = "both", "Both Libraries"
+    ANIME = MediaTypes.ANIME.value, _("Anime Library")
+    TV = MediaTypes.TV.value, _("TV Library")
+    BOTH = "both", _("Both Libraries")
 
 
 class SessionDurationChoices(models.IntegerChoices):
     """Choices for how long a login session persists."""
 
-    ONE_DAY = 86400, "1 day"
-    ONE_WEEK = 604800, "1 week"
-    TWO_WEEKS = 1209600, "2 weeks"
-    ONE_MONTH = 2592000, "30 days"
-    THREE_MONTHS = 7776000, "90 days"
+    ONE_DAY = 86400, _("1 day")
+    ONE_WEEK = 604800, _("1 week")
+    TWO_WEEKS = 1209600, _("2 weeks")
+    ONE_MONTH = 2592000, _("30 days")
+    THREE_MONTHS = 7776000, _("90 days")
 
 
 class User(AbstractUser):
@@ -1037,9 +1076,21 @@ class User(AbstractUser):
     )
 
     theme = models.CharField(
-        max_length=10,
+        max_length=20,
         default=ThemeChoices.SYSTEM,
         choices=ThemeChoices.choices,
+    )
+
+    custom_theme = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Validated custom application color palette",
+    )
+
+    detail_page_layouts = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Visible and ordered sections for each detail page family",
     )
 
     ui_language = models.CharField(
@@ -1054,6 +1105,43 @@ class User(AbstractUser):
         default=LogoStyleChoices.COLORFUL,
         choices=LogoStyleChoices.choices,
         help_text="Preferred Floppy logo style",
+    )
+
+    logo_text = models.CharField(
+        max_length=32,
+        default="Floppy",
+        help_text="Short navigation wordmark",
+    )
+
+    logo_text_font = models.CharField(
+        max_length=12,
+        default=LogoTextFontChoices.DISPLAY,
+        choices=LogoTextFontChoices.choices,
+        help_text="Font family used by the navigation wordmark",
+    )
+
+    logo_text_size = models.PositiveSmallIntegerField(
+        default=23,
+        choices=[(value, f"{value}px") for value in LOGO_TEXT_SIZES],
+        help_text="Font size used by the navigation wordmark",
+    )
+
+    logo_text_weight = models.PositiveSmallIntegerField(
+        default=LogoTextWeightChoices.EXTRABOLD,
+        choices=LogoTextWeightChoices.choices,
+        help_text="Font weight used by the navigation wordmark",
+    )
+
+    logo_text_spacing = models.SmallIntegerField(
+        default=-1,
+        choices=[(value, f"{value}px") for value in LOGO_TEXT_SPACINGS],
+        help_text="Letter spacing used by the navigation wordmark",
+    )
+
+    custom_logo_data = models.TextField(
+        blank=True,
+        default="",
+        help_text="Normalized custom navigation logo",
     )
 
     time_format = models.CharField(
@@ -2127,7 +2215,7 @@ class User(AbstractUser):
 
         self.recovery_codes.all().delete()
         codes = []
-        for _ in range(count):
+        for _index in range(count):
             raw_code = secrets.token_hex(4).upper()
             codes.append(raw_code)
             UserRecoveryCode.objects.create(

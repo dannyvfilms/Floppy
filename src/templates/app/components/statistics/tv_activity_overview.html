@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -5,22 +7,22 @@
       {% if tv_consumption.has_data %}
       <section class="bg-[var(--color-surface)] rounded-lg p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-8 space-y-4 sm:space-y-6">
         <div class="flex flex-col space-y-1">
-          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">TV Shows</span>
-          <h2 class="text-2xl font-semibold text-[var(--color-text)]">Activity Overview</h2>
+          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{% translate "TV Shows" %}</span>
+          <h2 class="text-2xl font-semibold text-[var(--color-text)]">{% translate "Activity Overview" %}</h2>
           <span class="text-sm text-[var(--color-text-muted)]" x-text="selectedRange"></span>
         </div>
 
         <div class="space-y-4 sm:space-y-6">
           {% if show_year_charts %}
           <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-            <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Episode Plays by Year</h3>
+            <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Episode Plays by Year" %}</h3>
             {% if tv_consumption.charts.by_year.labels %}
               <div class="h-64">
                 <canvas id="tvEpisodesByYearChart"></canvas>
               </div>
             {% else %}
               <div class="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
-                <p class="text-sm">No episode plays available for this range.</p>
+                <p class="text-sm">{% translate "No episode plays available for this range." %}</p>
               </div>
             {% endif %}
           </div>
@@ -30,7 +32,7 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <!-- Most Played -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Most Played</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Most Played" %}</h3>
               {% if top_played.tv %}
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for item in top_played.tv %}
@@ -47,21 +49,21 @@
                     {% endif %}
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-[var(--color-text)] truncate">{{ item.media.item.title }}</p>
-                      <p class="text-xs text-[var(--color-text-muted)]">{{ item.formatted_duration }} · {{ item.episode_count }} episode{{ item.episode_count|pluralize }}</p>
+                      <p class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=item.formatted_duration value_2=item.episode_count count count=item.episode_count %}{{ value_1 }} · {{ value_2 }} episode{% plural %}{{ value_1 }} · {{ value_2 }} episodes{% endblocktranslate %}</p>
                     </div>
                   </a>
                   {% endfor %}
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No TV show data available.</p>
+                  <p class="text-sm">{% translate "No TV show data available." %}</p>
                 </div>
               {% endif %}
             </div>
 
             <!-- Top Rated -->
             <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
-              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">Top Rated</h3>
+              <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)] mb-4">{% translate "Top Rated" %}</h3>
               {% if top_rated_tv %}
                 <div class="overflow-y-auto pr-1 statistics-card-scroll">
                   {% for media in top_rated_tv %}
@@ -94,7 +96,7 @@
                 </div>
               {% else %}
                 <div class="flex flex-col items-center justify-center py-8 text-[var(--color-text-muted)]">
-                  <p class="text-sm">No ratings yet.</p>
+                  <p class="text-sm">{% translate "No ratings yet." %}</p>
                 </div>
               {% endif %}
             </div>

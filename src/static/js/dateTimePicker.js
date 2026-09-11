@@ -144,7 +144,7 @@ if (!window.__floppyDateTimePickerBound) {
         parts.y,
         parts.m - 1,
         parts.d,
-      ).toLocaleDateString(undefined, {
+      ).toLocaleDateString(document.documentElement.lang || undefined, {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -477,7 +477,7 @@ if (!window.__floppyDateTimePickerBound) {
     },
 
     resolvedSuggestionLabel() {
-      return this.suggestionLabel || "Suggested date";
+      return this.suggestionLabel || gettext("Suggested date");
     },
 
     applySuggestion() {

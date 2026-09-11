@@ -4,6 +4,59 @@ function initStatisticsCharts() {
     return;
   }
   Chart.register(ChartDataLabels);
+  // Labels are also backend data keys: translate only at the display boundary.
+  function chartDisplayLabel(value) {
+    const labels = {
+      "TV Show": gettext("TV Show"),
+      "TV Shows": gettext("TV Shows"),
+      "TV Season": gettext("TV Season"),
+      "Movie": gettext("Movie"),
+      "Movies": gettext("Movies"),
+      "Anime": gettext("Anime"),
+      "Music": gettext("Music"),
+      "Podcast": gettext("Podcast"),
+      "Podcasts": gettext("Podcasts"),
+      "Book": gettext("Book"),
+      "Books": gettext("Books"),
+      "Comic": gettext("Comic"),
+      "Comics": gettext("Comics"),
+      "Comic Issue": gettext("Comic Issue"),
+      "Board Game": gettext("Board Game"),
+      "Board Games": gettext("Board Games"),
+      "Game": gettext("Game"),
+      "Games": gettext("Games"),
+      "Manga": gettext("Manga"),
+      "Completed": gettext("Completed"),
+      "In progress": gettext("In progress"),
+      "Planning": gettext("Planning"),
+      "Paused": gettext("Paused"),
+      "Dropped": gettext("Dropped"),
+      "Repeating": gettext("Repeating"),
+      "Other": gettext("Other"),
+      "Unknown": gettext("Unknown"),
+      "Items": gettext("Items"),
+      "Plays": gettext("Plays"),
+      "Episodes": gettext("Episodes"),
+      "Chapters": gettext("Chapters"),
+      "Pages": gettext("Pages"),
+      "Hours": gettext("Hours"),
+      "Minutes": gettext("Minutes"),
+      "Movie Plays": gettext("Movie Plays"),
+      "Episode Plays": gettext("Episode Plays"),
+      "Anime Plays": gettext("Anime Plays"),
+      "Music Plays": gettext("Music Plays"),
+      "Podcast Plays": gettext("Podcast Plays"),
+      "Pages Read": gettext("Pages Read"),
+      "Chapters Read": gettext("Chapters Read"),
+    };
+    return labels[value] || value;
+  }
+  function chartEscapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+
 
   // Resolved once per chart-init pass so custom HTML tooltips (built via
   // inline styles, not Tailwind classes) follow the current light/dark theme.
@@ -61,29 +114,29 @@ function initStatisticsCharts() {
             chart.options.plugins.scoreScaleMax) ||
           10;
         if (score === scoreMax) {
-          formattedTitle = `Score: ${scoreMax}`;
+          formattedTitle = interpolate(gettext("Score: %(score)s"), { score: scoreMax }, true);
         } else {
-          formattedTitle = `Score: ${score}.0-${score}.9`;
+          formattedTitle = interpolate(gettext("Score: %(lower)s\u2013%(upper)s"), { lower: score.toLocaleString(document.documentElement.lang || undefined, { minimumFractionDigits: 1 }), upper: (score + 0.9).toLocaleString(document.documentElement.lang || undefined, { minimumFractionDigits: 1 }) }, true);
         }
       }
 
       function fmt(v) {
         const n = Number(v) || 0;
-        return n.toFixed(1);
+        return n.toLocaleString(document.documentElement.lang || undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
       }
 
-      let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">' + formattedTitle + "</div>";
+      let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">' + chartEscapeHtml(formattedTitle) + "</div>";
       chart.data.datasets.forEach((dataset) => {
         const raw = Number(dataset.data[dataIndex]) || 0;
         if (raw > 0) {
           const bgColor = dataset.backgroundColor;
-          const label = dataset.label || "";
+          const label = chartDisplayLabel(dataset.label || "");
           html +=
             '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
             '<span style="width:10px;height:10px;border-radius:2px;background:' +
             bgColor +
             ';flex-shrink:0"></span>' +
-            "<span>" + label + ": " + fmt(raw) + "</span>" +
+            "<span>" + chartEscapeHtml(label) + ": " + fmt(raw) + "</span>" +
             "</div>";
         }
       });
@@ -158,10 +211,11 @@ function initStatisticsCharts() {
   // Helper function to process stacked bar data
   function processBarData(chartData) {
     return {
-      labels: chartData.labels,
+      labels: chartData.labels.map(chartDisplayLabel),
       datasets: chartData.datasets
         .map((dataset) => ({
-          label: dataset.label,
+          label: chartDisplayLabel(dataset.label),
+          source_label: dataset.label,
           media_type: dataset.media_type,
           data: dataset.data,
           backgroundColor: dataset.background_color,
@@ -259,22 +313,21 @@ function initStatisticsCharts() {
     // Add score-specific configurations
     scoreChartOptions.scales.x.title = {
       display: true,
-      text: "Score",
+      text: gettext("Score"),
       color: "#D1D5DB",
       padding: { top: 10, bottom: 0 },
     };
 
     scoreChartOptions.scales.y.title = {
       display: true,
-      text: "Number of Items",
+      text: gettext("Number of Items"),
       color: "#D1D5DB",
       padding: { top: 0, left: 10 },
     };
 
     scoreChartOptions.plugins.title = {
       display: true,
-      text: `Average Score: ${scoreData.average_score} / ${scoreScaleMax} (${scoreData.total_scored
-        } ${scoreData.total_scored === 1 ? "item" : "items"})`,
+      text: interpolate(ngettext("Average Score: %(score)s / %(max)s (%(count)s item)", "Average Score: %(score)s / %(max)s (%(count)s items)", scoreData.total_scored), { score: scoreData.average_score, max: scoreScaleMax, count: scoreData.total_scored }, true),
       color: "#D1D5DB",
       padding: { bottom: 10 },
       font: { size: 14 },
@@ -418,7 +471,7 @@ function initStatisticsCharts() {
             } else if (d.getFullYear() !== nowYear) {
               opts.year = 'numeric';
             }
-            return d.toLocaleDateString(navigator.language || 'en-US', opts);
+            return d.toLocaleDateString(document.documentElement.lang || undefined, opts);
           }
 
           if (bucket === 'week') {
@@ -431,7 +484,7 @@ function initStatisticsCharts() {
               opts.year = 'numeric';
             }
             // Show a short date for the week (no "Week of" prefix)
-            return d.toLocaleDateString(navigator.language || 'en-US', opts);
+            return d.toLocaleDateString(document.documentElement.lang || undefined, opts);
           }
 
           if (bucket === 'month') {
@@ -440,10 +493,10 @@ function initStatisticsCharts() {
             const date = new Date(Number(yy), Number(mm) - 1, 1);
             // If the selected range is within the current year, show full month name only
             if (startYear && endYear && startYear === endYear && startYear === nowYear) {
-              return date.toLocaleDateString(navigator.language || 'en-US', { month: 'long' });
+              return date.toLocaleDateString(document.documentElement.lang || undefined, { month: 'long' });
             }
             // Otherwise show abbreviated month + year
-            return date.toLocaleDateString(navigator.language || 'en-US', { month: 'short', year: 'numeric' });
+            return date.toLocaleDateString(document.documentElement.lang || undefined, { month: 'short', year: 'numeric' });
           }
 
           if (bucket === 'year') {
@@ -512,7 +565,7 @@ function initStatisticsCharts() {
         }
         dailyOptions.scales.y.title = {
           display: true,
-          text: "Hours",
+          text: gettext("Hours"),
           color: "#D1D5DB",
           padding: { top: 0, left: 10 },
         };
@@ -641,14 +694,14 @@ function initStatisticsCharts() {
         const bandLabel = tooltipModel.title[0] || "";
         const bandGames = topGamesByBand[bandLabel] || [];
 
-        let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">Avg/day: ' + bandLabel + "</div>";
+        let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">' + chartEscapeHtml(interpolate(gettext("Avg/day: %(band)s"), { band: bandLabel }, true)) + "</div>";
         bandGames.forEach(function (game, idx) {
           html +=
             '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:4px">' +
             '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">' +
             (idx + 1) +
             ". " +
-            (game.title || "Unknown") +
+            chartEscapeHtml(game.title || gettext("Unknown")) +
             "</span>" +
             '<span style="font-weight:600;white-space:nowrap">' +
             (game.formatted_daily_average || "") +
@@ -726,7 +779,8 @@ function initStatisticsCharts() {
   if (weekdayHourEl && rhythmContainer) {
     const rhythmData = JSON.parse(weekdayHourEl.textContent || "{}");
 
-    const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const DAY_LABELS = Array.from({ length: 7 }, (_, day) =>
+      new Date(2024, 0, day + 1).toLocaleDateString(document.documentElement.lang || undefined, { weekday: "short" }));
     const cellSize = 12;
     const cellGap = 4;
     const dotArea = cellSize + cellGap;
@@ -756,7 +810,7 @@ function initStatisticsCharts() {
       const matrix = rhythmData[key] || (key !== "all" ? rhythmData["all"] : null);
       if (!matrix) {
         rhythmContainer.innerHTML =
-          '<p class="text-sm text-[var(--color-text-muted)] text-center py-6">No activity data for this range.</p>';
+          '<p class="text-sm text-[var(--color-text-muted)] text-center py-6">' + chartEscapeHtml(gettext("No activity data for this range.")) + '</p>';
         return;
       }
 
@@ -798,7 +852,7 @@ function initStatisticsCharts() {
           const radius = tierRadius(tier);
           const fill = tierFill(tier);
           const title = count > 0
-            ? `<title>${DAY_LABELS[r]} ${c}:00 — ${count} session${count !== 1 ? "s" : ""}</title>`
+            ? `<title>${chartEscapeHtml(interpolate(ngettext("%(day)s %(hour)s:00 \u2014 %(count)s session", "%(day)s %(hour)s:00 \u2014 %(count)s sessions", count), { day: DAY_LABELS[r], hour: c, count }, true))}</title>`
             : "";
           cells += `<circle cx="${cx}" cy="${cy}" r="${radius.toFixed(1)}" fill="${fill}">${title}</circle>`;
         }
@@ -807,7 +861,7 @@ function initStatisticsCharts() {
       let hourLabels = "";
       for (const h of [0, 6, 12, 18]) {
         const cx = labelW + h * dotArea + cellSize / 2;
-        const lbl = h === 0 ? "12a" : h === 12 ? "12p" : h < 12 ? `${h}a` : `${h - 12}p`;
+        const lbl = new Date(2024, 0, 1, h).toLocaleTimeString(document.documentElement.lang || undefined, { hour: "numeric" });
         hourLabels +=
           `<text x="${cx}" y="${labelH - 2}" text-anchor="middle" ` +
           `font-size="9" fill="#6b7280">${lbl}</text>`;
@@ -817,7 +871,7 @@ function initStatisticsCharts() {
       const legendEl = document.getElementById("activityRhythmLegend");
       if (legendEl) {
         legendEl.innerHTML =
-          '<span style="font-size:9px;color:#6b7280">Low</span>';
+          '<span style="font-size:9px;color:#6b7280">' + chartEscapeHtml(gettext("Low")) + '</span>';
         for (let t = 1; t <= TIERS; t++) {
           const r = tierRadius(t);
           const size = (r * 2).toFixed(1) + "px";
@@ -829,7 +883,7 @@ function initStatisticsCharts() {
         }
         legendEl.insertAdjacentHTML(
           "beforeend",
-          '<span style="font-size:9px;color:#6b7280">High</span>'
+          '<span style="font-size:9px;color:#6b7280">' + chartEscapeHtml(gettext("High")) + '</span>'
         );
       }
 
@@ -918,7 +972,7 @@ function initStatisticsCharts() {
               const value = ds ? Number(ds.data[dataIndex]) || 0 : 0;
               const color = ds ? ds.background_color : "#9ca3af";
               return {
-                label: COMBINED_PLAYS_TYPE_LABELS[type] || type,
+                label: chartDisplayLabel(COMBINED_PLAYS_TYPE_LABELS[type] || type),
                 value: value,
                 color: color,
               };
@@ -931,7 +985,7 @@ function initStatisticsCharts() {
             });
 
           function fmtHoursValue(hrs) {
-            return (Number(hrs) || 0).toFixed(1) + "h";
+            return interpolate(gettext("%(count)sh"), { count: (Number(hrs) || 0).toLocaleString(document.documentElement.lang || undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }, true);
           }
 
           let html = '<div style="font-weight:600;margin-bottom:6px;color:' + CHART_TOOLTIP_TEXT + '">' + title + "</div>";
@@ -941,7 +995,7 @@ function initStatisticsCharts() {
               '<span style="width:10px;height:10px;border-radius:2px;background:' +
               row.color +
               ';flex-shrink:0"></span>' +
-              "<span>" + row.label + ": " + fmtHoursValue(row.value) + "</span>" +
+              "<span>" + chartEscapeHtml(row.label) + ": " + fmtHoursValue(row.value) + "</span>" +
               "</div>";
           });
 
@@ -970,7 +1024,7 @@ function initStatisticsCharts() {
         }
         if (container) {
           container.innerHTML =
-            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No data for this filter.</p>';
+            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">' + chartEscapeHtml(gettext("No data for this filter.")) + '</p>';
         }
         return;
       }
@@ -1044,11 +1098,11 @@ function initStatisticsCharts() {
     function fmtHours(hrs, maxParts) {
       if (maxParts === undefined) maxParts = 2;
       let minutes = Math.round(hrs * 60);
-      if (minutes <= 0) return "0h 0min";
+      if (minutes <= 0) return interpolate(gettext("%(hours)sh %(minutes)smin"), { hours: 0, minutes: 0 }, true);
       if (durationFormat === "long_units") {
-        if (minutes < 60) return minutes + "min";
+        if (minutes < 60) return interpolate(gettext("%(count)smin"), { count: minutes }, true);
         if (minutes < 1440) {
-          return Math.floor(minutes / 60) + "h " + (minutes % 60) + "min";
+          return interpolate(gettext("%(hours)sh %(minutes)smin"), { hours: Math.floor(minutes / 60), minutes: minutes % 60 }, true);
         }
         const MONTH = 43800;
         const DAY = 1440;
@@ -1060,13 +1114,13 @@ function initStatisticsCharts() {
         const h = Math.floor(rem / HOUR);
         const m = rem % HOUR;
         const parts = [];
-        if (mo) parts.push(mo + "mo");
-        if (d) parts.push(d + "d");
-        if (h) parts.push(h + "h");
-        if (m || !parts.length) parts.push(m + "min");
+        if (mo) parts.push(interpolate(gettext("%(count)smo"), { count: mo }, true));
+        if (d) parts.push(interpolate(gettext("%(count)sd"), { count: d }, true));
+        if (h) parts.push(interpolate(gettext("%(count)sh"), { count: h }, true));
+        if (m || !parts.length) parts.push(interpolate(gettext("%(count)smin"), { count: m }, true));
         return parts.slice(0, maxParts).join(" ");
       }
-      return Math.floor(minutes / 60) + "h " + (minutes % 60) + "min";
+      return interpolate(gettext("%(hours)sh %(minutes)smin"), { hours: Math.floor(minutes / 60), minutes: minutes % 60 }, true);
     }
 
     // Palette for genre slices (cycles if there are more genres than colors).
@@ -1130,14 +1184,14 @@ function initStatisticsCharts() {
 
       if (tooltip.dataPoints && tooltip.dataPoints.length) {
         const dp = tooltip.dataPoints[0];
-        const label = dp.label || "";
+        const label = chartDisplayLabel(dp.label || "");
         const hrs = dp.raw;
         const total = getTotalHours();
         const pct = total > 0 ? Math.round((hrs / total) * 100) : 0;
         const color = dp.dataset.backgroundColor[dp.dataIndex];
 
         tooltipEl.innerHTML =
-          '<div style="font-weight:600;margin-bottom:4px;color:' + CHART_TOOLTIP_TEXT + '">' + label + "</div>" +
+          '<div style="font-weight:600;margin-bottom:4px;color:' + CHART_TOOLTIP_TEXT + '">' + chartEscapeHtml(label) + "</div>" +
           '<div style="display:flex;align-items:center;gap:6px">' +
             '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';flex-shrink:0"></span>' +
             '<span>' + fmtHours(hrs, Infinity) + " (" + pct + "%)</span>" +
@@ -1192,7 +1246,7 @@ function initStatisticsCharts() {
       const sortedIndices = labels.map(function (_, i) { return i; })
         .sort(function (a, b) { return data[b] - data[a]; });
       sortedIndices.forEach(function (i) {
-        const label = labels[i];
+        const label = chartDisplayLabel(labels[i]);
         const hrs = data[i];
         const color = colors[i];
         const pct = totalHours > 0 ? Math.round((hrs / totalHours) * 100) : 0;
@@ -1201,7 +1255,7 @@ function initStatisticsCharts() {
         row.innerHTML =
           '<div style="flex-shrink:0;display:flex;align-items:center;gap:6px;width:74px">' +
             '<span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:' + color + '"></span>' +
-            '<span style="flex:1;color:#d1d5db;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + "</span>" +
+            '<span style="flex:1;color:#d1d5db;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + chartEscapeHtml(label) + "</span>" +
           '</div>' +
           '<div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,0.07);overflow:hidden;min-width:40px">' +
             '<div style="height:100%;border-radius:3px;background:' + color + ';width:' + pct + '%"></div>' +
@@ -1225,15 +1279,15 @@ function initStatisticsCharts() {
         const colors = genres.map(function (_, i) { return GENRE_PALETTE[i % GENRE_PALETTE.length]; });
         const totalHours = loadTypeTotalHours(mediaType);
 
-        if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Top Genres";
-        if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = "Where your " + mediaType + " hours go.";
+        if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = gettext("Top Genres");
+        if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = interpolate(gettext("Where your %(type)s hours go."), { type: chartDisplayLabel(MEDIA_SLUG_TO_LABEL[mediaType] || mediaType) }, true);
         if (timeWorldsInfoEl) timeWorldsInfoEl.classList.remove("hidden");
 
         if (timeWorldsCenterEl) {
           timeWorldsCenterEl.innerHTML =
             '<span style="font-size:1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2;text-align:center">' +
             fmtHours(totalHours) + "</span>" +
-            '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total</span>';
+            '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">' + chartEscapeHtml(gettext("total")) + '</span>';
         }
 
         renderDonut(labels, data, colors, function () { return totalHours; });
@@ -1242,8 +1296,8 @@ function initStatisticsCharts() {
       }
 
       // ── Type distribution mode (all, or filtered type with no genre data) ─
-      if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = "Hours by Media Type";
-      if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = "Where your hours go.";
+      if (timeWorldsTitleEl) timeWorldsTitleEl.textContent = gettext("Hours by Media Type");
+      if (timeWorldsSubtitleEl) timeWorldsSubtitleEl.textContent = gettext("Where your hours go.");
       if (timeWorldsInfoEl) timeWorldsInfoEl.classList.add("hidden");
 
       // Build the filtered view of the distribution data.
@@ -1271,7 +1325,7 @@ function initStatisticsCharts() {
         if (donutChartInstance) { donutChartInstance.destroy(); donutChartInstance = null; }
         if (container) {
           container.innerHTML =
-            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No time data available for this filter.</p>';
+            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">' + chartEscapeHtml(gettext("No time data available for this filter.")) + '</p>';
         }
         return;
       }
@@ -1282,7 +1336,7 @@ function initStatisticsCharts() {
         timeWorldsCenterEl.innerHTML =
           '<span style="font-size:1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2;text-align:center">' +
           fmtHours(totalHours) + "</span>" +
-          '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total</span>';
+          '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">' + chartEscapeHtml(gettext("total")) + '</span>';
       }
 
       renderDonut(labels, data, colors, function () { return totalHours; });
@@ -1298,7 +1352,7 @@ function initStatisticsCharts() {
       const container = document.getElementById("timeWorldsContainer");
       if (container) {
         container.innerHTML =
-          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No time data available for this range.</p>';
+          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">' + chartEscapeHtml(gettext("No time data available for this range.")) + '</p>';
       }
     }
   }
@@ -1332,16 +1386,16 @@ function initStatisticsCharts() {
       }
       if (tooltip.dataPoints && tooltip.dataPoints.length) {
         const dp = tooltip.dataPoints[0];
-        const label = dp.label || "";
+        const label = chartDisplayLabel(dp.label || "");
         const count = dp.raw;
         const total = getTotal();
         const pct = total > 0 ? Math.round((count / total) * 100) : 0;
         const color = dp.dataset.backgroundColor[dp.dataIndex];
         tooltipEl.innerHTML =
-          '<div style="font-weight:600;margin-bottom:4px;color:' + CHART_TOOLTIP_TEXT + '">' + label + "</div>" +
+          '<div style="font-weight:600;margin-bottom:4px;color:' + CHART_TOOLTIP_TEXT + '">' + chartEscapeHtml(label) + "</div>" +
           '<div style="display:flex;align-items:center;gap:6px">' +
             '<span style="width:10px;height:10px;border-radius:2px;background:' + color + ';flex-shrink:0"></span>' +
-            "<span>" + count.toLocaleString() + " (" + pct + "%)</span>" +
+            "<span>" + count.toLocaleString(document.documentElement.lang || undefined) + " (" + pct + "%)</span>" +
           "</div>";
       }
       const rect = canvas.getBoundingClientRect();
@@ -1363,8 +1417,8 @@ function initStatisticsCharts() {
       if (centerEl) {
         centerEl.innerHTML =
           '<span style="font-size:1.1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2">' +
-          total.toLocaleString() + "</span>" +
-          '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">total items</span>';
+          total.toLocaleString(document.documentElement.lang || undefined) + "</span>" +
+          '<span style="font-size:0.65rem;color:#9ca3af;line-height:1.2">' + chartEscapeHtml(gettext("total items")) + '</span>';
       }
 
       if (statusCompositionChartInstance) {
@@ -1397,7 +1451,7 @@ function initStatisticsCharts() {
         const sortedIndices = labels.map(function (_, i) { return i; })
           .sort(function (a, b) { return data[b] - data[a]; });
         sortedIndices.forEach(function (i) {
-          const label = labels[i];
+          const label = chartDisplayLabel(labels[i]);
           const count = data[i];
           const color = colors[i];
           const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -1406,13 +1460,13 @@ function initStatisticsCharts() {
           row.innerHTML =
             '<div style="flex-shrink:0;display:flex;align-items:center;gap:6px;min-width:0;width:84px">' +
               '<span style="flex-shrink:0;width:10px;height:10px;border-radius:2px;background:' + color + '"></span>' +
-              '<span style="min-width:0;color:#d1d5db;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + "</span>" +
+              '<span style="min-width:0;color:#d1d5db;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + chartEscapeHtml(label) + "</span>" +
             "</div>" +
             '<div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,0.07);overflow:hidden;min-width:40px">' +
               '<div style="height:100%;border-radius:3px;background:' + color + ';width:' + pct + '%"></div>' +
             "</div>" +
             '<span style="flex-shrink:0;width:34px;text-align:center;color:' + CHART_TOOLTIP_TEXT + ';font-weight:700">' + pct + "%</span>" +
-            '<span style="flex-shrink:0;min-width:60px;text-align:center;color:#6b7280;font-variant-numeric:tabular-nums">' + count.toLocaleString() + "</span>";
+            '<span style="flex-shrink:0;min-width:60px;text-align:center;color:#6b7280;font-variant-numeric:tabular-nums">' + count.toLocaleString(document.documentElement.lang || undefined) + "</span>";
           legendEl.appendChild(row);
         });
       }
@@ -1456,15 +1510,15 @@ function initStatisticsCharts() {
 
       if (subtitleEl) {
         subtitleEl.textContent = isFiltered && targetLabel
-          ? targetLabel + " status breakdown."
-          : "What portion of your library is in each state.";
+          ? interpolate(gettext("%(type)s status breakdown."), { type: chartDisplayLabel(targetLabel) }, true)
+          : gettext("What portion of your library is in each state.");
       }
 
       if (!labels.length) {
         if (statusCompositionChartInstance) { statusCompositionChartInstance.destroy(); statusCompositionChartInstance = null; }
         if (container) {
           container.innerHTML =
-            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No status data available for this filter.</p>';
+            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">' + chartEscapeHtml(gettext("No status data available for this filter.")) + '</p>';
         }
         return;
       }
@@ -1496,7 +1550,7 @@ function initStatisticsCharts() {
       const container = document.getElementById("statusCompositionContainer");
       if (container) {
         container.innerHTML =
-          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No status data available for this range.</p>';
+          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">' + chartEscapeHtml(gettext("No status data available for this range.")) + '</p>';
       }
     }
   }
@@ -1540,16 +1594,20 @@ function initStatisticsCharts() {
       const built = buildRatingDistribution(mediaType);
 
       if (subtitleEl) {
-        const itemsPhrase = built.totalScored.toLocaleString() + " rated" +
-          (built.targetLabel ? " " + built.targetLabel : "") + " item" + (built.totalScored === 1 ? "" : "s");
-        subtitleEl.textContent = "How your " + itemsPhrase + " are distributed.";
+        const summary = built.targetLabel
+          ? ngettext("How your %(count)s rated item (%(type)s) is distributed.", "How your %(count)s rated items (%(type)s) are distributed.", built.totalScored)
+          : ngettext("How your %(count)s rated item is distributed.", "How your %(count)s rated items are distributed.", built.totalScored);
+        subtitleEl.textContent = interpolate(summary, {
+          count: built.totalScored.toLocaleString(document.documentElement.lang || undefined),
+          type: chartDisplayLabel(built.targetLabel || ""),
+        }, true);
       }
 
       if (!built.totalScored) {
         if (ratingDistributionChartInstance) { ratingDistributionChartInstance.destroy(); ratingDistributionChartInstance = null; }
         if (container) {
           container.innerHTML =
-            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No ratings yet for this filter.</p>';
+            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">' + chartEscapeHtml(gettext("No ratings yet for this filter.")) + '</p>';
         }
         return;
       }
@@ -1586,7 +1644,7 @@ function initStatisticsCharts() {
         formatter: function (value) {
           if (!value) return "";
           const pct = built.totalScored > 0 ? ((value / built.totalScored) * 100).toFixed(1) : "0.0";
-          return value.toLocaleString() + "\n(" + pct + "%)";
+          return value.toLocaleString(document.documentElement.lang || undefined) + "\n(" + pct + "%)";
         },
       };
       chartOptions.plugins.tooltip = {
@@ -1613,8 +1671,8 @@ function initStatisticsCharts() {
             const dataIndex = tooltipModel.dataPoints[0].dataIndex;
             const value = built.data[dataIndex] || 0;
             tooltipEl.innerHTML =
-              '<div style="font-weight:600;color:' + CHART_TOOLTIP_TEXT + '">Rating ' + built.labels[dataIndex] + "</div>" +
-              '<div style="margin-top:4px">' + value.toLocaleString() + (value === 1 ? " item" : " items") + "</div>";
+              '<div style="font-weight:600;color:' + CHART_TOOLTIP_TEXT + '">' + chartEscapeHtml(interpolate(gettext("Rating %(rating)s"), { rating: built.labels[dataIndex] }, true)) + "</div>" +
+              '<div style="margin-top:4px">' + chartEscapeHtml(interpolate(ngettext("%(count)s item", "%(count)s items", value), { count: value.toLocaleString(document.documentElement.lang || undefined) }, true)) + "</div>";
           }
           const position = context.chart.canvas.getBoundingClientRect();
           tooltipEl.style.opacity = 1;
@@ -1627,7 +1685,7 @@ function initStatisticsCharts() {
       const chartData = {
         labels: built.labels,
         datasets: [{
-          label: "Items",
+          label: gettext("Items"),
           data: built.data,
           backgroundColor: "#6366f1",
           borderColor: "rgba(255, 255, 255, 0.1)",
@@ -1659,7 +1717,7 @@ function initStatisticsCharts() {
       const container = document.getElementById("ratingDistributionContainer");
       if (container) {
         container.innerHTML =
-          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No ratings yet.</p>';
+          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">' + chartEscapeHtml(gettext("No ratings yet.")) + '</p>';
       }
     }
   }
@@ -1687,8 +1745,8 @@ function initStatisticsCharts() {
       const isFiltered = mediaType && mediaType !== "all";
       const targetLabel = isFiltered ? MEDIA_SLUG_TO_LABEL[mediaType] : null;
       const subtitleText = targetLabel
-        ? targetLabel + " status counts."
-        : "Breakdown by type across all status states.";
+        ? interpolate(gettext("%(type)s status counts."), { type: chartDisplayLabel(targetLabel) }, true)
+        : gettext("Breakdown by type across all status states.");
 
       const typeLabels = statusBreakdownData.labels || [];
       let rowIndices = [];
@@ -1706,7 +1764,7 @@ function initStatisticsCharts() {
         if (container) {
           container.innerHTML =
             '<p class="text-xs text-gray-400 mb-3">' + escapeHtml(subtitleText) + "</p>" +
-            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No status data available for this filter.</p>';
+            '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">' + chartEscapeHtml(gettext("No status data available for this filter.")) + '</p>';
         }
         return;
       }
@@ -1726,11 +1784,11 @@ function initStatisticsCharts() {
       html +=
         '<p class="text-xs text-gray-400 flex-1 min-w-0" style="min-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" ' +
         'id="statusBreakdownSubtitle" title="' + escapeHtml(subtitleText) + '">' + escapeHtml(subtitleText) + "</p>";
-      html += '<div class="shrink-0 text-right text-xs font-medium text-gray-400" style="width:56px">Total</div>';
+      html += '<div class="shrink-0 text-right text-xs font-medium text-gray-400" style="width:56px">' + chartEscapeHtml(gettext("Total")) + '</div>';
       statusColumns.forEach(function (ds) {
         html +=
           '<div class="shrink-0 text-right text-xs font-medium" style="width:' + colWidth(ds) + 'px;color:' + ds.background_color + '">' +
-          escapeHtml(ds.label) + "</div>";
+          escapeHtml(chartDisplayLabel(ds.label)) + "</div>";
       });
       html += "</div>";
 
@@ -1747,11 +1805,11 @@ function initStatisticsCharts() {
           '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" ' +
           'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" ' +
           'class="w-4 h-4 shrink-0" style="color:' + (visuals.color || "#9ca3af") + '">' + (visuals.icon || "") + "</svg>" +
-          '<span class="text-sm text-gray-300 truncate">' + escapeHtml(typeLabel) + "</span>" +
+          '<span class="text-sm text-gray-300 truncate">' + escapeHtml(chartDisplayLabel(typeLabel)) + "</span>" +
           "</div>";
         html +=
           '<div class="shrink-0 text-sm font-semibold text-white text-right" style="width:56px">' +
-          total.toLocaleString() + "</div>";
+          total.toLocaleString(document.documentElement.lang || undefined) + "</div>";
 
         statusColumns.forEach(function (ds) {
           const value = Number((ds.data || [])[idx]) || 0;
@@ -1762,12 +1820,12 @@ function initStatisticsCharts() {
               '<div class="rounded-full overflow-hidden shrink-0" style="width:34px;height:4px;background:rgba(255,255,255,0.1)">' +
               '<div style="height:100%;width:' + pct + '%;background:' + ds.background_color + '"></div>' +
               "</div>" +
-              '<span class="text-sm text-right flex-1" style="color:' + ds.background_color + '">' + value.toLocaleString() + "</span>" +
+              '<span class="text-sm text-right flex-1" style="color:' + ds.background_color + '">' + value.toLocaleString(document.documentElement.lang || undefined) + "</span>" +
               "</div>";
           } else {
             html +=
               '<div class="shrink-0 text-sm text-right" style="width:' + colWidth(ds) + 'px;color:' + ds.background_color + '">' +
-              value.toLocaleString() + "</div>";
+              value.toLocaleString(document.documentElement.lang || undefined) + "</div>";
           }
         });
 
@@ -1788,7 +1846,7 @@ function initStatisticsCharts() {
       const container = document.getElementById("statusBreakdownContainer");
       if (container) {
         container.innerHTML =
-          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">No status data available for this range.</p>';
+          '<p class="text-sm text-[var(--color-text-muted)] text-center py-8 w-full">' + chartEscapeHtml(gettext("No status data available for this range.")) + '</p>';
       }
     }
   }
@@ -1827,7 +1885,7 @@ function initStatisticsCharts() {
         centerEl.innerHTML =
           '<span style="font-size:1rem;font-weight:700;color:' + CHART_TOOLTIP_TEXT + ';line-height:1.2">' +
           clamped.toFixed(1).replace(/\.0$/, "") + "%</span>" +
-          '<span style="font-size:0.6rem;color:#9ca3af;line-height:1.2">of titles</span>';
+          '<span style="font-size:0.6rem;color:#9ca3af;line-height:1.2">' + chartEscapeHtml(gettext("of titles")) + '</span>';
       }
 
       if (featuredPersonRingChart && featuredPersonRingCanvas !== canvas) {

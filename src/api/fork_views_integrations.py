@@ -12,7 +12,10 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from integrations import exports, tasks
-from integrations.views import _read_uploaded_file
+from integrations.upload_staging import (
+    enqueue_staged_task,
+    stage_uploaded_file,
+)
 from users.models import ImportModeChoices
 
 logger = logging.getLogger(__name__)
@@ -96,11 +99,28 @@ class ImportDispatchView(drf_views.APIView):
                     {"detail": f"{label} upload is required in 'file'."},
                     status=HTTP.BAD_REQUEST,
                 )
-            task = task_fn.delay(
-                user_id=request.user.id,
-                file=_read_uploaded_file(file),
-                mode=mode,
-            )
+            try:
+                staged_file = str(stage_uploaded_file(file))
+            except OSError:
+                logger.exception("Could not stage %s upload", label)
+                return Response(
+                    {"detail": "The upload could not be staged."},
+                    status=HTTP.INSUFFICIENT_STORAGE,
+                )
+            try:
+                task = enqueue_staged_task(
+                    task_fn,
+                    user_id=request.user.id,
+                    file=staged_file,
+                    mode=mode,
+                    staged_paths=(staged_file,),
+                )
+            except Exception:
+                logger.exception("Could not queue %s upload", label)
+                return Response(
+                    {"detail": "The import could not be queued."},
+                    status=HTTP.SERVICE_UNAVAILABLE,
+                )
             return Response({"task_id": task.id}, status=HTTP.ACCEPTED)
 
         return Response(

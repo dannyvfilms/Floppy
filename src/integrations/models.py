@@ -181,6 +181,7 @@ class PlexWatchlistSyncItem(models.Model):
     )
     source_username = models.CharField(max_length=255, blank=True, default="")
     source_account_id = models.CharField(max_length=255, blank=True, default="")
+    source_server_id = models.CharField(max_length=255, blank=True, default="")
     plex_rating_key = models.CharField(max_length=50, blank=True, default="")
     plex_guid = models.CharField(max_length=255, blank=True, default="")
     tmdb_id = models.CharField(max_length=32, blank=True, default="")
@@ -199,13 +200,14 @@ class PlexWatchlistSyncItem(models.Model):
         verbose_name_plural = "Plex watchlist sync items"
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "item", "source_username"],
-                name="integrations_plexwatchlistsyncitem_unique_user_item_source",
+                fields=["user", "item", "source_username", "source_server_id"],
+                name="integrations_plexwatchlistsyncitem_unique_user_item_server",
             ),
         ]
         indexes = [
             models.Index(fields=["user", "is_active"]),
             models.Index(fields=["user", "source_username"]),
+            models.Index(fields=["user", "source_server_id"]),
         ]
 
     def __str__(self):
@@ -340,6 +342,11 @@ class GPodderAccount(models.Model):
         blank=True,
         help_text="Reserved for future incremental subscription sync",
     )
+    last_full_resync_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last time a full (non-incremental) GPodder history resync ran",
+    )
     last_sync_at = models.DateTimeField(null=True, blank=True)
     connection_broken = models.BooleanField(default=False)
     last_error_message = models.TextField(blank=True, default="")
@@ -389,6 +396,12 @@ class AudiobookshelfAccount(models.Model):
         help_text="Last imported Audiobookshelf progress timestamp (milliseconds)",
     )
     last_sync_at = models.DateTimeField(null=True, blank=True)
+    abs_user_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Audiobookshelf user id, used to scope a sync binding.",
+    )
     connection_broken = models.BooleanField(default=False)
     last_error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -756,6 +769,16 @@ class JellyfinAccount(models.Model):
     api_key = models.TextField(help_text="Encrypted Jellyfin API key")
     jellyfin_user_id = models.CharField(max_length=255, blank=True, default="")
     jellyfin_username = models.CharField(max_length=255, blank=True, default="")
+    server_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "Jellyfin server GUID. Scopes a sync binding to one server, so "
+            "pointing the same account at a different server stops rather than "
+            "silently writing to it."
+        ),
+    )
     push_watched_enabled = models.BooleanField(
         default=True,
         help_text="Push Floppy 'watched' status to Jellyfin",
@@ -1195,6 +1218,11 @@ class ImportRun(models.Model):
         return f"ImportRun({self.source}, {self.user.username}, {self.status})"
 
 
+# What a tracking client needs and no more. Mirrored by api.scopes.TRACKING_PRESET,
+# which a test holds equal to this list. sync:read is not optional for such a
+# client: the change feed is how it learns what moved, so a token without it is
+# a sync client that cannot sync. sync:write stays out — resolving a conflict is
+# a deliberate human act, not routine client traffic.
 DEFAULT_INTEGRATION_SCOPES = [
     "scrobble:write",
     "progress:read",
@@ -1202,6 +1230,7 @@ DEFAULT_INTEGRATION_SCOPES = [
     "watchlist:read",
     "watchlist:write",
     "catalog:read",
+    "sync:read",
 ]
 
 
@@ -1218,6 +1247,10 @@ class IntegrationToken(models.Model):
     token_digest = models.CharField(max_length=64, unique=True, db_index=True)
     token_prefix = models.CharField(max_length=16, blank=True, default="")
     scopes = models.JSONField(default=list)
+    # Empty means every list the user owns, which is what lists:write meant
+    # before this existed. A populated list is an allowlist of CustomList ids,
+    # so a token can be given one shared list without the rest of the library.
+    writable_list_ids = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
@@ -1264,9 +1297,22 @@ class IntegrationToken(models.Model):
 
     def is_valid(self) -> bool:
         """Return True if the token is not revoked and not expired."""
-        return self.revoked_at is None and (
-            self.expires_at is None or self.expires_at > timezone.now()
-        )
+        return self.revoked_at is None and not self.is_expired()
+
+    def is_expired(self) -> bool:
+        """Return True if the token has passed its expiry."""
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    def may_write_list(self, list_id) -> bool:
+        """Return whether this token may write one list.
+
+        An empty allowlist keeps the previous behaviour. A populated one is
+        exact: a token bound to one list must not reach another by id.
+        """
+        allowed = self.writable_list_ids or []
+        if not allowed:
+            return True
+        return list_id in allowed or str(list_id) in [str(x) for x in allowed]
 
     def has_scope(self, scope: str) -> bool:
         """Return True if '*' is in scopes or the specific scope is in scopes."""
@@ -1289,12 +1335,22 @@ class IntegrationEventReceipt(models.Model):
         on_delete=models.CASCADE,
         related_name="event_receipts",
     )
+    # Receipts scope to the binding when there is one. Two devices on the same
+    # account routinely mint the same client event id ("1", a per-install
+    # counter), and a user-wide constraint turns the second device's first
+    # event into a bogus idempotency conflict.
+    binding = models.ForeignKey(
+        "SyncBinding",
+        on_delete=models.CASCADE,
+        related_name="event_receipts",
+        null=True,
+        blank=True,
+    )
     client_event_id = models.CharField(max_length=255, db_index=True)
     payload_digest = models.CharField(max_length=64)
     response_status_code = models.IntegerField(default=200)
     response_body = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
     created_at = models.DateTimeField(auto_now_add=True)
-
 
     class Meta:
         """Model options."""
@@ -1302,10 +1358,23 @@ class IntegrationEventReceipt(models.Model):
         verbose_name = "Integration event receipt"
         verbose_name_plural = "Integration event receipts"
         constraints = [
+            # Conditional pair rather than one constraint over both columns:
+            # NULL never equals NULL, so a plain unique(binding, event_id) would
+            # stop deduplicating entirely for unbound credentials.
             models.UniqueConstraint(
                 fields=["user", "client_event_id"],
-                name="unique_user_client_event_id",
+                condition=models.Q(binding__isnull=True),
+                name="unique_unbound_user_client_event_id",
             ),
+            models.UniqueConstraint(
+                fields=["binding", "client_event_id"],
+                condition=models.Q(binding__isnull=False),
+                name="unique_binding_client_event_id",
+            ),
+        ]
+        indexes = [
+            # Drives retention compaction.
+            models.Index(fields=["created_at"]),
         ]
 
     def __str__(self):
@@ -1313,3 +1382,773 @@ class IntegrationEventReceipt(models.Model):
         return f"IntegrationEventReceipt({self.user.username}, {self.client_event_id})"
 
 
+
+
+class CatalogGrant(models.Model):
+    """A revocable, per-resource grant for published read-only catalogs.
+
+    The Stremio add-on install URL carries its credential in the path, which
+    means it lands in server logs, browser history and any screenshot of the
+    settings page. Before this that credential was the account token: full
+    API access, and revoking it broke every webhook and integration at once.
+
+    A grant reads the selected catalogs and nothing else, and revoking one
+    affects only the install it was minted for.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="catalog_grants",
+    )
+    name = models.CharField(max_length=255)
+    # Stored in the clear, unlike IntegrationToken: Stremio replays the install
+    # URL on every request, so there is nothing to compare a digest against
+    # without indexing the digest anyway. Entropy is the control here, plus
+    # the narrow read-only scope and independent revocation.
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    # Empty means every supported catalog. A populated list is an allowlist of
+    # CatalogSpec.catalog_id values.
+    catalog_ids = models.JSONField(default=list)
+    # The add-on marks an item in progress when Stremio asks for subtitles.
+    # On by default because that is what the install is for; still far narrower
+    # than the account token, which reaches the whole API.
+    allow_playback_start = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Catalog grant"
+        verbose_name_plural = "Catalog grants"
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"CatalogGrant({self.name}, {self.user.username})"
+
+    @classmethod
+    def generate(cls, user, name, catalog_ids=None, *, allow_playback_start=True):
+        """Mint a grant and return it with its URL token."""
+        token = f"cat_{secrets.token_urlsafe(24)}"
+        instance = cls.objects.create(
+            user=user,
+            name=name,
+            token=token,
+            catalog_ids=list(catalog_ids or []),
+            allow_playback_start=allow_playback_start,
+        )
+        return instance, token
+
+    def is_valid(self) -> bool:
+        """Return whether this grant may still serve a catalog."""
+        return self.revoked_at is None
+
+    def allows_catalog(self, catalog_id: str) -> bool:
+        """Return whether this grant covers one catalog."""
+        if not self.catalog_ids:
+            return True
+        return catalog_id in self.catalog_ids
+
+
+class RemoteAddon(models.Model):
+    """A declarative remote HTTP capability the user registered.
+
+    Declarative means declarative: Floppy stores what the manifest said and
+    fetches from the URL through the outbound boundary. No code from the remote
+    host is ever executed, and an executable plugin is not a thing this can
+    become. See docs/architecture/outbound-fetch.md.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="remote_addons",
+    )
+    # The configured URL can itself carry a secret, so it is masked in the UI
+    # and never logged; only the reason code of a failure is.
+    manifest_url = models.URLField(max_length=2048)
+    addon_id = models.CharField(max_length=255, blank=True, default="")
+    name = models.CharField(max_length=255, blank=True, default="")
+    version = models.CharField(max_length=64, blank=True, default="")
+    description = models.TextField(blank=True, default="")
+    # The validated projection of the manifest, never the raw document.
+    manifest = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    enabled = models.BooleanField(default=True)
+    last_fetched_at = models.DateTimeField(null=True, blank=True)
+    last_status = models.CharField(max_length=32, blank=True, default="")
+    # A stable reason code, never a raw URL or response body.
+    last_error_code = models.CharField(max_length=64, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Remote add-on"
+        verbose_name_plural = "Remote add-ons"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "manifest_url"],
+                name="unique_remote_addon_per_user",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"RemoteAddon({self.name or self.addon_id}, {self.user.username})"
+
+    def masked_url(self) -> str:
+        """Return the manifest URL with its path and query hidden.
+
+        A configured URL frequently carries the credential in its path, which
+        is exactly how the Stremio add-on protocol works.
+        """
+        from urllib.parse import urlparse
+
+        try:
+            parsed = urlparse(self.manifest_url)
+        except ValueError:
+            return "(invalid URL)"
+        if not parsed.hostname:
+            return "(invalid URL)"
+        return f"{parsed.scheme}://{parsed.hostname}/…"
+
+
+class SyncClientKind(models.TextChoices):
+    """The kind of external system a binding points at."""
+
+    PLEX = "plex", "Plex"
+    JELLYFIN = "jellyfin", "Jellyfin"
+    EMBY = "emby", "Emby"
+    KODI = "kodi", "Kodi"
+    STREMIO = "stremio", "Stremio"
+    AUDIOBOOKSHELF = "audiobookshelf", "Audiobookshelf"
+    GENERIC = "generic", "Generic client"
+
+
+class SyncDirection(models.TextChoices):
+    """Which way state is allowed to travel for one resource."""
+
+    INBOUND = "inbound", "Provider to Floppy"
+    OUTBOUND = "outbound", "Floppy to provider"
+
+
+class SyncBindingStatus(models.TextChoices):
+    """Whether a binding may move state."""
+
+    PENDING = "pending", "Pending approval"
+    ACTIVE = "active", "Active"
+    NEEDS_REAPPROVAL = "needs_reapproval", "Needs reapproval"
+    DISABLED = "disabled", "Disabled"
+
+
+# Capability names. A direction ships enabled only where the adapter has been
+# shown to hold the contract, so these are declared per binding rather than
+# inferred from the provider's identity.
+CAPABILITY_WATCHED_READ = "watched.read"
+CAPABILITY_WATCHED_WRITE_PLAYED = "watched.write_played"
+CAPABILITY_WATCHED_WRITE_UNPLAYED = "watched.write_unplayed"
+CAPABILITY_WATCHED_PUSH_PLAYED = "watched.push_played"
+CAPABILITY_WATCHED_PUSH_UNPLAYED = "watched.push_unplayed"
+CAPABILITY_LISTEN_READ = "listen.read"
+
+
+class SyncBinding(models.Model):
+    """One approved relation between a Floppy user and one external profile.
+
+    Binding identity is what origin derivation, cursors, receipts and conflicts
+    scope to. An integration token's client identifier is not a substitute: one
+    token can address several servers, and one server has several profiles.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="sync_bindings",
+    )
+    client_kind = models.CharField(max_length=32, choices=SyncClientKind)
+    # Identifies the server or service instance. Empty until the first payload
+    # that carries it; filling an empty value in is a narrowing, not a change of
+    # identity, so it does not force reapproval.
+    instance_key = models.CharField(max_length=255, blank=True, default="")
+    # Identifies the user account on that instance. A change here always forces
+    # reapproval: writing another person's library is the failure this prevents.
+    profile_key = models.CharField(max_length=255, blank=True, default="")
+    # Stable opaque string stamped onto every change and delivery this binding
+    # produces, so a state movement can be traced back and never echoed home.
+    origin_key = models.CharField(max_length=128, unique=True)
+
+    approved_capabilities = models.JSONField(default=list)
+    approved_directions = models.JSONField(default=list)
+    status = models.CharField(
+        max_length=24,
+        choices=SyncBindingStatus,
+        default=SyncBindingStatus.PENDING.value,
+    )
+    # Operator stop switch. Independent of status so disabling for safety does
+    # not discard the user's approvals.
+    kill_switch = models.BooleanField(default=False)
+
+    label = models.CharField(max_length=255, blank=True, default="")
+    last_reconciled_at = models.DateTimeField(null=True, blank=True)
+    last_error_message = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    disabled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Sync binding"
+        verbose_name_plural = "Sync bindings"
+        ordering = ["user", "client_kind", "instance_key"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "client_kind", "instance_key", "profile_key"],
+                name="unique_sync_binding_identity",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"SyncBinding({self.client_kind}, {self.user.username})"
+
+    def is_operational(self) -> bool:
+        """Return whether this binding may move state right now."""
+        return self.status == SyncBindingStatus.ACTIVE.value and not self.kill_switch
+
+    def has_capability(self, capability: str) -> bool:
+        """Return whether the user approved one capability."""
+        return capability in (self.approved_capabilities or [])
+
+    def allows(self, direction: str, capability: str) -> bool:
+        """Return whether one direction and capability are both approved.
+
+        Both are required. An approved direction with an unverified capability
+        must not write, and a verified capability the user has not pointed in
+        that direction must not either.
+        """
+        if not self.is_operational():
+            return False
+        return direction in (
+            self.approved_directions or []
+        ) and self.has_capability(capability)
+
+
+class SyncCheckpoint(models.Model):
+    """The last applied position for one binding, resource and direction.
+
+    Advanced only after the page it describes has committed, and never stored
+    only in cache: a checkpoint lost to a restart re-reads, but a checkpoint
+    advanced ahead of its data skips silently.
+    """
+
+    binding = models.ForeignKey(
+        SyncBinding,
+        on_delete=models.CASCADE,
+        related_name="checkpoints",
+    )
+    resource = models.CharField(max_length=64)
+    direction = models.CharField(max_length=16, choices=SyncDirection)
+    # Opaque server cursor for Floppy-side change feeds.
+    cursor = models.CharField(max_length=512, blank=True, default="")
+    last_sequence = models.BigIntegerField(default=0)
+    # The provider's own cursor, where it has one: a playback-reporting row id,
+    # a millisecond sync stamp, a viewedAt watermark.
+    provider_cursor = models.CharField(max_length=512, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Sync checkpoint"
+        verbose_name_plural = "Sync checkpoints"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["binding", "resource", "direction"],
+                name="unique_sync_checkpoint_position",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"SyncCheckpoint({self.binding_id}, {self.resource}, {self.direction})"
+
+
+class ProviderStateObservation(models.Model):
+    """What a provider last told us, and what we held when it did.
+
+    This is the merge base. Without the local revision and digest captured at
+    observation time there is no way to tell "they moved" from "we moved", and
+    every disagreement collapses into last-write-wins.
+    """
+
+    binding = models.ForeignKey(
+        SyncBinding,
+        on_delete=models.CASCADE,
+        related_name="observations",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="provider_state_observations",
+    )
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="provider_state_observations",
+    )
+    external_id = models.CharField(max_length=255, blank=True, default="")
+
+    watched = models.BooleanField(default=False)
+    play_count = models.PositiveIntegerField(default=0)
+    watched_at = models.DateTimeField(null=True, blank=True)
+    provider_digest = models.CharField(max_length=64, blank=True, default="")
+
+    local_revision_at_observation = models.PositiveIntegerField(default=0)
+    local_digest_at_observation = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+    )
+
+    source = models.CharField(max_length=32, blank=True, default="")
+    observed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Provider state observation"
+        verbose_name_plural = "Provider state observations"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["binding", "item"],
+                name="unique_provider_observation_per_item",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["binding", "observed_at"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"ProviderStateObservation({self.binding_id}, {self.item_id})"
+
+
+class StateConflictReason(models.TextChoices):
+    """Why an observation could not be applied without losing information."""
+
+    DIVERGENT_WATCHED = "divergent_watched", "Both sides changed watched state"
+    DIGEST_MISMATCH = "digest_mismatch", "States diverged"
+    UNATTRIBUTABLE_UNWATCH = (
+        "unattributable_unwatch",
+        "Nothing identifiable to retract",
+    )
+    AMBIGUOUS_MATCH = "ambiguous_match", "More than one item matched"
+
+
+class StateConflictStatus(models.TextChoices):
+    """Whether a conflict still blocks propagation."""
+
+    OPEN = "open", "Open"
+    RESOLVED = "resolved", "Resolved"
+
+
+class StateConflict(models.Model):
+    """A disagreement held for a person to settle.
+
+    Propagation pauses for this item and this binding only. Everything else
+    keeps flowing, because one unresolvable title must not stop a library.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="state_conflicts",
+    )
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="state_conflicts",
+    )
+    binding = models.ForeignKey(
+        SyncBinding,
+        on_delete=models.CASCADE,
+        related_name="conflicts",
+    )
+    reason = models.CharField(max_length=32, choices=StateConflictReason)
+    status = models.CharField(
+        max_length=16,
+        choices=StateConflictStatus,
+        default=StateConflictStatus.OPEN.value,
+    )
+
+    local_snapshot = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    remote_snapshot = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    base_snapshot = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+
+    occurrence_count = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "State conflict"
+        verbose_name_plural = "State conflicts"
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "item", "binding", "reason"],
+                condition=models.Q(status="open"),
+                name="unique_open_state_conflict",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"StateConflict({self.reason}, item={self.item_id})"
+
+
+class UnresolvedReferenceReason(models.TextChoices):
+    """Why an external reference could not be turned into an item."""
+
+    UNKNOWN_ID = "unknown_id", "No matching item"
+    UNSUPPORTED_NAMESPACE = "unsupported_namespace", "Identifier type unsupported"
+    AMBIGUOUS = "ambiguous", "More than one item matched"
+    UNSUPPORTED_MEDIA_TYPE = "unsupported_media_type", "Media type unsupported"
+
+
+class ExternalReferenceReviewStatus(models.TextChoices):
+    """Resolution state for a user-owned integration identity."""
+
+    RESOLVED = "resolved", "Resolved automatically"
+    NEEDS_REVIEW = "needs_review", "Needs review"
+    CORRECTED = "corrected", "Corrected"
+    IGNORED = "ignored", "Ignored"
+
+
+class ExternalReference(models.Model):
+    """A user-scoped, stable source identity and its Floppy match.
+
+    The source identity is intentionally independent of the destination Item.
+    In particular, Plex rating keys are scoped by server/account and Trakt ids
+    are scoped by source account, so a bad destination match can be corrected
+    without losing the key used by the next import.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="external_references",
+    )
+    integration = models.CharField(max_length=32)
+    source_account = models.CharField(max_length=255, blank=True, default="")
+    external_namespace = models.CharField(max_length=32)
+    external_identity = models.CharField(max_length=500)
+    media_type = models.CharField(
+        max_length=10,
+        choices=(
+            ("tv", "TV Show"),
+            ("movie", "Movie"),
+            ("episode", "Episode"),
+        ),
+    )
+    matched_item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="matched_external_references",
+    )
+    corrected_item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="corrected_external_references",
+    )
+    review_status = models.CharField(
+        max_length=20,
+        choices=ExternalReferenceReviewStatus.choices,
+        default=ExternalReferenceReviewStatus.RESOLVED.value,
+    )
+    # Source episode coordinate -> destination coordinate.  Kept on the
+    # show reference so one correction applies to every future episode event.
+    episode_mapping = models.JSONField(default=dict, blank=True)
+    # Only allow-listed, non-secret display/context fields are written here.
+    metadata = models.JSONField(default=dict, blank=True, encoder=DjangoJSONEncoder)
+    decision_note = models.CharField(max_length=500, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        ordering = ["-updated_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "user",
+                    "integration",
+                    "source_account",
+                    "external_namespace",
+                    "external_identity",
+                    "media_type",
+                ],
+                name="unique_user_external_reference",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["user", "review_status"]),
+            models.Index(fields=["user", "integration", "source_account"]),
+            models.Index(fields=["matched_item", "media_type"]),
+        ]
+
+    def __str__(self):
+        """Return a safe readable identity."""
+        return f"ExternalReference({self.integration}:{self.external_identity})"
+
+
+class UnresolvedExternalReference(models.Model):
+    """An external id that could not be resolved, deduplicated by occurrence.
+
+    Holds enough to explain the problem and nothing that could carry a secret:
+    a namespace, a value, a reason, and the media shape it claimed to be.
+    """
+
+    binding = models.ForeignKey(
+        SyncBinding,
+        on_delete=models.CASCADE,
+        related_name="unresolved_references",
+    )
+    namespace = models.CharField(max_length=32)
+    value = models.CharField(max_length=255)
+    reason_code = models.CharField(max_length=32, choices=UnresolvedReferenceReason)
+    context = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+
+    occurrence_count = models.PositiveIntegerField(default=1)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    dismissed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Unresolved external reference"
+        verbose_name_plural = "Unresolved external references"
+        ordering = ["-last_seen_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["binding", "namespace", "value", "reason_code"],
+                name="unique_unresolved_external_reference",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"UnresolvedExternalReference({self.namespace}:{self.value})"
+
+
+class OutboundDeliveryStatus(models.TextChoices):
+    """Lifecycle of one outbound state write."""
+
+    PENDING = "pending", "Pending"
+    IN_FLIGHT = "in_flight", "In flight"
+    DELIVERED = "delivered", "Delivered"
+    FAILED = "failed", "Failed"
+    SUPERSEDED = "superseded", "Superseded"
+    SKIPPED = "skipped", "Skipped"
+
+
+class OutboundStateDelivery(models.Model):
+    """A durable intent to tell one provider about one state revision.
+
+    Written in the same transaction as the change that caused it, so a crash
+    between "we changed state" and "we told them" is impossible: either both
+    rows exist or neither does. The Celery kick that follows is an optimisation,
+    and a sweeper picks up anything a lost kick dropped, so correctness never
+    depends on the broker being up.
+    """
+
+    binding = models.ForeignKey(
+        SyncBinding,
+        on_delete=models.CASCADE,
+        related_name="deliveries",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="state_deliveries",
+    )
+    item = models.ForeignKey(
+        "app.Item",
+        on_delete=models.CASCADE,
+        related_name="state_deliveries",
+    )
+    change = models.ForeignKey(
+        "app.WatchStateChange",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="deliveries",
+    )
+
+    # The revision this write is trying to make true remotely, and the digest
+    # that revision describes. Both are needed: the revision orders the write,
+    # the digest is what a read-back is compared against.
+    target_revision = models.PositiveIntegerField(default=0)
+    target_digest = models.CharField(max_length=64, blank=True, default="")
+    intent = models.BooleanField(
+        default=True,
+        help_text="True to mark played remotely, False to mark unplayed.",
+    )
+
+    status = models.CharField(
+        max_length=16,
+        choices=OutboundDeliveryStatus,
+        default=OutboundDeliveryStatus.PENDING.value,
+    )
+    attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_error_message = models.TextField(blank=True, default="")
+
+    client_event_id = models.CharField(max_length=255, blank=True, default="")
+    correlation_id = models.UUIDField(null=True, blank=True, db_index=True)
+    # A fresh read of provider state taken *after* the write returned, not the
+    # value we intended to write. This is what makes echo detection independent
+    # of any timeout.
+    readback_digest = models.CharField(max_length=64, blank=True, default="")
+    echo_seen_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Outbound state delivery"
+        verbose_name_plural = "Outbound state deliveries"
+        ordering = ["binding", "item", "target_revision"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["binding", "item", "target_revision"],
+                name="unique_delivery_per_revision",
+            ),
+            # Serialization primitive: at most one write per (destination, item)
+            # can be in flight, enforced by the database rather than by a lock
+            # that a crashed worker could hold forever.
+            models.UniqueConstraint(
+                fields=["binding", "item"],
+                condition=models.Q(status="in_flight"),
+                name="unique_inflight_delivery_per_item",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "next_attempt_at"]),
+            models.Index(fields=["binding", "status"]),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"OutboundStateDelivery({self.binding_id}, item={self.item_id})"
+
+
+class EmbyAccount(models.Model):
+    """Store Emby connection settings for a user.
+
+    Emby currently authenticates its webhook off the account token in the URL,
+    which is enough to receive playback but not to read library state or write
+    anything back. A real connection is what lets reconciliation notice a manual
+    change — most providers have no event for "user ticked watched", so the only
+    way to find out is to look.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="emby_account",
+    )
+    base_url = models.URLField(help_text="Emby server URL")
+    api_key = models.TextField(help_text="Encrypted Emby API key")
+    emby_user_id = models.CharField(max_length=255, blank=True, default="")
+    emby_username = models.CharField(max_length=255, blank=True, default="")
+    server_id = models.CharField(max_length=255, blank=True, default="")
+
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Emby account"
+        verbose_name_plural = "Emby accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"EmbyAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return whether the connection is usable."""
+        return bool(self.base_url and self.api_key and not self.connection_broken)
+
+
+class KodiAccount(models.Model):
+    """Store Kodi JSON-RPC connection settings for a user.
+
+    Kodi identifies media by *local library id*, not by a provider id, so
+    nothing can be written to it without first resolving identity through its
+    library. That is what this connection is for; the webhook alone cannot do it.
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="kodi_account",
+    )
+    base_url = models.URLField(help_text="Kodi JSON-RPC endpoint URL")
+    username = models.CharField(max_length=255, blank=True, default="")
+    password = models.TextField(
+        blank=True,
+        default="",
+        help_text="Encrypted Kodi JSON-RPC password",
+    )
+    instance_uuid = models.CharField(max_length=255, blank=True, default="")
+
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Kodi account"
+        verbose_name_plural = "Kodi accounts"
+
+    def __str__(self):
+        """Readable representation."""
+        return f"KodiAccount({self.user.username})"
+
+    @property
+    def is_connected(self):
+        """Return whether the connection is usable."""
+        return bool(self.base_url and not self.connection_broken)

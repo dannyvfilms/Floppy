@@ -7,6 +7,7 @@ from django.contrib.auth.forms import PasswordChangeForm, SetPasswordForm
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from .models import PLAYBACK_WEBHOOK_SECRET_MAX_LENGTH, User
 
@@ -20,9 +21,9 @@ class CustomLoginForm(LoginForm):
         """Remove email field and change password2 label."""
         super().__init__(*args, **kwargs)
 
-        self.fields["login"].widget.attrs["placeholder"] = "Enter your username"
+        self.fields["login"].widget.attrs["placeholder"] = _("Enter your username")
 
-        self.fields["password"].widget.attrs["placeholder"] = "Enter your password"
+        self.fields["password"].widget.attrs["placeholder"] = _("Enter your password")
 
 
 class CustomSignupForm(SignupForm):
@@ -38,8 +39,8 @@ class CustomSignupForm(SignupForm):
         self.fields.pop("email", None)
 
         # Change label and placeholder for password2 field
-        self.fields["password2"].label = "Confirm Password"
-        self.fields["password2"].widget.attrs["placeholder"] = "Confirm your password"
+        self.fields["password2"].label = _("Confirm Password")
+        self.fields["password2"].widget.attrs["placeholder"] = _("Confirm your password")
 
     def save(self, request):
         """Save the new user, turning a race-condition IntegrityError into a form error."""
@@ -73,7 +74,7 @@ class UserUpdateForm(forms.ModelForm):
         """Check if the user is demo before changing the password."""
         cleaned_data = super().clean()
         if self.instance.is_demo:
-            msg = "Changing the username is not allowed for the demo account."
+            msg = _("Changing the username is not allowed for the demo account.")
             self.add_error("username", msg)
         return cleaned_data
 
@@ -96,7 +97,7 @@ class PasswordChangeForm(PasswordChangeForm):
         """Check if the user is demo before changing the password."""
         cleaned_data = super().clean()
         if self.user.is_demo:
-            msg = "Changing the password is not allowed for the demo account."
+            msg = _("Changing the password is not allowed for the demo account.")
             self.add_error("new_password2", msg)
         return cleaned_data
 
@@ -162,7 +163,7 @@ class NotificationSettingsForm(forms.ModelForm):
 
         for url in urls:
             if not apobj.add(url):
-                message = f"'{url}' is not a valid Apprise URL."
+                message = _("'%(url)s' is not a valid Apprise URL.") % {"url": url}
                 raise ValidationError(message)
 
         return notification_urls
@@ -202,7 +203,7 @@ class NotificationSettingsForm(forms.ModelForm):
 class AuthenticatorSetupForm(forms.Form):
     """Confirm authenticator app setup with a TOTP code."""
 
-    code = forms.CharField(max_length=6, min_length=6)
+    code = forms.CharField(label=_("Code"), max_length=6, min_length=6)
 
     def __init__(self, *args, user, **kwargs):
         """Store the extra keyword arguments this form needs."""
@@ -213,7 +214,7 @@ class AuthenticatorSetupForm(forms.Form):
         """Validate TOTP code against the user's pending secret."""
         code = self.cleaned_data["code"].strip()
         if not self.user.verify_totp_code(code):
-            msg = "Invalid authenticator code."
+            msg = _("Invalid authenticator code.")
             raise ValidationError(msg)
         return code
 
@@ -221,7 +222,7 @@ class AuthenticatorSetupForm(forms.Form):
 class RegenerateRecoveryCodesForm(forms.Form):
     """Regenerate recovery codes with password confirmation."""
 
-    current_password = forms.CharField(widget=forms.PasswordInput)
+    current_password = forms.CharField(label=_("Current password"), widget=forms.PasswordInput)
 
     def __init__(self, *args, user, **kwargs):
         """Store the extra keyword arguments this form needs."""
@@ -232,7 +233,7 @@ class RegenerateRecoveryCodesForm(forms.Form):
         """Validate the current password field."""
         password = self.cleaned_data["current_password"]
         if not self.user.check_password(password):
-            msg = "Current password is incorrect."
+            msg = _("Current password is incorrect.")
             raise ValidationError(msg)
         return password
 
@@ -240,12 +241,12 @@ class RegenerateRecoveryCodesForm(forms.Form):
 class PasswordRecoveryForm(SetPasswordForm):
     """Self-service password recovery using recovery codes and authenticator."""
 
-    username = forms.CharField(max_length=150)
-    recovery_code = forms.CharField(max_length=32, required=False)
-    authenticator_code = forms.CharField(required=False, max_length=6)
+    username = forms.CharField(label=_("Username"), max_length=150)
+    recovery_code = forms.CharField(label=_("Recovery code"), max_length=32, required=False)
+    authenticator_code = forms.CharField(label=_("Authenticator code"), required=False, max_length=6)
 
     error_messages = {
-        "invalid_recovery": "Unable to verify recovery details.",
+        "invalid_recovery": _("Unable to verify recovery details."),
     }
 
     def __init__(self, *args, **kwargs):

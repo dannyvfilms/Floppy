@@ -1,9 +1,11 @@
+
+{% load i18n %}
 {% load static %}
 {% load app_tags %}
 
 {# djlint:off #}
 <!DOCTYPE html>
-<html lang="en"
+<html lang="{{ LANGUAGE_CODE }}"
       data-img-none="{{ IMG_NONE }}"
       class="scheme-dark bg-[var(--color-page-bg)]">
   <head>
@@ -31,6 +33,7 @@
 
     <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}{% get_static_file_mtime 'css/main.css' %}">
 
+    <script src="{% url 'javascript-catalog' %}"></script>
     <script src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
     <script>
       // Boosted navigation: never serve history entries from the local
@@ -49,10 +52,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon/favicon-32x32.png' %}">
     <link rel="icon" type="image/png" sizes="16x16" href="{% static 'favicon/favicon-16x16.png' %}">
     <link rel="manifest" href="{% static 'favicon/site.webmanifest' %}">
-    <link rel="mask-icon" href="{% static 'favicon/safari-pinned-tab.svg' %}" color="#181a1b">
     <link rel="shortcut icon" href="{% static 'favicon/favicon.ico' %}">
     <meta name="msapplication-TileColor" content="#181a1b">
-    <meta name="msapplication-config" content="{% static 'favicon/browserconfig.xml' %}">
     <meta name="theme-color" content="#181a1b">
   </head>
 
@@ -82,7 +83,7 @@
               {% if REGISTRATION %}
                 <a href="{% url 'account_login' %}"
                    class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors text-sm">
-                  Sign In
+                  {% translate "Sign In" %}
                 </a>
               {% endif %}
             </div>
@@ -98,10 +99,10 @@
         <footer class="border-t border-[var(--color-border)] bg-[var(--color-sidebar)]">
           <div class="container mx-auto px-4 py-6 space-y-2">
             <p class="text-sm text-[var(--color-text-muted)]">
-              Floppy is a self-hosted media tracker for books, games, movies, music, podcasts, tv shows, and more.
+              {% translate "Floppy is a self-hosted media tracker for books, games, movies, music, podcasts, tv shows, and more." %}
             </p>
             <p class="text-sm text-[var(--color-text-muted)]">
-              This fork is maintained by
+              {% translate "This fork is maintained by" %}
               {% if FORK_OWNER_URL %}
                 <a class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline" href="{{ FORK_OWNER_URL }}" rel="noopener" target="_blank">
                   {{ FORK_OWNER_NAME|default:"the fork owner" }}

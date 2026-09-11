@@ -1,0 +1,19 @@
+version: 2
+
+secret:
+  # These exact values are app-owned, shared metadata-provider credentials.
+  # They are intentionally public free-tier defaults, not user or account
+  # credentials. Private provider secrets must not be added here.
+  ignored_matches:
+    - name: shared TMDB metadata key
+      match: 494f989b8c431e5f1df802bca2ae9bff8bb21dca474ba652535e4e48ed98f93a
+    - name: shared MyAnimeList metadata client id
+      match: 452349a8841b24ad9c6da7e5c2013e6f7942c1aa6f07450a14a8c2f0c0167c93
+    - name: shared IGDB metadata client id
+      match: 5dcc5bb853b4ea8b18eb9c5ab45a65266e441ca86943efaa25eae3be3a3fc6f7
+    - name: shared BoardGameGeek metadata token
+      match: 79fd68a41169290e678c0ea0eab1ce4b4a1f5fdd1627d01f59aab2c2cad1ca7b
+    - name: shared Comic Vine metadata key
+      match: 2d86816ac5f868462d9c5d647a3d9621ea55055ec54da255a25afd1f13835331
+    - name: shared SIMKL metadata client id
+      match: 53398b38adbc19a251a932ca4776f9074a17db279799997204de72a3e1cd7ba0

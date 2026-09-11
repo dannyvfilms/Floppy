@@ -1,0 +1,96 @@
+{% extends "users/base.html" %}
+{% load i18n %}
+
+{% block title %}
+  {% translate "Fix match - Floppy" %}
+{% endblock title %}
+
+{% block settings_content %}
+  <div class="space-y-6">
+    <div>
+      <h2 class="text-2xl font-semibold">{% translate "Fix match" %}</h2>
+      <p class="mt-2 text-sm text-[var(--color-text-muted)]">
+        {% blocktranslate with title=source_item.title %}Choose the correct TMDB {{ source_item.media_type }} for “{{ title }}”. Your tracking data stays private to your account.{% endblocktranslate %}
+      </p>
+    </div>
+
+    <form method="get" class="flex gap-2">
+      <input name="q"
+             value="{{ request.GET.q|default:'' }}"
+             placeholder="{% translate 'Search titles' %}"
+             class="min-w-0 flex-1 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-sm">
+      <button class="rounded-md bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
+              type="submit">{% translate "Search" %}</button>
+    </form>
+
+    {% if candidates %}
+      <div class="space-y-2">
+        {% for candidate in candidates %}
+          {% if candidate.item %}
+            <form method="post"
+                  class="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-3">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="preview">
+              <input type="hidden"
+                     name="destination_item_id"
+                     value="{{ candidate.item.id }}">
+              <span class="text-sm text-[var(--color-text)]">{{ candidate.item.title }}
+                {% if candidate.result.year %}({{ candidate.result.year }}){% endif %}
+              </span>
+              <button class="shrink-0 rounded-md border border-indigo-500 px-3 py-1.5 text-sm text-indigo-300 hover:bg-indigo-500/10"
+                      type="submit">{% translate "Preview" %}</button>
+            </form>
+          {% endif %}
+        {% empty %}
+          <p class="text-sm text-[var(--color-text-muted)]">{% translate "No supported TMDB results found." %}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if preview %}
+      <section class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-5">
+        <h3 class="font-semibold">{% translate "Review changes" %}</h3>
+        <p class="mt-2 text-sm text-[var(--color-text-secondary)]">
+          {% blocktranslate with title=preview.destination.title %}This will move the selected user-owned tracking data to {{ title }}. Provider identities and other users are not changed.{% endblocktranslate %}
+        </p>
+        <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-[var(--color-text-secondary)]">
+          <li>{% translate "Movie plays / episode watches:" %} {{ preview.counts.movie_plays|add:preview.counts.episodes }}</li>
+          <li>{% translate "Collection entries:" %} {{ preview.counts.collections }}</li>
+          <li>{% translate "List entries:" %} {{ preview.counts.lists }}</li>
+          <li>{% translate "Saved source references:" %} {{ reference_count }}</li>
+        </ul>
+
+        <form method="post" class="mt-5 space-y-4">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="apply">
+          <label class="block text-sm text-[var(--color-text-secondary)]">
+            {% translate "Episode mapping (JSON; every listed source episode must remain mapped):" %}
+            <textarea name="mapping_json"
+                      rows="6"
+                      class="mt-1 w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-2 font-mono text-xs">{{ preview_mapping_json }}</textarea>
+          </label>
+          {% for field, values in preview.scalar_conflicts.items %}
+            <label class="block text-sm text-[var(--color-text-secondary)]">
+              {{ field }}: {{ values.source }} / {{ values.destination }}
+              <select name="decision_{{ field }}"
+                      required
+                      class="ml-2 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-2 py-1">
+                <option value="">{% translate "Choose" %}</option>
+                <option value="source">{% translate "Use source" %}</option>
+                <option value="destination">{% translate "Use destination" %}</option>
+              </select>
+            </label>
+          {% endfor %}
+          <label class="block text-sm text-[var(--color-text-secondary)]">
+            {% translate "Audit note (optional):" %}
+            <input name="note"
+                   maxlength="500"
+                   class="mt-1 w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2">
+          </label>
+          <button class="rounded-md bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
+                  type="submit">{% translate "Apply correction" %}</button>
+        </form>
+      </section>
+    {% endif %}
+  </div>
+{% endblock settings_content %}

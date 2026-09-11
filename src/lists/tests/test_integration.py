@@ -6,7 +6,11 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import tag
+from django.urls import reverse
 from playwright.sync_api import expect, sync_playwright
+
+from app.models import Item, MediaTypes
+from lists.models import CustomList, CustomListItem
 
 PERFECT_BLUE_MEDIA_ID = "437"
 
@@ -196,3 +200,105 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.locator("#id_1_name").click()
         self.page.locator("#id_1_name").fill("test rename")
         self.page.get_by_role("button", name="Save").click()
+
+    def test_list_toggle_refreshes_header_count_once_desktop_and_mobile(self):
+        """A successful toggle refreshes the grid and count exactly once."""
+        item = Item.objects.create(
+            media_id=PERFECT_BLUE_MEDIA_ID,
+            source="mal",
+            media_type=MediaTypes.ANIME.value,
+            title="Perfect Blue",
+            image=PERFECT_BLUE_SEARCH_RESULT["image"],
+        )
+
+        for index, viewport in enumerate(
+            (
+                {"width": 1280, "height": 800},
+                {"width": 390, "height": 844},
+            ),
+        ):
+            page = self.context.new_page()
+            self.addCleanup(page.close)
+            refresh_requests = []
+            toggle_requests = []
+            toggle_statuses = []
+
+            def record_refresh_request(request, requests=refresh_requests):
+                if (
+                    request.method == "GET"
+                    and request.headers.get("hx-request") == "true"
+                    and "/list/" in request.url.split("?", 1)[0]
+                ):
+                    requests.append(request)
+
+            page.on("request", record_refresh_request)
+            self.addCleanup(page.remove_listener, "request", record_refresh_request)
+
+            def record_toggle_request(request, requests=toggle_requests):
+                if request.method == "POST" and "list_item_toggle" in request.url:
+                    requests.append(request)
+
+            page.on("request", record_toggle_request)
+            self.addCleanup(page.remove_listener, "request", record_toggle_request)
+
+            def record_toggle_response(response, statuses=toggle_statuses):
+                if response.request.method == "POST" and "list_item_toggle" in response.url:
+                    statuses.append(response.status)
+
+            page.on("response", record_toggle_response)
+            self.addCleanup(page.remove_listener, "response", record_toggle_response)
+
+            custom_list = CustomList.objects.create(
+                name=f"count-test-{index}",
+                owner=self.user,
+            )
+            CustomListItem.objects.create(custom_list=custom_list, item=item)
+            list_url = (
+                f"{self.live_server_url}"
+                f"{reverse('list_detail', args=[custom_list.public_reference])}"
+            )
+            page.set_viewport_size(viewport)
+            page.goto(list_url)
+
+            count = page.locator("[data-list-item-count]")
+            expect(count).to_have_text("1 item")
+            page.evaluate(
+                """
+                () => {
+                    window.__listCountUpdates = 0;
+                    document.body.addEventListener(
+                        'listCountUpdated',
+                        () => { window.__listCountUpdates += 1; },
+                    );
+                }
+                """,
+            )
+
+            page.locator(
+                '.media-card-overlay button[title="Add to custom lists"]',
+            ).first.dispatch_event("click")
+            modal = page.locator("#lists-anime-437")
+            expect(modal).to_contain_text("Remove")
+            toggle_button = modal.locator(
+                f'button[aria-label="Remove item from {custom_list.name}"]'
+            )
+            expect(toggle_button).to_be_visible()
+            toggle_button.evaluate(
+                """
+                async (element) => {
+                    await htmx.ajax('POST', element.getAttribute('hx-post'), {
+                        source: element,
+                        target: element,
+                        swap: 'outerHTML',
+                        values: JSON.parse(element.getAttribute('hx-vals')),
+                        headers: JSON.parse(element.getAttribute('hx-headers')),
+                    });
+                }
+                """,
+            )
+
+            self.assertEqual(len(toggle_requests), 1)
+            self.assertEqual(toggle_statuses, [200])
+            self.assertEqual(len(refresh_requests), 1)
+            self.assertEqual(page.evaluate("window.__listCountUpdates"), 1)
+            expect(count).to_have_text("0 items")

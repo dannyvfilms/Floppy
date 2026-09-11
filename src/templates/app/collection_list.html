@@ -1,12 +1,14 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 
 {% block title %}
-  Collection - Floppy
+  {% translate "Collection - Floppy" %}
 {% endblock title %}
 
 {% block content %}
-  <div x-data="{
+  {% translate "All Types" as media_i18n_16 %}{% translate "Any" as media_i18n_7 %}{% translate "Rated" as media_i18n_3 %}{% translate "Not Rated" as media_i18n_4 %}{% translate "Partially Collected" as media_i18n_17 %}{% translate "Fully Collected" as media_i18n_18 %}<div x-data="{
     sort: '{{ sort_by }}',
     direction: '{{ direction }}',
     layout: '{{ layout }}',
@@ -23,13 +25,13 @@
     filterView: 'root',
     typeLabels: {
       {% for type in media_types %}'{{ type }}': '{{ type|media_type_readable_plural }}',{% endfor %}
-      'all': 'All Types'
+      'all': '{{ media_i18n_16|escapejs }}'
     },
     sortLabels: {
-      {% for value, label in sort_choices %}'{{ value }}': '{{ label }}',{% endfor %}
+      {% for value, label in sort_choices %}'{{ value }}': '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}',{% endfor %}
     },
-    ratingLabels: { 'all': 'Any', 'rated': 'Rated', 'not_rated': 'Not Rated' },
-    completenessLabels: { 'all': 'Any', 'partial': 'Partially Collected', 'full': 'Fully Collected' },
+    ratingLabels: { 'all': '{{ media_i18n_7|escapejs }}', 'rated': '{{ media_i18n_3|escapejs }}', 'not_rated': '{{ media_i18n_4|escapejs }}' },
+    completenessLabels: { 'all': '{{ media_i18n_7|escapejs }}', 'partial': '{{ media_i18n_17|escapejs }}', 'full': '{{ media_i18n_18|escapejs }}' },
     getTypeLabel() { return this.typeLabels[this.type] || this.type; },
     activeFilterCount() {
       return [this.type, this.format, this.resolution, this.hdr, this.rating, this.completeness].filter((v) => v !== 'all').length;
@@ -60,7 +62,7 @@
     </form>
 
     <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-3xl font-bold">Collection</h1>
+      <h1 class="text-3xl font-bold">{% translate "Collection" %}</h1>
     </div>
 
     <div class="flex flex-col gap-3 md:flex-row md:gap-4 mb-6">
@@ -73,14 +75,14 @@
                   x-show="!searchMode"
                   @click="searchMode = true; $nextTick(() => $refs.collectionSearchInput?.focus())"
                   type="button"
-                  aria-label="Search your collection">
+                  aria-label="{% translate "Search your collection" %}">
             {% include "app/icons/magnifying-glass.svg" with classes="w-5 h-5" %}
           </button>
 
           <div class="relative grow min-w-0" x-cloak x-show="searchMode">
             <input id="collection-search-input"
                    x-ref="collectionSearchInput"
-                   placeholder="Search your collection..."
+                   placeholder="{% translate "Search your collection..." %}"
                    class="w-full min-w-0 py-2 pl-10 pr-4 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none"
                    type="text"
                    x-model="query"
@@ -102,7 +104,7 @@
                     @click="filtersOpen = !filtersOpen; if (filtersOpen) { filterView = 'root'; }"
                     type="button">
               {% include "app/icons/funnel.svg" with classes="w-4 h-4" %}
-              <span class="text-sm">Filters<template x-if="activeFilterCount() > 0"><span x-text="' (' + activeFilterCount() + ')'"></span></template></span>
+              <span class="text-sm">{% translate "Filters" %}<template x-if="activeFilterCount() > 0"><span x-text="' (' + activeFilterCount() + ')'"></span></template></span>
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="w-4 h-4" aria-hidden="true">
                 <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
               </svg>
@@ -127,15 +129,15 @@
                         class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                         @click="clearFilters(); filtersOpen = false"
                         type="button">
-                  <span>All</span>
-                  <span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="activeFilterCount() === 0">Active</span>
+                  <span>{% translate "All" %}</span>
+                  <span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="activeFilterCount() === 0">{% translate "Active" %}</span>
                 </button>
                 <div class="border-t border-gray-700 my-1"></div>
                 {% if media_types %}
                   <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="filterView = 'type'"
                           type="button">
-                    <span class="flex-shrink-0 mr-3">Type</span>
+                    <span class="flex-shrink-0 mr-3">{% translate "Type" %}</span>
                     <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="getTypeLabel()"></span>
                     <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
                   </button>
@@ -144,8 +146,8 @@
                   <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="filterView = 'format'"
                           type="button">
-                    <span class="flex-shrink-0 mr-3">Format</span>
-                    <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="format === 'all' ? 'Any' : format"></span>
+                    <span class="flex-shrink-0 mr-3">{% translate "Format" %}</span>
+                    {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="format === 'all' ? '{{ media_i18n_7|escapejs }}' : format"></span>
                     <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
                   </button>
                 {% endif %}
@@ -153,8 +155,8 @@
                   <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="filterView = 'resolution'"
                           type="button">
-                    <span class="flex-shrink-0 mr-3">Resolution</span>
-                    <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="resolution === 'all' ? 'Any' : resolution"></span>
+                    <span class="flex-shrink-0 mr-3">{% translate "Resolution" %}</span>
+                    {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="resolution === 'all' ? '{{ media_i18n_7|escapejs }}' : resolution"></span>
                     <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
                   </button>
                 {% endif %}
@@ -162,15 +164,15 @@
                   <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="filterView = 'hdr'"
                           type="button">
-                    <span class="flex-shrink-0 mr-3">HDR</span>
-                    <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="hdr === 'all' ? 'Any' : hdr"></span>
+                    <span class="flex-shrink-0 mr-3">{% translate "HDR" %}</span>
+                    {% translate "Any" as media_i18n_7 %}<span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="hdr === 'all' ? '{{ media_i18n_7|escapejs }}' : hdr"></span>
                     <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
                   </button>
                 {% endif %}
                 <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                         @click="filterView = 'rating'"
                         type="button">
-                  <span class="flex-shrink-0 mr-3">Rating</span>
+                  <span class="flex-shrink-0 mr-3">{% translate "Rating" %}</span>
                   <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="ratingLabels[rating]"></span>
                   <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
                 </button>
@@ -178,7 +180,7 @@
                   <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="filterView = 'completeness'"
                           type="button">
-                    <span class="flex-shrink-0 mr-3">Completeness</span>
+                    <span class="flex-shrink-0 mr-3">{% translate "Completeness" %}</span>
                     <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]" x-text="completenessLabels[completeness]"></span>
                     <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
                   </button>
@@ -189,7 +191,7 @@
               <div x-show="filterView === 'type'" x-cloak>
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
                   <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
-                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Type</div>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Type" %}</div>
                 </div>
                 <div class="max-h-64 overflow-y-auto">
                   <button hx-get="{% url 'collection_list' %}"
@@ -199,7 +201,7 @@
                           class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="type = 'all'; filtersOpen = false; filterView = 'root'"
                           type="button">
-                    <span>All Types</span>
+                    <span>{% translate "All Types" %}</span>
                     <span class="ml-auto" x-show="type === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
                   </button>
                   {% for type in media_types %}
@@ -221,7 +223,7 @@
               <div x-show="filterView === 'format'" x-cloak>
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
                   <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
-                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Format</div>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Format" %}</div>
                 </div>
                 <div class="max-h-64 overflow-y-auto">
                   <button hx-get="{% url 'collection_list' %}"
@@ -231,7 +233,7 @@
                           class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="format = 'all'; filtersOpen = false; filterView = 'root'"
                           type="button">
-                    <span>Any Format</span>
+                    <span>{% translate "Any Format" %}</span>
                     <span class="ml-auto" x-show="format === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
                   </button>
                   {% for value in available_formats %}
@@ -253,7 +255,7 @@
               <div x-show="filterView === 'resolution'" x-cloak>
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
                   <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
-                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Resolution</div>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Resolution" %}</div>
                 </div>
                 <div class="max-h-64 overflow-y-auto">
                   <button hx-get="{% url 'collection_list' %}"
@@ -263,7 +265,7 @@
                           class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="resolution = 'all'; filtersOpen = false; filterView = 'root'"
                           type="button">
-                    <span>Any Resolution</span>
+                    <span>{% translate "Any Resolution" %}</span>
                     <span class="ml-auto" x-show="resolution === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
                   </button>
                   {% for value in available_resolutions %}
@@ -285,7 +287,7 @@
               <div x-show="filterView === 'hdr'" x-cloak>
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
                   <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
-                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">HDR</div>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "HDR" %}</div>
                 </div>
                 <div class="max-h-64 overflow-y-auto">
                   <button hx-get="{% url 'collection_list' %}"
@@ -295,7 +297,7 @@
                           class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="hdr = 'all'; filtersOpen = false; filterView = 'root'"
                           type="button">
-                    <span>Any HDR</span>
+                    <span>{% translate "Any HDR" %}</span>
                     <span class="ml-auto" x-show="hdr === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
                   </button>
                   {% for value in available_hdr %}
@@ -317,7 +319,7 @@
               <div x-show="filterView === 'rating'" x-cloak>
                 <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
                   <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
-                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Rating</div>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Rating" %}</div>
                 </div>
                 <div class="max-h-64 overflow-y-auto">
                   <button hx-get="{% url 'collection_list' %}"
@@ -327,7 +329,7 @@
                           class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="rating = 'all'; filtersOpen = false; filterView = 'root'"
                           type="button">
-                    <span>Any Rating</span>
+                    <span>{% translate "Any Rating" %}</span>
                     <span class="ml-auto" x-show="rating === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
                   </button>
                   <button hx-get="{% url 'collection_list' %}"
@@ -337,7 +339,7 @@
                           class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="rating = 'rated'; filtersOpen = false; filterView = 'root'"
                           type="button">
-                    <span>Rated</span>
+                    <span>{% translate "Rated" %}</span>
                     <span class="ml-auto" x-show="rating === 'rated'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
                   </button>
                   <button hx-get="{% url 'collection_list' %}"
@@ -347,7 +349,7 @@
                           class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                           @click="rating = 'not_rated'; filtersOpen = false; filterView = 'root'"
                           type="button">
-                    <span>Not Rated</span>
+                    <span>{% translate "Not Rated" %}</span>
                     <span class="ml-auto" x-show="rating === 'not_rated'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
                   </button>
                 </div>
@@ -358,7 +360,7 @@
                 <div x-show="filterView === 'completeness'" x-cloak>
                   <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
                     <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer" @click="filterView = 'root'" type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
-                    <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Completeness</div>
+                    <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Completeness" %}</div>
                   </div>
                   <div class="max-h-64 overflow-y-auto">
                     <button hx-get="{% url 'collection_list' %}"
@@ -368,7 +370,7 @@
                             class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                             @click="completeness = 'all'; filtersOpen = false; filterView = 'root'"
                             type="button">
-                      <span>Any</span>
+                      <span>{% translate "Any" %}</span>
                       <span class="ml-auto" x-show="completeness === 'all'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
                     </button>
                     <button hx-get="{% url 'collection_list' %}"
@@ -378,7 +380,7 @@
                             class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                             @click="completeness = 'partial'; filtersOpen = false; filterView = 'root'"
                             type="button">
-                      <span>Partially Collected</span>
+                      <span>{% translate "Partially Collected" %}</span>
                       <span class="ml-auto" x-show="completeness === 'partial'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
                     </button>
                     <button hx-get="{% url 'collection_list' %}"
@@ -388,7 +390,7 @@
                             class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                             @click="completeness = 'full'; filtersOpen = false; filterView = 'root'"
                             type="button">
-                      <span>Fully Collected</span>
+                      <span>{% translate "Fully Collected" %}</span>
                       <span class="ml-auto" x-show="completeness === 'full'">{% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}</span>
                     </button>
                   </div>
@@ -425,7 +427,7 @@
                         class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
                         :class="sort === '{{ value }}' ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
                         @click="setSort('{{ value }}'); open = false"
-                        type="button">{{ label }}</button>
+                        type="button">{% translate label %}</button>
               {% endfor %}
             </div>
           </div>
@@ -438,7 +440,7 @@
                       hx-indicator="#collection-loading-indicator"
                       class="p-2 cursor-pointer"
                       :class="layout === 'grid' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
-                      title="Grid View"
+                      title="{% translate "Grid View" %}"
                       @click="layout = 'grid'"
                       type="button">
                 {% include "app/icons/four-square.svg" with classes="w-5 h-5" %}
@@ -449,7 +451,7 @@
                       hx-indicator="#collection-loading-indicator"
                       class="p-2 cursor-pointer"
                       :class="layout === 'table' ? 'bg-indigo-600 text-white' : 'bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)]'"
-                      title="Table View"
+                      title="{% translate "Table View" %}"
                       @click="layout = 'table'"
                       type="button">
                 {% include "app/icons/table.svg" with classes="w-5 h-5" %}

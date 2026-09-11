@@ -1,4 +1,6 @@
 {% extends "users/onboarding/_layout.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load user_tags %}
 
@@ -8,9 +10,9 @@
 {% endblock step_title %}
 
 {% block step_explanation %}
-  <p>Do you use any of these apps for {{ current_media_type|media_type_readable_plural|lower }}?</p>
-  <p>Pick any that apply — we'll walk you through connecting them next. Skip this if you don't use any.</p>
-  <p class="text-xs">Step {{ step_number }} of {{ step_total }}</p>
+  <p>{% blocktranslate with value1=current_media_type|media_type_readable_plural|lower %}Do you use any of these apps for {{ value1 }}?{% endblocktranslate %}</p>
+  <p>{% translate "Pick any that apply — we'll walk you through connecting them next. Skip this if you don't use any." %}</p>
+  <p class="text-xs">{% blocktranslate %}Step {{ step_number }} of {{ step_total }}{% endblocktranslate %}</p>
 {% endblock step_explanation %}
 
 {% block step_options %}
@@ -28,16 +30,15 @@
         </label>
       {% empty %}
         <p class="text-sm text-[var(--color-text-muted)] sm:col-span-2">
-          No dedicated services yet for {{ current_media_type|media_type_readable_plural|lower }} —
-          you can always bring in existing data with a backup/CSV import later.
+          {% blocktranslate with value1=current_media_type|media_type_readable_plural|lower %}No dedicated services yet for {{ value1 }} — you can always bring in existing data with a backup/CSV import later.{% endblocktranslate %}
         </p>
       {% endfor %}
     </div>
     <div class="mt-6 flex items-center justify-between">
-      <span class="text-xs text-[var(--color-text-muted)]">Shared services stay selected across media types.</span>
+      <span class="text-xs text-[var(--color-text-muted)]">{% translate "Shared services stay selected across media types." %}</span>
       <button type="submit"
               class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-        {% if is_last_step %}Continue{% else %}Next{% endif %}
+        {% if is_last_step %}{% translate "Continue" %}{% else %}{% translate "Next" %}{% endif %}
       </button>
     </div>
   </form>

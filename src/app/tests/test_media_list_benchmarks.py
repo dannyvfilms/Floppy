@@ -8,11 +8,15 @@ be used to capture before/after numbers during performance work.
 from __future__ import annotations
 
 import json
+import resource
+import sys
 import time
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import connection
+from django.db.models import Model
 from django.test import TestCase, tag
 from django.test.utils import CaptureQueriesContext
 
@@ -48,17 +52,43 @@ class MediaListBenchmarkTests(TestCase):
         cache.clear()
         self.client.force_login(self.user)
 
+    @staticmethod
+    def _rss_mb():
+        """Return process max RSS in MB for the active platform."""
+        value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        if sys.platform == "darwin":
+            value /= 1024 * 1024
+        else:
+            value /= 1024
+        return value
+
     def _measure_route(self, url: str) -> dict[str, int | float | str]:
+        hydrated_objects = 0
+        original_from_db = Model.from_db.__func__
+
+        def counted_from_db(cls, db, field_names, values):
+            nonlocal hydrated_objects
+            if cls._meta.app_label in {"app", "lists"}:
+                hydrated_objects += 1
+            return original_from_db(cls, db, field_names, values)
+
+        rss_before_mb = self._rss_mb()
         started_at = time.perf_counter()
-        with CaptureQueriesContext(connection) as queries:
-            response = self.client.get(url, follow=True)
+        with patch.object(Model, "from_db", classmethod(counted_from_db)):
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.get(url, follow=True)
         duration_ms = (time.perf_counter() - started_at) * 1000
+        sql_ms = sum(float(query["time"]) * 1000 for query in queries.captured_queries)
         self.assertEqual(response.status_code, 200)
         return {
             "url": url,
             "status": response.status_code,
             "duration_ms": round(duration_ms, 2),
+            "sql_ms": round(sql_ms, 2),
+            "python_ms": round(max(duration_ms - sql_ms, 0), 2),
             "queries": len(queries.captured_queries),
+            "hydrated_objects": hydrated_objects,
+            "rss_delta_mb": round(max(self._rss_mb() - rss_before_mb, 0), 2),
             "response_bytes": len(response.content),
         }
 

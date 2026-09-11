@@ -25,6 +25,22 @@ FORK_VALID_SOURCES = {
     MediaTypes.COMIC_ISSUE.value: [Sources.COMICVINE.value, Sources.MANUAL.value],
 }
 
+# FORK: sources the fork resolves for a media type upstream *already* lists.
+# Kept apart from FORK_VALID_SOURCES because that dict is applied with
+# `setdefault`, which can introduce a media type but never extend one. Every
+# entry here has a matching branch in `services.get_media_metadata` — keep the
+# two in step, or the API will accept a source it cannot then resolve.
+FORK_EXTRA_SOURCES = {
+    # TVDB series, season and episode metadata. Also the source Plex writes
+    # for sports and anything else TMDB does not carry.
+    MediaTypes.TV.value: [Sources.TVDB.value],
+    MediaTypes.SEASON.value: [Sources.TVDB.value],
+    MediaTypes.EPISODE.value: [Sources.TVDB.value],
+    # Anime resolves from all three: MAL natively, TMDB and TVDB through the
+    # grouped-anime route.
+    MediaTypes.ANIME.value: [Sources.TMDB.value, Sources.TVDB.value],
+}
+
 _MODIFIABLE_FIELDS = {"score", "status", "progress", "start_date", "end_date", "notes"}
 
 
@@ -110,6 +126,12 @@ def install_fork_media_types():
         helpers.MEDIA_MODIFIABLE_FIELDS.setdefault(media_type, set(_MODIFIABLE_FIELDS))
     for media_type, sources in FORK_VALID_SOURCES.items():
         helpers.VALID_SOURCES.setdefault(media_type, list(sources))
+    # Extend the entries upstream already owns, rather than defaulting them.
+    # The lists are mutated in place for the same reason MEDIA_TYPE_VALID_LIST
+    # is: they are module-level objects other modules hold references to.
+    for media_type, extra in FORK_EXTRA_SOURCES.items():
+        valid = helpers.VALID_SOURCES.setdefault(media_type, [])
+        valid.extend(source for source in extra if source not in valid)
     # Episodes support the shared tracker fields plus the legacy dropped flag.
     helpers.MEDIA_MODIFIABLE_FIELDS[MediaTypes.EPISODE.value] |= _MODIFIABLE_FIELDS | {
         "dropped"

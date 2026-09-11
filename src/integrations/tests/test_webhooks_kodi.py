@@ -207,7 +207,8 @@ class KodiWebhookTVTests(TestCase):
             "event": "stop",
             "progress": {"time": 100, "percent": 7.0},
         }
-        response = self._post(payload)
+        with self.assertLogs("integrations.webhooks.kodi", level="INFO") as logs:
+            response = self._post(payload)
         self.assertEqual(response.status_code, 200)
         # Episode is not marked watched; TV show should exist in IN_PROGRESS
         tv = TV.objects.get(item__media_id="1668", user=self.user)
@@ -220,6 +221,13 @@ class KodiWebhookTVTests(TestCase):
                 end_date__isnull=False,
             ).exists()
         )
+        # A diagnostic log with the actual percent/time must fire, so a
+        # below-threshold stop is distinguishable in logs from no stop/end
+        # ever arriving at all (#1118).
+        self.assertTrue(
+            any("below watched threshold" in message for message in logs.output),
+        )
+        self.assertTrue(any("percent=7.0" in message for message in logs.output))
 
     def test_tv_episode_start_event(self):
         payload = {
@@ -264,6 +272,18 @@ class KodiWebhookEdgeCaseTests(TestCase):
         response = self._post(payload)
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Movie.objects.exists())
+
+    def test_unsupported_event_type_logged_at_info(self):
+        """Ignored events (e.g. pause/resume/seek from the Kodi add-on) must be
+        visible at the default production log level (INFO), not just DEBUG,
+        so a misconfigured add-on isn't silently invisible in logs (#1118).
+        """
+        payload = {**MOVIE_PAYLOAD, "event": "pause"}
+        with self.assertLogs("integrations.webhooks.kodi", level="INFO") as logs:
+            self._post(payload)
+        self.assertTrue(
+            any("pause" in message for message in logs.output),
+        )
 
     def test_missing_external_ids_ignored(self):
         payload = {**MOVIE_PAYLOAD, "uniqueIds": {}}

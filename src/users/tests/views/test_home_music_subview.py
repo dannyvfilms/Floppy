@@ -1,5 +1,10 @@
 """Smoke tests for music subview Home rows (albums/artists/tracks)."""
 
+import json
+import pickle
+from dataclasses import dataclass
+from datetime import UTC, datetime
+
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -12,6 +17,16 @@ from users.models import (
     HomeScreenRowTypeChoices,
     MediaStatusChoices,
 )
+
+
+@dataclass
+class _FakeTrack:
+    """Minimal stand-in for a Track: only the attributes the row builder reads."""
+
+    album: object
+    repeats: int
+    last_played_at: object
+    created_at: object
 
 
 class MusicSubviewHomeTests(TestCase):
@@ -116,6 +131,24 @@ class MusicSubviewHomeTests(TestCase):
         # Album cards carry the artist as the hover subtitle (mirrors the library).
         self.assertContains(response, "Queen")
 
+    def test_recent_music_album_entries_are_picklable(self):
+        # Regression test for #1122: the "Recently Played Music" row is cached
+        # via django_redis, which pickles cache values. A locally-scoped
+        # adapter class previously broke this with an unpicklable-object error.
+        now = datetime(2024, 1, 1, tzinfo=UTC)
+        track = _FakeTrack(
+            album=self.album,
+            repeats=3,
+            last_played_at=now,
+            created_at=now,
+        )
+        entries = home_screen._build_recent_music_album_entries([track])
+        self.assertEqual(len(entries), 1)
+
+        roundtripped = pickle.loads(pickle.dumps(entries))
+        self.assertEqual(roundtripped[0].media.title, "A Night at the Opera")
+        self.assertEqual(roundtripped[0].media.play_count, 3)
+
     def test_home_page_renders_artist_card(self):
         self._add_music_row("artists", Status.IN_PROGRESS.value)
         self.client.force_login(self.user)
@@ -124,10 +157,29 @@ class MusicSubviewHomeTests(TestCase):
         self.assertContains(response, "Queen")
 
     def test_settings_page_renders(self):
-        self._add_music_row("albums", Status.PLANNING.value)
+        """Lazy translated labels serialize while filter values stay canonical."""
+        row = self._add_music_row("albums", Status.PLANNING.value)
         self.client.force_login(self.user)
-        response = self.client.get("/settings/home-screen")
-        self.assertEqual(response.status_code, 200)
+        for language, last_listened_label, rating_label in (
+            ("en", "Last Listened", "Rating"),
+            ("de", "Zuletzt gehört", "Bewertung"),
+        ):
+            with self.subTest(language=language):
+                self.user.ui_language = language
+                self.user.save(update_fields=["ui_language"])
+                response = self.client.get("/settings/home-screen")
+                self.assertEqual(response.status_code, 200)
+                sections = json.loads(response.context["home_screen_sections_json"])
+                music = next(s for s in sections if s["media_type"] == "music")
+                choices = {
+                    choice["value"]: choice["label"]
+                    for choice in music["sort_choices"]["library_query"]
+                }
+                self.assertEqual(choices["end_date"], last_listened_label)
+                self.assertEqual(choices["score"], rating_label)
+                music_row = next(r for r in music["rows"] if r["id"] == row.id)
+                self.assertEqual(music_row["filters"]["status"], ["Planning"])
+                self.assertEqual(music_row["filters"]["subview"], "albums")
 
     def test_destination_url_pins_status_all_for_all_status_row(self):
         row = self._add_music_row("tracks", MediaStatusChoices.ALL.value)

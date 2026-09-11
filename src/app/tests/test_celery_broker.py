@@ -2,6 +2,8 @@ import fnmatch
 from unittest.mock import patch
 
 import fakeredis
+from celery import Celery
+from celery.beat import ScheduleEntry, Scheduler
 from django.conf import settings
 from django.test import SimpleTestCase, override_settings
 
@@ -70,23 +72,144 @@ class CeleryTaskPriorityTests(SimpleTestCase):
         )
         self.assertLess(
             settings.CELERY_TASK_PRIORITY_FOLLOWUP,
-            settings.CELERY_TASK_DEFAULT_PRIORITY,
+            settings.CELERY_TASK_PRIORITY_DEFAULT,
         )
         self.assertLess(
-            settings.CELERY_TASK_DEFAULT_PRIORITY,
+            settings.CELERY_TASK_PRIORITY_DEFAULT,
             settings.CELERY_TASK_PRIORITY_BACKGROUND,
         )
+        self.assertIsNone(settings.CELERY_TASK_DEFAULT_PRIORITY)
 
     def test_priority_constants_are_within_configured_steps(self):
         steps = settings.CELERY_BROKER_TRANSPORT_OPTIONS["priority_steps"]
         for name in (
             "CELERY_TASK_PRIORITY_INTERACTIVE",
             "CELERY_TASK_PRIORITY_FOLLOWUP",
-            "CELERY_TASK_DEFAULT_PRIORITY",
+            "CELERY_TASK_PRIORITY_DEFAULT",
             "CELERY_TASK_PRIORITY_BACKGROUND",
         ):
             with self.subTest(setting=name):
                 self.assertIn(getattr(settings, name), steps)
+
+    def test_every_route_declares_its_priority(self):
+        steps = settings.CELERY_BROKER_TRANSPORT_OPTIONS["priority_steps"]
+
+        for name, route in settings.CELERY_TASK_ROUTES.items():
+            with self.subTest(route=name):
+                self.assertIn("priority", route)
+                self.assertIn(route["priority"], steps)
+
+        self.assertEqual(
+            settings.CELERY_TASK_ROUTES["*"]["priority"],
+            settings.CELERY_TASK_PRIORITY_DEFAULT,
+        )
+
+    def test_beat_does_not_duplicate_route_priorities(self):
+        for name, entry in settings.CELERY_BEAT_SCHEDULE.items():
+            with self.subTest(schedule=name):
+                self.assertNotIn("priority", entry.get("options", {}))
+
+
+class CeleryDispatchRoutingTests(SimpleTestCase):
+    """Exercise every non-eager dispatch path against the real route merge."""
+
+    def setUp(self):
+        self.app = Celery("celery-priority-dispatch-test", broker="memory://")
+        self.app.conf.update(
+            task_always_eager=False,
+            task_default_priority=settings.CELERY_TASK_DEFAULT_PRIORITY,
+            task_routes=settings.CELERY_TASK_ROUTES,
+        )
+
+        def task_body():
+            return None
+
+        self.background_task = self.app.task(
+            name="Backfill item metadata",
+            ignore_result=True,
+        )(task_body)
+        self.followup_task = self.app.task(
+            name="Import from Radarr (Recurring)",
+            ignore_result=True,
+        )(task_body)
+        self.interactive_task = self.app.task(
+            name="Process media server webhook",
+            ignore_result=True,
+        )(task_body)
+        self.fallback_task = self.app.task(
+            name="Unclassified priority test task",
+            ignore_result=True,
+        )(task_body)
+        self.app.finalize()
+
+    def _dispatch_and_capture(self, dispatch):
+        with patch.object(self.app.amqp, "send_task_message") as publish:
+            dispatch()
+
+        self.assertEqual(publish.call_count, 1)
+        return publish.call_args
+
+    @staticmethod
+    def _priority(call):
+        return call.kwargs["priority"]
+
+    def test_delay_apply_async_send_task_and_beat_use_route_priorities(self):
+        cases = (
+            (
+                "delay",
+                self.background_task.delay,
+                settings.CELERY_TASK_PRIORITY_BACKGROUND,
+            ),
+            (
+                "apply_async",
+                self.followup_task.apply_async,
+                settings.CELERY_TASK_PRIORITY_FOLLOWUP,
+            ),
+            (
+                "send_task",
+                lambda: self.app.send_task(self.interactive_task.name),
+                settings.CELERY_TASK_PRIORITY_INTERACTIVE,
+            ),
+        )
+
+        for name, dispatch, expected_priority in cases:
+            with self.subTest(dispatch=name):
+                call = self._dispatch_and_capture(dispatch)
+                self.assertEqual(self._priority(call), expected_priority)
+
+        entry = ScheduleEntry(
+            name="background-beat",
+            task=self.background_task.name,
+            schedule=60,
+            args=(),
+            kwargs={},
+            options={},
+        )
+        scheduler = Scheduler(app=self.app, schedule={}, lazy=True)
+        call = self._dispatch_and_capture(
+            lambda: scheduler.apply_async(entry, advance=False),
+        )
+        self.assertEqual(
+            self._priority(call),
+            settings.CELERY_TASK_PRIORITY_BACKGROUND,
+        )
+
+    def test_route_fallback_preserves_default_priority(self):
+        call = self._dispatch_and_capture(self.fallback_task.delay)
+
+        self.assertEqual(self._priority(call), settings.CELERY_TASK_PRIORITY_DEFAULT)
+
+    def test_explicit_priority_remains_a_contextual_override(self):
+        call = self._dispatch_and_capture(
+            lambda: self.background_task.apply_async(
+                priority=settings.CELERY_TASK_PRIORITY_INTERACTIVE,
+            ),
+        )
+
+        self.assertEqual(
+            self._priority(call),
+            settings.CELERY_TASK_PRIORITY_INTERACTIVE,
+        )
 
 
 class CeleryPriorityDrainOrderTests(SimpleTestCase):

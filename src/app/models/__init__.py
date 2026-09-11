@@ -22,8 +22,10 @@ from app.models.credits import (
 )
 from app.models.discovery import (
     CollectionEntry,
+    CollectionEntrySource,
     CollectionField,
     CollectionFieldGroup,
+    CollectionFieldSource,
     CollectionFieldType,
     DiscoverApiCache,
     DiscoverFeedback,
@@ -72,6 +74,10 @@ from app.models.podcast import (
     PodcastShow,
     PodcastShowTracker,
 )
+from app.models.progress_change import (
+    ProgressChange,
+    ProgressChangeKind,
+)
 from app.models.provider_credential import (
     InstanceProviderCredential,
     UserProviderCredential,
@@ -82,6 +88,14 @@ from app.models.tv import (
     Episode,
     RewatchAlreadyCompleteError,
     Season,
+)
+from app.models.watch_state import (
+    WatchState,
+    WatchStateChange,
+    WatchStateChangeKind,
+    WatchStateOrigin,
+    WatchStateSequence,
+    calculate_state_digest,
 )
 
 __all__ = [
@@ -104,8 +118,10 @@ __all__ = [
     "BoardGame",
     "Book",
     "CollectionEntry",
+    "CollectionEntrySource",
     "CollectionField",
     "CollectionFieldGroup",
+    "CollectionFieldSource",
     "CollectionFieldType",
     "Comic",
     "ComicIssue",
@@ -143,6 +159,8 @@ __all__ = [
     "PodcastEpisode",
     "PodcastShow",
     "PodcastShowTracker",
+    "ProgressChange",
+    "ProgressChangeKind",
     "ProviderMetadataStatus",
     "RewatchAlreadyCompleteError",
     "Season",
@@ -152,6 +170,12 @@ __all__ = [
     "Tag",
     "Track",
     "UserProviderCredential",
+    "WatchState",
+    "WatchStateChange",
+    "WatchStateChangeKind",
+    "WatchStateOrigin",
+    "WatchStateSequence",
     "build_episode_runtime_index",
+    "calculate_state_digest",
     "prefill_episode_runtime_index",
 ]

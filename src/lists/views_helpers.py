@@ -7,11 +7,14 @@ pure helpers called by views in views.py (and its submodules).
 
 import datetime
 import logging
+from itertools import islice
 
 from django.apps import apps
 from django.conf import settings
-from django.db.models import Count, F, Q
+from django.core.paginator import Paginator
+from django.db.models import Count, Exists, F, OuterRef, Q
 from django.urls import reverse
+from django.utils.translation import ngettext
 
 from app.models import CollectionEntry, Item, MediaManager, MediaTypes, Status
 from app.providers import services
@@ -52,6 +55,14 @@ ASCENDING_LIST_SORTS = {
     ListDetailSortChoices.START_DATE,
     ListDetailSortChoices.PLATFORM,
 }
+
+
+def _build_list_count_trigger(count: int) -> dict:
+    """Return the HTMX payload for an updated list item count."""
+    label = ngettext("%(count)s item", "%(count)s items", count) % {
+        "count": count,
+    }
+    return {"listCountUpdated": {"count": count, "label": label}}
 
 
 # ---------------------------------------------------------------------------
@@ -529,6 +540,34 @@ def _build_collection_platforms_by_item_id(user, item_ids):
     return platforms_by_item_id
 
 
+def _filter_items_by_media_status(items, media_user, statuses):
+    """Filter a mixed Item queryset by the user's tracker status in SQL."""
+    statuses = tuple(statuses or ())
+    if not statuses:
+        return items
+
+    matching = Q(pk__in=[])
+    media_types = items.order_by().values_list("media_type", flat=True).distinct()
+    for index, media_type in enumerate(media_types):
+        model = apps.get_model("app", media_type)
+        if media_type == MediaTypes.EPISODE.value:
+            status_rows = model.objects.filter(
+                item_id=OuterRef("pk"),
+                related_season__user=media_user,
+                related_season__status__in=statuses,
+            )
+        else:
+            status_rows = model.objects.filter(
+                item_id=OuterRef("pk"),
+                user=media_user,
+                status__in=statuses,
+            )
+        annotation_name = f"_has_list_status_{index}"
+        items = items.annotate(**{annotation_name: Exists(status_rows)})
+        matching |= Q(media_type=media_type, **{annotation_name: True})
+    return items.filter(matching)
+
+
 def _resolve_list_table_media_type(selected_media_types, filtered_media_types):
     if len(selected_media_types) == 1:
         return selected_media_types[0]
@@ -640,6 +679,86 @@ def _attach_media_with_aggregation(item_list, media_user):
     for item in item_list:
         item.media = media_by_item_id.get(item.id)
     _attach_list_card_overrides(item_list)
+
+
+def _paginate_python_sorted_items(
+    items_queryset,
+    media_user,
+    page,
+    page_size,
+    value_getter,
+    *,
+    reverse=False,
+    needs_collection_platforms=False,
+    batch_size=256,
+):
+    """Batch-hydrate candidates, retain compact sort rows, then hydrate one page.
+
+    Python-only list semantics still require an O(n) candidate scan, but this
+    keeps media graphs and duplicate aggregation bounded to ``batch_size`` and
+    only loads full Item/media objects for the requested page at the end.
+    """
+    ranked_rows = []
+    iterator = items_queryset.iterator(chunk_size=batch_size)
+    while True:
+        batch = list(islice(iterator, batch_size))
+        if not batch:
+            break
+        _attach_media_with_aggregation(batch, media_user)
+        collection_platforms = {}
+        if needs_collection_platforms:
+            collection_platforms = _build_collection_platforms_by_item_id(
+                media_user,
+                [item.id for item in batch],
+            )
+        ranked_rows.extend(
+            (value_getter(item, collection_platforms), item.id)
+            for item in batch
+        )
+
+    ranked_rows.sort(key=lambda row: (row[0], row[1]), reverse=reverse)
+    paginator = Paginator(range(len(ranked_rows)), page_size)
+    items_page = paginator.get_page(page)
+    start = (items_page.number - 1) * page_size
+    selected_ids = [
+        item_id for _sort_value, item_id in ranked_rows[start : start + page_size]
+    ]
+
+    final_items = list(items_queryset.filter(id__in=selected_ids))
+    final_by_id = {item.id: item for item in final_items}
+    final_items = [final_by_id[item_id] for item_id in selected_ids if item_id in final_by_id]
+    _attach_media_with_aggregation(final_items, media_user)
+    items_page.object_list = final_items
+    collection_platforms = (
+        _build_collection_platforms_by_item_id(
+            media_user,
+            selected_ids,
+        )
+        if needs_collection_platforms
+        else {}
+    )
+    return items_page, paginator.count, collection_platforms
+
+
+def _find_statusless_item_ids(items_queryset, media_user, *, batch_size=256):
+    """Find statusless list items while bounding tracker/media hydration."""
+    statusless_ids = set()
+    iterator = items_queryset.iterator(chunk_size=batch_size)
+    while True:
+        batch = list(islice(iterator, batch_size))
+        if not batch:
+            break
+        _attach_media_with_aggregation(batch, media_user)
+        statusless_ids.update(
+            item.id
+            for item in batch
+            if item.media is None
+            or (
+                getattr(item.media, "aggregated_status", None) is None
+                and getattr(item.media, "status", None) is None
+            )
+        )
+    return statusless_ids
 
 
 def _rating_value(media):

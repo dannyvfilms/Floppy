@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load user_tags %}
 {% load humanize %}
@@ -38,14 +40,14 @@
               <span class="mx-2 text-gray-600">•</span>
               <button type="button"
                       aria-haspopup="listbox"
-                      aria-label="Select episode"
+                      aria-label="{% translate "Select episode" %}"
                       :aria-expanded="open.toString()"
                       @click="open = !open"
                       class="inline-flex items-center gap-1 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
                 <span>{{ episode_title }}</span>
                 {% if episode and episode.display_episode_number|default:episode.episode_number %}
                   <span class="mx-2 text-gray-600">•</span>
-                  <span>Episode {{ episode.display_episode_number|default:episode.episode_number }}</span>
+                  <span>{% blocktranslate trimmed with value_1=episode.display_episode_number|default:episode.episode_number %}Episode {{ value_1 }}{% endblocktranslate %}</span>
                 {% endif %}
                 <span class="h-4 w-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</span>
               </button>
@@ -62,7 +64,7 @@
                   {% with ep_watched=episode.history|watched_count %}
                     {% if ep_watched %}
                       <span class="mx-2 text-gray-600">•</span>
-                      <span>Watched {% if ep_watched == 1 %}once{% else %}{{ ep_watched }} times{% endif %}</span>
+                      <span>{% translate "Watched" %} {% if ep_watched == 1 %}{% translate "once" %}{% else %}{% blocktranslate trimmed with value_1=ep_watched %}{{ value_1 }} times{% endblocktranslate %}{% endif %}</span>
                     {% endif %}
                   {% endwith %}
                 {% endif %}
@@ -74,16 +76,16 @@
               <span class="mx-1 text-gray-600">•</span>
               <button type="button"
                       aria-haspopup="listbox"
-                      aria-label="Select episode"
+                      aria-label="{% translate "Select episode" %}"
                       :aria-expanded="open.toString()"
                       @click="open = !open"
                       class="inline-flex items-center gap-1 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer">
                 <span>{{ episode_title }}</span>
-                {% if episode and episode.display_episode_number|default:episode.episode_number %}<span class="mx-1 text-gray-600">•</span><span>Ep {{ episode.display_episode_number|default:episode.episode_number }}</span>{% endif %}
+                {% if episode and episode.display_episode_number|default:episode.episode_number %}<span class="mx-1 text-gray-600">•</span><span>{% blocktranslate trimmed with value_1=episode.display_episode_number|default:episode.episode_number %}Ep {{ value_1 }}{% endblocktranslate %}</span>{% endif %}
                 <span class="h-4 w-4" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</span>
               </button>
               {% if episode and episode.air_date %}<span class="mx-1 text-gray-600">•</span>{{ episode.air_date|user_date_format:user }}{% endif %}
-              {% if not public_view and episode and episode.history %}{% with ep_watched=episode.history|watched_count %}{% if ep_watched %}<span class="mx-1 text-gray-600">•</span>Watched {% if ep_watched == 1 %}once{% else %}{{ ep_watched }} times{% endif %}{% endif %}{% endwith %}{% endif %}
+              {% if not public_view and episode and episode.history %}{% with ep_watched=episode.history|watched_count %}{% if ep_watched %}<span class="mx-1 text-gray-600">•</span>{% translate "Watched" %} {% if ep_watched == 1 %}{% translate "once" %}{% else %}{% blocktranslate trimmed with value_1=ep_watched %}{{ value_1 }} times{% endblocktranslate %}{% endif %}{% endif %}{% endwith %}{% endif %}
             </div>
           </div>
 
@@ -93,30 +95,67 @@
               {% if prev_episode_number %}
                 <a href="{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=prev_episode_number %}{% else %}{% url 'episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=prev_episode_number %}{% endif %}"
                    hx-boost="true"
-                   aria-label="Previous episode"
-                   title="Previous episode"
+                   aria-label="{% translate "Previous episode" %}"
+                   title="{% translate "Previous episode" %}"
                    class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer">
                   {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
                 </a>
               {% else %}
-                <span aria-label="Previous episode"
-                      title="Previous episode"
+                <span aria-label="{% translate "Previous episode" %}"
+                      title="{% translate "Previous episode" %}"
                       class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed">
                   {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
                 </span>
               {% endif %}
 
+            <div class="relative min-w-0 flex-1 md:max-w-xs"
+                 x-data="{ open: false }"
+                 @click.away="open = false"
+                 @keydown.escape.window="open = false">
+              <button @click="open = !open"
+                      class="flex h-11 w-full min-w-0 items-center justify-center gap-2 px-4 border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm hover:bg-[var(--color-surface-muted)] rounded-xl transition-colors duration-200 cursor-pointer md:justify-start">
+                <span class="block min-w-0 flex-1 truncate text-sm font-medium">{{ episode.display_episode_number|default:episode_number }}. {{ episode_title }}</span>
+                <div class="h-4 w-4 shrink-0" :class="{ 'rotate-180': open }">{% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}</div>
+              </button>
+              <div x-show="open"
+                   x-transition:enter="transition ease-out duration-200"
+                   x-transition:enter-start="opacity-0 transform scale-95"
+                   x-transition:enter-end="opacity-100 transform scale-100"
+                   x-transition:leave="transition ease-in duration-150"
+                   x-transition:leave-start="opacity-100 transform scale-100"
+                   x-transition:leave-end="opacity-0 transform scale-95"
+                   class="absolute right-1/2 md:right-0 translate-x-1/2 md:translate-x-0 mt-2 w-64 bg-[var(--color-surface)] rounded-md shadow-lg overflow-hidden z-10">
+                <div class="max-h-[300px] overflow-y-auto">
+                  {% for ep in episodes %}
+                    <a href="{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=ep.episode_number %}{% else %}{% url 'episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=ep.episode_number %}{% endif %}"
+                       hx-boost="true"
+                       class="w-full px-4 py-3 flex items-center space-x-3 hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors duration-200 cursor-pointer {% if ep.episode_number == episode_number %}bg-[var(--color-surface-muted)]{% endif %}">
+                      <div class="w-8 h-8 rounded-full flex items-center justify-center bg-indigo-600 text-white shrink-0">
+                        {{ ep.display_episode_number|default:ep.episode_number }}
+                      </div>
+                      <div class="flex-1 text-left min-w-0">
+                        <div class="text-sm font-medium line-clamp-1">{{ ep.title }}</div>
+                        <div class="text-xs text-[var(--color-text-muted)]">
+                          {{ ep.air_date|user_date_format:user|default_if_none:"Unknown date" }}
+                        </div>
+                      </div>
+                    </a>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
               {% if next_episode_number %}
                 <a href="{% if parent_media_type == MediaTypes.ANIME.value %}{% url 'anime_episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=next_episode_number %}{% else %}{% url 'episode_details' source=source media_id=media_id title=show_title|slug season_number=season_number episode_number=next_episode_number %}{% endif %}"
                    hx-boost="true"
-                   aria-label="Next episode"
-                   title="Next episode"
+                   aria-label="{% translate "Next episode" %}"
+                   title="{% translate "Next episode" %}"
                    class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer">
                   {% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}
                 </a>
               {% else %}
-                <span aria-label="Next episode"
-                      title="Next episode"
+                <span aria-label="{% translate "Next episode" %}"
+                      title="{% translate "Next episode" %}"
                       class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed">
                   {% include "app/icons/chevron-right.svg" with classes="w-4 h-4" %}
                 </span>
@@ -162,7 +201,7 @@
           {# TMDB provider score chip #}
           {% if episode_metadata.score_count %}
             <div class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-cyan-400/18 bg-cyan-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
-              <span class="sr-only">TMDB score</span>
+              <span class="sr-only">{% translate "TMDB score" %}</span>
               <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-cyan-400/28 bg-cyan-500/14 sm:h-8 sm:w-8">
                 <img src="{% static 'img/tmdb-logo.png' %}" alt="" aria-hidden="true" class="h-3 w-3 object-contain sm:h-3.5 sm:w-3.5">
               </span>
@@ -172,13 +211,13 @@
                 <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
               {% endif %}
               <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-              <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ episode_metadata.score_count|intcomma }} vote{{ episode_metadata.score_count|pluralize }}</span>
+              <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=episode_metadata.score_count|intcomma count count=episode_metadata.score_count %}{{ value_1 }} vote{% plural %}{{ value_1 }} votes{% endblocktranslate %}</span>
             </div>
           {% endif %}
           {# IMDb rating chip #}
           {% if imdb_score %}
             <div class="inline-flex h-[1.875rem] shrink-0 items-center gap-0.5 rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
-              <span class="sr-only">IMDb score</span>
+              <span class="sr-only">{% translate "IMDb score" %}</span>
               <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14 sm:h-8 sm:w-8">
                 <img src="{% static 'img/imdb-logo.png' %}" alt="" aria-hidden="true" class="h-3.5 w-3.5 object-contain sm:h-4 sm:w-4">
               </span>
@@ -188,7 +227,7 @@
                 <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
               {% endif %}
               <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-              <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ imdb_score.rating_count|intcomma }} rating{{ imdb_score.rating_count|pluralize }}</span>
+              <span class="text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=imdb_score.rating_count|intcomma count count=imdb_score.rating_count %}{{ value_1 }} rating{% plural %}{{ value_1 }} ratings{% endblocktranslate %}</span>
             </div>
           {% endif %}
           {# User episode rating chip — always-present slot so it can be OOB-swapped into place on first watch without a page refresh. #}
@@ -223,7 +262,7 @@
               {% if episode.item or season_metadata %}
                 <div x-data="{ listsOpen: false }" class="flex-1 sm:flex-none">
                   <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
-                          title="Add to custom lists"
+                          title="{% translate "Add to custom lists" %}"
                           hx-get="{% if episode.item %}{% media_view_url 'lists_modal' episode.item %}{% else %}{% media_view_url 'lists_modal' episode %}{% endif %}"
                           hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
                           hx-target="#{% if episode.item %}{% component_id 'lists' episode.item %}{% else %}{% component_id 'lists' episode %}{% endif %}"
@@ -246,7 +285,7 @@
               {% if episode.item %}
                 <div x-data="{ historyOpen: false }" class="flex-1 sm:flex-none">
                   <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
-                          title="View your activity history"
+                          title="{% translate "View your activity history" %}"
                           hx-get="{% media_view_url 'history_modal' episode.item %}"
                           hx-vals='{"return_url": "{{ detail_return_url|urlencode }}"}'
                           hx-target="#{% component_id 'history' episode.item %}"
@@ -298,7 +337,7 @@
             <button x-show="isClamped"
                     @click="isExpanded = !isExpanded"
                     class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] text-sm mt-2 focus:outline-none transition-colors cursor-pointer inline-flex">
-              <span x-text="isExpanded ? 'Show less' : 'Read more'"></span>
+              {% translate "Show less" as media_i18n_0 %}{% translate "Read more" as media_i18n_12 %}<span x-text="isExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_12|escapejs }}'"></span>
             </button>
           </div>
         </div>
@@ -320,12 +359,12 @@
              x-init="syncDetailGrid()"
              @resize.window="syncDetailGrid()">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold">Cast</h2>
+        <h2 class="text-xl font-bold">{% translate "Cast" %}</h2>
         <button type="button"
                 class="flex items-center justify-center p-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors duration-200 cursor-pointer"
                 @click="castOpen = !castOpen"
                 :aria-expanded="castOpen.toString()"
-                aria-label="Toggle cast section">
+                aria-label="{% translate "Toggle cast section" %}">
           <div class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': castOpen }">
             {% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}
           </div>
@@ -369,7 +408,7 @@
                 {% endif %}
               </div>
               <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2">
-                {% if person.role %}{{ person.role }}{% else %}Cast{% endif %}
+                {% if person.role %}{{ person.role }}{% else %}{% translate "Cast" %}{% endif %}
               </p>
             </div>
           </div>
@@ -378,7 +417,7 @@
       <button x-show="castOpen && canToggleDetailGrid({{ episode_metadata.cast|length }})"
               @click="detailGridExpanded = !detailGridExpanded"
               class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden">
-        <span x-text="detailGridExpanded ? 'Show less' : 'Show more'"></span>
+        {% translate "Show less" as media_i18n_0 %}{% translate "Show more" as media_i18n_1 %}<span x-text="detailGridExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_1|escapejs }}'"></span>
       </button>
     </section>
   {% endif %}
@@ -389,12 +428,12 @@
              x-init="syncDetailGrid()"
              @resize.window="syncDetailGrid()">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-bold">Crew</h2>
+        <h2 class="text-xl font-bold">{% translate "Crew" %}</h2>
         <button type="button"
                 class="flex items-center justify-center p-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition-colors duration-200 cursor-pointer"
                 @click="crewOpen = !crewOpen"
                 :aria-expanded="crewOpen.toString()"
-                aria-label="Toggle crew section">
+                aria-label="{% translate "Toggle crew section" %}">
           <div class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': crewOpen }">
             {% include "app/icons/chevron-down.svg" with classes="w-full h-full" %}
           </div>
@@ -438,7 +477,7 @@
                 {% endif %}
               </div>
               <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2">
-                {% if person.role %}{{ person.role }}{% elif person.department %}{{ person.department }}{% else %}Crew{% endif %}
+                {% if person.role %}{{ person.role }}{% elif person.department %}{{ person.department }}{% else %}{% translate "Crew" %}{% endif %}
               </p>
             </div>
           </div>
@@ -447,7 +486,7 @@
       <button x-show="crewOpen && canToggleDetailGrid({{ episode_metadata.crew|length }})"
               @click="detailGridExpanded = !detailGridExpanded"
               class="mt-4 inline-flex text-sm font-medium text-[var(--color-link)] hover:text-[var(--color-link-hover)] focus:outline-none transition-colors cursor-pointer md:hidden">
-        <span x-text="detailGridExpanded ? 'Show less' : 'Show more'"></span>
+        {% translate "Show less" as media_i18n_0 %}{% translate "Show more" as media_i18n_1 %}<span x-text="detailGridExpanded ? '{{ media_i18n_0|escapejs }}' : '{{ media_i18n_1|escapejs }}'"></span>
       </button>
     </section>
   {% endif %}

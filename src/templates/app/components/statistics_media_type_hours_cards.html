@@ -1,3 +1,5 @@
+
+{% load i18n %}
       <!-- Media Type Hours Cards Section -->
       <div class="stats-media-card-grid grid gap-3 sm:gap-4 mb-4 sm:mb-8 stat-scroll-safe -mt-4 sm:-mt-5" 
            x-data="{
@@ -45,7 +47,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">TV Shows</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "TV Shows" %}</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.tv }}</p>
             {% with compare=hours_per_media_type_comparison.tv %}
               <div class="stats-media-card-meta">
@@ -73,7 +75,7 @@
                 </p>
                 {% if compare and compare.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="{% translate "Show comparison totals" %}">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -129,7 +131,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Movies</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Movies" %}</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.movie }}</p>
             {% with compare=hours_per_media_type_comparison.movie %}
               <div class="stats-media-card-meta">
@@ -157,7 +159,7 @@
                 </p>
                 {% if compare and compare.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="{% translate "Show comparison totals" %}">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -210,7 +212,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Games</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Games" %}</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.game }}</p>
             {% with compare=hours_per_media_type_comparison.game %}
               <div class="stats-media-card-meta">
@@ -238,7 +240,7 @@
                 </p>
                 {% if compare and compare.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="{% translate "Show comparison totals" %}">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -290,7 +292,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Podcasts</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Podcasts" %}</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.podcast }}</p>
             {% with compare=hours_per_media_type_comparison.podcast %}
               <div class="stats-media-card-meta">
@@ -318,7 +320,7 @@
                 </p>
                 {% if compare and compare.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="{% translate "Show comparison totals" %}">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -371,7 +373,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Board Games</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Board Games" %}</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.boardgame }}</p>
             {% with compare=hours_per_media_type_comparison.boardgame %}
               <div class="stats-media-card-meta">
@@ -399,7 +401,7 @@
                 </p>
                 {% if compare and compare.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="{% translate "Show comparison totals" %}">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -449,7 +451,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Anime</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Anime" %}</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.anime }}</p>
             {% with compare=hours_per_media_type_comparison.anime %}
               <div class="stats-media-card-meta">
@@ -477,7 +479,7 @@
                 </p>
                 {% if compare and compare.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="{% translate "Show comparison totals" %}">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -530,7 +532,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Manga</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Manga" %}</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.manga }}</p>
             {% with compare=hours_per_media_type_comparison.manga %}
               <div class="stats-media-card-meta">
@@ -558,7 +560,7 @@
                 </p>
                 {% if compare and compare.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="{% translate "Show comparison totals" %}">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -609,7 +611,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Music</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Music" %}</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.music }}</p>
             {% with compare=hours_per_media_type_comparison.music %}
               <div class="stats-media-card-meta">
@@ -637,7 +639,7 @@
                 </p>
                 {% if compare and compare.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="{% translate "Show comparison totals" %}">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -686,7 +688,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Books</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Books" %}</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.book }}</p>
             {% with compare=hours_per_media_type_comparison.book %}
               <div class="stats-media-card-meta">
@@ -714,7 +716,7 @@
                 </p>
                 {% if compare and compare.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="{% translate "Show comparison totals" %}">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"
@@ -765,7 +767,7 @@
             </svg>
           </div>
           <div class="stats-media-card-copy min-w-0">
-            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">Comics</h3>
+            <h3 class="stats-media-card-title text-xs sm:text-sm font-medium text-[var(--color-text-muted)]">{% translate "Comics" %}</h3>
             <p class="stats-media-card-value text-xl sm:text-2xl font-bold">{{ hours_per_media_type.comic }}</p>
             {% with compare=hours_per_media_type_comparison.comic %}
               <div class="stats-media-card-meta">
@@ -793,7 +795,7 @@
                 </p>
                 {% if compare and compare.tooltip %}
                   <div class="relative" x-data="{ tooltipOpen: false }">
-                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="Show comparison totals">
+                    <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="stats-media-card-tooltip-trigger inline-flex items-center cursor-pointer" type="button" aria-label="{% translate "Show comparison totals" %}">
                       {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                     </button>
                     <div x-show="tooltipOpen"

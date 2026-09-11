@@ -1,9 +1,11 @@
 {% extends "users/base.html" %}
+{% load i18n %}
+
 {% load user_tags %}
 {% load app_tags %}
 
 {% block title %}
-  Import - Floppy
+  {% translate "Import - Floppy" %}
 {% endblock title %}
 
 {% block settings_content %}
@@ -30,14 +32,14 @@
          },
          activeMediaTag: 'all',
          mediaTagLabels: {
-           all: 'All Sources',
-           screen: 'Movies & TV',
-           anime_manga: 'Anime & Manga',
-           reading: 'Books & Comics',
-           games: 'Games',
-           podcasts: 'Podcasts',
-           music: 'Music',
-           backup: 'Backups'
+           all: gettext('All Sources'),
+           screen: gettext('Movies & TV'),
+           anime_manga: gettext('Anime & Manga'),
+           reading: gettext('Books & Comics'),
+           games: gettext('Games'),
+           podcasts: gettext('Podcasts'),
+           music: gettext('Music'),
+           backup: gettext('Backups')
          },
          sourceSupports(tags) {
            return this.activeMediaTag === 'all' || tags.includes(this.activeMediaTag);
@@ -59,12 +61,12 @@
          },
          plexPrimaryActionLabel() {
            if (this.importMode === 'update_collection') {
-             return 'Update';
+             return gettext('Update');
            }
            if (this.isWatchlistMode()) {
-             return this.plexWatchlistSyncEnabled ? 'Sync Now' : 'Enable Sync';
+             return this.plexWatchlistSyncEnabled ? gettext('Sync Now') : gettext('Enable Sync');
            }
-           return 'Import';
+           return gettext('Import');
          },
          plexStatusBadgeClasses() {
            if (this.plexConnectionState === 'connected') {
@@ -80,15 +82,15 @@
          },
          plexStatusLabel() {
            if (this.plexConnectionState === 'connected') {
-             return 'Connected';
+             return gettext('Connected');
            }
            if (this.plexConnectionState === 'error') {
-             return 'Connection failed';
+             return gettext('Connection failed');
            }
            if (this.plexConnectionState === 'checking') {
-             return 'Checking';
+             return gettext('Checking');
            }
-           return 'Disconnected';
+           return gettext('Disconnected');
          },
          libraryKey(section) {
            return `${section.machine_identifier}::${section.id}`;
@@ -126,10 +128,10 @@
          },
          selectedLibraryLabel() {
            if (this.isAllSelected()) {
-             return 'All libraries';
+             return gettext('All libraries');
            }
            if (!this.plexLibraries.length) {
-             return 'No libraries selected';
+             return gettext('No libraries selected');
            }
            if (this.plexLibraries.length === 1) {
              const section = this.plexSections.find(
@@ -137,7 +139,7 @@
              );
              return section ? this.plexLibraryLabel(section) : this.plexLibraries[0];
            }
-           return `${this.plexLibraries.length} libraries selected`;
+           return interpolate(ngettext('%s library selected', '%s libraries selected', this.plexLibraries.length), [this.plexLibraries.length]);
          },
          reconcileLibrarySelection() {
            if (this.isAllSelected()) {
@@ -152,7 +154,7 @@
            }
          },
          plexLibraryLabel(section) {
-           let label = section.title || 'Unknown library';
+           let label = section.title || gettext('Unknown library');
            if (section.server_name) {
              label += ' - ' + section.server_name;
            }
@@ -181,7 +183,7 @@
              const data = await response.json();
 
              if (!response.ok) {
-               throw new Error(data.error || 'Could not verify Plex connection.');
+               throw new Error(data.error || gettext('Could not verify Plex connection.'));
              }
 
              this.plexConnectionState = data.state || 'error';
@@ -194,7 +196,7 @@
              }
            } catch (error) {
              this.plexConnectionState = 'error';
-             this.plexLiveError = error.message || 'Could not verify Plex connection.';
+             this.plexLiveError = error.message || gettext('Could not verify Plex connection.');
              this.plexSections = [];
              this.hasPlexSections = false;
              this.plexLibrariesLoading = false;
@@ -216,7 +218,7 @@
              const data = await response.json();
 
              if (!response.ok) {
-               throw new Error(data.error || 'Could not load Plex libraries.');
+               throw new Error(data.error || gettext('Could not load Plex libraries.'));
              }
 
              if (Array.isArray(data.sections)) {
@@ -235,7 +237,7 @@
                this.hasPlexSections = false;
              }
              if (!this.plexLiveError) {
-               this.plexLiveError = error.message || 'Could not load Plex libraries.';
+               this.plexLiveError = error.message || gettext('Could not load Plex libraries.');
              }
            } finally {
              this.plexLibrariesLoading = false;
@@ -250,12 +252,12 @@
         <div class="flex items-center gap-3">
           {% include "app/icons/checkmark.svg" with classes="w-5 h-5 text-[var(--color-link)] shrink-0" %}
           <p class="text-sm text-[var(--color-text-secondary)]">
-            You're connecting this service as part of guided setup. Finish here, then continue the wizard.
+            {% translate "You're connecting this service as part of guided setup. Finish here, then continue the wizard." %}
           </p>
         </div>
         <a href="{% url 'onboarding_service_setup' %}"
            class="px-3 py-1.5 text-xs rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors whitespace-nowrap">
-          Continue Guided Setup
+          {% translate "Continue Guided Setup" %}
         </a>
       </div>
     {% endif %}
@@ -268,25 +270,25 @@
     <div class="bg-[var(--color-surface)] rounded-lg p-6">
       <div class="flex items-center mb-4">
         {% include "app/icons/horizontal-sliders.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-        <h2 class="text-xl font-semibold">Import Settings</h2>
+        <h2 class="text-xl font-semibold">{% translate "Import Settings" %}</h2>
       </div>
-      <p class="text-[var(--color-text-muted)] mb-5 text-sm">Configure your import preferences.</p>
+      <p class="text-[var(--color-text-muted)] mb-5 text-sm">{% translate "Configure your import preferences." %}</p>
       <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm text-[var(--color-text-muted)] mb-2">Import Frequency</label>
+            <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Import Frequency" %}</label>
             <div class="relative">
               <select x-model="importFrequency"
                       name="import_frequency"
                       class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
-                <option value="once">One Time Import</option>
-                <option value="daily">Every Day</option>
-                <option value="2days">Every 2 Days</option>
+                <option value="once">{% translate "One Time Import" %}</option>
+                <option value="daily">{% translate "Every Day" %}</option>
+                <option value="2days">{% translate "Every 2 Days" %}</option>
               </select>
               {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
             </div>
             <div x-cloak class="mt-4" x-show="importFrequency !== 'once'">
-              <label class="block text-sm text-[var(--color-text-muted)] mb-2">Import Time</label>
+              <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Import Time" %}</label>
               <input x-model="importTime"
                      name="import_time"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 scheme-dark"
@@ -294,15 +296,15 @@
             </div>
           </div>
           <div>
-            <label class="block text-sm text-[var(--color-text-muted)] mb-2">Import Mode</label>
+            <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Import Mode" %}</label>
             <div class="relative">
               <select x-model="importMode"
                       name="import_mode"
                       class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
-                <option value="new" title="Only adds items you don't have yet. Never changes or deletes anything already in your library, even if it looks incomplete.">Only Sync New Items</option>
-                <option value="overwrite" title="Replaces matching items with the imported version. Items not in this file are left alone.">Sync New Items and Overwrite Existing</option>
-                <option value="watchlist" title="Only imports your watchlist. Doesn't touch watch history, ratings, or anything else.">Import Watchlist Data Only</option>
-                <option value="update_collection" title="Only updates collection metadata (e.g. physical/digital copies you own). Doesn't touch watch history or ratings.">Update Collection Metadata Only</option>
+                <option value="new" title="{% translate "Only adds items you don't have yet. Never changes or deletes anything already in your library, even if it looks incomplete." %}">{% translate "Only Sync New Items" %}</option>
+                <option value="overwrite" title="{% translate "Replaces matching items with the imported version. Items not in this file are left alone." %}">{% translate "Sync New Items and Overwrite Existing" %}</option>
+                <option value="watchlist" title="{% translate "Only imports your watchlist. Doesn't touch watch history, ratings, or anything else." %}">{% translate "Import Watchlist Data Only" %}</option>
+                <option value="update_collection" title="{% translate "Only updates collection metadata (e.g. physical/digital copies you own). Doesn't touch watch history or ratings." %}">{% translate "Update Collection Metadata Only" %}</option>
               </select>
               {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
             </div>
@@ -317,81 +319,81 @@
       <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div class="flex items-center">
           {% include "app/icons/database.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-          <h2 class="text-xl font-semibold">Import Sources</h2>
+          <h2 class="text-xl font-semibold">{% translate "Import Sources" %}</h2>
         </div>
         <a href="{% url 'onboarding_restart' %}"
            class="text-xs text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">
-          Run guided setup
+          {% translate "Run guided setup" %}
         </a>
       </div>
       <p class="text-[var(--color-text-muted)] mb-5 text-sm">
-        Some of these require additional configuration, check the
+        {% translate "Some of these require additional configuration, check the" %}
         <a href="https://github.com/dannyvfilms/Floppy/wiki/4.-Integrations#import-overview"
            target="_blank"
-           class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">import configuration guide</a>.
+           class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">{% translate "import configuration guide" %}</a>.
       </p>
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 mb-5">
-        <p class="text-sm text-[var(--color-text-secondary)] mb-3">Browse by media type:</p>
+        <p class="text-sm text-[var(--color-text-secondary)] mb-3">{% translate "Browse by media type:" %}</p>
         <div class="flex flex-wrap gap-2">
           <button type="button"
                   @click="activeMediaTag = 'all'"
                   :aria-pressed="activeMediaTag === 'all'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                   :class="activeMediaTag === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            All Sources
+            {% translate "All Sources" %}
           </button>
           <button type="button"
                   @click="activeMediaTag = 'screen'"
                   :aria-pressed="activeMediaTag === 'screen'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                   :class="activeMediaTag === 'screen' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            Movies & TV
+            {% translate "Movies & TV" %}
           </button>
           <button type="button"
                   @click="activeMediaTag = 'anime_manga'"
                   :aria-pressed="activeMediaTag === 'anime_manga'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                   :class="activeMediaTag === 'anime_manga' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            Anime & Manga
+            {% translate "Anime & Manga" %}
           </button>
           <button type="button"
                   @click="activeMediaTag = 'reading'"
                   :aria-pressed="activeMediaTag === 'reading'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                   :class="activeMediaTag === 'reading' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            Books & Comics
+            {% translate "Books & Comics" %}
           </button>
           <button type="button"
                   @click="activeMediaTag = 'games'"
                   :aria-pressed="activeMediaTag === 'games'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                   :class="activeMediaTag === 'games' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            Games
+            {% translate "Games" %}
           </button>
           <button type="button"
                   @click="activeMediaTag = 'podcasts'"
                   :aria-pressed="activeMediaTag === 'podcasts'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                   :class="activeMediaTag === 'podcasts' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            Podcasts
+            {% translate "Podcasts" %}
           </button>
           <button type="button"
                   @click="activeMediaTag = 'music'"
                   :aria-pressed="activeMediaTag === 'music'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                   :class="activeMediaTag === 'music' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            Music
+            {% translate "Music" %}
           </button>
           <button type="button"
                   @click="activeMediaTag = 'backup'"
                   :aria-pressed="activeMediaTag === 'backup'"
                   class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                   :class="activeMediaTag === 'backup' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            Backups
+            {% translate "Backups" %}
           </button>
         </div>
         <p class="text-xs text-[var(--color-text-muted)] mt-3"
-           x-text="'Showing ' + mediaTagLabels[activeMediaTag] + '.'">
+           x-text="gettext('Showing ') + mediaTagLabels[activeMediaTag] + '.'">
         </p>
       </div>
 
@@ -404,9 +406,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "plex" %}
-            {% if plex_account %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if plex_account %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import watch and listen history from Plex.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import watch and listen history from Plex." %}</p>
         </button>
 
         <button type="button"
@@ -416,9 +418,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "radarr" %}
-            {% if radarr_account and radarr_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if radarr_account and radarr_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import owned movies from Radarr.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import owned movies from Radarr." %}</p>
         </button>
 
         <button type="button"
@@ -428,9 +430,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "sonarr" %}
-            {% if sonarr_account and sonarr_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if sonarr_account and sonarr_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import owned TV shows from Sonarr.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import owned TV shows from Sonarr." %}</p>
         </button>
 
         <button type="button"
@@ -440,9 +442,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "stremio" %}
-            {% if stremio_account and stremio_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if stremio_account and stremio_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import watched movies and episodes from Stremio.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import watched movies and episodes from Stremio." %}</p>
         </button>
 
         <button type="button"
@@ -452,9 +454,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "audiobookshelf" %}
-            {% if audiobookshelf_account and audiobookshelf_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if audiobookshelf_account and audiobookshelf_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import audiobook progress from Audiobookshelf.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import audiobook progress from Audiobookshelf." %}</p>
         </button>
 
         <button type="button"
@@ -464,9 +466,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "storyteller" %}
-            {% if storyteller_account and storyteller_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if storyteller_account and storyteller_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import reading progress from Storyteller.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import reading progress from Storyteller." %}</p>
         </button>
 
         <button type="button"
@@ -476,9 +478,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "koreader" %}
-            {% if koreader_account and koreader_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if koreader_account and koreader_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Sync book reading progress from a KOReader sync server.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Sync book reading progress from a KOReader sync server." %}</p>
         </button>
 
         <button type="button"
@@ -488,9 +490,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "pocketcasts" %}
-            {% if pocketcasts_account and pocketcasts_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if pocketcasts_account and pocketcasts_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import podcast progress from Pocket Casts.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import podcast progress from Pocket Casts." %}</p>
         </button>
 
         <button type="button"
@@ -500,9 +502,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "gpodder" %}
-            {% if gpodder_account and gpodder_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if gpodder_account and gpodder_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import podcast history from GPodder.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import podcast history from GPodder." %}</p>
         </button>
 
         <button type="button"
@@ -512,9 +514,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "lastfm" %}
-            {% if lastfm_account and lastfm_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if lastfm_account and lastfm_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import listening history from Last.fm.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import listening history from Last.fm." %}</p>
         </button>
 
         <button type="button"
@@ -524,9 +526,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "koito" %}
-            {% if koito_account and koito_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if koito_account and koito_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import listening history from a self-hosted Koito server.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import listening history from a self-hosted Koito server." %}</p>
         </button>
 
         <button type="button"
@@ -535,7 +537,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "trakt" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import movies and TV shows from Trakt.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import movies and TV shows from Trakt." %}</p>
         </button>
 
         <button type="button"
@@ -545,9 +547,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "mdblist" %}
-            {% if user.mdblist_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if user.mdblist_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import watch history and ratings from MDBList.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import watch history and ratings from MDBList." %}</p>
         </button>
 
         <button type="button"
@@ -556,7 +558,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "simkl" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import movies, TV shows and anime from Simkl.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import movies, TV shows and anime from Simkl." %}</p>
         </button>
 
         <button type="button"
@@ -565,7 +567,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "myanimelist" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import anime and manga from MyAnimeList.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import anime and manga from MyAnimeList." %}</p>
         </button>
 
         <button type="button"
@@ -574,7 +576,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "anilist" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import anime and manga from AniList.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import anime and manga from AniList." %}</p>
         </button>
 
         <button type="button"
@@ -583,7 +585,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "kitsu" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import anime and manga from Kitsu.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import anime and manga from Kitsu." %}</p>
         </button>
 
         <button type="button"
@@ -592,7 +594,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "yamtrack" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import a backup from Floppy.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import a backup from Floppy." %}</p>
         </button>
 
         <button type="button"
@@ -601,7 +603,21 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "yamtrack_native" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import a CSV export from Yamtrack.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import a CSV export from Yamtrack." %}</p>
+        </button>
+
+        <button type="button"
+                @click="openModal('clz')"
+                x-show="sourceSupports(['backup', 'screen', 'reading', 'games'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              {% include "app/icons/import.svg" with classes="w-6 h-6 mr-2" %}
+              <h4 class="font-medium">CLZ</h4>
+            </div>
+          </div>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import a CLZ (Collectorz) CSV or XML export." %}</p>
         </button>
 
         <a href="{% url 'import_template_csv' %}"
@@ -610,9 +626,9 @@
            class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left flex flex-col gap-2">
           <div class="flex items-center">
             {% include "app/icons/download.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-            <span class="font-medium text-[var(--color-text-secondary)]">Import Template</span>
+            <span class="font-medium text-[var(--color-text-secondary)]">{% translate "Import Template" %}</span>
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Download a starter template, then re-upload it to your library.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Download a starter template, then re-upload it to your library." %}</p>
         </a>
 
         <button type="button"
@@ -621,7 +637,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "hltb" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import games from HowLongToBeat.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import games from HowLongToBeat." %}</p>
         </button>
 
         <button type="button"
@@ -630,7 +646,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "grouvee" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import games from Grouvee.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import games from Grouvee." %}</p>
         </button>
 
         <button type="button"
@@ -639,7 +655,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "steam" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import games from Steam.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import games from Steam." %}</p>
         </button>
 
         <button type="button"
@@ -649,9 +665,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "xbox" %}
-            {% if xbox_account and xbox_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if xbox_account and xbox_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Sync played games and hours from Xbox.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Sync played games and hours from Xbox." %}</p>
         </button>
 
         <button type="button"
@@ -661,9 +677,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "psn" %}
-            {% if psn_account and psn_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if psn_account and psn_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Connected" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Sync played games and hours from PlayStation.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Sync played games and hours from PlayStation." %}</p>
         </button>
 
         <button type="button"
@@ -672,7 +688,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "imdb" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import ratings from IMDB.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import ratings from IMDB." %}</p>
         </button>
 
         <button type="button"
@@ -681,7 +697,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "tvtime" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import watch history from a TV Time data export.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import watch history from a TV Time data export." %}</p>
         </button>
 
         <button type="button"
@@ -690,7 +706,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "goodreads" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import a backup from Goodreads.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import a backup from Goodreads." %}</p>
         </button>
 
         <button type="button"
@@ -700,9 +716,9 @@
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">
             {% source_display "hardcover" %}
-            {% if hardcover_personal_key %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Configured">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+            {% if hardcover_personal_key %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="{% translate "Configured" %}">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
           </div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import an export from Hardcover.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import an export from Hardcover." %}</p>
         </button>
 
         <button type="button"
@@ -711,7 +727,7 @@
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
           <div class="flex items-center justify-between">{% source_display "storygraph" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">Import an export from StoryGraph.</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import an export from StoryGraph." %}</p>
         </button>
       </div>
 
@@ -744,33 +760,33 @@
                   {% csrf_token %}
                   <button type="submit"
                           class="px-2 py-1 text-xs rounded bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
-                    Disconnect
+                    {% translate "Disconnect" %}
                   </button>
                 </form>
               </div>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
           {% if plex_account %}
             <p x-show="!isWatchlistMode()" class="text-sm text-[var(--color-text-muted)]">
-              Import Plex watch/listen history. Comma-separate username(s) to filter events sent to your webhook.
+              {% translate "Import Plex watch/listen history. Comma-separate username(s) to filter events sent to your webhook." %}
             </p>
             <p x-show="isWatchlistMode()" class="text-sm text-[var(--color-text-muted)]">
-              Sync the connected Plex account's watchlist into Planning every 15 minutes. Plex usernames still control webhook filtering.
+              {% translate "Sync the connected Plex account's watchlist into Planning every 15 minutes. Plex usernames still control webhook filtering." %}
             </p>
 
             <div x-show="isWatchlistMode()" class="text-sm text-[var(--color-text-muted)] space-y-1">
               <div>
-                Recurring sync:
+                {% translate "Recurring sync:" %}
                 {% if plex_account.watchlist_sync_enabled %}
-                  Enabled
+                  {% translate "Enabled" %}
                 {% else %}
-                  Disabled
+                  {% translate "Disabled" %}
                 {% endif %}
               </div>
               {% if plex_account.watchlist_last_synced_at %}
-                <div>Last sync: {{ plex_account.watchlist_last_synced_at|user_datetime_format:user }}</div>
+                <div>{% blocktranslate with value1=plex_account.watchlist_last_synced_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</div>
               {% endif %}
             </div>
 
@@ -782,7 +798,7 @@
             {% if plex_account.watchlist_last_error %}
               <div x-show="isWatchlistMode()"
                    class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
-                <strong>Last watchlist sync error:</strong> {{ plex_account.watchlist_last_error }}
+                <strong>{% translate "Last watchlist sync error:" %}</strong> {{ plex_account.watchlist_last_error }}
               </div>
             {% endif %}
 
@@ -793,7 +809,7 @@
               {% csrf_token %}
               <button type="submit"
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-amber-600 text-white hover:bg-amber-700">
-                Reconnect Plex
+                {% translate "Reconnect Plex" %}
               </button>
             </form>
 
@@ -805,7 +821,7 @@
               <input type="hidden" name="next" value="import_data">
 
               <div x-show="!isWatchlistMode()" x-data="{ dropdownOpen: false, contentKindSubmenu: null }">
-                <label class="block text-sm text-[var(--color-text-secondary)] mb-2">Libraries</label>
+                <label class="block text-sm text-[var(--color-text-secondary)] mb-2">{% translate "Libraries" %}</label>
                 <div class="relative" @click.outside="dropdownOpen = false; contentKindSubmenu = null">
                   <button type="button"
                           class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
@@ -830,7 +846,7 @@
                         <button type="button"
                                 class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                                 @click="selectAllLibraries()">
-                          <span class="block min-w-0 truncate">All libraries</span>
+                          <span class="block min-w-0 truncate">{% translate "All libraries" %}</span>
                           <span class="ml-auto" x-show="isAllSelected()">
                             {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
                           </span>
@@ -850,7 +866,7 @@
                                     x-show="section.is_music && isLibrarySelected(libraryKey(section))"
                                     x-cloak
                                     @click="contentKindSubmenu = libraryKey(section)"
-                                    :aria-label="`Set content type for ${plexLibraryLabel(section)}`">
+                                    :aria-label="interpolate(gettext('Set content type for %s'), [plexLibraryLabel(section)])">
                               {% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}
                             </button>
                           </div>
@@ -862,12 +878,12 @@
                         <button type="button"
                                 class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                                 @click="contentKindSubmenu = null"
-                                aria-label="Back to libraries">
+                                aria-label="{% translate "Back to libraries" %}">
                           {% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}
                         </button>
-                        <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Content Type</div>
+                        <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Content Type" %}</div>
                       </div>
-                      <template x-for="kind in [['auto', 'Auto-detect'], ['music', 'Music'], ['audiobook', 'Audiobooks']]"
+                      <template x-for="kind in [['auto', gettext('Auto-detect')], ['music', gettext('Music')], ['audiobook', gettext('Audiobooks')]]"
                                 :key="kind[0]">
                         <button type="button"
                                 class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
@@ -882,22 +898,20 @@
                   </div>
                 </div>
                 <p x-cloak x-show="!plexSections.length && plexLibrariesLoading" class="text-xs text-[var(--color-warning-text)] mt-1">
-                  Checking Plex libraries...
+                  {% translate "Checking Plex libraries..." %}
                 </p>
                 <p x-cloak
                    x-show="!plexSections.length && !plexLibrariesLoading && plexConnectionState === 'error'"
                    class="text-xs text-[var(--color-text-muted)] mt-1">
-                  Reconnect Plex to refresh libraries.
+                  {% translate "Reconnect Plex to refresh libraries." %}
                 </p>
                 <p x-cloak
                    x-show="!plexSections.length && !plexLibrariesLoading && plexConnectionState !== 'error'"
                    class="text-xs text-[var(--color-text-muted)] mt-1">
-                  No libraries detected yet. Reconnect Plex to refresh.
+                  {% translate "No libraries detected yet. Reconnect Plex to refresh." %}
                 </p>
                 <p class="text-xs text-[var(--color-text-muted)] mt-1">
-                  Audiobooks kept in a Plex Music library are tracked as books instead of
-                  music. Select a music library above and use its arrow to choose Auto-detect,
-                  Music, or Audiobooks.
+                  {% translate "Audiobooks kept in a Plex Music library are tracked as books instead of music. Select a music library above and use its arrow to choose Auto-detect, Music, or Audiobooks." %}
                 </p>
               </div>
 
@@ -911,7 +925,7 @@
               <div class="flex w-full">
                 <input name="plex_usernames"
                        value="{{ request.user.plex_usernames }}"
-                       placeholder="username 1, username 2"
+                       placeholder="{% translate "username 1, username 2" %}"
                        class="relative w-full py-2 px-3 bg-[var(--color-surface)] rounded-l-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                        type="text">
                 <button type="submit"
@@ -928,18 +942,18 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  Disable Watchlist Sync
+                  {% translate "Disable Watchlist Sync" %}
                 </button>
               </form>
             {% endif %}
 
           {% else %}
-            <p class="text-sm text-[var(--color-text-muted)]">Import watch and listening history from your Plex server.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "Import watch and listening history from your Plex server." %}</p>
             <form method="post" action="{% url 'plex_connect' %}">
               {% csrf_token %}
               <button type="submit"
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                Connect Plex
+                {% translate "Connect Plex" %}
               </button>
             </form>
           {% endif %}
@@ -963,16 +977,16 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg space-y-3">
           <div class="flex items-center">{% source_display "radarr" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)]">Sync owned movies from Radarr every 2 hours and reconcile quality metadata with Plex.</p>
+          <p class="text-sm text-[var(--color-text-muted)]">{% translate "Sync owned movies from Radarr every 2 hours and reconcile quality metadata with Plex." %}</p>
           <div class="space-y-2">
             {% for instance in radarr_instances %}
               <div class="flex items-center justify-between gap-3 p-2 bg-[var(--color-surface)] rounded-md">
                 <div class="flex items-center gap-2 min-w-0">
                   <span class="text-sm font-medium text-[var(--color-text)] truncate">{{ instance.display_name }}</span>
                   {% if instance.is_connected %}
-                    <span class="px-2 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shrink-0">Connected</span>
+                    <span class="px-2 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shrink-0">{% translate "Connected" %}</span>
                   {% else %}
-                    <span class="px-2 py-0.5 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50 shrink-0">Disconnected</span>
+                    <span class="px-2 py-0.5 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50 shrink-0">{% translate "Disconnected" %}</span>
                   {% endif %}
                   {% if instance.last_error_message %}
                     <span title="{{ instance.last_error_message }}">{% include "app/icons/warning.svg" with classes="w-4 h-4 text-amber-400 shrink-0" %}</span>
@@ -984,7 +998,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="instance_id" value="{{ instance.pk }}">
                     <button type="submit"
-                            title="Sync Now"
+                            title="{% translate "Sync Now" %}"
                             class="p-1.5 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer">
                       {% include "app/icons/repeat.svg" with classes="w-4 h-4" %}
                     </button>
@@ -993,7 +1007,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="instance_id" value="{{ instance.pk }}">
                     <button type="submit"
-                            title="Disconnect"
+                            title="{% translate "Disconnect" %}"
                             class="p-1.5 rounded-md text-red-400 hover:text-red-300 cursor-pointer">
                       {% include "app/icons/trashcan.svg" with classes="w-4 h-4" %}
                     </button>
@@ -1004,12 +1018,12 @@
           </div>
           <div class="space-y-3">
             <p class="text-sm text-[var(--color-text-muted)]">
-              {% if radarr_instances %}Connect another Radarr instance.{% else %}Connect Radarr using your server URL and API key.{% endif %}
+              {% if radarr_instances %}{% translate "Connect another Radarr instance." %}{% else %}{% translate "Connect Radarr using your server URL and API key." %}{% endif %}
             </p>
             <form method="post" action="{% url 'radarr_connect' %}" class="space-y-3">
               {% csrf_token %}
               <input name="name"
-                     placeholder="Label (optional, e.g. '4K')"
+                     placeholder="{% translate "Label (optional, e.g. '4K')" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text">
               <input name="base_url"
@@ -1018,13 +1032,13 @@
                      type="url"
                      required>
               <input name="api_key"
-                     placeholder="Radarr API key"
+                     placeholder="{% translate "Radarr API key" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="password"
                      required>
               <button type="submit"
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                {% if radarr_instances %}Add Instance{% else %}Connect Radarr{% endif %}
+                {% if radarr_instances %}{% translate "Add Instance" %}{% else %}{% translate "Connect Radarr" %}{% endif %}
               </button>
             </form>
           </div>
@@ -1048,16 +1062,16 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg space-y-3">
           <div class="flex items-center">{% source_display "sonarr" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)]">Sync owned TV collection from Sonarr every 2 hours and reconcile ownership with Plex.</p>
+          <p class="text-sm text-[var(--color-text-muted)]">{% translate "Sync owned TV collection from Sonarr every 2 hours and reconcile ownership with Plex." %}</p>
           <div class="space-y-2">
             {% for instance in sonarr_instances %}
               <div class="flex items-center justify-between gap-3 p-2 bg-[var(--color-surface)] rounded-md">
                 <div class="flex items-center gap-2 min-w-0">
                   <span class="text-sm font-medium text-[var(--color-text)] truncate">{{ instance.display_name }}</span>
                   {% if instance.is_connected %}
-                    <span class="px-2 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shrink-0">Connected</span>
+                    <span class="px-2 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shrink-0">{% translate "Connected" %}</span>
                   {% else %}
-                    <span class="px-2 py-0.5 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50 shrink-0">Disconnected</span>
+                    <span class="px-2 py-0.5 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50 shrink-0">{% translate "Disconnected" %}</span>
                   {% endif %}
                   {% if instance.last_error_message %}
                     <span title="{{ instance.last_error_message }}">{% include "app/icons/warning.svg" with classes="w-4 h-4 text-amber-400 shrink-0" %}</span>
@@ -1069,7 +1083,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="instance_id" value="{{ instance.pk }}">
                     <button type="submit"
-                            title="Sync Now"
+                            title="{% translate "Sync Now" %}"
                             class="p-1.5 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer">
                       {% include "app/icons/repeat.svg" with classes="w-4 h-4" %}
                     </button>
@@ -1078,7 +1092,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="instance_id" value="{{ instance.pk }}">
                     <button type="submit"
-                            title="Disconnect"
+                            title="{% translate "Disconnect" %}"
                             class="p-1.5 rounded-md text-red-400 hover:text-red-300 cursor-pointer">
                       {% include "app/icons/trashcan.svg" with classes="w-4 h-4" %}
                     </button>
@@ -1089,12 +1103,12 @@
           </div>
           <div class="space-y-3">
             <p class="text-sm text-[var(--color-text-muted)]">
-              {% if sonarr_instances %}Connect another Sonarr instance.{% else %}Connect Sonarr using your server URL and API key.{% endif %}
+              {% if sonarr_instances %}{% translate "Connect another Sonarr instance." %}{% else %}{% translate "Connect Sonarr using your server URL and API key." %}{% endif %}
             </p>
             <form method="post" action="{% url 'sonarr_connect' %}" class="space-y-3">
               {% csrf_token %}
               <input name="name"
-                     placeholder="Label (optional, e.g. '4K')"
+                     placeholder="{% translate "Label (optional, e.g. '4K')" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text">
               <input name="base_url"
@@ -1103,13 +1117,13 @@
                      type="url"
                      required>
               <input name="api_key"
-                     placeholder="Sonarr API key"
+                     placeholder="{% translate "Sonarr API key" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="password"
                      required>
               <button type="submit"
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                {% if sonarr_instances %}Add Instance{% else %}Connect Sonarr{% endif %}
+                {% if sonarr_instances %}{% translate "Add Instance" %}{% else %}{% translate "Connect Sonarr" %}{% endif %}
               </button>
             </form>
           </div>
@@ -1139,21 +1153,21 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
-                  Connected
+                  {% translate "Connected" %}
                 </button>
               </form>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
           {% if stremio_account %}
-            <p class="text-sm text-[var(--color-text-muted)]">Sync watched movies and episodes from your Stremio library every 2 hours.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "Sync watched movies and episodes from your Stremio library every 2 hours." %}</p>
             {% if stremio_account.last_sync_at %}
-              <div class="text-sm text-[var(--color-text-muted)]">Last sync: {{ stremio_account.last_sync_at|user_datetime_format:user }}</div>
+              <div class="text-sm text-[var(--color-text-muted)]">{% blocktranslate with value1=stremio_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</div>
             {% endif %}
             {% if stremio_account.last_error_message %}
               <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
-                <strong>Error:</strong> {{ stremio_account.last_error_message }}
+                <strong>{% translate "Error:" %}</strong> {{ stremio_account.last_error_message }}
               </div>
             {% endif %}
             <div class="flex gap-2">
@@ -1161,51 +1175,51 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                  Sync Now
+                  {% translate "Sync Now" %}
                 </button>
               </form>
               <form method="post" action="{% url 'stremio_disconnect' %}">
                 {% csrf_token %}
                 <button type="submit"
                         class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
-                  Disconnect
+                  {% translate "Disconnect" %}
                 </button>
               </form>
             </div>
           {% else %}
             <div x-data="{ useAuthKey: false }" class="space-y-3">
               <p class="text-sm text-[var(--color-text-muted)]">
-                Connect with your Stremio email and password. Only an API key is stored; your password is never saved.
+                {% translate "Connect with your Stremio email and password. Only an API key is stored; your password is never saved." %}
               </p>
               <form method="post" action="{% url 'stremio_connect' %}" class="space-y-3">
                 {% csrf_token %}
                 <div x-show="!useAuthKey" class="space-y-3">
                   <input name="email"
-                         placeholder="Stremio email"
+                         placeholder="{% translate "Stremio email" %}"
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                          type="email">
                   <input name="password"
-                         placeholder="Stremio password"
+                         placeholder="{% translate "Stremio password" %}"
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                          type="password">
                 </div>
                 <div x-show="useAuthKey" class="space-y-2">
                   <input name="auth_key"
-                         placeholder="Stremio auth key"
+                         placeholder="{% translate "Stremio auth key" %}"
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                          type="password">
                   <p class="text-xs text-[var(--color-text-muted)]">
-                    Find it in Stremio Web local storage. Required for accounts created with Facebook login.
+                    {% translate "Find it in Stremio Web local storage. Required for accounts created with Facebook login." %}
                   </p>
                 </div>
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  Connect Stremio
+                  {% translate "Connect Stremio" %}
                 </button>
               </form>
               <button type="button"
                       class="text-xs text-[var(--color-link)] hover:text-indigo-200 cursor-pointer"
-                      x-text="useAuthKey ? 'Use email and password instead' : 'Use an auth key instead'"
+                      x-text="useAuthKey ? gettext('Use email and password instead') : gettext('Use an auth key instead')"
                       @click="useAuthKey = !useAuthKey"></button>
             </div>
           {% endif %}
@@ -1235,60 +1249,60 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
-                  Connected
+                  {% translate "Connected" %}
                 </button>
               </form>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
 
           {% if audiobookshelf_account %}
-            <p class="text-sm text-[var(--color-text-muted)]">Sync Audiobook progress from Audiobookshelf every {{ audiobookshelf_poll_interval }} minutes.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% blocktranslate %}Sync Audiobook progress from Audiobookshelf every {{ audiobookshelf_poll_interval }} minutes.{% endblocktranslate %}</p>
             <div class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
               <span>{{ audiobookshelf_account.base_url }}</span>
               {% if audiobookshelf_account.last_sync_at %}
                 <span>•</span>
-                <span>Last sync: {{ audiobookshelf_account.last_sync_at|user_datetime_format:user }}</span>
+                <span>{% blocktranslate with value1=audiobookshelf_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</span>
               {% endif %}
             </div>
             {% if audiobookshelf_account.last_error_message %}
               <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
-                <strong>Error:</strong> {{ audiobookshelf_account.last_error_message }}
+                <strong>{% translate "Error:" %}</strong> {{ audiobookshelf_account.last_error_message }}
               </div>
             {% endif %}
             <div class="space-y-3">
               <form method="post" action="{% url 'import_audiobookshelf' %}">
                 {% csrf_token %}
                 <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  Sync now
+                  {% translate "Sync now" %}
                 </button>
               </form>
               <form method="post" action="{% url 'audiobookshelf_disconnect' %}">
                 {% csrf_token %}
                 <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  Disconnect
+                  {% translate "Disconnect" %}
                 </button>
               </form>
             </div>
           {% else %}
-            <p class="text-sm text-[var(--color-text-muted)] mb-3">Pull audiobook progress from Audiobookshelf.</p>
+            <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Pull audiobook progress from Audiobookshelf." %}</p>
             <form method="post" action="{% url 'audiobookshelf_connect' %}" class="space-y-3">
               {% csrf_token %}
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Base URL</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Base URL" %}</label>
                 <input type="url" name="base_url" required
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                        placeholder="https://abs.example.com">
               </div>
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">API Token</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "API Token" %}</label>
                 <input type="password" name="api_token" required
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                       placeholder="Audiobookshelf API token">
+                       placeholder="{% translate "Audiobookshelf API token" %}">
               </div>
               <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                Connect Audiobookshelf
+                {% translate "Connect Audiobookshelf" %}
               </button>
             </form>
           {% endif %}
@@ -1319,62 +1333,62 @@
                 <button type="submit"
                         title="{{ storyteller_account.server_url }}"
                         class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
-                  Connected
+                  {% translate "Connected" %}
                 </button>
               </form>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
 
           {% if storyteller_account and storyteller_account.is_connected %}
-            <p class="text-sm text-[var(--color-text-muted)]">Sync your books from Storyteller every 2 hours.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "Sync your books from Storyteller every 2 hours." %}</p>
             {% if storyteller_account.last_sync_at %}
               <div class="text-sm text-[var(--color-text-muted)] space-y-1">
-                <div>Last sync: {{ storyteller_account.last_sync_at|user_datetime_format:user }}</div>
+                <div>{% blocktranslate with value1=storyteller_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</div>
               </div>
             {% endif %}
             {% if storyteller_account.last_error_message %}
               <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
-                <strong>Error:</strong> {{ storyteller_account.last_error_message }}
+                <strong>{% translate "Error:" %}</strong> {{ storyteller_account.last_error_message }}
               </div>
             {% endif %}
             <div class="space-y-3">
               <form method="post" action="{% url 'import_storyteller' %}">
                 {% csrf_token %}
                 <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  Sync now
+                  {% translate "Sync now" %}
                 </button>
               </form>
               <form method="post" action="{% url 'storyteller_disconnect' %}">
                 {% csrf_token %}
                 <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  Disconnect
+                  {% translate "Disconnect" %}
                 </button>
               </form>
             </div>
           {% elif storyteller_pending %}
-            <p class="text-sm text-[var(--color-text-muted)]">Approve this login on your Storyteller server to finish connecting.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "Approve this login on your Storyteller server to finish connecting." %}</p>
             <div class="space-y-3 bg-[var(--color-surface)] rounded-md p-3 border border-gray-600">
               {% if storyteller_pending.user_code %}
                 <div class="space-y-1">
-                  <label class="block text-sm text-[var(--color-text-muted)]">Enter this code</label>
+                  <label class="block text-sm text-[var(--color-text-muted)]">{% translate "Enter this code" %}</label>
                   <div class="text-center font-mono text-lg text-[var(--color-text)] tracking-widest bg-[var(--color-surface-strong)] border border-gray-600 rounded px-3 py-2">{{ storyteller_pending.user_code }}</div>
                 </div>
               {% endif %}
               {% if storyteller_pending.verification_uri_complete %}
                 <a href="{{ storyteller_pending.verification_uri_complete }}" target="_blank" rel="noopener"
-                   class="inline-flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">Open approval page</a>
+                   class="inline-flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">{% translate "Open approval page" %}</a>
               {% elif storyteller_pending.verification_uri %}
                 <a href="{{ storyteller_pending.verification_uri }}" target="_blank" rel="noopener"
-                   class="inline-flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">Open approval page</a>
+                   class="inline-flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">{% translate "Open approval page" %}</a>
               {% endif %}
-              <div class="text-xs text-[var(--color-text-muted)]" id="storyteller-poll-status">Waiting for approval…</div>
+              <div class="text-xs text-[var(--color-text-muted)]" id="storyteller-poll-status">{% translate "Waiting for approval…" %}</div>
             </div>
             <form method="post" action="{% url 'storyteller_cancel' %}">
               {% csrf_token %}
               <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-[var(--color-surface-strong)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]">
-                Cancel
+                {% translate "Cancel" %}
               </button>
             </form>
             <script>
@@ -1388,15 +1402,15 @@
                     .then(function (data) {
                       if (data.status === "connected") {
                         clearInterval(timer);
-                        if (statusEl) { statusEl.textContent = "Connected! Reloading…"; }
+                        if (statusEl) { statusEl.textContent = gettext("Connected! Reloading…"); }
                         window.location.reload();
                       } else if (data.status === "expired") {
                         clearInterval(timer);
-                        if (statusEl) { statusEl.textContent = "Login timed out. Please try again."; }
+                        if (statusEl) { statusEl.textContent = gettext("Login timed out. Please try again."); }
                         window.location.reload();
                       } else if (data.status === "error") {
                         clearInterval(timer);
-                        if (statusEl) { statusEl.textContent = data.message || "Login failed."; }
+                        if (statusEl) { statusEl.textContent = data.message || gettext("Login failed."); }
                       } else if (data.status === "idle") {
                         clearInterval(timer);
                         window.location.reload();
@@ -1407,17 +1421,17 @@
               })();
             </script>
           {% else %}
-            <p class="text-sm text-[var(--color-text-muted)] mb-3">Track the books you're currently reading from Storyteller.</p>
+            <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Track the books you're currently reading from Storyteller." %}</p>
             <form method="post" action="{% url 'storyteller_connect' %}" class="space-y-3">
               {% csrf_token %}
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Server URL</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Server URL" %}</label>
                 <input type="url" name="server_url" required
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                        placeholder="https://storyteller.example.com">
               </div>
               <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                Connect Storyteller
+                {% translate "Connect Storyteller" %}
               </button>
             </form>
           {% endif %}
@@ -1448,83 +1462,83 @@
                 <button type="submit"
                         title="{{ koreader_account.server_url }}"
                         class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
-                  Connected
+                  {% translate "Connected" %}
                 </button>
               </form>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
 
           {% if koreader_account and koreader_account.is_connected %}
             <p class="text-sm text-[var(--color-text-muted)]">
-              Sync reading progress using your import schedule above.
+              {% translate "Sync reading progress using your import schedule above." %}
               {% if koreader_link_count %}
-                {{ koreader_link_count }} linked document{{ koreader_link_count|pluralize }}.
+                {% blocktranslate count count=koreader_link_count %}{{ count }} linked document.{% plural %}{{ count }} linked documents.{% endblocktranslate %}
               {% else %}
-                Link document IDs on each book's track modal to sync from official servers.
+                {% translate "Link document IDs on each book's track modal to sync from official servers." %}
               {% endif %}
             </p>
             <div class="text-sm text-[var(--color-text-muted)] space-y-1">
               <div>{{ koreader_account.server_url }}</div>
               {% if koreader_account.last_sync_at %}
-                <div>Last sync: {{ koreader_account.last_sync_at|user_datetime_format:user }}</div>
+                <div>{% blocktranslate with value1=koreader_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</div>
               {% endif %}
             </div>
             {% if koreader_account.last_error_message %}
               <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
-                <strong>Error:</strong> {{ koreader_account.last_error_message }}
+                <strong>{% translate "Error:" %}</strong> {{ koreader_account.last_error_message }}
               </div>
             {% endif %}
             <div class="space-y-3">
               <form method="post" action="{% url 'koreader_settings' %}" class="space-y-3 border border-gray-600 rounded-md p-3">
                 {% csrf_token %}
-                <p class="text-sm font-medium text-[var(--color-text-secondary)]">Settings</p>
+                <p class="text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Settings" %}</p>
                 <div>
-                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">Server URL</label>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Server URL" %}</label>
                   <input type="url" name="server_url" required
                          value="{{ koreader_account.server_url }}"
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
                 </div>
                 <div>
-                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">Username</label>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Username" %}</label>
                   <input type="text" name="username" required autocomplete="username"
                          value="{{ koreader_account.username }}"
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
                 </div>
                 <div>
-                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">Password</label>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Password" %}</label>
                   <input type="password" name="password" autocomplete="current-password"
-                         placeholder="Leave blank to keep current password"
+                         placeholder="{% translate "Leave blank to keep current password" %}"
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
                 </div>
                 <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
                   <input type="checkbox" name="verify_ssl"
                          {% if koreader_account.verify_ssl %}checked{% endif %}
                          class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
-                  Verify TLS certificate
+                  {% translate "Verify TLS certificate" %}
                 </label>
                 <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
                   <input type="checkbox" name="create_missing"
                          {% if koreader_account.create_missing %}checked{% endif %}
                          class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
-                  Add matched books that are not already in my library
+                  {% translate "Add matched books that are not already in my library" %}
                 </label>
                 <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
                   <input type="checkbox" name="skip_finished_books"
                          {% if koreader_account.skip_finished_books %}checked{% endif %}
                          class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
-                  Skip books already marked completed (fewer server requests)
+                  {% translate "Skip books already marked completed (fewer server requests)" %}
                 </label>
                 <div>
-                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">Mark completed at (%)</label>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Mark completed at (%)" %}</label>
                   <input type="number" name="finished_threshold_percent" min="1" max="100" step="1" required
                          value="{% widthratio koreader_account.finished_threshold 1 100 %}"
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                  <p class="text-xs text-[var(--color-text-muted)] mt-1">Synced progress at or above this percentage is marked completed.</p>
+                  <p class="text-xs text-[var(--color-text-muted)] mt-1">{% translate "Synced progress at or above this percentage is marked completed." %}</p>
                 </div>
                 <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-[var(--color-surface-strong)] text-[var(--color-text)] border border-gray-600 hover:bg-[var(--color-surface-hover)]">
-                  Save settings
+                  {% translate "Save settings" %}
                 </button>
               </form>
               <form method="post" action="{% url 'import_koreader' %}">
@@ -1536,19 +1550,19 @@
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700"
                         :disabled="standardImportsDisabled()"
                         :class="standardImportsDisabled() ? 'opacity-50 cursor-not-allowed' : ''">
-                  Sync now
+                  {% translate "Sync now" %}
                 </button>
               </form>
               <form method="post" action="{% url 'koreader_disconnect' %}">
                 {% csrf_token %}
                 <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  Disconnect
+                  {% translate "Disconnect" %}
                 </button>
               </form>
             </div>
           {% else %}
             <p class="text-sm text-[var(--color-text-muted)]">
-              Connect your self-hosted KOReader sync server. Enable <strong>Send document metadata</strong> in KOReader for automatic matching on supported servers.
+              {% translate "Connect your self-hosted KOReader sync server. Enable" %} <strong>{% translate "Send document metadata" %}</strong> {% translate "in KOReader for automatic matching on supported servers." %}
             </p>
             <form method="post" action="{% url 'koreader_connect' %}" class="space-y-3">
               {% csrf_token %}
@@ -1556,48 +1570,48 @@
               <input type="hidden" name="time" x-model="importTime">
               <input type="hidden" name="mode" x-model="importMode">
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Server URL</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Server URL" %}</label>
                 <input type="url" name="server_url" required
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                        placeholder="https://kosync.example.com:7200">
               </div>
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Username</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Username" %}</label>
                 <input type="text" name="username" required autocomplete="username"
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
               </div>
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Password</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Password" %}</label>
                 <input type="password" name="password" required autocomplete="current-password"
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
               </div>
               <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
                 <input type="checkbox" name="verify_ssl" checked
                        class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
-                Verify TLS certificate
+                {% translate "Verify TLS certificate" %}
               </label>
               <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
                 <input type="checkbox" name="create_missing"
                        class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
-                Add matched books that are not already in my library
+                {% translate "Add matched books that are not already in my library" %}
               </label>
               <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
                 <input type="checkbox" name="skip_finished_books" checked
                        class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
-                Skip books already marked completed (fewer server requests)
+                {% translate "Skip books already marked completed (fewer server requests)" %}
               </label>
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Mark completed at (%)</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Mark completed at (%)" %}</label>
                 <input type="number" name="finished_threshold_percent" min="1" max="100" step="1" required
                        value="100"
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
-                <p class="text-xs text-[var(--color-text-muted)] mt-1">Synced progress at or above this percentage is marked completed.</p>
+                <p class="text-xs text-[var(--color-text-muted)] mt-1">{% translate "Synced progress at or above this percentage is marked completed." %}</p>
               </div>
               <button type="submit"
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                       :disabled="standardImportsDisabled()"
                       :class="standardImportsDisabled() ? 'opacity-50 cursor-not-allowed' : ''">
-                Connect &amp; Import
+                {% translate "Connect & Import" %}
               </button>
             </form>
           {% endif %}
@@ -1627,25 +1641,25 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
-                  Connected
+                  {% translate "Connected" %}
                 </button>
               </form>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
           {% if pocketcasts_account %}
-            <p class="text-sm text-[var(--color-text-muted)]">Import podcasts every 2 hours (to estimate completion time)</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "Import podcasts every 2 hours (to estimate completion time)" %}</p>
 
             <div class="flex items-center gap-2 text-sm">
               {% if pocketcasts_account.is_connected %}
-                <span class="text-[var(--color-text-secondary)]">Connected</span>
+                <span class="text-[var(--color-text-secondary)]">{% translate "Connected" %}</span>
               {% else %}
-                <span class="text-[var(--color-text-secondary)]">Disconnected</span>
+                <span class="text-[var(--color-text-secondary)]">{% translate "Disconnected" %}</span>
               {% endif %}
               {% if pocketcasts_account.last_sync_at %}
                 <span class="text-[var(--color-text-muted)]">•</span>
-                <span class="text-[var(--color-text-muted)]">Last sync: {{ pocketcasts_account.last_sync_at|user_datetime_format:user }}</span>
+                <span class="text-[var(--color-text-muted)]">{% blocktranslate with value1=pocketcasts_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</span>
               {% endif %}
             </div>
 
@@ -1654,7 +1668,7 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  Sync now
+                  {% translate "Sync now" %}
                 </button>
               </form>
               
@@ -1662,45 +1676,45 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  Disconnect
+                  {% translate "Disconnect" %}
                 </button>
               </form>
             </div>
 
           {% else %}
             <p class="text-sm text-[var(--color-text-muted)] mb-3">
-              Import podcasts every 2 hours (to estimate completion time)
+              {% translate "Import podcasts every 2 hours (to estimate completion time)" %}
             </p>
 
             <form method="post" action="{% url 'pocketcasts_connect' %}" class="space-y-3">
               {% csrf_token %}
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Email</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Email" %}</label>
                 <input type="email"
                        name="email"
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                       placeholder="your.email@example.com"
+                       placeholder="{% translate "your.email@example.com" %}"
                        required>
               </div>
 
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Password</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Password" %}</label>
                 <input type="password"
                        name="password"
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                       placeholder="Your Pocket Casts password"
+                       placeholder="{% translate "Your Pocket Casts password" %}"
                        required>
               </div>
 
               <button type="submit"
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                Connect Pocket Casts
+                {% translate "Connect Pocket Casts" %}
               </button>
             </form>
             
             <div class="text-xs text-[var(--color-text-muted)] mt-3 space-y-2">
               <p>
-                For Apple or Google sign-ins, set a password via Forgot Password first, then enter your credentials here.
+                {% translate "For Apple or Google sign-ins, set a password via Forgot Password first, then enter your credentials here." %}
               </p>
             </div>
           {% endif %}
@@ -1730,25 +1744,25 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
-                  Connected
+                  {% translate "Connected" %}
                 </button>
               </form>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
           {% if gpodder_account %}
-            <p class="text-sm text-[var(--color-text-muted)]">Recurring podcast history sync for GPodder, AntennaPod, and self-hosted compatible servers every 2 hours.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "Recurring podcast history sync for GPodder, AntennaPod, and self-hosted compatible servers every 2 hours." %}</p>
 
             <div class="flex items-center gap-2 text-sm">
               {% if gpodder_account.is_connected %}
-                <span class="text-[var(--color-text-secondary)]">Connected</span>
+                <span class="text-[var(--color-text-secondary)]">{% translate "Connected" %}</span>
               {% else %}
-                <span class="text-[var(--color-text-secondary)]">Disconnected</span>
+                <span class="text-[var(--color-text-secondary)]">{% translate "Disconnected" %}</span>
               {% endif %}
               {% if gpodder_account.last_sync_at %}
                 <span class="text-[var(--color-text-muted)]">•</span>
-                <span class="text-[var(--color-text-muted)]">Last sync: {{ gpodder_account.last_sync_at|user_datetime_format:user }}</span>
+                <span class="text-[var(--color-text-muted)]">{% blocktranslate with value1=gpodder_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</span>
               {% endif %}
             </div>
 
@@ -1757,7 +1771,7 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  Sync now
+                  {% translate "Sync now" %}
                 </button>
               </form>
 
@@ -1765,19 +1779,19 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  Disconnect
+                  {% translate "Disconnect" %}
                 </button>
               </form>
             </div>
           {% else %}
             <p class="text-sm text-[var(--color-text-muted)] mb-3">
-              Recurring podcast history sync for GPodder, AntennaPod, and self-hosted compatible servers every 2 hours.
+              {% translate "Recurring podcast history sync for GPodder, AntennaPod, and self-hosted compatible servers every 2 hours." %}
             </p>
 
             <form method="post" action="{% url 'gpodder_connect' %}" class="space-y-3">
               {% csrf_token %}
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Server URL</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Server URL" %}</label>
                 <input type="url"
                        name="server_url"
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
@@ -1787,34 +1801,34 @@
               </div>
 
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Username</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Username" %}</label>
                 <input type="text"
                        name="username"
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                       placeholder="Your GPodder username"
+                       placeholder="{% translate "Your GPodder username" %}"
                        required>
               </div>
 
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Password / App Password</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Password / App Password" %}</label>
                 <input type="password"
                        name="password"
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                       placeholder="Your password or app password"
+                       placeholder="{% translate "Your password or app password" %}"
                        required>
               </div>
 
               <div>
-                <label class="block text-sm text-[var(--color-text-muted)] mb-2">Optional Device Filter</label>
+                <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Optional Device Filter" %}</label>
                 <input type="text"
                        name="device_filter"
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                       placeholder="antenna-pod-device">
+                       placeholder="{% translate "antenna-pod-device" %}">
               </div>
 
               <button type="submit"
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                Connect GPodder
+                {% translate "Connect GPodder" %}
               </button>
             </form>
           {% endif %}
@@ -1844,36 +1858,36 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
-                  Connected
+                  {% translate "Connected" %}
                 </button>
               </form>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
           {% if lastfm_account %}
-            <p class="text-sm text-[var(--color-text-muted)]">Import your Last.fm listening history automatically every {{ lastfm_poll_interval }} minutes.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% blocktranslate %}Import your Last.fm listening history automatically every {{ lastfm_poll_interval }} minutes.{% endblocktranslate %}</p>
 
             <div class="space-y-2 text-sm">
               <div class="flex items-center gap-2">
                 {% if lastfm_account.is_connected %}
-                  <span class="text-[var(--color-text-secondary)]">Connected</span>
+                  <span class="text-[var(--color-text-secondary)]">{% translate "Connected" %}</span>
                 {% else %}
-                  <span class="text-[var(--color-text-secondary)]">Disconnected</span>
+                  <span class="text-[var(--color-text-secondary)]">{% translate "Disconnected" %}</span>
                 {% endif %}
                 {% if lastfm_periodic_task %}
                   <span class="text-[var(--color-text-muted)]">•</span>
-                  <span class="text-[var(--color-text-muted)]">Recurring import: {{ lastfm_periodic_task.interval.every }} minutes</span>
+                  <span class="text-[var(--color-text-muted)]">{% blocktranslate with value1=lastfm_periodic_task.interval.every %}Recurring import: {{ value1 }} minutes{% endblocktranslate %}</span>
                 {% endif %}
                 {% if lastfm_account.last_sync_at %}
                   <span class="text-[var(--color-text-muted)]">•</span>
-                  <span class="text-[var(--color-text-muted)]">Last sync: {{ lastfm_account.last_sync_at|user_datetime_format:user }}</span>
+                  <span class="text-[var(--color-text-muted)]">{% blocktranslate with value1=lastfm_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</span>
                 {% endif %}
               </div>
 
               <div class="text-[var(--color-text-muted)] space-y-1">
                 <div>
-                  Full history import:
+                  {% translate "Full history import:" %}
                   {% if lastfm_account.history_import_status == "completed" %}
                     <span class="text-green-300">{{ lastfm_history_status_label }}</span>
                   {% elif lastfm_account.history_import_status == "failed" %}
@@ -1887,23 +1901,23 @@
                   {% endif %}
                 </div>
                 {% if lastfm_history_total_pages %}
-                  <div>Page {{ lastfm_history_current_page }} of {{ lastfm_history_total_pages }}</div>
+                  <div>{% blocktranslate %}Page {{ lastfm_history_current_page }} of {{ lastfm_history_total_pages }}{% endblocktranslate %}</div>
                 {% endif %}
                 {% if lastfm_account.history_import_completed_at %}
-                  <div>Completed: {{ lastfm_account.history_import_completed_at|user_datetime_format:user }}</div>
+                  <div>{% blocktranslate with value1=lastfm_account.history_import_completed_at|user_datetime_format:user %}Completed: {{ value1 }}{% endblocktranslate %}</div>
                 {% endif %}
               </div>
             </div>
 
             {% if lastfm_account.connection_broken and lastfm_account.last_error_message %}
               <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
-                <strong>Error:</strong> {{ lastfm_account.last_error_message }}
+                <strong>{% translate "Error:" %}</strong> {{ lastfm_account.last_error_message }}
               </div>
             {% endif %}
 
             {% if lastfm_account.history_import_status == "failed" and lastfm_account.history_import_last_error_message %}
               <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
-                <strong>History import error:</strong> {{ lastfm_account.history_import_last_error_message }}
+                <strong>{% translate "History import error:" %}</strong> {{ lastfm_account.history_import_last_error_message }}
               </div>
             {% endif %}
 
@@ -1912,7 +1926,7 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  Sync now
+                  {% translate "Sync now" %}
                 </button>
               </form>
 
@@ -1930,29 +1944,29 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  Disconnect
+                  {% translate "Disconnect" %}
                 </button>
               </form>
             </div>
 
           {% else %}
             <p class="text-sm text-[var(--color-text-muted)] mb-3">
-              Connect Last.fm to enable recurring syncs every {{ lastfm_poll_interval }} minutes and import your full listening history. Your scrobbles must be public.
+              {% blocktranslate %}Connect Last.fm to enable recurring syncs every {{ lastfm_poll_interval }} minutes and import your full listening history. Your scrobbles must be public.{% endblocktranslate %}
             </p>
             <form method="post" action="{% url 'lastfm_connect' %}">
               {% csrf_token %}
               <div class="space-y-3">
                 <div>
-                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">Last.fm Username</label>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Last.fm Username" %}</label>
                   <input type="text"
                          name="lastfm_username"
                          required
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                         placeholder="your_username">
+                         placeholder="{% translate "your_username" %}">
                 </div>
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  Connect Last.fm
+                  {% translate "Connect Last.fm" %}
                 </button>
               </div>
             </form>
@@ -1983,28 +1997,28 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors cursor-pointer">
-                  Connected
+                  {% translate "Connected" %}
                 </button>
               </form>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
           {% if koito_account %}
-            <p class="text-sm text-[var(--color-text-muted)]">Import your Koito listening history automatically every 15 minutes. Floppy only reads from Koito and never sends listens back.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "Import your Koito listening history automatically every 15 minutes. Floppy only reads from Koito and never sends listens back." %}</p>
 
             <div class="space-y-2 text-sm">
               <div class="flex items-center gap-2">
-                <span class="text-[var(--color-text-muted)]">Server:</span>
+                <span class="text-[var(--color-text-muted)]">{% translate "Server:" %}</span>
                 <span class="text-[var(--color-text-secondary)] break-all">{{ koito_account.base_url }}</span>
               </div>
               {% if koito_account.last_sync_at %}
                 <div class="flex items-center gap-2">
-                  <span class="text-[var(--color-text-muted)]">Last sync: {{ koito_account.last_sync_at|user_datetime_format:user }}</span>
+                  <span class="text-[var(--color-text-muted)]">{% blocktranslate with value1=koito_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</span>
                 </div>
               {% endif %}
               <div class="flex items-center gap-2">
-                <span class="text-[var(--color-text-muted)]">Full history import:</span>
+                <span class="text-[var(--color-text-muted)]">{% translate "Full history import:" %}</span>
                 {% if koito_account.history_import_status == "completed" %}
                   <span class="text-green-300">{{ koito_history_status_label }}</span>
                 {% elif koito_account.history_import_status == "failed" %}
@@ -2018,19 +2032,19 @@
                 {% endif %}
               </div>
               {% if koito_account.history_import_completed_at %}
-                <div>Completed: {{ koito_account.history_import_completed_at|user_datetime_format:user }}</div>
+                <div>{% blocktranslate with value1=koito_account.history_import_completed_at|user_datetime_format:user %}Completed: {{ value1 }}{% endblocktranslate %}</div>
               {% endif %}
             </div>
 
             {% if koito_account.connection_broken and koito_account.last_error_message %}
               <div class="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-md p-2">
-                <strong>Error:</strong> {{ koito_account.last_error_message }}
+                <strong>{% translate "Error:" %}</strong> {{ koito_account.last_error_message }}
               </div>
             {% endif %}
 
             {% if koito_account.history_import_status == "failed" and koito_account.history_import_last_error_message %}
               <div class="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-md p-2">
-                <strong>Import error:</strong> {{ koito_account.history_import_last_error_message }}
+                <strong>{% translate "Import error:" %}</strong> {{ koito_account.history_import_last_error_message }}
               </div>
             {% endif %}
 
@@ -2039,7 +2053,7 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  Sync now
+                  {% translate "Sync now" %}
                 </button>
               </form>
 
@@ -2057,20 +2071,20 @@
                 {% csrf_token %}
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
-                  Disconnect
+                  {% translate "Disconnect" %}
                 </button>
               </form>
             </div>
 
           {% else %}
             <p class="text-sm text-[var(--color-text-muted)] mb-3">
-              Connect a self-hosted Koito server to import your full listening history and sync new listens every 15 minutes. Generate an API key in Koito under Settings → API Keys. Floppy only reads from Koito and never sends listens back.
+              {% translate "Connect a self-hosted Koito server to import your full listening history and sync new listens every 15 minutes. Generate an API key in Koito under Settings → API Keys. Floppy only reads from Koito and never sends listens back." %}
             </p>
             <form method="post" action="{% url 'koito_connect' %}">
               {% csrf_token %}
               <div class="space-y-3">
                 <div>
-                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">Koito Server URL</label>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Koito Server URL" %}</label>
                   <input type="url"
                          name="base_url"
                          required
@@ -2078,17 +2092,17 @@
                          placeholder="https://koito.example.com">
                 </div>
                 <div>
-                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">API Key</label>
+                  <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "API Key" %}</label>
                   <input type="password"
                          name="api_key"
                          required
                          autocomplete="off"
                          class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                         placeholder="Koito API key">
+                         placeholder="{% translate "Koito API key" %}">
                 </div>
                 <button type="submit"
                         class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  Connect Koito
+                  {% translate "Connect Koito" %}
                 </button>
               </div>
             </form>
@@ -2114,53 +2128,49 @@
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg"
              x-data="{ traktProfileType: '{% if trakt_configured %}public{% else %}csv{% endif %}' }">
           <div class="flex items-center mb-3">{% source_display "trakt" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">Import TV shows and movies, including your collection</p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import TV shows and movies, including your collection" %}</p>
 
           {% if not trakt_configured %}
             <p class="text-xs text-[var(--color-text-muted)] mb-3">
-              Trakt now requires VIP to register new API applications, so username-based
-              import is unavailable unless <code class="text-indigo-200">TRAKT_API</code> and
-              <code class="text-indigo-200">TRAKT_API_SECRET</code> are already set. Use a Trakt
-              data export instead.
+              {% translate "Trakt now requires VIP to register new API applications, so username-based import is unavailable unless" %} <code class="text-indigo-200">TRAKT_API</code> {% translate "and" %}
+              <code class="text-indigo-200">TRAKT_API_SECRET</code> {% translate "are already set. Use a Trakt data export instead." %}
             </p>
           {% endif %}
 
           {% if trakt_configured %}
             <div class="mb-3">
-              <label class="block text-sm text-[var(--color-text-secondary)] mb-2">Profile</label>
+              <label class="block text-sm text-[var(--color-text-secondary)] mb-2">{% translate "Profile" %}</label>
               <div class="relative">
                 <select x-model="traktProfileType"
                         class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
-                  <option value="public">Public profile</option>
-                  <option value="private">Private profile (OAuth)</option>
-                  <option value="csv">Data export file</option>
+                  <option value="public">{% translate "Public profile" %}</option>
+                  <option value="private">{% translate "Private profile (OAuth)" %}</option>
+                  <option value="csv">{% translate "Data export file" %}</option>
                 </select>
                 {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
               </div>
             </div>
 
             <div x-show="traktProfileType === 'private'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300 space-y-2">
-              <p class="text-indigo-200 font-medium">Private Profile Import (OAuth)</p>
+              <p class="text-indigo-200 font-medium">{% translate "Private Profile Import (OAuth)" %}</p>
               <ol class="list-decimal list-inside space-y-1">
                 <li>
-                  Create a Trakt application at
+                  {% translate "Create a Trakt application at" %}
                   <a href="https://trakt.tv/oauth/applications"
                      target="_blank"
-                     class="text-[var(--color-link)] underline hover:text-indigo-200">Trakt API Apps</a>.
+                     class="text-[var(--color-link)] underline hover:text-indigo-200">{% translate "Trakt API Apps" %}</a>.
                 </li>
-                <li>Set the Redirect URI to <code class="text-indigo-200 break-all">{{ trakt_redirect_uri }}</code>.</li>
-                <li>Set <code class="text-indigo-200">TRAKT_API</code> and <code class="text-indigo-200">TRAKT_API_SECRET</code> in your environment.</li>
+                <li>{% translate "Set the Redirect URI to" %} <code class="text-indigo-200 break-all">{{ trakt_redirect_uri }}</code>.</li>
+                <li>{% translate "Set" %} <code class="text-indigo-200">TRAKT_API</code> {% translate "and" %} <code class="text-indigo-200">TRAKT_API_SECRET</code> {% translate "in your environment." %}</li>
               </ol>
               {% if trakt_redirect_capable %}
                 <p class="text-[var(--color-text-muted)]">
-                  Behind reverse proxies, also set <code class="text-indigo-200">URLS=https://your_domain.com</code> so Floppy builds the correct callback URL.
+                  {% translate "Behind reverse proxies, also set" %} <code class="text-indigo-200">URLS=https://your_domain.com</code> {% translate "so Floppy builds the correct callback URL." %}
                 </p>
               {% else %}
                 <p class="text-[var(--color-text-muted)]">
-                  This instance is not served over HTTPS, and Trakt only accepts HTTPS redirects, so
-                  Floppy will show you a code to enter at <code class="text-indigo-200">trakt.tv/activate</code>
-                  instead. Set <code class="text-indigo-200">URLS=https://your_domain.com</code> if you would
-                  rather use the one-click browser flow.
+                  {% translate "This instance is not served over HTTPS, and Trakt only accepts HTTPS redirects, so Floppy will show you a code to enter at" %} <code class="text-indigo-200">trakt.tv/activate</code>
+                  {% translate "instead. Set" %} <code class="text-indigo-200">URLS=https://your_domain.com</code> {% translate "if you would rather use the one-click browser flow." %}
                 </p>
               {% endif %}
             </div>
@@ -2175,7 +2185,7 @@
               <input type="hidden" name="mode" x-model="importMode">
 
               <div class="flex w-full">
-                <input placeholder="Public Trakt username"
+                <input placeholder="{% translate "Public Trakt username" %}"
                        name="user"
                        class="relative w-full py-2 px-3 bg-[var(--color-surface)] rounded-l-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                        type="text"
@@ -2184,7 +2194,7 @@
                         class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'"
                         :disabled="standardImportsDisabled()">
-                  Import
+                  {% translate "Import" %}
                 </button>
               </div>
             </form>
@@ -2202,19 +2212,17 @@
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
                       :disabled="standardImportsDisabled()">
-                Connect with Trakt & Import
+                {% translate "Connect with Trakt & Import" %}
               </button>
             </form>
           {% endif %}
 
           <div x-show="traktProfileType === 'csv'" class="mb-3 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300 space-y-2">
             <p>
-              No Trakt account anymore? Upload the <code class="text-indigo-200">.zip</code> from a
-              Trakt data export to import your history, ratings, watchlist, collection and lists.
-              Individual <code class="text-indigo-200">.json</code> files and the older
-              <code class="text-indigo-200">.csv</code> export also work.
+              {% translate "No Trakt account anymore? Upload the" %} <code class="text-indigo-200">.zip</code> {% translate "from a Trakt data export to import your history, ratings, watchlist, collection and lists. Individual" %} <code class="text-indigo-200">.json</code> {% translate "files and the older" %}
+              <code class="text-indigo-200">.csv</code> {% translate "export also work." %}
             </p>
-            <p class="text-[var(--color-text-muted)]">Importing lists replaces any lists previously imported from Trakt.</p>
+            <p class="text-[var(--color-text-muted)]">{% translate "Importing lists replaces any lists previously imported from Trakt." %}</p>
           </div>
 
           <form method="post"
@@ -2233,7 +2241,7 @@
                      type="file"
                      :disabled="importFrequency !== 'once'"
                      @change="importFrequency === 'once' && $el.form.submit()">
-              <span>Select Export File</span>
+              <span>{% translate "Select Export File" %}</span>
             </label>
           </form>
         </div>
@@ -2256,7 +2264,7 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "mdblist" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">Import watched history, watchlist, ratings, dropped shows and collection. Lists sync separately from the Lists page.</p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import watched history, watchlist, ratings, dropped shows and collection. Lists sync separately from the Lists page." %}</p>
 
           <form method="post" action="{% url 'import_mdblist' %}">
             {% csrf_token %}
@@ -2265,16 +2273,16 @@
             <input type="hidden" name="mode" x-model="importMode">
 
             {% if user.mdblist_account.is_connected %}
-              <p class="text-xs text-[var(--color-text-muted)] mb-3">Using your connected MDBList account.</p>
+              <p class="text-xs text-[var(--color-text-muted)] mb-3">{% translate "Using your connected MDBList account." %}</p>
               <button type="submit"
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
                       :disabled="standardImportsDisabled()">
-                Import
+                {% translate "Import" %}
               </button>
             {% else %}
               <div class="flex w-full">
-                <input placeholder="MDBList API key"
+                <input placeholder="{% translate "MDBList API key" %}"
                        name="api_key"
                        class="relative w-full py-2 px-3 bg-[var(--color-surface)] rounded-l-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                        type="password"
@@ -2283,15 +2291,14 @@
                         class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'"
                         :disabled="standardImportsDisabled()">
-                  Import
+                  {% translate "Import" %}
                 </button>
               </div>
               <p class="text-xs text-[var(--color-text-muted)] mt-2">
-                Get your API key from
+                {% translate "Get your API key from" %}
                 <a href="https://mdblist.com/preferences/"
                    target="_blank"
-                   class="text-[var(--color-link)] underline hover:text-indigo-200">MDBList Preferences</a>.
-                Connecting also enables list sync from the Lists page.
+                   class="text-[var(--color-link)] underline hover:text-indigo-200">{% translate "MDBList Preferences" %}</a>{% translate ". Connecting also enables list sync from the Lists page." %}
               </p>
             {% endif %}
           </form>
@@ -2315,7 +2322,7 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "simkl" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">Import TV shows, movies and anime</p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import TV shows, movies and anime" %}</p>
           <form method="post" action="{% url 'simkl_oauth' %}">
             {% csrf_token %}
             <input type="hidden" name="frequency" x-model="importFrequency">
@@ -2325,7 +2332,7 @@
                     class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
                     :disabled="standardImportsDisabled()">
-              Connect with Simkl & Import
+              {% translate "Connect with Simkl & Import" %}
             </button>
           </form>
         </div>
@@ -2348,7 +2355,7 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "myanimelist" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">Import anime and manga</p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import anime and manga" %}</p>
           <form class="flex items-center"
                 method="post"
                 action="{% url 'import_mal' %}">
@@ -2357,7 +2364,7 @@
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
             <div class="flex w-full">
-              <input placeholder="MAL username"
+              <input placeholder="{% translate "MAL username" %}"
                      name="user"
                      class="relative w-full py-2 px-3 bg-[var(--color-surface)] rounded-l-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text">
@@ -2365,7 +2372,7 @@
                       class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'"
                       :disabled="standardImportsDisabled()">
-                Import
+                {% translate "Import" %}
               </button>
             </div>
           </form>
@@ -2390,14 +2397,14 @@
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg"
              x-data="{ usePrivateImport: false }">
           <div class="flex items-center mb-3">{% source_display "anilist" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">Import anime and manga</p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import anime and manga" %}</p>
 
           <div class="mb-3">
             <label class="flex items-center text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox"
                      x-model="usePrivateImport"
                      class="mr-2 rounded bg-[var(--color-surface)] border-gray-600 text-indigo-600 focus:outline-none focus:ring-indigo-500 focus:ring-offset-0">
-              Import private profile (requires authentication)
+              {% translate "Import private profile (requires authentication)" %}
             </label>
           </div>
 
@@ -2411,7 +2418,7 @@
             <input type="hidden" name="mode" x-model="importMode">
 
             <div class="flex w-full">
-              <input placeholder="Public AniList username"
+              <input placeholder="{% translate "Public AniList username" %}"
                      name="user"
                      class="relative w-full py-2 px-3 bg-[var(--color-surface)] rounded-l-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text"
@@ -2420,7 +2427,7 @@
                       class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'"
                       :disabled="standardImportsDisabled()">
-                Import
+                {% translate "Import" %}
               </button>
             </div>
           </form>
@@ -2438,7 +2445,7 @@
                     class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
                     :disabled="standardImportsDisabled()">
-              Connect with AniList & Import
+              {% translate "Connect with AniList & Import" %}
             </button>
           </form>
         </div>
@@ -2461,7 +2468,7 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "kitsu" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">Import anime and manga</p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import anime and manga" %}</p>
           <form class="flex items-center"
                 method="post"
                 action="{% url 'import_kitsu' %}">
@@ -2470,16 +2477,16 @@
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
             <div class="relative flex-1">
-              <input placeholder="Kitsu user ID"
+              <input placeholder="{% translate "Kitsu user ID" %}"
                      name="user"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-l-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text">
               <div class="group absolute right-2 top-1/2 -translate-y-1/2">
                 {% include "app/icons/info.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
                 <div class="absolute bottom-full mb-2 w-60 p-2 bg-[var(--color-surface)] rounded-md text-xs text-[var(--color-text-secondary)] shadow-lg border border-gray-600  invisible group-hover:visible">
-                  Find it on your Kitsu profile URL:
+                  {% translate "Find it on your Kitsu profile URL:" %}
                   <br>
-                  kitsu.app/users/<span class="text-[var(--color-link)]">1234567</span>
+                  {% translate "kitsu.app/users/" %}<span class="text-[var(--color-link)]">1234567</span>
                 </div>
               </div>
             </div>
@@ -2487,7 +2494,7 @@
                     class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'"
                     :disabled="standardImportsDisabled()">
-              Import
+              {% translate "Import" %}
             </button>
           </form>
         </div>
@@ -2514,10 +2521,10 @@
             <a href="https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
                target="_blank"
                class="text-[var(--color-text-muted)] hover:text-[var(--color-link)] transition-colors p-1 rounded-md hover:bg-[var(--color-surface-hover)]"
-               title="View CSV format documentation">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
+               title="{% translate "View CSV format documentation" %}">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
           </div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? 'Import a Floppy backup (media + lists)' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? gettext('Import a Floppy backup (media + lists)') : gettext('File uploads are not available for periodic imports')">
           </p>
           <form method="post"
                 action="{% url 'import_yamtrack' %}"
@@ -2535,10 +2542,57 @@
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()"
                      @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
-              Select CSV File
+              {% translate "Select CSV File" %}
             </label>
           </form>
         </div>
+          </div>
+        </div>
+
+        {# CLZ (Collectorz) — header-mapped CSV/XML, columns become custom fields #}
+        <div x-show="activeModal === 'clz'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+             @mousedown.self="closeModal()">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1 rounded-md hover:bg-[var(--color-surface-hover)] bg-[var(--color-surface)]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+            <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
+              <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center">
+                  {% include "app/icons/import.svg" with classes="w-6 h-6 mr-2" %}
+                  <h4 class="font-medium">CLZ</h4>
+                </div>
+              </div>
+              <p class="text-sm text-[var(--color-text-muted)] mb-3"
+                 x-text="importFrequency === 'once' ? gettext('Import a CLZ CSV or XML export. Columns Floppy has no built-in home for become custom collection fields.') : gettext('File uploads are not available for periodic imports')">
+              </p>
+              <form method="post"
+                    action="{% url 'import_clz' %}"
+                    enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="frequency" x-model="importFrequency">
+                <input type="hidden" name="time" x-model="importTime">
+                <input type="hidden" name="mode" x-model="importMode">
+                <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
+                       :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                       :disabled="importFrequency !== 'once' || standardImportsDisabled()">
+                  <input name="clz_export"
+                         accept=".csv,.txt,.xml"
+                         class="hidden"
+                         type="file"
+                         :disabled="importFrequency !== 'once' || standardImportsDisabled()"
+                         @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
+                  {% translate "Select CLZ Export" %}
+                </label>
+              </form>
+            </div>
           </div>
         </div>
 
@@ -2562,10 +2616,10 @@
             <a href="https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
                target="_blank"
                class="text-[var(--color-text-muted)] hover:text-[var(--color-link)] transition-colors p-1 rounded-md hover:bg-[var(--color-surface-hover)]"
-               title="View CSV format documentation">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
+               title="{% translate "View CSV format documentation" %}">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</a>
           </div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? 'Import a CSV exported from Yamtrack (media + lists)' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? gettext('Import a CSV exported from Yamtrack (media + lists)') : gettext('File uploads are not available for periodic imports')">
           </p>
           <form method="post"
                 action="{% url 'import_yamtrack' %}"
@@ -2583,7 +2637,7 @@
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()"
                      @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
-              Select CSV File
+              {% translate "Select CSV File" %}
             </label>
           </form>
         </div>
@@ -2607,7 +2661,7 @@
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "hltb" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? 'Import games' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? gettext('Import games') : gettext('File uploads are not available for periodic imports')">
           </p>
           <form method="post"
                 action="{% url 'import_hltb' %}"
@@ -2625,7 +2679,7 @@
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()"
                      @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
-              Select CSV File
+              {% translate "Select CSV File" %}
             </label>
           </form>
         </div>
@@ -2649,7 +2703,7 @@
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "grouvee" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? 'Import games' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? gettext('Import games') : gettext('File uploads are not available for periodic imports')">
           </p>
           <form method="post"
                 action="{% url 'import_grouvee' %}"
@@ -2667,7 +2721,7 @@
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()"
                      @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
-              Select File
+              {% translate "Select File" %}
             </label>
           </form>
         </div>
@@ -2690,7 +2744,7 @@
             </button>
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "steam" %}</div>
-          <p class="text-sm text-[var(--color-text-muted)] mb-3">Import games from your Steam library</p>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import games from your Steam library" %}</p>
           <form class="flex items-center"
                 method="post"
                 action="{% url 'import_steam' %}">
@@ -2699,17 +2753,17 @@
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
             <div class="relative flex-1">
-              <input placeholder="Steam 64-bit ID"
+              <input placeholder="{% translate "Steam 64-bit ID" %}"
                      name="user"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-l-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text">
               <div class="group absolute right-2 top-1/2 -translate-y-1/2">
                 {% include "app/icons/info.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
                 <div class="absolute bottom-full mb-2 w-60 p-2 bg-[var(--color-surface)] rounded-md text-xs text-[var(--color-text-secondary)] shadow-lg border border-gray-600  invisible group-hover:visible">
-                  Find it on your Steam account details page under your username.
+                  {% translate "Find it on your Steam account details page under your username." %}
                   <br>
                   <br>
-                  Your profile must be public if the API key you are using is not linked to the steamid you are requesting.
+                  {% translate "Your profile must be public if the API key you are using is not linked to the steamid you are requesting." %}
                 </div>
               </div>
             </div>
@@ -2717,7 +2771,7 @@
                     class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'"
                     :disabled="standardImportsDisabled()">
-              Import
+              {% translate "Import" %}
             </button>
           </form>
         </div>
@@ -2742,30 +2796,30 @@
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "xbox" %}</div>
             {% if xbox_account and xbox_account.is_connected %}
-              <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Connected</span>
+              <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">{% translate "Connected" %}</span>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
           {% if xbox_account %}
             {# Server-rendered text matches the initial importFrequency so the copy is right before Alpine binds, and survives if it never does. #}
             <p class="text-sm text-[var(--color-text-muted)]"
-               x-text="importFrequency === 'once' ? 'Sync played games and hours played from your Xbox account now.' : 'Sync played games and hours played from your Xbox account on a schedule.'">
+               x-text="importFrequency === 'once' ? gettext('Sync played games and hours played from your Xbox account now.') : gettext('Sync played games and hours played from your Xbox account on a schedule.')">
               {% if user.import_frequency == "once" %}
-                Sync played games and hours played from your Xbox account now.
+                {% translate "Sync played games and hours played from your Xbox account now." %}
               {% else %}
-                Sync played games and hours played from your Xbox account on a schedule.
+                {% translate "Sync played games and hours played from your Xbox account on a schedule." %}
               {% endif %}
             </p>
             {% if xbox_account.gamertag %}
-              <div class="text-sm text-[var(--color-text-muted)]">Gamertag: {{ xbox_account.gamertag }}</div>
+              <div class="text-sm text-[var(--color-text-muted)]">{% blocktranslate with value1=xbox_account.gamertag %}Gamertag: {{ value1 }}{% endblocktranslate %}</div>
             {% endif %}
             {% if xbox_account.last_sync_at %}
-              <div class="text-sm text-[var(--color-text-muted)]">Last sync: {{ xbox_account.last_sync_at|user_datetime_format:user }}</div>
+              <div class="text-sm text-[var(--color-text-muted)]">{% blocktranslate with value1=xbox_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</div>
             {% endif %}
             {% if xbox_account.last_error_message %}
               <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
-                <strong>Error:</strong> {{ xbox_account.last_error_message }}
+                <strong>{% translate "Error:" %}</strong> {{ xbox_account.last_error_message }}
               </div>
             {% endif %}
             <div class="flex gap-2">
@@ -2776,26 +2830,26 @@
                 <input type="hidden" name="mode" x-model="importMode">
                 <button type="submit"
                         class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-                        x-text="importFrequency === 'once' ? 'Sync Now' : 'Schedule Sync'">
-                  {% if user.import_frequency == "once" %}Sync Now{% else %}Schedule Sync{% endif %}
+                        x-text="importFrequency === 'once' ? gettext('Sync Now') : gettext('Schedule Sync')">
+                  {% if user.import_frequency == "once" %}{% translate "Sync Now" %}{% else %}{% translate "Schedule Sync" %}{% endif %}
                 </button>
               </form>
               <form method="post" action="{% url 'xbox_disconnect' %}">
                 {% csrf_token %}
                 <button type="submit"
                         class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
-                  Disconnect
+                  {% translate "Disconnect" %}
                 </button>
               </form>
             </div>
           {% else %}
             <p class="text-sm text-[var(--color-text-muted)]">
-              Xbox has no public API, so Floppy connects through OpenXBL. Sign in at
+              {% translate "Xbox has no public API, so Floppy connects through OpenXBL. Sign in at" %}
               <a href="https://xbl.io"
                  target="_blank"
                  rel="noopener"
                  class="text-[var(--color-link)] hover:text-indigo-200">xbl.io</a>
-              with your Microsoft account and paste the API key it gives you.
+              {% translate "with your Microsoft account and paste the API key it gives you." %}
             </p>
             <form method="post" action="{% url 'xbox_connect' %}" class="space-y-3">
               {% csrf_token %}
@@ -2803,17 +2857,16 @@
               <input type="hidden" name="time" x-model="importTime">
               <input type="hidden" name="mode" x-model="importMode">
               <input name="api_key"
-                     placeholder="OpenXBL API key"
+                     placeholder="{% translate "OpenXBL API key" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="password">
               <button type="submit"
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                Connect Xbox
+                {% translate "Connect Xbox" %}
               </button>
             </form>
             <p class="text-xs text-[var(--color-text-muted)]">
-              Xbox only reports games you have played, not everything you own, and not every
-              title reports hours played.
+              {% translate "Xbox only reports games you have played, not everything you own, and not every title reports hours played." %}
             </p>
           {% endif %}
         </div>
@@ -2838,30 +2891,30 @@
           <div class="flex items-center justify-between">
             <div class="flex items-center">{% source_display "psn" %}</div>
             {% if psn_account and psn_account.is_connected %}
-              <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Connected</span>
+              <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">{% translate "Connected" %}</span>
             {% else %}
-              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+              <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
             {% endif %}
           </div>
           {% if psn_account %}
             {# Server-rendered text matches the initial importFrequency so the copy is right before Alpine binds, and survives if it never does. #}
             <p class="text-sm text-[var(--color-text-muted)]"
-               x-text="importFrequency === 'once' ? 'Sync played games and hours played from your PlayStation account now.' : 'Sync played games and hours played from your PlayStation account on a schedule.'">
+               x-text="importFrequency === 'once' ? gettext('Sync played games and hours played from your PlayStation account now.') : gettext('Sync played games and hours played from your PlayStation account on a schedule.')">
               {% if user.import_frequency == "once" %}
-                Sync played games and hours played from your PlayStation account now.
+                {% translate "Sync played games and hours played from your PlayStation account now." %}
               {% else %}
-                Sync played games and hours played from your PlayStation account on a schedule.
+                {% translate "Sync played games and hours played from your PlayStation account on a schedule." %}
               {% endif %}
             </p>
             {% if psn_account.online_id %}
-              <div class="text-sm text-[var(--color-text-muted)]">Online ID: {{ psn_account.online_id }}</div>
+              <div class="text-sm text-[var(--color-text-muted)]">{% blocktranslate with value1=psn_account.online_id %}Online ID: {{ value1 }}{% endblocktranslate %}</div>
             {% endif %}
             {% if psn_account.last_sync_at %}
-              <div class="text-sm text-[var(--color-text-muted)]">Last sync: {{ psn_account.last_sync_at|user_datetime_format:user }}</div>
+              <div class="text-sm text-[var(--color-text-muted)]">{% blocktranslate with value1=psn_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</div>
             {% endif %}
             {% if psn_account.last_error_message %}
               <div class="text-xs text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded p-2">
-                <strong>Error:</strong> {{ psn_account.last_error_message }}
+                <strong>{% translate "Error:" %}</strong> {{ psn_account.last_error_message }}
               </div>
             {% endif %}
             <div class="flex gap-2">
@@ -2872,32 +2925,30 @@
                 <input type="hidden" name="mode" x-model="importMode">
                 <button type="submit"
                         class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-                        x-text="importFrequency === 'once' ? 'Sync Now' : 'Schedule Sync'">
-                  {% if user.import_frequency == "once" %}Sync Now{% else %}Schedule Sync{% endif %}
+                        x-text="importFrequency === 'once' ? gettext('Sync Now') : gettext('Schedule Sync')">
+                  {% if user.import_frequency == "once" %}{% translate "Sync Now" %}{% else %}{% translate "Schedule Sync" %}{% endif %}
                 </button>
               </form>
               <form method="post" action="{% url 'psn_disconnect' %}">
                 {% csrf_token %}
                 <button type="submit"
                         class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
-                  Disconnect
+                  {% translate "Disconnect" %}
                 </button>
               </form>
             </div>
           {% else %}
             <p class="text-sm text-[var(--color-text-muted)]">
-              PSN has no public API, so Floppy signs in with your NPSSO token. Log in at
+              {% translate "PSN has no public API, so Floppy signs in with your NPSSO token. Log in at" %}
               <a href="https://www.playstation.com"
                  target="_blank"
                  rel="noopener"
-                 class="text-indigo-300 hover:text-indigo-200">playstation.com</a>,
-              then open
+                 class="text-indigo-300 hover:text-indigo-200">playstation.com</a>{% translate ", then open" %}
               <a href="https://ca.account.sony.com/api/v1/ssocookie"
                  target="_blank"
                  rel="noopener"
-                 class="text-indigo-300 hover:text-indigo-200">this page</a>
-              and paste the npsso value it shows. Don't log out of that browser
-              afterwards, or the token stops working.
+                 class="text-indigo-300 hover:text-indigo-200">{% translate "this page" %}</a>
+              {% translate "and paste the npsso value it shows. Don't log out of that browser afterwards, or the token stops working." %}
             </p>
             <form method="post" action="{% url 'psn_connect' %}" class="space-y-3">
               {% csrf_token %}
@@ -2905,17 +2956,16 @@
               <input type="hidden" name="time" x-model="importTime">
               <input type="hidden" name="mode" x-model="importMode">
               <input name="npsso"
-                     placeholder="PSN NPSSO token"
+                     placeholder="{% translate "PSN NPSSO token" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="password">
               <button type="submit"
                       class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                Connect PlayStation
+                {% translate "Connect PlayStation" %}
               </button>
             </form>
             <p class="text-xs text-[var(--color-text-muted)]">
-              PSN only reports games you have played, not everything you own. The NPSSO
-              token expires after about two months and then has to be pasted again.
+              {% translate "PSN only reports games you have played, not everything you own. The NPSSO token expires after about two months and then has to be pasted again." %}
             </p>
           {% endif %}
         </div>
@@ -2941,7 +2991,7 @@
             <div class="flex items-center">{% source_display "imdb" %}</div>
           </div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? 'Import movies and TV shows from your ratings' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? gettext('Import movies and TV shows from your ratings') : gettext('File uploads are not available for periodic imports')">
           </p>
           <form method="post"
                 action="{% url 'import_imdb' %}"
@@ -2959,7 +3009,7 @@
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()"
                      @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
-              Select CSV File
+              {% translate "Select CSV File" %}
             </label>
           </form>
         </div>
@@ -2983,7 +3033,7 @@
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "goodreads" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? 'Import from Goodreads backup' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? gettext('Import from Goodreads backup') : gettext('File uploads are not available for periodic imports')">
           </p>
           <form method="post"
                 action="{% url 'import_goodreads' %}"
@@ -3001,7 +3051,7 @@
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()"
                      @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
-              Select CSV File
+              {% translate "Select CSV File" %}
             </label>
           </form>
         </div>
@@ -3025,7 +3075,7 @@
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "hardcover" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? 'Import from Hardcover export (Account -> Export Data)' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? gettext('Import from Hardcover export (Account -> Export Data)') : gettext('File uploads are not available for periodic imports')">
           </p>
           <form method="post"
                 action="{% url 'import_hardcover' %}"
@@ -3034,10 +3084,10 @@
             <input type="hidden" name="frequency" x-model="importFrequency">
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
-            <label class="block text-sm text-[var(--color-text-muted)] mb-2">Hardcover API Key</label>
+            <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Hardcover API Key" %}</label>
             <input type="password"
                    name="hardcover_api_key"
-                   placeholder="Optional — also settable in Settings &gt; Metadata"
+                   placeholder="{% translate "Optional — also settable in Settings > Metadata" %}"
                    class="w-full py-2 px-3 mb-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    :disabled="standardImportsDisabled()">
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors mb-3"
@@ -3048,13 +3098,13 @@
                      class="hidden"
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()">
-              Select CSV File
+              {% translate "Select CSV File" %}
             </label>
             <button type="submit"
                     class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
                     :disabled="standardImportsDisabled()">
-              Save
+              {% translate "Save" %}
             </button>
           </form>
         </div>
@@ -3078,7 +3128,7 @@
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "storygraph" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? 'Import from StoryGraph export (Profile -> Manage Account -> Export StoryGraph Library)' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? gettext('Import from StoryGraph export (Profile -> Manage Account -> Export StoryGraph Library)') : gettext('File uploads are not available for periodic imports')">
           </p>
           <form method="post"
                 action="{% url 'import_storygraph' %}"
@@ -3096,7 +3146,7 @@
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()"
                      @change="importFrequency === 'once' && !standardImportsDisabled() && $el.form.submit()">
-              Select CSV File
+              {% translate "Select CSV File" %}
             </label>
           </form>
         </div>
@@ -3120,7 +3170,7 @@
         <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
           <div class="flex items-center mb-3">{% source_display "tvtime" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3"
-             x-text="importFrequency === 'once' ? 'Import from a TV Time GDPR data export (Settings -> Export My Data). Select the shows file, the movies file, or both.' : 'File uploads are not available for periodic imports'">
+             x-text="importFrequency === 'once' ? gettext('Import from a TV Time GDPR data export (Settings -> Export My Data). Select the shows file, the movies file, or both.') : gettext('File uploads are not available for periodic imports')">
           </p>
           <form method="post"
                 action="{% url 'import_tvtime' %}"
@@ -3129,7 +3179,7 @@
             <input type="hidden" name="frequency" x-model="importFrequency">
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
-            <label class="block text-sm text-[var(--color-text-muted)] mb-2">Shows CSV (tracking-prod-records.csv)</label>
+            <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Shows CSV (tracking-prod-records.csv)" %}</label>
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors mb-3"
                    :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
                    :disabled="importFrequency !== 'once' || standardImportsDisabled()">
@@ -3138,9 +3188,9 @@
                      class="hidden"
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()">
-              Select CSV File
+              {% translate "Select CSV File" %}
             </label>
-            <label class="block text-sm text-[var(--color-text-muted)] mb-2">Movies CSV (tracking-prod-records-v2.csv)</label>
+            <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Movies CSV (tracking-prod-records-v2.csv)" %}</label>
             <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors mb-3"
                    :class="importFrequency === 'once' && !standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
                    :disabled="importFrequency !== 'once' || standardImportsDisabled()">
@@ -3149,13 +3199,13 @@
                      class="hidden"
                      type="file"
                      :disabled="importFrequency !== 'once' || standardImportsDisabled()">
-              Select CSV File
+              {% translate "Select CSV File" %}
             </label>
             <button type="submit"
                     class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'"
                     :disabled="importFrequency !== 'once' || standardImportsDisabled()">
-              Import
+              {% translate "Import" %}
             </button>
           </form>
         </div>
@@ -3174,16 +3224,16 @@
       <div class="bg-[var(--color-surface)] rounded-lg p-6">
         <div class="flex items-center mb-4">
           {% include "app/icons/clock.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-          <h2 class="text-xl font-semibold">Active Periodic Imports</h2>
+          <h2 class="text-xl font-semibold">{% translate "Active Periodic Imports" %}</h2>
         </div>
-        <p class="text-[var(--color-text-muted)] text-sm">Loading scheduled import activity...</p>
+        <p class="text-[var(--color-text-muted)] text-sm">{% translate "Loading scheduled import activity..." %}</p>
       </div>
       <div class="bg-[var(--color-surface)] rounded-lg p-6">
         <div class="flex items-center mb-4">
           {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-          <h2 class="text-xl font-semibold">Import History</h2>
+          <h2 class="text-xl font-semibold">{% translate "Import History" %}</h2>
         </div>
-        <p class="text-[var(--color-text-muted)] text-sm">Loading recent import history...</p>
+        <p class="text-[var(--color-text-muted)] text-sm">{% translate "Loading recent import history..." %}</p>
       </div>
     </div>
   </div>

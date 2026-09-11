@@ -1450,3 +1450,225 @@ class TmdbBackdropTest(TestCase):
         backdrop = CustomList()._get_tmdb_backdrop(MediaTypes.MOVIE.value, "603")
 
         self.assertEqual(backdrop, settings.IMG_NONE)
+
+
+class SmartRuleGranularMediaTypesTest(TestCase):
+    """Season and episode participate in smart rules on their own terms."""
+
+    def setUp(self):
+        """Create a user with TV enabled but Seasons hidden from the sidebar."""
+        self.user = get_user_model().objects.create_user(
+            username="granular",
+            password="12345",
+        )
+        self.user.season_enabled = False
+        self.user.save(update_fields=["season_enabled"])
+
+        self.season_item = Item.objects.create(
+            title="Friends",
+            media_id="1668",
+            media_type=MediaTypes.SEASON.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/friends.jpg",
+            season_number=1,
+        )
+        self.season = Season.objects.create(
+            item=self.season_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        self.episode_item = Item.objects.create(
+            title="Friends S1E1",
+            media_id="1668",
+            media_type=MediaTypes.EPISODE.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/friends.jpg",
+            season_number=1,
+            episode_number=1,
+        )
+        self.episode = Episode.objects.create(
+            item=self.episode_item,
+            related_season=self.season,
+            score=8,
+            end_date=datetime.datetime(2023, 6, 2, tzinfo=datetime.UTC),
+        )
+
+    def test_available_media_types_ignore_the_sidebar_season_preference(self):
+        """Hiding Seasons in the sidebar must not remove them from smart rules."""
+        self.assertNotIn(MediaTypes.SEASON.value, self.user.get_enabled_media_types())
+
+        available = smart_rules.get_available_media_types(self.user)
+
+        self.assertIn(MediaTypes.SEASON.value, available)
+        self.assertIn(MediaTypes.EPISODE.value, available)
+
+    def test_granular_types_stay_out_of_an_implicit_all_types_rule(self):
+        """A list naming no media types must not materialise every episode."""
+        targets = smart_rules._target_media_types(self.user, [])
+
+        self.assertNotIn(MediaTypes.SEASON.value, targets)
+        self.assertNotIn(MediaTypes.EPISODE.value, targets)
+
+        smart_list = CustomList.objects.create(
+            name="Everything",
+            owner=self.user,
+            is_smart=True,
+            smart_media_types=[],
+        )
+        smart_list.sync_smart_items()
+
+        self.assertFalse(smart_list.items.filter(id=self.episode_item.id).exists())
+
+    def test_episode_rules_match_when_named_explicitly(self):
+        """Episodes participate once the rule asks for them."""
+        rules = smart_rules.normalize_rule_payload(
+            {"media_types": [MediaTypes.EPISODE.value]},
+            self.user,
+        )
+
+        self.assertEqual(rules["media_types"], [MediaTypes.EPISODE.value])
+        self.assertIn(
+            self.episode_item.id,
+            smart_rules.collect_matching_item_ids(self.user, rules),
+        )
+
+    def test_episode_rating_filter_uses_the_season_owner(self):
+        """Episode hangs off its season, so `user=` would raise a FieldError."""
+        rules = smart_rules.normalize_rule_payload(
+            {"media_types": [MediaTypes.EPISODE.value], "rating_min": "7"},
+            self.user,
+        )
+
+        self.assertIn(
+            self.episode_item.id,
+            smart_rules.collect_matching_item_ids(self.user, rules),
+        )
+
+        unrated = smart_rules.normalize_rule_payload(
+            {"media_types": [MediaTypes.EPISODE.value], "rating": "not_rated"},
+            self.user,
+        )
+
+        self.assertNotIn(
+            self.episode_item.id,
+            smart_rules.collect_matching_item_ids(self.user, unrated),
+        )
+
+
+class SmartRuleRelativeDateWindowTest(TestCase):
+    """"In the last N units" stays relative and resolves at evaluation time."""
+
+    def setUp(self):
+        """Create a user with movies completed at known dates."""
+        self.user = get_user_model().objects.create_user(
+            username="relative",
+            password="12345",
+        )
+        self.today = timezone.localdate()
+        self.recent_item = Item.objects.create(
+            title="Recent Movie",
+            media_id="rel-1",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.MANUAL.value,
+            image="https://example.com/recent.jpg",
+        )
+        Movie.objects.create(
+            item=self.recent_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=timezone.now() - timedelta(days=3),
+        )
+        self.old_item = Item.objects.create(
+            title="Old Movie",
+            media_id="rel-2",
+            media_type=MediaTypes.MOVIE.value,
+            source=Sources.MANUAL.value,
+            image="https://example.com/old.jpg",
+        )
+        Movie.objects.create(
+            item=self.old_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=timezone.now() - timedelta(days=200),
+        )
+
+    def _rules(self, **extra):
+        return smart_rules.normalize_rule_payload(
+            {"media_types": [MediaTypes.MOVIE.value], **extra},
+            self.user,
+        )
+
+    def test_window_is_stored_relative_not_snapshotted(self):
+        """The saved rule keeps the amount and unit, not resolved dates."""
+        rules = self._rules(
+            completed_date_within="7",
+            completed_date_within_unit="days",
+        )
+
+        self.assertEqual(rules["completed_date_within"], "7")
+        self.assertEqual(rules["completed_date_within_unit"], "days")
+        self.assertEqual(rules["completed_date_from"], "")
+        self.assertEqual(rules["completed_date_to"], "")
+
+    def test_window_matches_only_items_inside_it(self):
+        """A 7-day window keeps the recent item and drops the old one."""
+        matched = smart_rules.collect_matching_item_ids(
+            self.user,
+            self._rules(completed_date_within="7", completed_date_within_unit="days"),
+        )
+
+        self.assertIn(self.recent_item.id, matched)
+        self.assertNotIn(self.old_item.id, matched)
+
+    def test_wider_window_picks_up_the_older_item(self):
+        """A one-year window covers both."""
+        matched = smart_rules.collect_matching_item_ids(
+            self.user,
+            self._rules(completed_date_within="1", completed_date_within_unit="years"),
+        )
+
+        self.assertIn(self.recent_item.id, matched)
+        self.assertIn(self.old_item.id, matched)
+
+    def test_window_moves_with_the_clock(self):
+        """The same stored rule resolves to a different range on a later day."""
+        rules = self._rules(
+            completed_date_within="7",
+            completed_date_within_unit="days",
+        )
+
+        early = smart_rules.resolve_relative_date_windows(
+            rules,
+            datetime.date(2026, 1, 10),
+        )
+        later = smart_rules.resolve_relative_date_windows(
+            rules,
+            datetime.date(2026, 6, 10),
+        )
+
+        self.assertEqual(early["completed_date_from"], "2026-01-03")
+        self.assertEqual(later["completed_date_from"], "2026-06-03")
+
+    def test_window_clears_a_conflicting_absolute_range(self):
+        """A payload carrying both keeps only the relative window."""
+        rules = self._rules(
+            completed_date_within="30",
+            completed_date_within_unit="days",
+            completed_date_from="2020-01-01",
+            completed_date_to="2020-12-31",
+        )
+
+        self.assertEqual(rules["completed_date_from"], "")
+        self.assertEqual(rules["completed_date_to"], "")
+
+    def test_invalid_windows_are_dropped(self):
+        """Junk amounts and units fall back to no window / days."""
+        for bad in ("", "0", "-3", "abc", "1000"):
+            rules = self._rules(completed_date_within=bad)
+            self.assertEqual(rules["completed_date_within"], "", bad)
+
+        rules = self._rules(
+            completed_date_within="5",
+            completed_date_within_unit="fortnights",
+        )
+        self.assertEqual(rules["completed_date_within_unit"], "days")

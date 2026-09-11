@@ -3,6 +3,16 @@ from django.urls import path, re_path
 from integrations import views
 
 urlpatterns = [
+    path(
+        "matches/<int:item_id>/",
+        views.match_fix,
+        name="match_fix",
+    ),
+    path(
+        "matches/<int:reference_id>/<str:status>/",
+        views.match_reference_status,
+        name="match_reference_status",
+    ),
     path("import/trakt-oauth", views.trakt_oauth, name="trakt_oauth"),
     path(
         "import/trakt/private",
@@ -66,6 +76,7 @@ urlpatterns = [
     ),
     path("import/kitsu", views.import_kitsu, name="import_kitsu"),
     path("import/yamtrack", views.import_yamtrack, name="import_yamtrack"),
+    path("import/clz", views.import_clz, name="import_clz"),
     path("import/hltb", views.import_hltb, name="import_hltb"),
     path("import/grouvee", views.import_grouvee, name="import_grouvee"),
     path("import/steam", views.import_steam, name="import_steam"),
@@ -78,6 +89,17 @@ urlpatterns = [
     path("jellyfin/connect", views.jellyfin_connect, name="jellyfin_connect"),
     path("jellyfin/disconnect", views.jellyfin_disconnect, name="jellyfin_disconnect"),
     path("jellyfin/settings", views.jellyfin_settings, name="jellyfin_settings"),
+    path(
+        "sync/direction",
+        views.sync_direction_settings,
+        name="sync_direction_settings",
+    ),
+    path("sync/pause", views.sync_kill_switch, name="sync_kill_switch"),
+    path(
+        "sync/conflicts/resolve",
+        views.sync_resolve_conflict,
+        name="sync_resolve_conflict",
+    ),
     path("jellyfin/push", views.jellyfin_push_now, name="jellyfin_push_now"),
     path("jellyfin/pull", views.jellyfin_pull_now, name="jellyfin_pull_now"),
     path(
@@ -231,16 +253,51 @@ urlpatterns = [
         views.stremio_addon_manifest,
         name="stremio_addon_manifest",
     ),
+    path(
+        "stremio-addon/<str:token>/configure",
+        views.stremio_addon_configure,
+        name="stremio_addon_configure",
+    ),
+    path(
+        "stremio-addon/<str:token>/c/<str:config>/configure",
+        views.stremio_addon_configure,
+        name="stremio_addon_configure_configured",
+    ),
+    path(
+        "stremio-addon/<str:token>/c/<str:config>/manifest.json",
+        views.stremio_addon_manifest,
+        name="stremio_addon_manifest_configured",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/c/(?P<config>[^/]+)/catalog/"
+        r"(?P<media_type>movie|series)/"
+        r"(?P<catalog_id>[^/]+?)(?:/(?P<extra>[^/]*))?\.json$",
+        views.stremio_addon_catalog,
+        name="stremio_addon_catalog_configured",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/c/(?P<config>[^/]+)/subtitles/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/[^/]*)?\.json$",
+        views.stremio_addon_subtitles,
+        name="stremio_addon_subtitles_configured",
+    ),
     re_path(
         r"^stremio-addon/(?P<token>[^/]+)/catalog/"
         r"(?P<media_type>movie|series)/"
-        r"(?P<catalog_id>[^/]+?)(?:/(?P<extra>[^/]*))?\.json$",
+        r"(?P<catalog_id>[^/]+?)(?:/(?P<extra>.*))?\.json$",
         views.stremio_addon_catalog,
         name="stremio_addon_catalog",
     ),
     re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/meta/"
+        r"(?P<media_type>movie|series)/"
+        r"(?P<media_id>[^/]+?)\.json$",
+        views.stremio_addon_meta,
+        name="stremio_addon_meta",
+    ),
+    re_path(
         r"^stremio-addon/(?P<token>[^/]+)/subtitles/"
-        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/[^/]*)?\.json$",
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/.*)?\.json$",
         views.stremio_addon_subtitles,
         name="stremio_addon_subtitles",
     ),

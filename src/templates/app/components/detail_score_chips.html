@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 {% load humanize %}
@@ -13,10 +15,10 @@
            @click.outside="graphOpen = false">
         <button type="button"
                 class="inline-flex h-[1.875rem] min-w-0 cursor-help items-center gap-0.5 overflow-hidden rounded-full border border-cyan-400/18 bg-cyan-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm transition-colors duration-150 sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm"
-                title="{{ display_provider|source_readable }} series ratings"
+                title="{% blocktranslate trimmed with value_1=display_provider|source_readable %}{{ value_1 }} series ratings{% endblocktranslate %}"
                 :aria-expanded="graphOpen.toString()"
                 aria-haspopup="true">
-          <span class="sr-only">{{ display_provider|source_readable }} score</span>
+          <span class="sr-only">{% blocktranslate trimmed with value_1=display_provider|source_readable %}{{ value_1 }} score{% endblocktranslate %}</span>
           <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-cyan-400/28 bg-cyan-500/14 sm:h-8 sm:w-8">
             {% if display_provider == Sources.TMDB.value %}
               <img src="{% static 'img/tmdb-logo.png' %}"
@@ -43,7 +45,7 @@
             <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
           {% endif %}
           <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ media.score_count|intcomma }} vote{{ media.score_count|pluralize }}</span>
+          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=media.score_count|intcomma count count=media.score_count %}{{ value_1 }} vote{% plural %}{{ value_1 }} votes{% endblocktranslate %}</span>
         </button>
         {% if provider_series_graph_data %}
           {% include "app/components/series_graph_tooltip.html" with graph_data=provider_series_graph_data provider_label=display_provider only %}
@@ -59,10 +61,10 @@
            @click.outside="graphOpen = false">
         <button type="button"
                 class="inline-flex h-[1.875rem] min-w-0 cursor-help items-center gap-0.5 overflow-hidden rounded-full border border-rose-400/18 bg-rose-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm transition-colors duration-150 sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm"
-                title="Trakt series ratings"
+                title="{% translate "Trakt series ratings" %}"
                 :aria-expanded="graphOpen.toString()"
                 aria-haspopup="true">
-          <span class="sr-only">Trakt score</span>
+          <span class="sr-only">{% translate "Trakt score" %}</span>
           <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-rose-400/28 bg-rose-500/14 sm:h-8 sm:w-8">
             <img src="{% static 'img/trakt-logo.svg' %}"
                  alt=""
@@ -75,7 +77,7 @@
             <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
           {% endif %}
           <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ trakt_score.rating_count|intcomma }} rating{{ trakt_score.rating_count|pluralize }}</span>
+          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=trakt_score.rating_count|intcomma count count=trakt_score.rating_count %}{{ value_1 }} rating{% plural %}{{ value_1 }} ratings{% endblocktranslate %}</span>
         </button>
         {% if media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value or media_type == MediaTypes.ANIME.value %}
           {# Always render tooltip shell; inner content polls /api/trakt-series-graph/ live #}
@@ -95,7 +97,7 @@
                  hx-target="this"
                  hx-swap="outerHTML">
               <div class="mb-2 flex items-center justify-between gap-3">
-                <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">Series Graph</div>
+                <div class="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{% translate "Series Graph" %}</div>
               </div>
               <div class="flex items-center gap-2 py-5 px-1 text-xs text-[var(--color-text-muted)]">
                 <span class="flex gap-1">
@@ -106,7 +108,7 @@
                   <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-gray-500"
                         style="animation-delay:300ms"></span>
                 </span>
-                Building series graph…
+                {% translate "Building series graph…" %}
               </div>
             </div>
           </div>
@@ -124,10 +126,10 @@
            @click.outside="graphOpen = false">
         <button type="button"
                 class="inline-flex h-[1.875rem] min-w-0 cursor-help items-center gap-0.5 overflow-hidden rounded-full border border-amber-400/18 bg-amber-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm transition-colors duration-150 sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm"
-                title="IMDb ratings"
+                title="{% translate "IMDb ratings" %}"
                 :aria-expanded="graphOpen.toString()"
                 aria-haspopup="true">
-          <span class="sr-only">IMDb score</span>
+          <span class="sr-only">{% translate "IMDb score" %}</span>
           <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-amber-400/28 bg-amber-500/14 sm:h-8 sm:w-8">
             <img src="{% static 'img/imdb-logo.png' %}"
                  alt=""
@@ -140,7 +142,7 @@
             <span class="text-[12px] font-semibold text-[var(--color-text-muted)] sm:text-sm">-</span>
           {% endif %}
           <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ imdb_score.rating_count|intcomma }} rating{{ imdb_score.rating_count|pluralize }}</span>
+          <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=imdb_score.rating_count|intcomma count count=imdb_score.rating_count %}{{ value_1 }} rating{% plural %}{{ value_1 }} ratings{% endblocktranslate %}</span>
         </button>
         {% if imdb_series_graph_data %}
           {% include "app/components/series_graph_tooltip.html" with graph_data=imdb_series_graph_data provider_label="IMDb" only %}
@@ -150,7 +152,7 @@
 
     {% if mal_score %}
       <div class="inline-flex h-[1.875rem] min-w-0 shrink-0 items-center gap-0.5 overflow-hidden rounded-full border border-indigo-400/18 bg-indigo-500/[0.07] pl-0 pr-1.5 text-[12px] text-white shadow-sm sm:h-8 sm:gap-2 sm:pr-3 sm:text-sm">
-        <span class="sr-only">MyAnimeList score</span>
+        <span class="sr-only">{% translate "MyAnimeList score" %}</span>
         <span class="-my-px -ml-px flex h-[1.875rem] w-[1.875rem] shrink-0 items-center justify-center rounded-full border border-indigo-400/28 bg-indigo-500/14 sm:h-8 sm:w-8">
           <img src="{% static 'img/myanimelist-logo.svg' %}"
                alt=""
@@ -161,7 +163,7 @@
           <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{{ mal_score.rating }}</span>
         {% endif %}
         <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
-        <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{{ mal_score.rating_count|intcomma }} rating{{ mal_score.rating_count|pluralize }}</span>
+        <span class="truncate text-[12px] text-[var(--color-text-secondary)] sm:text-sm">{% blocktranslate trimmed with value_1=mal_score.rating_count|intcomma count count=mal_score.rating_count %}{{ value_1 }} rating{% plural %}{{ value_1 }} ratings{% endblocktranslate %}</span>
       </div>
     {% endif %}
 

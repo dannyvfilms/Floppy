@@ -119,6 +119,25 @@ class ErrorPageTests(TestCase):
             html=False,
         )
 
+    def test_igdb_not_configured_page_shows_setup_guidance(self):
+        """Missing IGDB credentials should show a config error, not a raw 500."""
+        response = self.client.get("/boom-igdb-not-configured/")
+
+        self.assertEqual(response.status_code, 503)
+        self.assert_traceback_panel(response, "error-report-503")
+        self.assertContains(
+            response,
+            "Provider Not Configured",
+            status_code=503,
+            html=False,
+        )
+        self.assertContains(
+            response,
+            "IGDB is not configured",
+            status_code=503,
+            html=False,
+        )
+
     def test_csrf_failure_redirects_anonymous_user_to_login(self):
         """Anonymous CSRF failures should bounce to login, not a dead end."""
         response = self.csrf_client.post("/csrf-protected/")

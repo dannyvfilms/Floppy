@@ -1,10 +1,12 @@
+
+{% load i18n %}
 {% load widget_tweaks %}
 
 <div class="{% if not collection_tab %}bg-[var(--color-surface)] p-6 rounded-lg{% endif %}">
   {% if not collection_tab %}
     <div class="flex items-center justify-between mb-6">
       <h2 class="text-2xl font-bold text-[var(--color-text)] line-clamp-1">
-        Collection Entry
+        {% translate "Collection Entry" %}
       </h2>
       <button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
               @click="collectionOpen = false">
@@ -16,7 +18,7 @@
   <div class="space-y-6">
     {% if season_audit_entries %}
       <div>
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">Collected Seasons</h3>
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">{% translate "Collected Seasons" %}</h3>
         <div class="space-y-3 max-h-64 overflow-y-auto pr-1">
           {% for season_audit_entry in season_audit_entries %}
             {% url 'collection_remove_season' season_audit_entry.season_item_id as remove_url %}
@@ -28,7 +30,7 @@
 
     {% if episode_audit_entries %}
       <div>
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">Collected Episodes</h3>
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">{% translate "Collected Episodes" %}</h3>
         <div class="space-y-3 max-h-64 overflow-y-auto pr-1">
           {% for episode_audit_entry in episode_audit_entries %}
             {% url 'collection_remove' episode_audit_entry.entry.id as remove_url %}
@@ -40,7 +42,7 @@
 
     {% if visible_existing_entries %}
       <div>
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">Existing Entries</h3>
+        <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">{% translate "Existing Entries" %}</h3>
         <div class="space-y-3 max-h-52 overflow-y-auto pr-1">
           {% for existing_entry in visible_existing_entries %}
             {% url 'collection_remove' existing_entry.id as remove_url %}
@@ -56,7 +58,7 @@
       {{ form.item }}
 
       <h3 class="text-sm font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">
-        {% if visible_existing_entries or season_audit_entries or episode_audit_entries %}Add Another Copy{% else %}Add Copy{% endif %}
+        {% if visible_existing_entries or season_audit_entries or episode_audit_entries %}{% translate "Add Another Copy" %}{% else %}{% translate "Add Copy" %}{% endif %}
       </h3>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
@@ -65,12 +67,12 @@
             {% if not collection_fields or field.name in collection_fields %}
               <div class="mb-5 {% if collection_fields and field.name == collection_fields.0 %}sm:col-span-2{% endif %}">
                 <label class="block text-sm font-medium mb-1 text-[var(--color-text-secondary)]"
-                       for="{{ field.id_for_label }}">{{ field.label }}</label>
+                       for="{{ field.id_for_label }}">{% translate field.label %}</label>
                 <div class="relative">
                   {% if field.field.widget.input_type == 'checkbox' %}
                     <label class="flex items-center gap-2 text-[var(--color-text-secondary)]">
                       {{ field|add_class:"h-4 w-4 rounded border-gray-600 bg-[var(--color-surface-strong)] text-indigo-500 focus:ring-[var(--color-accent)]" }}
-                      <span>Yes</span>
+                      <span>{% translate "Yes" %}</span>
                     </label>
                   {% elif field.field.widget.input_type == 'number' %}
                     {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
@@ -181,10 +183,10 @@
                           <button type="button"
                                   data-choice
                                   data-choice-value="{{ value|default_if_none:'' }}"
-                                  data-choice-label="{{ label }}"
-                                  @click="choose('{{ value|default_if_none:''|escapejs }}', '{{ label|escapejs }}')"
+                                  data-choice-label="{% translate label %}"
+                                  @click="choose('{{ value|default_if_none:''|escapejs }}', '{% translate label as media_dynamic_label %}{{ media_dynamic_label|escapejs }}')"
                                   class="block w-full px-3 py-2 text-left text-sm transition-colors {% if value == '' %}text-[var(--color-text-muted)]{% else %}text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]{% endif %}">
-                            {{ label }}
+                            {% translate label %}
                           </button>
                         {% endfor %}
                       </div>
@@ -203,7 +205,7 @@
       <div class="flex justify-end mt-6">
         <button type="submit"
                 class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
-          Add Copy
+          {% translate "Add Copy" %}
         </button>
       </div>
     </form>

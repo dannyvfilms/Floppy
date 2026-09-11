@@ -15,6 +15,8 @@ from django.contrib import admin
 from django.contrib.auth.decorators import login_not_required
 from django.http import JsonResponse
 from django.urls import include, path, re_path
+from django.views.decorators.cache import never_cache
+from django.views.i18n import JavaScriptCatalog
 from django.views.static import serve
 from health_check.views import MainView
 
@@ -39,6 +41,11 @@ handler404 = "app.error_views.page_not_found"
 handler500 = "app.error_views.server_error"
 
 urlpatterns = [
+    path(
+        "jsi18n/",
+        login_not_required(never_cache(JavaScriptCatalog.as_view())),
+        name="javascript-catalog",
+    ),
     path("api/v1/", include("api.urls")),
     # ListenBrainz-compatible ingest lives at the root path clients expect.
     path("apis/listenbrainz/1/", include("api.listenbrainz_urls")),

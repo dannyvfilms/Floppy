@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
@@ -42,14 +44,14 @@
           <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">
             {{ media.formatted_aggregated_progress }}{% if media.max_progress and not media.progress_is_percentage %} / {{ media.formatted_max_progress }}{% endif %}
             {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.MOVIE.value and not media.progress_is_percentage and media.progress_unit != 'minutes' %}
-              {{ media.item.media_type|long_unit }}{% if media.max_progress %}{{ media.max_progress|pluralize }}{% else %}{{ aggregated_progress|pluralize }}{% endif %}
+              {% with progress_unit=media.item.media_type|long_unit %}{% if media.max_progress|default:aggregated_progress == 1 %}{% translate progress_unit context "progress unit" %}{% else %}{% with progress_unit_plural=progress_unit|add:"s" %}{% translate progress_unit_plural context "progress unit" %}{% endwith %}{% endif %}{% endwith %}
             {% endif %}
           </p>
         {% elif media.progress %}
           <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">
             {{ media.formatted_progress }}{% if media.max_progress and not media.progress_is_percentage %} / {{ media.formatted_max_progress }}{% endif %}
             {% if media.item.media_type != MediaTypes.GAME.value and media.item.media_type != MediaTypes.MOVIE.value and not media.progress_is_percentage and media.progress_unit != 'minutes' %}
-              {{ media.item.media_type|long_unit }}{% if media.max_progress %}{{ media.max_progress|pluralize }}{% else %}{{ media.progress|pluralize }}{% endif %}
+              {% with progress_unit=media.item.media_type|long_unit %}{% if media.max_progress|default:media.progress == 1 %}{% translate progress_unit context "progress unit" %}{% else %}{% with progress_unit_plural=progress_unit|add:"s" %}{% translate progress_unit_plural context "progress unit" %}{% endwith %}{% endif %}{% endwith %}
             {% endif %}
           </p>
         {% endif %}
@@ -57,7 +59,7 @@
     {% elif current_sort == 'time_left' %}
       {% with time_left=media.time_left_display %}
         {% if media.episodes_left > 0 and time_left and time_left != '-' %}
-          <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{{ time_left }} left</p>
+          <p class="mt-2 text-sm font-semibold text-[var(--color-text)]">{% blocktranslate trimmed with value_1=time_left %}{{ value_1 }} left{% endblocktranslate %}</p>
         {% endif %}
       {% endwith %}
     {% elif current_sort == 'time_to_beat' %}

@@ -1,10 +1,12 @@
+
+{% load i18n %}
 {% load user_tags %}
 
 {% if activity_subtitle %}
   <div class="mb-3 text-center text-sm font-medium text-[var(--color-text-muted)] md:text-start">
     <button type="button"
             aria-haspopup="dialog"
-            aria-label="View session history"
+            aria-label="{% translate "View session history" %}"
             class="{% if activity_subtitle.duration_text %}flex w-full items-center justify-center gap-0.5 whitespace-nowrap text-[13px] tracking-[-0.01em] sm:hidden{% else %}flex w-full flex-wrap items-center justify-center gap-y-1 sm:hidden{% endif %} cursor-pointer"
             hx-get="{% url 'activity_sessions_modal' %}?{% if media_type == MediaTypes.SEASON.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}&season_number={{ media.season_number }}{% elif media_type == MediaTypes.TV.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% elif media_type == MediaTypes.PODCAST.value and podcast_show %}media_type={{ MediaTypes.PODCAST.value }}&podcast_show={{ podcast_show.id }}{% else %}media_type={{ media_type }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% endif %}{% if media_type == MediaTypes.GAME.value or media_type == MediaTypes.BOARDGAME.value %}&logging_style=sessions{% endif %}"
             hx-target="#session-history-modal-host"
@@ -56,7 +58,7 @@
     </button>
     <button type="button"
             aria-haspopup="dialog"
-            aria-label="View session history"
+            aria-label="{% translate "View session history" %}"
             class="hidden w-full flex-wrap items-center justify-center gap-y-1 sm:flex md:justify-start cursor-pointer"
             hx-get="{% url 'activity_sessions_modal' %}?{% if media_type == MediaTypes.SEASON.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}&season_number={{ media.season_number }}{% elif media_type == MediaTypes.TV.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% elif media_type == MediaTypes.PODCAST.value and podcast_show %}media_type={{ MediaTypes.PODCAST.value }}&podcast_show={{ podcast_show.id }}{% else %}media_type={{ media_type }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% endif %}{% if media_type == MediaTypes.GAME.value or media_type == MediaTypes.BOARDGAME.value %}&logging_style=sessions{% endif %}"
             hx-target="#session-history-modal-host"

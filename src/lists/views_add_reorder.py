@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
@@ -58,7 +59,9 @@ def add_list_item_page(request, list_id):
     if custom_list.is_smart:
         messages.info(
             request,
-            "Smart lists update from their rules. Edit the rules to change items.",
+            gettext(
+                "Smart lists update from their rules. Edit the rules to change items."
+            ),
         )
         return redirect("list_detail", custom_list.public_reference)
 
@@ -251,13 +254,17 @@ def add_list_item_submit(request, list_id):
     )
 
     if not custom_list.user_can_edit(request.user):
-        messages.error(request, "You do not have permission to edit this list.")
+        messages.error(
+            request, gettext("You do not have permission to edit this list.")
+        )
         return helpers.redirect_back(request)
 
     if custom_list.is_smart:
         messages.error(
             request,
-            "Smart lists update from their rules and do not support manual additions.",
+            gettext(
+                "Smart lists update from their rules and do not support manual additions."
+            ),
         )
         return redirect("list_detail", custom_list.public_reference)
 
@@ -312,7 +319,10 @@ def add_list_item_submit(request, list_id):
     )
 
     if custom_list.items.filter(id=item.id).exists():
-        messages.info(request, f'"{item.title}" is already in this list.')
+        messages.info(
+            request,
+            gettext('"%(value_1)s" is already in this list.') % {"value_1": item.title},
+        )
         return _redirect_after_submit(redirect("list_add_item", list_id=list_id))
 
     CustomListItem.objects.create(
@@ -327,7 +337,10 @@ def add_list_item_submit(request, list_id):
         activity_type=ListActivityType.ITEM_ADDED,
         item=item,
     )
-    messages.success(request, f'"{item.title}" has been added to the list.')
+    messages.success(
+        request,
+        gettext('"%(value_1)s" has been added to the list.') % {"value_1": item.title},
+    )
 
     return _redirect_after_submit(redirect("list_detail", custom_list.public_reference))
 

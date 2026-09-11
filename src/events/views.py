@@ -93,6 +93,17 @@ def calendar(request):
             if episode.show and episode.show.image
         }
 
+    event_status_values = [
+        status.value
+        for status in Status
+        if status.value not in INACTIVE_TRACKING_STATUSES
+    ]
+
+    filter_media_types = sorted(
+        request.user.get_enabled_media_types(),
+        key=lambda media_type: MediaTypes(media_type).label,
+    )
+
     release_media_types = {
         release.item.media_type
         for release in releases
@@ -128,6 +139,12 @@ def calendar(request):
                 statuses,
                 key=lambda status: Status(status).label,
             )
+
+    filter_statuses_by_type = {
+        media_type: event_status_values
+        for media_type in filter_media_types
+        if media_type not in {MediaTypes.TV.value, MediaTypes.EPISODE.value}
+    }
 
     release_dict = {}
     for release in releases:
@@ -165,11 +182,7 @@ def calendar(request):
             for media_type in MediaTypes
             if media_type != MediaTypes.EPISODE
         ],
-        "event_statuses": [
-            status.value
-            for status in Status
-            if status.value not in INACTIVE_TRACKING_STATUSES
-        ],
+        "event_statuses": event_status_values,
         "calendar": calendar_format,
         "month": month,
         "month_name": month_name,
@@ -183,6 +196,8 @@ def calendar(request):
         "view_type": view_type,
         "available_media_types": available_media_types,
         "available_statuses_by_type": available_statuses_by_type,
+        "filter_media_types": filter_media_types,
+        "filter_statuses_by_type": filter_statuses_by_type,
         "days_in_month": days_in_month,
         "selected_day": selected_day,
         "weekday_headers": weekday_headers,

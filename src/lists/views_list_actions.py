@@ -18,6 +18,7 @@ from django.db.models import Q
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
@@ -27,6 +28,10 @@ from app.models import Item, MediaTypes, Status
 from app.providers import services
 from app.services import metadata_resolution
 from app.templatetags.app_tags import media_type_readable_plural
+from integrations.upload_staging import (
+    enqueue_staged_task,
+    stage_uploaded_file,
+)
 from lists import smart_rules
 from lists import tasks as list_tasks
 from lists.forms import CustomListForm
@@ -256,7 +261,9 @@ def edit(request):
                 activity_type=ListActivityType.LIST_EDITED,
             )
     else:
-        messages.error(request, "You do not have permission to edit this list.")
+        messages.error(
+            request, gettext("You do not have permission to edit this list.")
+        )
     return helpers.redirect_back(request)
 
 
@@ -306,7 +313,7 @@ def delete(request):
         logger.info("%s list deleted successfully.", custom_list)
         return redirect("lists")
 
-    messages.error(request, "You do not have permission to delete this list.")
+    messages.error(request, gettext("You do not have permission to delete this list."))
     return helpers.redirect_back(request)
 
 
@@ -315,11 +322,33 @@ def import_list_csv(request):
     """Import a single custom list from an uploaded CSV file."""
     csv_file = request.FILES.get("csv_file")
     if not csv_file:
-        messages.error(request, "Select a CSV file to import.")
+        messages.error(request, gettext("Select a CSV file to import."))
         return redirect("lists")
 
-    list_tasks.import_list_csv_task.delay(request.user.id, csv_file.read(), "new")
-    messages.info(request, "List import started in the background.")
+    try:
+        staged_file = str(stage_uploaded_file(csv_file))
+    except OSError:
+        logger.exception("Could not stage custom list CSV upload")
+        messages.error(
+            request,
+            "The upload could not be queued. Check available disk space and try again.",
+        )
+        return redirect("lists")
+
+    try:
+        enqueue_staged_task(
+            list_tasks.import_list_csv_task,
+            request.user.id,
+            staged_file,
+            "new",
+            staged_paths=(staged_file,),
+        )
+    except Exception:
+        logger.exception("Could not queue custom list CSV import")
+        messages.error(request, "The list import could not be queued. Try again.")
+        return redirect("lists")
+
+    messages.info(request, gettext("List import started in the background."))
     return redirect("lists")
 
 

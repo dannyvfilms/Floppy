@@ -112,16 +112,17 @@ def import_trakt_lists_task(user_id, access_token, client_id=None):
 def import_list_csv_task(user_id, file_bytes, mode):
     """Celery task importing a single custom list from a CSV file."""
     from integrations.imports import yamtrack as yamtrack_imports
-    from integrations.tasks._import_helpers import _coerce_uploaded_file
+    from integrations.upload_staging import open_import_file
 
     user = User.objects.get(pk=user_id)
     try:
-        yamtrack_imports.importer(
-            _coerce_uploaded_file(file_bytes),
-            user,
-            mode,
-            lists_only=True,
-        )
+        with open_import_file(file_bytes) as uploaded_file:
+            yamtrack_imports.importer(
+                uploaded_file,
+                user,
+                mode,
+                lists_only=True,
+            )
         logger.info("Successfully imported list CSV for user %s", user.username)
     except Exception:
         logger.exception("Failed to import list CSV for user %s", user.username)

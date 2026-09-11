@@ -1,45 +1,87 @@
 {% extends "users/base.html" %}
+{% load i18n %}
+
 {% load static %}
 {% load app_tags %}
 {% load user_tags %}
 
 {% block title %}
-  Integrations - Floppy
+  {% translate "Integrations - Floppy" %}
 {% endblock title %}
 
 {% block settings_content %}
   <div class="space-y-6"
        x-data="{ activeIntegration: 'all' }"
        x-init="const deepLinkTag = new URLSearchParams(window.location.search).get('open'); if (deepLinkTag) { activeIntegration = deepLinkTag; }">
+    {% if match_review_references %}
+      <section class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-5">
+        <h2 class="text-lg font-semibold">{% translate "Matching review" %}</h2>
+        <p class="mt-1 text-sm text-[var(--color-text-secondary)]">{% translate "These provider identities were not safe to match automatically." %}</p>
+        <div class="mt-4 space-y-2">
+          {% for reference in match_review_references %}
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-md bg-[var(--color-surface)] p-3 text-sm">
+              <span>{{ reference.metadata.title|default:reference.external_identity }} ({{ reference.integration }})</span>
+              <span class="flex gap-2">
+                {% if reference.matched_item %}<a class="text-[var(--color-link)] hover:underline" href="{% url 'match_fix' reference.matched_item.id %}">{% translate "Fix match" %}</a>{% endif %}
+                <form method="post" action="{% url 'match_reference_status' reference.id 'ignored' %}">{% csrf_token %}<button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)]" type="submit">{% translate "Ignore" %}</button></form>
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+    {% if match_saved_references %}
+      <section class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-5">
+        <h2 class="text-lg font-semibold">{% translate "Saved match decisions" %}</h2>
+        <p class="mt-1 text-sm text-[var(--color-text-secondary)]">{% translate "These decisions are applied to future Plex and Trakt imports." %}</p>
+        <div class="mt-4 space-y-2">
+          {% for reference in match_saved_references %}
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-md bg-[var(--color-surface-strong)] p-3 text-sm">
+              <span>{{ reference.metadata.title|default:reference.external_identity }} ({{ reference.integration }})</span>
+              <span class="flex items-center gap-3">
+                <span class="text-[var(--color-text-muted)]">{{ reference.get_review_status_display }}</span>
+                {% with ref_item=reference.corrected_item|default:reference.matched_item %}
+                  {% if ref_item %}<a class="text-[var(--color-link)] hover:underline" href="{% url 'match_fix' ref_item.id %}">{% translate "Edit" %}</a>{% endif %}
+                {% endwith %}
+                <form method="post" action="{% url 'match_reference_status' reference.id 'remove' %}">{% csrf_token %}<button class="text-[var(--color-text-muted)] hover:text-[var(--color-text)]" type="submit">{% translate "Remove" %}</button></form>
+              </span>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+{% include "users/components/sync_state_section.html" %}
     {% if request.GET.onboarding %}
       {# Guided setup banner: shown when the user arrived here from the setup wizard #}
       <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">
         <div class="flex items-center gap-3">
           {% include "app/icons/checkmark.svg" with classes="w-5 h-5 text-[var(--color-link)] shrink-0" %}
           <p class="text-sm text-[var(--color-text-secondary)]">
-            You're setting this up as part of guided setup. Finish here, then continue the wizard.
+            {% translate "You're setting this up as part of guided setup. Finish here, then continue the wizard." %}
           </p>
         </div>
         <a href="{% url 'onboarding_integration_setup' %}"
            class="px-3 py-1.5 text-xs rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors whitespace-nowrap">
-          Continue Guided Setup
+          {% translate "Continue Guided Setup" %}
         </a>
       </div>
     {% endif %}
   <div class="bg-[var(--color-surface)] rounded-lg p-6">
     <div class="flex items-center mb-4">
       {% include "app/icons/database.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
-      <h2 class="text-xl font-semibold">Integrations</h2>
+      <h2 class="text-xl font-semibold">{% translate "Integrations" %}</h2>
     </div>
-    <p class="text-[var(--color-text-muted)] mb-5 text-sm">Connect your media servers and services via webhooks to automatically track your watching progress.</p>
+    <p class="text-[var(--color-text-muted)] mb-5 text-sm">{% translate "Connect your media servers and services via webhooks to automatically track your watching progress." %}</p>
 
     {# API Token #}
     <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6">
       <div class="flex items-center mb-3">
         {% include "app/icons/padlock.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h3 class="text-base font-medium">API Token</h3>
+        <h3 class="text-base font-medium">{% translate "API Token" %}</h3>
       </div>
-      <p class="text-[var(--color-text-muted)] mb-4 text-sm">This token is used to authenticate webhook requests from your media servers.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+        {% translate "This token authenticates webhook requests from your media servers. It has full access to your account, so for apps and API clients create an app token below instead — those can be limited and revoked one at a time." %}
+      </p>
       <div class="bg-[var(--color-surface-dim)] p-3 rounded-md mb-4">
         <div class="flex items-center gap-2">
           <input readonly=""
@@ -48,7 +90,7 @@
                  type="text"
                  value="{{ user.token|default_if_none:"" }}">
           <span class="flex items-center cursor-pointer group pr-3"
-                title="Copy"
+                title="{% translate "Copy" %}"
                 data-copy-target="#token">
             {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
           </span>
@@ -57,7 +99,7 @@
       <div class="flex justify-between items-center">
         <div class="flex items-center text-[var(--color-warning-text)] text-sm">
           {% include "app/icons/error.svg" with classes="w-4 h-4 mr-2 shrink-0" %}
-          <p>Regenerating will invalidate the previous token</p>
+          <p>{% translate "Regenerating will invalidate the previous token" %}</p>
         </div>
         <div class="flex space-x-3">
           <form method="post" action="{% url 'regenerate_token' %}">
@@ -65,65 +107,74 @@
             <button type="submit"
                     class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
               {% include "app/icons/circle-spinning-counter-clockwise.svg" with classes="w-4 h-4 mr-2" %}
-              Regenerate
+              {% translate "Regenerate" %}
             </button>
           </form>
         </div>
       </div>
     </div>
 
+    {% include "users/components/integration_tokens.html" %}
+
     {# Filter bar #}
     <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 mb-5">
-      <p class="text-sm text-[var(--color-text-secondary)] mb-3">Jump to integration:</p>
+      <p class="text-sm text-[var(--color-text-secondary)] mb-3">{% translate "Jump to integration:" %}</p>
       <div class="flex flex-wrap gap-2">
         <button type="button"
                 @click="activeIntegration = 'all'"
                 :aria-pressed="activeIntegration === 'all'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                 :class="activeIntegration === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-          All
+          {% translate "All" %}
         </button>
         <button type="button"
                 @click="activeIntegration = 'jellyfin'"
                 :aria-pressed="activeIntegration === 'jellyfin'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                 :class="activeIntegration === 'jellyfin' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-          Jellyfin
+          {% translate "Jellyfin" %}
         </button>
         <button type="button"
                 @click="activeIntegration = 'plex'"
                 :aria-pressed="activeIntegration === 'plex'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                 :class="activeIntegration === 'plex' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-          Plex
+          {% translate "Plex" %}
         </button>
         <button type="button"
                 @click="activeIntegration = 'emby'"
                 :aria-pressed="activeIntegration === 'emby'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                 :class="activeIntegration === 'emby' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-          Emby
+          {% translate "Emby" %}
         </button>
         <button type="button"
                 @click="activeIntegration = 'kodi'"
                 :aria-pressed="activeIntegration === 'kodi'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                 :class="activeIntegration === 'kodi' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-          Kodi
+          {% translate "Kodi" %}
         </button>
         <button type="button"
                 @click="activeIntegration = 'stremio'"
                 :aria-pressed="activeIntegration === 'stremio'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                 :class="activeIntegration === 'stremio' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-          Stremio
+          {% translate "Stremio" %}
         </button>
         <button type="button"
                 @click="activeIntegration = 'seerr'"
                 :aria-pressed="activeIntegration === 'seerr'"
                 class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
                 :class="activeIntegration === 'seerr' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-          Seerr
+          {% translate "Seerr" %}
+        </button>
+        <button type="button"
+                @click="activeIntegration = 'nuvio'"
+                :aria-pressed="activeIntegration === 'nuvio'"
+                class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
+                :class="activeIntegration === 'nuvio' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
+          {% translate "Nuvio" %}
         </button>
       </div>
     </div>
@@ -134,40 +185,40 @@
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h3 class="text-base font-medium">Jellyfin Integration (Official Repo)</h3>
+        <h3 class="text-base font-medium">{% translate "Jellyfin Integration (Official Repo)" %}</h3>
       </div>
-      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Jellyfin to automatically track your watching progress. Use this method if your server has access to the official Jellyfin plugin repository.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Connect Jellyfin to automatically track your watching progress. Use this method if your server has access to the official Jellyfin plugin repository." %}</p>
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
-        <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
         {% url 'jellyfin_webhook' request.user.token as jellyfin_webhook_path %}
         {% absolute_app_url jellyfin_webhook_path as jellyfin_webhook_url %}
         <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
-          <li>You will need to have TMDB and TVDB as metadata providers in Jellyfin.</li>
-          <li>Install the Webhook plugin from the Jellyfin Stable repo via your server's Plugin Catalog.</li>
+          <li>{% translate "You will need to have TMDB and TVDB as metadata providers in Jellyfin." %}</li>
+          <li>{% translate "Install the Webhook plugin from the Jellyfin Stable repo via your server's Plugin Catalog." %}</li>
           <li>
-            Restart your server, then open the Webhook plugin and click <strong>Add Generic Destination</strong>.
+            {% translate "Restart your server, then open the Webhook plugin and click" %} <strong>{% translate "Add Generic Destination" %}</strong>.
           </li>
           <li>
-            Configure the webhook with the following settings:
+            {% translate "Configure the webhook with the following settings:" %}
             <ul class="list-disc list-inside ml-6 mt-2 space-y-1 text-[var(--color-text-muted)]">
-              <li>Name: <strong>Floppy</strong></li>
-              <li>Notification Type: <strong>Playback Start</strong>, <strong>Playback Stop</strong>, <strong>Playback Progress</strong>, <strong>Item Added</strong>, and <strong>Item Deleted</strong></li>
-              <li>User Filter: your Jellyfin user</li>
+              <li>{% translate "Name:" %} <strong>{% translate "Floppy" %}</strong></li>
+              <li>{% translate "Notification Type:" %} <strong>{% translate "Playback Start" %}</strong>, <strong>{% translate "Playback Stop" %}</strong>, <strong>{% translate "Playback Progress" %}</strong>, <strong>{% translate "Item Added" %}</strong>{% translate ", and" %} <strong>{% translate "Item Deleted" %}</strong></li>
+              <li>{% translate "User Filter: your Jellyfin user" %}</li>
             </ul>
           </li>
           <li>
-            Set the webhook URL to:
+            {% translate "Set the webhook URL to:" %}
             {# djlint:off #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly id="jellyfin-webhook-url-official" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ jellyfin_webhook_url }}">
-              <span class="flex items-center cursor-pointer group" title="Copy" data-copy-target="#jellyfin-webhook-url-official">
+              <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#jellyfin-webhook-url-official">
                 {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
           </li>
           <li>
-            Under the <strong>Template</strong> section, paste the following JSON:
+            {% translate "Under the" %} <strong>{% translate "Template" %}</strong> {% translate "section, paste the following JSON:" %}
             <div class="relative mt-2">
               <textarea readonly id="jellyfin-json-template" class="w-full bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text-secondary)] text-sm border-0 focus:ring-0 outline-none font-mono p-3 resize-none overflow-auto max-h-72" rows="14">
 {% verbatim %}{
@@ -210,15 +261,15 @@
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h3 class="text-base font-medium">Jellyfin Integration (Unofficial Repo)</h3>
+        <h3 class="text-base font-medium">{% translate "Jellyfin Integration (Unofficial Repo)" %}</h3>
       </div>
-      <p class="text-[var(--color-text-muted)] mb-4 text-sm">An alternative setup using an unofficial webhook plugin from a community repository. Use this method if the official Jellyfin plugin repository is not accessible from your server.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "An alternative setup using an unofficial webhook plugin from a community repository. Use this method if the official Jellyfin plugin repository is not accessible from your server." %}</p>
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
-        <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
         <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
-          <li>You will need to have TMDB and TVDB as metadata providers in Jellyfin.</li>
+          <li>{% translate "You will need to have TMDB and TVDB as metadata providers in Jellyfin." %}</li>
           <li>
-            In Jellyfin, go to <strong>Dashboard > Plugins > Repositories</strong> and add the following repository URL:
+            {% translate "In Jellyfin, go to" %} <strong>{% translate "Dashboard > Plugins > Repositories" %}</strong> {% translate "and add the following repository URL:" %}
             <div class="mt-2">
               <a href="https://raw.githubusercontent.com/shemanaev/jellyfin-plugin-repo/master/manifest.json"
                  target="_blank"
@@ -227,26 +278,26 @@
             </div>
           </li>
           <li>
-            From the Plugin Catalog, install the
+            {% translate "From the Plugin Catalog, install the" %}
             <a href="https://github.com/shemanaev/jellyfin-plugin-webhooks"
                target="_blank"
                rel="noopener noreferrer"
-               class="text-[var(--color-link)] hover:underline">Unofficial Webhooks plugin</a>.
+               class="text-[var(--color-link)] hover:underline">{% translate "Unofficial Webhooks plugin" %}</a>.
           </li>
           <li>
-            Restart your server, then open the Unofficial Webhooks plugin and configure it:
+            {% translate "Restart your server, then open the Unofficial Webhooks plugin and configure it:" %}
             <ul class="list-disc list-inside ml-6 mt-2 space-y-1 text-[var(--color-text-muted)]">
-              <li>Payload format: <strong>Default</strong></li>
-              <li>Listen to events only for: your Jellyfin user</li>
-              <li>Events: <strong>Play</strong>, <strong>Stop</strong>, <strong>MarkPlayed</strong>, <strong>MarkUnplayed</strong>, <strong>ItemAdded</strong>, and <strong>ItemDeleted</strong></li>
+              <li>{% translate "Payload format:" %} <strong>{% translate "Default" %}</strong></li>
+              <li>{% translate "Listen to events only for: your Jellyfin user" %}</li>
+              <li>{% translate "Events:" %} <strong>{% translate "Play" %}</strong>, <strong>{% translate "Stop" %}</strong>, <strong>{% translate "MarkPlayed" %}</strong>, <strong>{% translate "MarkUnplayed" %}</strong>, <strong>{% translate "ItemAdded" %}</strong>{% translate ", and" %} <strong>{% translate "ItemDeleted" %}</strong></li>
             </ul>
           </li>
           <li>
-            Set the webhook URL to:
+            {% translate "Set the webhook URL to:" %}
             {# djlint:off #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly id="jellyfin-webhook-url-unofficial" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ jellyfin_webhook_url }}">
-              <span class="flex items-center cursor-pointer group" title="Copy" data-copy-target="#jellyfin-webhook-url-unofficial">
+              <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#jellyfin-webhook-url-unofficial">
                 {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
@@ -255,9 +306,9 @@
         </ol>
       </div>
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mt-4">
-        <h4 class="text-sm font-medium mb-3">Webhook Events</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Webhook Events" %}</h4>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-          Play and Stop events are always processed. Enable these to sync manual watched changes from the unofficial Webhooks plugin.
+          {% translate "Play and Stop events are always processed. Enable these to sync manual watched changes from the unofficial Webhooks plugin." %}
         </p>
         <form method="post"
               action="{% url 'update_jellyfin_webhook_events' %}"
@@ -267,9 +318,9 @@
             <div class="flex-1">
               <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                 {% include "app/icons/circle-check.svg" with classes="w-5 h-5 mr-2" %}
-                <span class="text-sm font-medium">Process MarkPlayed events</span>
+                <span class="text-sm font-medium">{% translate "Process MarkPlayed events" %}</span>
               </div>
-              <p class="text-xs text-[var(--color-text-muted)] ml-7">Mark media as watched when it is manually marked played in Jellyfin.</p>
+              <p class="text-xs text-[var(--color-text-muted)] ml-7">{% translate "Mark media as watched when it is manually marked played in Jellyfin." %}</p>
             </div>
             <label class="relative inline-flex items-center cursor-pointer ml-4">
               <input class="sr-only peer"
@@ -284,10 +335,10 @@
             <div class="flex-1">
               <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
                 {% include "app/icons/error.svg" with classes="w-5 h-5 mr-2 text-[var(--color-warning-text)]" %}
-                <span class="text-sm font-medium">Process MarkUnplayed events</span>
+                <span class="text-sm font-medium">{% translate "Process MarkUnplayed events" %}</span>
               </div>
               <p class="text-xs text-[var(--color-text-muted)] ml-7">
-                Remove watched progress when it is manually marked unplayed in Jellyfin. This event can delete media from Floppy.
+                {% translate "Remove watched progress when it is manually marked unplayed in Jellyfin. This event can delete media from Floppy." %}
               </p>
             </div>
             <label class="relative inline-flex items-center cursor-pointer ml-4">
@@ -303,7 +354,7 @@
             <button type="submit"
                     class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
               {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
-              Save Changes
+              {% translate "Save Changes" %}
             </button>
           </div>
         </form>
@@ -317,82 +368,74 @@
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center">
           {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-          <h3 class="text-base font-medium">Floppy &rarr; Jellyfin</h3>
+          <h3 class="text-base font-medium">{% translate "Floppy → Jellyfin" %}</h3>
         </div>
         {% if jellyfin_account and jellyfin_account.is_connected %}
-          <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Connected</span>
+          <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">{% translate "Connected" %}</span>
         {% else %}
-          <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">Disconnected</span>
+          <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
         {% endif %}
       </div>
-      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Push your Floppy watched status onto a Jellyfin server, e.g. after re-adding media or setting up a fresh Jellyfin instance.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Push your Floppy watched status onto a Jellyfin server, e.g. after re-adding media or setting up a fresh Jellyfin instance." %}</p>
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md space-y-3" x-data="{ editingJellyfin: false }">
         {% if jellyfin_account %}
           <div class="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
             <span>{{ jellyfin_account.base_url }}</span>
             {% if jellyfin_account.jellyfin_username %}
-              <span>&bull;</span>
+              <span>•</span>
               <span>{{ jellyfin_account.jellyfin_username }}</span>
             {% endif %}
             {% if jellyfin_account.last_sync_at %}
-              <span>&bull;</span>
-              <span>Last sync: {{ jellyfin_account.last_sync_at|user_datetime_format:user }}</span>
+              <span>•</span>
+              <span>{% blocktranslate with value1=jellyfin_account.last_sync_at|user_datetime_format:user %}Last sync: {{ value1 }}{% endblocktranslate %}</span>
             {% endif %}
           </div>
           {% if jellyfin_account.last_error_message %}
             <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
-              <strong>Error:</strong> {{ jellyfin_account.last_error_message }}
+              <strong>{% translate "Error:" %}</strong> {{ jellyfin_account.last_error_message }}
             </div>
           {% endif %}
           <div class="border-t border-gray-600/50 pt-3 space-y-3">
             <div>
-              <h4 class="text-sm font-medium">Jellyfin &rarr; Floppy: auto-import history</h4>
+              <h4 class="text-sm font-medium">{% translate "Jellyfin → Floppy: auto-import history" %}</h4>
               <p class="text-xs text-[var(--color-text-muted)] mt-1">
-                No manual export needed. Floppy pulls your watch history straight from your
-                Jellyfin server: full per-play history via the Playback Reporting plugin's API
-                when it's reachable with an admin key, otherwise a one-event-per-item backfill
-                from Jellyfin's current watched state.
+                {% translate "No manual export needed. Floppy pulls your watch history straight from your Jellyfin server: full per-play history via the Playback Reporting plugin's API when it's reachable with an admin key, otherwise a one-event-per-item backfill from Jellyfin's current watched state." %}
               </p>
             </div>
             <p class="text-xs text-[var(--color-text-muted)]">
               {% if jellyfin_account.playback_reporting_available %}
-                Using Playback Reporting's API (full per-play history).
+                {% translate "Using Playback Reporting's API (full per-play history)." %}
               {% elif jellyfin_account.playback_reporting_available is False %}
-                Playback Reporting's API isn't reachable with this key &mdash; using the
-                current-watched-state backfill instead (one event per item).
+                {% translate "Playback Reporting's API isn't reachable with this key — using the current-watched-state backfill instead (one event per item)." %}
               {% else %}
-                Not yet run.
+                {% translate "Not yet run." %}
               {% endif %}
               {% if jellyfin_account.last_pull_at %}
-                Last run: {{ jellyfin_account.last_pull_at|user_datetime_format:user }}.
+                {% blocktranslate with value1=jellyfin_account.last_pull_at|user_datetime_format:user %}Last run: {{ value1 }}.{% endblocktranslate %}
               {% endif %}
             </p>
             {% if jellyfin_account.last_pull_error_message %}
               <div class="text-xs text-[var(--color-warning-text)] bg-amber-500/10 border border-amber-400/30 rounded p-2">
-                <strong>Error:</strong> {{ jellyfin_account.last_pull_error_message }}
+                <strong>{% translate "Error:" %}</strong> {{ jellyfin_account.last_pull_error_message }}
               </div>
             {% endif %}
             <form method="post" action="{% url 'jellyfin_pull_now' %}">
               {% csrf_token %}
               <button type="submit"
                       class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                Import history now
+                {% translate "Import history now" %}
               </button>
             </form>
           </div>
           <details class="border-t border-gray-600/50 pt-3">
-            <summary class="text-sm font-medium cursor-pointer">Or upload a Playback Reporting TSV manually</summary>
+            <summary class="text-sm font-medium cursor-pointer">{% translate "Or upload a Playback Reporting TSV manually" %}</summary>
             <div class="space-y-3 mt-3">
               <p class="text-xs text-[var(--color-text-muted)]">
-                Only needed if your key can't reach the Playback Reporting API (e.g. a
-                non-admin key) and you'd rather not use the current-watched-state backfill above.
+                {% translate "Only needed if your key can't reach the Playback Reporting API (e.g. a non-admin key) and you'd rather not use the current-watched-state backfill above." %}
               </p>
               {% if jellyfin_playback_reporting_import %}
                 <p class="text-xs text-[var(--color-text-muted)]">
-                  Last import: {{ jellyfin_playback_reporting_import.get_status_display }}
-                  ({{ jellyfin_playback_reporting_import.started_at|user_datetime_format:user }}),
-                  {{ jellyfin_playback_reporting_import.created_count }} created,
-                  {{ jellyfin_playback_reporting_import.skipped_count }} skipped.
+                  {% blocktranslate with value1=jellyfin_playback_reporting_import.get_status_display value2=jellyfin_playback_reporting_import.started_at|user_datetime_format:user value3=jellyfin_playback_reporting_import.created_count value4=jellyfin_playback_reporting_import.skipped_count %}Last import: {{ value1 }} ({{ value2 }}), {{ value3 }} created, {{ value4 }} skipped.{% endblocktranslate %}
                 </p>
               {% endif %}
               <form method="post"
@@ -407,7 +450,7 @@
                        class="block w-full text-sm text-[var(--color-text-secondary)] file:mr-3 file:rounded file:border-0 file:bg-indigo-600 file:px-3 file:py-2 file:text-sm file:text-white hover:file:bg-indigo-700">
                 <button type="submit"
                         class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                  Import / reimport history
+                  {% translate "Import / reimport history" %}
                 </button>
               </form>
             </div>
@@ -416,27 +459,27 @@
             {% csrf_token %}
             <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox" name="pull_history_enabled" {% if jellyfin_account.pull_history_enabled %}checked{% endif %}>
-              Automatically import new Jellyfin history (every {{ jellyfin_pull_interval_minutes }} minutes)
+              {% blocktranslate %}Automatically import new Jellyfin history (every {{ jellyfin_pull_interval_minutes }} minutes){% endblocktranslate %}
             </label>
             <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox" name="push_watched_enabled" {% if jellyfin_account.push_watched_enabled %}checked{% endif %}>
-              Push watched status to Jellyfin
+              {% translate "Push watched status to Jellyfin" %}
             </label>
             <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox" name="push_unwatched_enabled" {% if jellyfin_account.push_unwatched_enabled %}checked{% endif %}>
-              Push unwatched status to Jellyfin
+              {% translate "Push unwatched status to Jellyfin" %}
             </label>
             <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox" name="scheduled_push_enabled" {% if jellyfin_account.scheduled_push_enabled %}checked{% endif %}>
-              Sync on a schedule (hourly)
+              {% translate "Sync on a schedule (hourly)" %}
             </label>
             <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
               <input type="checkbox" name="instant_push_enabled" {% if jellyfin_account.instant_push_enabled %}checked{% endif %}>
-              Instant push after playback events
+              {% translate "Instant push after playback events" %}
             </label>
             <button type="submit"
                     class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-              Save Settings
+              {% translate "Save Settings" %}
             </button>
           </form>
           <div class="flex gap-2">
@@ -444,24 +487,24 @@
               {% csrf_token %}
               <button type="submit"
                       class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
-                Sync Now
+                {% translate "Sync Now" %}
               </button>
             </form>
             <button type="button"
                     @click="editingJellyfin = !editingJellyfin"
                     class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
-              Edit connection
+              {% translate "Edit connection" %}
             </button>
             <form method="post" action="{% url 'jellyfin_disconnect' %}">
               {% csrf_token %}
               <button type="submit"
                       class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
-                Disconnect
+                {% translate "Disconnect" %}
               </button>
             </form>
           </div>
           <div x-show="editingJellyfin" x-transition.opacity.duration.150ms class="border-t border-gray-600/50 pt-3 space-y-3">
-            <p class="text-sm text-[var(--color-text-muted)]">Update the server URL, API key, or user. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "Update the server URL, API key, or user. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username." %}</p>
             <form method="post" action="{% url 'jellyfin_connect' %}" class="space-y-3">
               {% csrf_token %}
               <input name="base_url"
@@ -471,30 +514,30 @@
                      type="url"
                      required>
               <input name="api_key"
-                     placeholder="Jellyfin API key (re-enter to update)"
+                     placeholder="{% translate "Jellyfin API key (re-enter to update)" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="password"
                      required>
               <input name="username"
                      value="{{ jellyfin_account.jellyfin_username }}"
-                     placeholder="Jellyfin username (only needed for server-admin keys)"
+                     placeholder="{% translate "Jellyfin username (only needed for server-admin keys)" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text">
               <div class="flex gap-2">
                 <button type="submit"
                         class="px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-                  Update Jellyfin connection
+                  {% translate "Update Jellyfin connection" %}
                 </button>
                 <button type="button"
                         @click="editingJellyfin = false"
                         class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
-                  Cancel
+                  {% translate "Cancel" %}
                 </button>
               </div>
             </form>
           </div>
         {% else %}
-          <p class="text-sm text-[var(--color-text-muted)]">Connect Jellyfin using your server URL and API key. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username.</p>
+          <p class="text-sm text-[var(--color-text-muted)]">{% translate "Connect Jellyfin using your server URL and API key. If the key doesn't resolve a user automatically, also provide the exact Jellyfin username." %}</p>
           <form method="post" action="{% url 'jellyfin_connect' %}" class="space-y-3">
             {% csrf_token %}
             <input name="base_url"
@@ -503,17 +546,17 @@
                    type="url"
                    required>
             <input name="api_key"
-                   placeholder="Jellyfin API key"
+                   placeholder="{% translate "Jellyfin API key" %}"
                    class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    type="password"
                    required>
             <input name="username"
-                   placeholder="Jellyfin username (only needed for server-admin keys)"
+                   placeholder="{% translate "Jellyfin username (only needed for server-admin keys)" %}"
                    class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    type="text">
             <button type="submit"
                     class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
-              Connect Jellyfin
+              {% translate "Connect Jellyfin" %}
             </button>
           </form>
         {% endif %}
@@ -526,31 +569,31 @@
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h3 class="text-base font-medium">Plex Integration</h3>
+        <h3 class="text-base font-medium">{% translate "Plex Integration" %}</h3>
       </div>
-      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Plex to automatically track your watching progress.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Connect Plex to automatically track your watching progress." %}</p>
 
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
-        <h4 class="text-sm font-medium mb-3">Plex Usernames</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Plex Usernames" %}</h4>
         <form method="post"
               action="{% url 'update_plex_usernames' %}"
               class="space-y-2">
           {% csrf_token %}
           <div>
             <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-              This username (or several, comma-separated) will be used to filter which events are sent to your webhook.
+              {% translate "This username (or several, comma-separated) will be used to filter which events are sent to your webhook." %}
             </p>
             <input name="plex_usernames"
                    class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border {% if user.plex_usernames.errors %}border-red-500{% else %}border-gray-600{% endif %} focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                    type="text"
-                   placeholder="username1, username2, username3"
+                   placeholder="{% translate "username1, username2, username3" %}"
                    value="{{ request.user.plex_usernames }}">
           </div>
           <div class="pt-2">
             <button type="submit"
                     class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
               {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
-              Save Changes
+              {% translate "Save Changes" %}
             </button>
           </div>
         </form>
@@ -563,15 +606,15 @@
              availableLibraries: JSON.parse('{{ plex_library_options_json|escapejs }}'),
              selectedLabel() {
                if (!this.availableLibraries.length) {
-                 return 'No libraries available';
+                 return gettext('No libraries available');
                }
                if (this.selectedLibraries.length === this.availableLibraries.length) {
-                 return 'All Libraries';
+                 return gettext('All Libraries');
                }
                if (!this.selectedLibraries.length) {
-                 return 'No Libraries';
+                 return gettext('No Libraries');
                }
-               return `${this.selectedLibraries.length} selected`;
+               return interpolate(gettext('%s selected'), [this.selectedLibraries.length]);
              },
              toggleLibrary(value) {
                if (this.selectedLibraries.includes(value)) {
@@ -595,9 +638,9 @@
                }
              }
            }">
-        <h4 class="text-sm font-medium mb-3">Plex Webhook Libraries</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Plex Webhook Libraries" %}</h4>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-          Choose which Plex libraries are accepted by your webhook. All libraries are selected by default.
+          {% translate "Choose which Plex libraries are accepted by your webhook. All libraries are selected by default." %}
         </p>
         {% if plex_library_options_json != "[]" %}
           <form method="post" action="{% url 'update_plex_webhook_libraries' %}" class="space-y-3">
@@ -624,11 +667,11 @@
                    x-transition:leave-end="transform opacity-0 scale-95"
                    class="absolute left-0 mt-2 w-full rounded-md bg-[var(--color-surface-strong)] border border-gray-700 shadow-lg overflow-hidden z-40">
                 <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-700">
-                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">Plex Libraries</div>
+                  <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Plex Libraries" %}</div>
                   <button type="button"
                           class="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
                           @click="toggleAllLibraries()"
-                          x-text="allLibrariesSelected() ? 'Hide all' : 'Show all'"></button>
+                          x-text="allLibrariesSelected() ? gettext('Hide all') : gettext('Show all')"></button>
                 </div>
                 <div class="max-h-64 overflow-y-auto">
                   <template x-for="library in availableLibraries" :key="library.value">
@@ -653,19 +696,19 @@
               <button type="submit"
                       class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
                 {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
-                Save Changes
+                {% translate "Save Changes" %}
               </button>
             </div>
           </form>
         {% else %}
-          <p class="text-sm text-[var(--color-warning-text)]">Connect Plex from the Import page to load your available libraries.</p>
+          <p class="text-sm text-[var(--color-warning-text)]">{% translate "Connect Plex from the Import page to load your available libraries." %}</p>
         {% endif %}
       </div>
 
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
-        <h4 class="text-sm font-medium mb-3">Share Plex Webhook</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Share Plex Webhook" %}</h4>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-          Share this server's webhook with another Floppy user without sharing your Plex token. The recipient must enable the share before events are recorded.
+          {% translate "Share this server's webhook with another Floppy user without sharing your Plex token. The recipient must enable the share before events are recorded." %}
         </p>
         {% if plex_connected %}
           <form method="post"
@@ -678,15 +721,15 @@
                   availableLibraries: JSON.parse('{{ plex_library_options_json|escapejs }}'),
                   selectedLabel() {
                     if (!this.availableLibraries.length) {
-                      return 'No libraries available';
+                      return gettext('No libraries available');
                     }
                     if (this.selectedLibraries.length === this.availableLibraries.length) {
-                      return 'All Libraries';
+                      return gettext('All Libraries');
                     }
                     if (!this.selectedLibraries.length) {
-                      return 'No Libraries';
+                      return gettext('No Libraries');
                     }
-                    return `${this.selectedLibraries.length} selected`;
+                    return interpolate(gettext('%s selected'), [this.selectedLibraries.length]);
                   },
                   toggleLibrary(value) {
                     if (this.selectedLibraries.includes(value)) {
@@ -712,14 +755,14 @@
                 }">
             {% csrf_token %}
             <div>
-              <label class="block text-sm text-[var(--color-text-secondary)] mb-1" for="plex-webhook-share-recipient">Floppy user</label>
+              <label class="block text-sm text-[var(--color-text-secondary)] mb-1" for="plex-webhook-share-recipient">{% translate "Floppy user" %}</label>
               <div class="relative">
                 <select id="plex-webhook-share-recipient"
                         name="plex_webhook_share_recipient"
                         x-model="selectedRecipient"
                         class="w-full py-2 px-3 pr-9 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none"
                         required>
-                  <option value="">Select a user</option>
+                  <option value="">{% translate "Select a user" %}</option>
                   {% for recipient in plex_share_recipients %}
                     <option value="{{ recipient.pk }}">{{ recipient.username }}</option>
                   {% endfor %}
@@ -729,7 +772,7 @@
             </div>
             <div>
               <div class="flex items-center gap-1 mb-1">
-                <label class="block text-sm text-[var(--color-text-secondary)]" for="plex-webhook-share-username">Plex username</label>
+                <label class="block text-sm text-[var(--color-text-secondary)]" for="plex-webhook-share-username">{% translate "Plex username" %}</label>
                 <div class="relative" x-data="{ tooltipOpen: false }">
                   <button @mouseenter="tooltipOpen = true"
                           @mouseleave="tooltipOpen = false"
@@ -737,7 +780,7 @@
                           @click.outside="tooltipOpen = false"
                           class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                           type="button"
-                          aria-label="Show Plex username filtering information">
+                          aria-label="{% translate "Show Plex username filtering information" %}">
                     {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                   </button>
                   <div x-show="tooltipOpen"
@@ -750,7 +793,7 @@
                        x-transition:leave-end="opacity-0 scale-95"
                        class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 bg-[var(--color-surface-strong)] border border-[var(--color-surface-border)] text-[var(--color-text)] text-xs rounded-lg shadow-lg z-50"
                        style="display: none;">
-                    This username (or several, comma-separated) will be used to filter which events are sent to your webhook.
+                    {% translate "This username (or several, comma-separated) will be used to filter which events are sent to your webhook." %}
                     <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent" style="border-top-color: var(--color-surface-strong);"></div>
                   </div>
                 </div>
@@ -759,7 +802,7 @@
                      name="plex_webhook_share_username"
                      class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text"
-                     placeholder="username1, username2, username3"
+                     placeholder="{% translate "username1, username2, username3" %}"
                      maxlength="255"
                      required>
             </div>
@@ -768,12 +811,12 @@
             <button type="submit"
                     class="h-10 flex items-center justify-center px-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer whitespace-nowrap">
               {% include "app/icons/link.svg" with classes="w-4 h-4 mr-2" %}
-              Share
+              {% translate "Share" %}
             </button>
           </form>
           {% if plex_webhook_shares %}
             <div class="mt-5 space-y-3">
-              <h5 class="text-sm font-medium text-[var(--color-text-secondary)]">Current shares</h5>
+              <h5 class="text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Current shares" %}</h5>
               {% for share in plex_webhook_shares %}
                 <div class="bg-[var(--color-surface-strong)] rounded-md p-3 space-y-3">
                   <form method="post"
@@ -785,15 +828,15 @@
                           availableLibraries: JSON.parse('{{ plex_library_options_json|escapejs }}'),
                           selectedLabel() {
                             if (!this.availableLibraries.length) {
-                              return 'No libraries available';
+                              return gettext('No libraries available');
                             }
                             if (this.selectedLibraries.length === this.availableLibraries.length) {
-                              return 'All Libraries';
+                              return gettext('All Libraries');
                             }
                             if (!this.selectedLibraries.length) {
-                              return 'No Libraries';
+                              return gettext('No Libraries');
                             }
-                            return `${this.selectedLibraries.length} selected`;
+                            return interpolate(gettext('%s selected'), [this.selectedLibraries.length]);
                           },
                           toggleLibrary(value) {
                             if (this.selectedLibraries.includes(value)) {
@@ -820,14 +863,14 @@
                     {% csrf_token %}
                     <input type="hidden" name="plex_webhook_share_id" value="{{ share.pk }}">
                     <div>
-                      <label class="block text-sm text-[var(--color-text-secondary)] mb-1">Floppy user</label>
+                      <label class="block text-sm text-[var(--color-text-secondary)] mb-1">{% translate "Floppy user" %}</label>
                       <div class="h-10 flex items-center px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600">
                         {{ share.recipient.username }}
                       </div>
                     </div>
                     <div>
                       <div class="flex items-center gap-1 mb-1">
-                        <label class="block text-sm text-[var(--color-text-secondary)]" for="plex-webhook-share-username-{{ share.pk }}">Plex username</label>
+                        <label class="block text-sm text-[var(--color-text-secondary)]" for="plex-webhook-share-username-{{ share.pk }}">{% translate "Plex username" %}</label>
                         <div class="relative" x-data="{ tooltipOpen: false }">
                           <button @mouseenter="tooltipOpen = true"
                                   @mouseleave="tooltipOpen = false"
@@ -835,7 +878,7 @@
                                   @click.outside="tooltipOpen = false"
                                   class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer inline-flex items-center"
                                   type="button"
-                                  aria-label="Show Plex username filtering information">
+                                  aria-label="{% translate "Show Plex username filtering information" %}">
                             {% include "app/icons/info.svg" with classes="w-3.5 h-3.5" %}
                           </button>
                           <div x-show="tooltipOpen"
@@ -848,7 +891,7 @@
                                x-transition:leave-end="opacity-0 scale-95"
                                class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 bg-[var(--color-surface-strong)] border border-[var(--color-surface-border)] text-[var(--color-text)] text-xs rounded-lg shadow-lg z-50"
                                style="display: none;">
-                            This username (or several, comma-separated) will be used to filter which events are sent to your webhook.
+                            {% translate "This username (or several, comma-separated) will be used to filter which events are sent to your webhook." %}
                             <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent" style="border-top-color: var(--color-surface-strong);"></div>
                           </div>
                         </div>
@@ -865,17 +908,17 @@
                     <button type="submit"
                             class="h-10 flex items-center justify-center px-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer whitespace-nowrap">
                       {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
-                      Save
+                      {% translate "Save" %}
                     </button>
                   </form>
                   <div class="flex items-center justify-between gap-3 flex-wrap">
-                    <span class="text-xs text-[var(--color-text-muted)]">{% if share.recipient_enabled %}Enabled by recipient{% else %}Waiting for recipient opt-in{% endif %}</span>
+                    <span class="text-xs text-[var(--color-text-muted)]">{% if share.recipient_enabled %}{% translate "Enabled by recipient" %}{% else %}{% translate "Waiting for recipient opt-in" %}{% endif %}</span>
                     <form method="post" action="{% url 'delete_plex_webhook_share' %}">
                       {% csrf_token %}
                       <input type="hidden" name="plex_webhook_share_id" value="{{ share.pk }}">
                       <button type="submit"
                               class="px-3 py-1.5 text-xs rounded-md bg-red-500/10 text-red-300 border border-red-400/30 hover:bg-red-500/20 transition-colors cursor-pointer">
-                        Revoke Access
+                        {% translate "Revoke Access" %}
                       </button>
                     </form>
                   </div>
@@ -884,19 +927,19 @@
             </div>
           {% endif %}
         {% else %}
-          <p class="text-sm text-[var(--color-warning-text)]">Connect Plex from the Import page before sharing its webhook.</p>
+          <p class="text-sm text-[var(--color-warning-text)]">{% translate "Connect Plex from the Import page before sharing its webhook." %}</p>
         {% endif %}
       </div>
 
       {% if received_plex_webhook_shares %}
         <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
-          <h4 class="text-sm font-medium mb-3">Shared Plex Webhooks</h4>
+          <h4 class="text-sm font-medium mb-3">{% translate "Shared Plex Webhooks" %}</h4>
           <div class="space-y-3">
             {% for share in received_plex_webhook_shares %}
               <div class="bg-[var(--color-surface-strong)] rounded-md p-3 flex items-center justify-between gap-3 flex-wrap">
                 <div class="text-sm text-[var(--color-text-secondary)]">
-                  <p>Shared by <strong>{{ share.owner.username }}</strong> for Plex username <strong>{{ share.plex_username }}</strong>.</p>
-                  <p class="text-xs text-[var(--color-text-muted)] mt-1">{% if share.all_libraries %}All libraries{% elif share.allowed_libraries %}Selected libraries only{% else %}No libraries{% endif %}</p>
+                  <p>{% translate "Shared by" %} <strong>{{ share.owner.username }}</strong> {% translate "for Plex username" %} <strong>{{ share.plex_username }}</strong>.</p>
+                  <p class="text-xs text-[var(--color-text-muted)] mt-1">{% if share.all_libraries %}{% translate "All libraries" %}{% elif share.allowed_libraries %}{% translate "Selected libraries only" %}{% else %}{% translate "No libraries" %}{% endif %}</p>
                 </div>
                 <form method="post" action="{% url 'toggle_plex_webhook_share' %}">
                   {% csrf_token %}
@@ -904,7 +947,7 @@
                   <input type="hidden" name="enabled" value="{% if share.recipient_enabled %}0{% else %}1{% endif %}">
                   <button type="submit"
                           class="px-3 py-1.5 text-xs rounded-md {% if share.recipient_enabled %}bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20{% else %}bg-indigo-600 text-white hover:bg-indigo-700{% endif %} transition-colors cursor-pointer">
-                    {% if share.recipient_enabled %}Turn Off{% else %}Turn On{% endif %}
+                    {% if share.recipient_enabled %}{% translate "Turn Off" %}{% else %}{% translate "Turn On" %}{% endif %}
                   </button>
                 </form>
               </div>
@@ -914,16 +957,14 @@
       {% endif %}
 
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
-        <h4 class="text-sm font-medium mb-3">Webhook Status</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Webhook Status" %}</h4>
         {% if plex_webhook_needs_update %}
           <div class="flex items-start gap-2">
             {% include "app/icons/warning.svg" with classes="w-4 h-4 mt-0.5 text-[var(--color-warning-text)] shrink-0" %}
             <div class="text-sm text-[var(--color-text-secondary)]">
-              <p class="font-medium text-[var(--color-warning-text)]">Webhook URL needs updating</p>
+              <p class="font-medium text-[var(--color-warning-text)]">{% translate "Webhook URL needs updating" %}</p>
               <p class="text-[var(--color-text-muted)] mt-1">
-                You regenerated your API token on {{ user.plex_webhook_token_rotated_at|datetime_format:user }}.
-                Plex webhooks using the old token will be rejected with a 401.
-                Update the Plex webhook URL to the one shown below.
+                {% blocktranslate with value1=user.plex_webhook_token_rotated_at|datetime_format:user %}You regenerated your API token on {{ value1 }}. Plex webhooks using the old token will be rejected with a 401. Update the Plex webhook URL to the one shown below.{% endblocktranslate %}
               </p>
             </div>
           </div>
@@ -931,7 +972,7 @@
           <div class="flex items-start gap-2">
             {% include "app/icons/warning.svg" with classes="w-4 h-4 mt-0.5 text-red-300 shrink-0" %}
             <div class="text-sm text-[var(--color-text-secondary)]">
-              <p class="font-medium text-red-300">Last webhook error</p>
+              <p class="font-medium text-red-300">{% translate "Last webhook error" %}</p>
               <p class="text-[var(--color-text-muted)] mt-1">
                 {{ user.plex_webhook_last_error }}
                 {% if user.plex_webhook_last_error_at %}
@@ -944,17 +985,16 @@
           <div class="flex items-center gap-2">
             {% include "app/icons/states/completed.svg" with classes="w-4 h-4 text-emerald-300 shrink-0" %}
             <p class="text-sm text-[var(--color-text-secondary)]">
-              Last webhook received {{ user.plex_webhook_last_received_at|datetime_format:user }}.
+              {% blocktranslate with value1=user.plex_webhook_last_received_at|datetime_format:user %}Last webhook received {{ value1 }}.{% endblocktranslate %}
             </p>
           </div>
         {% else %}
           <div class="flex items-start gap-2">
             {% include "app/icons/warning.svg" with classes="w-4 h-4 mt-0.5 text-[var(--color-warning-text)] shrink-0" %}
             <div class="text-sm text-[var(--color-text-secondary)]">
-              <p class="font-medium text-[var(--color-warning-text)]">No Plex webhooks received yet</p>
+              <p class="font-medium text-[var(--color-warning-text)]">{% translate "No Plex webhooks received yet" %}</p>
               <p class="text-[var(--color-text-muted)] mt-1">
-                If you expect automatic logging, confirm webhooks are enabled in Plex and that the
-                URL includes your current API token.
+                {% translate "If you expect automatic logging, confirm webhooks are enabled in Plex and that the URL includes your current API token." %}
               </p>
             </div>
           </div>
@@ -962,15 +1002,15 @@
       </div>
 
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
-        <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
         <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
-          <li>You will need a Plex Pass subscription to use webhooks.</li>
-          <li>In Plex, go to <strong>Settings > Server > Network</strong> and enable Webhooks.</li>
+          <li>{% translate "You will need a Plex Pass subscription to use webhooks." %}</li>
+          <li>{% translate "In Plex, go to" %} <strong>{% translate "Settings > Server > Network" %}</strong> {% translate "and enable Webhooks." %}</li>
           <li>
-            Go to <a href="https://app.plex.tv/desktop/#!/settings/webhooks"
+            {% translate "Go to" %} <a href="https://app.plex.tv/desktop/#!/settings/webhooks"
                      target="_blank"
                      rel="noopener noreferrer"
-                     class="text-[var(--color-link)] hover:underline">Settings > Webhooks</a> and click <strong>Add Webhook</strong>, then enter the following URL:
+                     class="text-[var(--color-link)] hover:underline">{% translate "Settings > Webhooks" %}</a> {% translate "and click" %} <strong>{% translate "Add Webhook" %}</strong>{% translate ", then enter the following URL:" %}
             {# djlint:off #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly
@@ -979,7 +1019,7 @@
                      type="text"
                      value="{% url 'plex_webhook' request.user.token as plex_webhook_path %}{% absolute_app_url plex_webhook_path %}">
               <span class="flex items-center cursor-pointer group"
-                    title="Copy"
+                    title="{% translate "Copy" %}"
                     data-copy-target="#plex-webhook-url">
                 {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
@@ -996,25 +1036,25 @@
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h3 class="text-base font-medium">Emby Integration</h3>
+        <h3 class="text-base font-medium">{% translate "Emby Integration" %}</h3>
       </div>
-      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Emby to automatically track your watching progress.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Connect Emby to automatically track your watching progress." %}</p>
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
-        <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
         <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
-          <li>In Emby, go to <strong>Settings > Notifications</strong>.</li>
-          <li>Click <strong>Add Notification</strong>.</li>
+          <li>{% translate "In Emby, go to" %} <strong>{% translate "Settings > Notifications" %}</strong>.</li>
+          <li>{% translate "Click" %} <strong>{% translate "Add Notification" %}</strong>.</li>
           <li>
-            Configure the notification with the following settings:
+            {% translate "Configure the notification with the following settings:" %}
             <ul class="list-disc list-inside ml-6 mt-2 space-y-2 text-[var(--color-text-muted)]">
-              <li>Request content type: <strong>multipart/form-data</strong></li>
-              <li>Events: <strong>Play</strong> and <strong>Stop</strong></li>
-              <li>Limit user events to: your Emby user</li>
-              <li><strong>Limit library events to</strong> and <strong>Limit devices events to</strong> are optional.</li>
+              <li>{% translate "Request content type:" %} <strong>{% translate "multipart/form-data" %}</strong></li>
+              <li>{% translate "Events:" %} <strong>{% translate "Play" %}</strong> {% translate "and" %} <strong>{% translate "Stop" %}</strong></li>
+              <li>{% translate "Limit user events to: your Emby user" %}</li>
+              <li><strong>{% translate "Limit library events to" %}</strong> {% translate "and" %} <strong>{% translate "Limit devices events to" %}</strong> {% translate "are optional." %}</li>
             </ul>
           </li>
           <li>
-            Set the webhook URL to:
+            {% translate "Set the webhook URL to:" %}
             {# djlint:off #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly
@@ -1023,7 +1063,7 @@
                      type="text"
                      value="{% url 'emby_webhook' request.user.token as emby_webhook_path %}{% absolute_app_url emby_webhook_path %}">
               <span class="flex items-center cursor-pointer group"
-                    title="Copy"
+                    title="{% translate "Copy" %}"
                     data-copy-target="#emby-webhook-url">
                 {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
@@ -1040,18 +1080,18 @@
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h3 class="text-base font-medium">Kodi Integration</h3>
+        <h3 class="text-base font-medium">{% translate "Kodi Integration" %}</h3>
       </div>
-      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Connect Kodi to automatically track your watching progress.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Connect Kodi to automatically track your watching progress." %}</p>
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
-        <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
         <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
-          <li>You will need TMDB and/or TVDB metadata sources enabled in Kodi so that external IDs are included in webhook payloads.</li>
-          <li>Download and install the <a href="https://github.com/sboddy/KodiAddon-HttpScrobbler" class="text-[var(--color-link)] hover:underline" target="_blank" rel="noopener">HTTP Scrobbler add-on</a>.</li>
-          <li>In Kodi, go to <strong>Settings > Services > Control</strong> and enable <strong>Allow remote control via HTTP</strong>.</li>
+          <li>{% translate "You will need TMDB and/or TVDB metadata sources enabled in Kodi so that external IDs are included in webhook payloads." %}</li>
+          <li>{% translate "Download and install the" %} <a href="https://github.com/sboddy/KodiAddon-HttpScrobbler" class="text-[var(--color-link)] hover:underline" target="_blank" rel="noopener">{% translate "HTTP Scrobbler add-on" %}</a>.</li>
+          <li>{% translate "In Kodi, go to" %} <strong>{% translate "Settings > Services > Control" %}</strong> {% translate "and enable" %} <strong>{% translate "Allow remote control via HTTP" %}</strong>.</li>
           <li>
-            In the HTTP Scrobbler add-on settings, set the webhook URL to:
-            <em class="text-[var(--color-text-muted)] not-italic text-xs block mt-1 mb-2">Tip: open the Kodi web interface at <code>http://&lt;kodi-ip&gt;:8080</code> to configure the add-on — easier than using the remote.</em>
+            {% translate "In the HTTP Scrobbler add-on settings, set the webhook URL to:" %}
+            <em class="text-[var(--color-text-muted)] not-italic text-xs block mt-1 mb-2">{% translate "Tip: open the Kodi web interface at" %} <code>http://&lt;kodi-ip&gt;:8080</code> {% translate "to configure the add-on — easier than using the remote." %}</em>
             {# djlint:off #}
             <div class="inline-flex items-center gap-2 w-full">
               <input readonly
@@ -1060,16 +1100,17 @@
                      type="text"
                      value="{% url 'kodi_webhook' request.user.token as kodi_webhook_path %}{% absolute_app_url kodi_webhook_path %}">
               <span class="flex items-center cursor-pointer group"
-                    title="Copy"
+                    title="{% translate "Copy" %}"
                     data-copy-target="#kodi-webhook-url">
                 {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
           </li>
-          <li>Leave the username and password fields blank.</li>
-          <li>Enable the following events: <strong>Start</strong>, <strong>Stopped</strong>, and <strong>Finished</strong>.</li>
-          <li>An item is marked watched when playback reaches 80% or Kodi reports a <em>Finished</em> event.</li>
+          <li>{% translate "Leave the username and password fields blank." %}</li>
+          <li>{% translate "In the add-on's \"Scrobble at specific events\" settings, make sure" %} <strong>{% translate "Start playback" %}</strong>, <strong>{% translate "Playback stopped (not finished)" %}</strong>{% translate ", and" %} <strong>{% translate "Playback finished (not stopped before reaching the end)" %}</strong> {% translate "are all enabled (they're on by default)." %}</li>
+          <li>{% translate "If you use the add-on's" %} <strong>{% translate "Skip all events after sending stop/end" %}</strong> {% translate "option, turn it off — it can suppress the events Floppy needs to mark an episode watched." %}</li>
+          <li>{% translate "An item is marked watched when playback reaches 80% or Kodi reports" %} <em>{% translate "Playback finished" %}</em>.</li>
         </ol>
       </div>
     </div>
@@ -1080,47 +1121,49 @@
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h3 class="text-base font-medium">Stremio Integration</h3>
+        <h3 class="text-base font-medium">{% translate "Stremio Integration" %}</h3>
       </div>
       <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-        Install the Floppy Scrobbler addon in Stremio to mark movies and episodes as in progress the moment playback starts.
-        Pair it with the Stremio import on the <a href="{% url 'import_data' %}" class="text-[var(--color-link)] hover:underline">Import page</a>, which syncs watched state from your Stremio library every 2 hours.
+        {% translate "Install the Floppy Scrobbler addon in Stremio to mark movies and episodes as in progress the moment playback starts. Pair it with the Stremio import on the" %} <a href="{% url 'import_data' %}" class="text-[var(--color-link)] hover:underline">{% translate "Import page" %}</a>{% translate ", which syncs watched state from your Stremio library every 2 hours." %}
       </p>
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
-        <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
-        {% url 'stremio_addon_manifest' request.user.token as stremio_addon_path %}
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
+        {% if catalog_grants %}{% firstof catalog_grants.0.token request.user.token as stremio_addon_credential %}{% else %}{% firstof request.user.token as stremio_addon_credential %}{% endif %}
+        {% url 'stremio_addon_manifest' stremio_addon_credential as stremio_addon_path %}
         {% absolute_app_url stremio_addon_path as stremio_addon_url %}
         <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
           <li>
-            Copy your personal addon URL:
+            {% translate "Copy your personal addon URL:" %}
             {# djlint:off #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
               <input readonly id="stremio-addon-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{{ stremio_addon_url }}">
-              <span class="flex items-center cursor-pointer group" title="Copy" data-copy-target="#stremio-addon-url">
+              <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#stremio-addon-url">
                 {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
             </div>
             {# djlint:on #}
           </li>
-          <li>In Stremio, open <strong>Addons</strong>, paste the URL into the search box at the top, and click <strong>Install</strong>.</li>
-          <li>Floppy must be reachable from your Stremio device over <strong>HTTPS</strong> (plain HTTP only works for localhost).</li>
-          <li>Playback start marks the item in progress; the recurring library import marks items watched.</li>
+          <li>
+            {% translate "Optional:" %} <a href="{% url 'stremio_addon_configure' request.user.token %}" class="text-[var(--color-link)] hover:underline" target="_blank" rel="noopener">{% translate "choose which catalogs" %}</a> {% translate "the addon publishes, then use the URL it gives you in place of the one above." %}
+          </li>
+          <li>{% translate "In Stremio, open" %} <strong>{% translate "Addons" %}</strong>{% translate ", paste the URL into the search box at the top, and click" %} <strong>{% translate "Install" %}</strong>.</li>
+          <li>{% translate "Floppy must be reachable from your Stremio device over" %} <strong>HTTPS</strong> {% translate "(plain HTTP only works for localhost)." %}</li>
+          <li>{% translate "Playback start marks the item in progress; the recurring library import marks items watched." %}</li>
         </ol>
+        {% include "users/components/catalog_grants.html" %}
       </div>
       {% if stremio_catalog_readiness %}
         <div class="mt-4">
-          <h4 class="text-sm font-medium mb-2">Catalog Status</h4>
+          <h4 class="text-sm font-medium mb-2">{% translate "Catalog Status" %}</h4>
           <ul class="space-y-1 text-sm text-[var(--color-text-muted)]">
             {% for catalog in stremio_catalog_readiness %}
               <li>
                 {% if catalog.unresolved %}
-                  <strong class="text-[var(--color-text-secondary)]">{{ catalog.publishable }} of {{ catalog.total }}</strong>
-                  {{ catalog.noun }} in <strong class="text-[var(--color-text-secondary)]">{{ catalog.list_name }}</strong> can be published.
-                  Stremio identifies titles by IMDb ID, and the other {{ catalog.unresolved }} {{ catalog.unresolved|pluralize:"has,have" }} none yet.
-                  Floppy resolves these in the background, but a title with no IMDb ID at its provider stays unpublishable.
+                  <strong class="text-[var(--color-text-secondary)]">{% blocktranslate with value1=catalog.publishable value2=catalog.total %}{{ value1 }} of {{ value2 }}{% endblocktranslate %}</strong>
+                  {% blocktranslate with value1=catalog.noun %}{{ value1 }} in{% endblocktranslate %} <strong class="text-[var(--color-text-secondary)]">{{ catalog.list_name }}</strong> {% blocktranslate count count=catalog.unresolved %}can be published. Stremio identifies titles by IMDb ID, and the other {{ count }} has none yet. Floppy resolves these in the background, but a title with no IMDb ID at its provider stays unpublishable.{% plural %}can be published. Stremio identifies titles by IMDb ID, and the other {{ count }} have none yet. Floppy resolves these in the background, but a title with no IMDb ID at its provider stays unpublishable.{% endblocktranslate %}
                 {% else %}
-                  All <strong class="text-[var(--color-text-secondary)]">{{ catalog.total }}</strong>
-                  {{ catalog.noun }} in <strong class="text-[var(--color-text-secondary)]">{{ catalog.list_name }}</strong> can be published.
+                  {% translate "All" %} <strong class="text-[var(--color-text-secondary)]">{{ catalog.total }}</strong>
+                  {% blocktranslate with value1=catalog.noun %}{{ value1 }} in{% endblocktranslate %} <strong class="text-[var(--color-text-secondary)]">{{ catalog.list_name }}</strong> {% translate "can be published." %}
                 {% endif %}
               </li>
             {% endfor %}
@@ -1135,29 +1178,29 @@
          x-transition.opacity.duration.150ms>
       <div class="flex items-center mb-3">
         {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-        <h3 class="text-base font-medium">Seerr Integration</h3>
+        <h3 class="text-base font-medium">{% translate "Seerr Integration" %}</h3>
       </div>
-      <p class="text-[var(--color-text-muted)] mb-4 text-sm">Use a Seerr webhook to automatically add requested/approved media into Floppy.</p>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">{% translate "Use a Seerr webhook to automatically add requested/approved media into Floppy." %}</p>
 
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
-        <h4 class="text-sm font-medium mb-3">Seerr Settings</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Seerr Settings" %}</h4>
         {# kept: jellyseerr_* form fields map to unrenamed User model fields #}
         <form method="post" action="{% url 'update_jellyseerr_settings' %}" class="space-y-3">
           {% csrf_token %}
 
           <div>
             <label for="jellyseerr_enabled" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
-              Auto-add requested media
+              {% translate "Auto-add requested media" %}
             </label>
             <p class="text-[var(--color-text-muted)] text-sm mb-2">
-              Controls whether Seerr webhooks are allowed to add items to your Floppy list.
+              {% translate "Controls whether Seerr webhooks are allowed to add items to your Floppy list." %}
             </p>
 
             <div class="relative"
                 x-data="{
                   open: false,
                   selectedValue: '{{ request.user.jellyseerr_enabled|yesno:'enabled,disabled' }}',
-                  selectedLabel: '{{ request.user.jellyseerr_enabled|yesno:"Enabled - Allow Seerr to automatically add media,Disabled - Do not allow Seerr to add media" }}'
+                  selectedLabel: gettext('{{ request.user.jellyseerr_enabled|yesno:"Enabled - Allow Seerr to automatically add media,Disabled - Do not allow Seerr to add media"|escapejs }}')
                 }">
               <button type="button"
                       @click="open = !open"
@@ -1187,14 +1230,14 @@
                   x-transition:leave-end="transform opacity-0 scale-95"
                   class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
                 <button type="button"
-                        @click="selectedValue = 'enabled'; selectedLabel = 'Enabled - Allow Seerr to automatically add media'; open = false"
+                        @click="selectedValue = 'enabled'; selectedLabel = gettext('Enabled - Allow Seerr to automatically add media'); open = false"
                         class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                  Enabled - Allow Seerr to automatically add media
+                  {% translate "Enabled - Allow Seerr to automatically add media" %}
                 </button>
                 <button type="button"
-                        @click="selectedValue = 'disabled'; selectedLabel = 'Disabled - Do not allow Seerr to add media'; open = false"
+                        @click="selectedValue = 'disabled'; selectedLabel = gettext('Disabled - Do not allow Seerr to add media'); open = false"
                         class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                  Disabled - Do not allow Seerr to add media
+                  {% translate "Disabled - Do not allow Seerr to add media" %}
                 </button>
               </div>
 
@@ -1207,43 +1250,43 @@
 
           <div>
             <label for="jellyseerr_trigger_statuses" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
-              Trigger statuses (comma-separated)
+              {% translate "Trigger statuses (comma-separated)" %}
             </label>
             <p class="text-[var(--color-text-muted)] text-sm mb-2">
-              Examples: PENDING,PROCESSING,PARTIALLY_AVAILABLE,AVAILABLE. Leave blank for default behaviour (UNKNOWN is ignored).
+              {% translate "Examples: PENDING,PROCESSING,PARTIALLY_AVAILABLE,AVAILABLE. Leave blank for default behaviour (UNKNOWN is ignored)." %}
             </p>
             <input
               id="jellyseerr_trigger_statuses"
               name="jellyseerr_trigger_statuses"
               class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
               type="text"
-              placeholder="PENDING,PROCESSING,PARTIALLY_AVAILABLE,AVAILABLE"
+              placeholder="{% translate "PENDING,PROCESSING,PARTIALLY_AVAILABLE,AVAILABLE" %}"
               value="{{ request.user.jellyseerr_trigger_statuses }}"
             >
           </div>
 
           <div>
             <label for="jellyseerr_allowed_usernames" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
-              Allowed Seerr usernames (comma-separated)
+              {% translate "Allowed Seerr usernames (comma-separated)" %}
             </label>
             <p class="text-[var(--color-text-muted)] text-sm mb-2">
-              Leave blank to allow any requester. If set, only those usernames can trigger adds.
+              {% translate "Leave blank to allow any requester. If set, only those usernames can trigger adds." %}
             </p>
             <input
               id="jellyseerr_allowed_usernames"
               name="jellyseerr_allowed_usernames"
               class="w-full py-2 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
               type="text"
-              placeholder="john, someoneelse"
+              placeholder="{% translate "john, someoneelse" %}"
               value="{{ request.user.jellyseerr_allowed_usernames }}"
             >
           </div>
 
           <div>
             <label for="jellyseerr_default_added_status" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
-              Default Floppy status for added items
+              {% translate "Default Floppy status for added items" %}
             </label>
-            <div class="relative" x-data="{ open: false, selectedValue: '{{ request.user.jellyseerr_default_added_status|default:"Planning" }}', selectedLabel: '{{ request.user.jellyseerr_default_added_status|default:"Planning" }}' }">
+            <div class="relative" x-data="{ open: false, selectedValue: '{{ request.user.jellyseerr_default_added_status|default:"Planning" }}', selectedLabel: gettext('{{ request.user.jellyseerr_default_added_status|default:"Planning"|escapejs }}') }">
               <button type="button"
                       @click="open = !open"
                       @click.outside="open = false"
@@ -1271,14 +1314,14 @@
                    x-transition:leave-end="transform opacity-0 scale-95"
                    class="absolute left-0 right-0 mt-2 py-1 bg-[var(--color-panel)] rounded-md shadow-lg overflow-hidden z-10 border border-gray-600">
                 <button type="button"
-                        @click="selectedValue = 'Planning'; selectedLabel = 'Planning'; open = false"
+                        @click="selectedValue = 'Planning'; selectedLabel = gettext('Planning'); open = false"
                         class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                  Planning
+                  {% translate "Planning" %}
                 </button>
                 <button type="button"
-                        @click="selectedValue = 'In progress'; selectedLabel = 'In progress'; open = false"
+                        @click="selectedValue = 'In progress'; selectedLabel = gettext('In progress'); open = false"
                         class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]">
-                  In progress
+                  {% translate "In progress" %}
                 </button>
               </div>
               <input type="hidden" name="jellyseerr_default_added_status" x-bind:value="selectedValue">
@@ -1289,19 +1332,19 @@
             <button type="submit"
                     class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
               {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
-              Save Changes
+              {% translate "Save Changes" %}
             </button>
           </div>
         </form>
       </div>
 
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
-        <h4 class="text-sm font-medium mb-3">Setup Instructions</h4>
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
         <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
-          <li>In Seerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
-          <li>Create a webhook with method <strong>POST</strong> and content type <strong>application/json</strong>.</li>
+          <li>{% translate "In Seerr, go to" %} <strong>{% translate "Settings > Notifications > Webhook" %}</strong>.</li>
+          <li>{% translate "Create a webhook with method" %} <strong>POST</strong> {% translate "and content type" %} <strong>{% translate "application/json" %}</strong>.</li>
           <li>
-            Set the webhook URL to:
+            {% translate "Set the webhook URL to:" %}
             {# djlint:off #}
             {# kept: URL name unchanged to avoid breaking configured webhook URLs #}
             <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
@@ -1311,7 +1354,7 @@
                      type="text"
                      value="{% url 'jellyseerr_webhook' request.user.token as jellyseerr_webhook_path %}{% absolute_app_url jellyseerr_webhook_path %}">
               <span class="flex items-center cursor-pointer group"
-                    title="Copy"
+                    title="{% translate "Copy" %}"
                     data-copy-target="#seerr-webhook-url">
                 {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
               </span>
@@ -1319,13 +1362,13 @@
             {# djlint:on #}
           </li>
           <li>
-            Paste this <strong>JSON Payload</strong> template into Seerr:
+            {% translate "Paste this" %} <strong>{% translate "JSON Payload" %}</strong> {% translate "template into Seerr:" %}
             <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg mt-2">
               <div class="flex items-center justify-end mb-2">
                 <span class="flex items-center cursor-pointer group"
-                      title="Copy"
+                      title="{% translate "Copy" %}"
                       role="button"
-                      aria-label="Copy JSON template"
+                      aria-label="{% translate "Copy JSON template" %}"
                       data-copy-target="#seerr-json-template">
                   {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
                 </span>
@@ -1342,31 +1385,26 @@
 }
 {% endverbatim %}</textarea>
               <p class="text-[var(--color-text-muted)] text-sm mt-3">
-                Important: Seerr's default payload will not work with Floppy. You must use the template above.
-                If you see logs like <code class="px-1 rounded bg-[var(--color-surface-muted)]">unsupported media_type='{media_type}'</code>,
-                Seerr is sending the literal template (it was pasted/escaped incorrectly).
+                {% translate "Important: Seerr's default payload will not work with Floppy. You must use the template above. If you see logs like" %} <code class="px-1 rounded bg-[var(--color-surface-muted)]">unsupported media_type='{media_type}'</code>{% translate ", Seerr is sending the literal template (it was pasted/escaped incorrectly)." %}
               </p>
             </div>
           </li>
-          <li>Select the notification types you want (commonly request/approval events).</li>
+          <li>{% translate "Select the notification types you want (commonly request/approval events)." %}</li>
         </ol>
       </div>
 
       {% if seerr_global_webhook_enabled %}
         <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mt-4">
-          <h4 class="text-sm font-medium mb-3">Global Webhook (multi-user households)</h4>
+          <h4 class="text-sm font-medium mb-3">{% translate "Global Webhook (multi-user households)" %}</h4>
           <p class="text-[var(--color-text-muted)] mb-3 text-sm">
-            Seerr only supports one webhook per instance. If multiple Floppy users share the same
-            Seerr/Overseerr instance, point Seerr at this single global URL instead of a per-user one.
-            Floppy matches each incoming request's requester username against every user's
-            <strong>Allowed Seerr usernames</strong> above, so each user must still enable
-            "Auto-add requested media" and list their own Seerr username there.
+            {% translate "Seerr only supports one webhook per instance. If multiple Floppy users share the same Seerr/Overseerr instance, point Seerr at this single global URL instead of a per-user one. Floppy matches each incoming request's requester username against every user's" %}
+            <strong>{% translate "Allowed Seerr usernames" %}</strong> {% blocktranslate %}above, so each user must still enable "Auto-add requested media" and list their own Seerr username there.{% endblocktranslate %}
           </p>
           <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
-            <li>In Seerr, go to <strong>Settings > Notifications > Webhook</strong>.</li>
-            <li>Create a webhook with method <strong>POST</strong> and content type <strong>application/json</strong>.</li>
+            <li>{% translate "In Seerr, go to" %} <strong>{% translate "Settings > Notifications > Webhook" %}</strong>.</li>
+            <li>{% translate "Create a webhook with method" %} <strong>POST</strong> {% translate "and content type" %} <strong>{% translate "application/json" %}</strong>.</li>
             <li>
-              Set the webhook URL to:
+              {% translate "Set the webhook URL to:" %}
               {# djlint:off #}
               <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
                 <input readonly
@@ -1375,7 +1413,7 @@
                        type="text"
                        value="{% url 'seerr_global_webhook' as seerr_global_webhook_path %}{% absolute_app_url seerr_global_webhook_path %}">
                 <span class="flex items-center cursor-pointer group"
-                      title="Copy"
+                      title="{% translate "Copy" %}"
                       data-copy-target="#seerr-global-webhook-url">
                   {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
                 </span>
@@ -1383,15 +1421,14 @@
               {# djlint:on #}
             </li>
             <li>
-              Paste this <strong>JSON Payload</strong> template into Seerr, replacing
-              <code class="px-1 rounded bg-[var(--color-surface-muted)]">REPLACE_WITH_SHARED_SECRET</code> with the value your
-              administrator configured in <code class="px-1 rounded bg-[var(--color-surface-muted)]">SEERR_GLOBAL_WEBHOOK_SECRET</code>:
+              {% translate "Paste this" %} <strong>{% translate "JSON Payload" %}</strong> {% translate "template into Seerr, replacing" %}
+              <code class="px-1 rounded bg-[var(--color-surface-muted)]">REPLACE_WITH_SHARED_SECRET</code> {% translate "with the value your administrator configured in" %} <code class="px-1 rounded bg-[var(--color-surface-muted)]">SEERR_GLOBAL_WEBHOOK_SECRET</code>:
               <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg mt-2">
                 <div class="flex items-center justify-end mb-2">
                   <span class="flex items-center cursor-pointer group"
-                        title="Copy"
+                        title="{% translate "Copy" %}"
                         role="button"
-                        aria-label="Copy JSON template"
+                        aria-label="{% translate "Copy JSON template" %}"
                         data-copy-target="#seerr-global-json-template">
                     {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
                   </span>
@@ -1413,6 +1450,40 @@
           </ol>
         </div>
       {% endif %}
+    </div>
+
+    {# Nuvio #}
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'nuvio'"
+         x-transition.opacity.duration.150ms>
+      <div class="flex items-center mb-3">
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+        <h3 class="text-base font-medium">{% translate "Nuvio Integration" %}</h3>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+        {% translate "Connect Nuvio TV or Nuvio Mobile for two-way scrobbling, resume progress, and watched-state sync. Nuvio talks to Floppy's API directly, so there's no webhook to configure." %}
+      </p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
+          <li>
+            {% translate "Create an" %} <a href="#app-tokens" class="text-[var(--color-link)] hover:underline">{% translate "app token" %}</a> {% translate "above, named after the device. The default permissions already cover everything Nuvio needs." %}
+          </li>
+          <li>{% translate "Copy the token secret when it's shown — Floppy only displays it once." %}</li>
+          <li>
+            {% translate "In Nuvio, enter this Server URL and the token secret you copied:" %}
+            {# djlint:off #}
+            <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
+              <input readonly id="nuvio-server-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{% absolute_app_url '/' %}">
+              <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#nuvio-server-url">
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+              </span>
+            </div>
+            {# djlint:on #}
+          </li>
+          <li>{% translate "Revoke the token in" %} <a href="#app-tokens" class="text-[var(--color-link)] hover:underline">{% translate "App tokens" %}</a> {% translate "above to disconnect the device. This never deletes your tracking data." %}</li>
+        </ol>
+      </div>
     </div>
 
   </div>

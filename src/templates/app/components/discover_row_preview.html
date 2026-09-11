@@ -1,3 +1,5 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 <div id="rss-preview-row">
@@ -11,7 +13,7 @@
     </div>
   {% else %}
     <div class="rounded-lg border border-dashed border-gray-700 bg-[var(--color-hover-dim)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
-      No items matched this row right now.
+      {% translate "No items matched this row right now." %}
     </div>
   {% endif %}
 </div>

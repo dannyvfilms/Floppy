@@ -1482,7 +1482,7 @@ class PlexWebhookTests(TestCase):
         `tv_with_seasons`.
         """
         mock_tmdb_search.return_value = {
-            "results": [{"media_id": 88396}],
+            "results": [{"media_id": 88396, "title": "The Way Home"}],
         }
         mock_tv_with_seasons.return_value = {
             "tvdb_id": "10965383",

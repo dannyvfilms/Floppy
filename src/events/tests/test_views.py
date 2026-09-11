@@ -415,6 +415,12 @@ class CalendarViewTests(TestCase):
                 MediaTypes.ANIME.value: [Status.COMPLETED.value],
             },
         )
+        self.assertIn(MediaTypes.MOVIE.value, response.context["filter_media_types"])
+        self.assertIn(MediaTypes.ANIME.value, response.context["filter_media_types"])
+        self.assertIn(
+            Status.PLANNING.value,
+            response.context["filter_statuses_by_type"][MediaTypes.ANIME.value],
+        )
 
     @patch("events.models.Event.objects.get_user_events")
     @patch.object(get_user_model(), "update_preference")
@@ -423,7 +429,7 @@ class CalendarViewTests(TestCase):
         mock_update_preference,
         mock_get_user_events,
     ):
-        """Types with no tracked release status should have no status submenu."""
+        """Types with no tracked release status should still expose filter options."""
         mock_update_preference.return_value = "grid"
 
         movie_item = Item.objects.create(
@@ -447,6 +453,38 @@ class CalendarViewTests(TestCase):
         self.assertNotIn(
             MediaTypes.MOVIE.value,
             response.context["available_statuses_by_type"],
+        )
+        self.assertIn(
+            MediaTypes.MOVIE.value,
+            response.context["filter_statuses_by_type"],
+        )
+
+    @patch("events.models.Event.objects.get_user_events")
+    @patch.object(get_user_model(), "update_preference")
+    def test_calendar_filter_media_types_include_enabled_types_without_releases(
+        self,
+        mock_update_preference,
+        mock_get_user_events,
+    ):
+        """Enabled media types should remain in the filter even without month releases."""
+        mock_update_preference.return_value = "grid"
+        mock_get_user_events.return_value = []
+
+        self.user.game_enabled = False
+        self.user.save(update_fields=["game_enabled"])
+
+        response = self.client.get(reverse("calendar"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(MediaTypes.GAME.value, response.context["filter_media_types"])
+        self.assertNotIn(
+            MediaTypes.GAME.value,
+            response.context["available_media_types"],
+        )
+        self.assertIn(MediaTypes.MOVIE.value, response.context["filter_media_types"])
+        self.assertNotIn(
+            MediaTypes.MOVIE.value,
+            response.context["available_media_types"],
         )
 
     @patch("events.tasks.reload_calendar.delay")

@@ -1,7 +1,9 @@
 {% extends "users/base.html" %}
+{% load i18n %}
+
 
 {% block title %}
-  Home Screen - Floppy
+  {% translate "Home Screen - Floppy" %}
 {% endblock title %}
 
 {% block settings_content %}
@@ -49,7 +51,7 @@
                  class="mt-3 border-t border-gray-600 pt-3">
               <template x-if="!section.rows.length">
                 <div class="mb-3 rounded-md border border-dashed border-gray-600 bg-[var(--color-panel)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
-                  No Home rows configured yet for this library.
+                  {% translate "No Home rows configured yet for this library." %}
                 </div>
               </template>
 
@@ -79,7 +81,7 @@
                                  x-model="row.custom_title"
                                  maxlength="100"
                                  :placeholder="rowAutoTitle(section, row)"
-                                 title="Rename this row"
+                                 title="{% translate "Rename this row" %}"
                                  @click.stop
                                  @keydown.enter.prevent="$el.blur()"
                                  class="w-full truncate whitespace-nowrap rounded border border-transparent bg-transparent px-1 -mx-1 text-sm font-medium text-[var(--color-text)] placeholder:text-[var(--color-text)] hover:border-[var(--color-surface-hover)] focus:border-indigo-500 focus:outline-none focus:placeholder:text-[var(--color-text-muted)]">
@@ -114,8 +116,8 @@
                                     <button type="button"
                                             class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                                             @click.stop="clearLibraryFilters(section, row); openMenu = null; filterView = 'root'; filterSearch = ''">
-                                      <span>All</span>
-                                      <span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="rowFilterLabel(section, row) === 'All'">Active</span>
+                                      <span>{% translate "All" %}</span>
+                                      <span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="rowFilterLabel(section, row) === 'All'">{% translate "Active" %}</span>
                                     </button>
 
                                     <div class="border-t border-gray-700 my-1"></div>
@@ -144,7 +146,7 @@
                                                 x-show="field.key === 'tag'"
                                                 class="ml-auto px-2 py-0.5 rounded text-xs font-medium uppercase bg-[var(--color-surface)] border border-gray-600 text-[var(--color-link)] hover:text-[var(--color-text)] hover:border-indigo-500 transition-colors cursor-pointer"
                                                 @click.stop="cycleRowTagMode(row)"
-                                                x-text="row.filters?.tag_mode || 'or'"></button>
+                                                x-text="gettext(row.filters?.tag_mode || 'or')"></button>
                                       </div>
 
                                       <div x-show="shouldShowFieldSearch(field)"
@@ -152,7 +154,7 @@
                                         <input type="text"
                                                x-model="filterSearch"
                                                class="w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-panel)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:border-indigo-500 focus:outline-none"
-                                               :placeholder="`Search ${field.label.toLowerCase()}...`">
+                                               :placeholder="interpolate(gettext('Search %s...'), [field.label.toLowerCase()])">
                                       </div>
 
                                       <div class="max-h-72 overflow-y-auto py-1">
@@ -237,7 +239,7 @@
                             <button type="button"
                                     class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                                     @click.stop="openMenu = null; row.editorOpen = !row.editorOpen">
-                              <span x-text="row.custom_list_name || 'Choose List'"></span>
+                              <span x-text="row.custom_list_name || gettext('Choose List')"></span>
                               <svg xmlns="http://www.w3.org/2000/svg"
                                    viewBox="0 0 20 20"
                                    class="w-4 h-4 ml-2"
@@ -249,7 +251,7 @@
 
                           <template x-if="row.row_type === 'recently_unrated'">
                             <div class="px-2 py-2 text-sm text-slate-300">
-                              Recent unrated plays
+                              {% translate "Recent unrated plays" %}
                             </div>
                           </template>
 
@@ -265,15 +267,15 @@
                     <template x-if="row.editorOpen && row.row_type === 'custom_list'">
                       <div class="border-t border-[var(--color-surface-strong)] bg-[var(--color-sidebar)] px-4 py-4">
                         <div class="mb-3">
-                          <h5 class="text-sm font-semibold text-[var(--color-text)]">List Selection</h5>
-                          <p class="mt-1 text-sm text-slate-400">Search your owned and collaborator lists. Smart lists are included here too.</p>
+                          <h5 class="text-sm font-semibold text-[var(--color-text)]">{% translate "List Selection" %}</h5>
+                          <p class="mt-1 text-sm text-slate-400">{% translate "Search your owned and collaborator lists. Smart lists are included here too." %}</p>
                         </div>
                         <div class="relative">
                           <input type="text"
                                  x-model="row.listQuery"
                                  @input.debounce.250ms="searchLists(section, row)"
                                  class="w-full rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-panel)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:border-indigo-500 focus:outline-none"
-                                 placeholder="Search lists and smart lists">
+                                 placeholder="{% translate "Search lists and smart lists" %}">
                           <div x-show="row.listResults.length"
                                class="absolute z-20 mt-2 w-full overflow-hidden rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-panel)] shadow-lg">
                             <template x-for="result in row.listResults" :key="result.id">
@@ -281,15 +283,15 @@
                                       class="block w-full border-b border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer last:border-b-0"
                                       @click="applyListResult(row, result)">
                                 <div class="font-medium" x-text="result.name"></div>
-                                <div class="text-xs text-[var(--color-text-muted)]" x-text="result.is_smart ? 'Smart list' : 'Manual list'"></div>
+                                <div class="text-xs text-[var(--color-text-muted)]" x-text="result.is_smart ? gettext('Smart list') : gettext('Manual list')"></div>
                               </button>
                             </template>
                           </div>
                         </div>
 
                         <div class="mt-3 rounded-md border border-[var(--color-surface-alt)] bg-[var(--color-panel)] px-3 py-2 text-sm text-[var(--color-text-secondary)]">
-                          <span class="text-[var(--color-text-muted)]">Selected:</span>
-                          <span x-text="row.custom_list_name || 'No list selected yet'"></span>
+                          <span class="text-[var(--color-text-muted)]">{% translate "Selected:" %}</span>
+                          <span x-text="row.custom_list_name || gettext('No list selected yet')"></span>
                         </div>
                       </div>
                     </template>
@@ -303,7 +305,7 @@
                           class="inline-flex items-center rounded-md border border-[var(--color-surface-border)] bg-[var(--color-panel)] px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer"
                           @click="section.addRowMenuOpen = !section.addRowMenuOpen">
                     {% include "app/icons/plus.svg" with classes="mr-2 h-4 w-4" %}
-                    Add Row
+                    {% translate "Add Row" %}
                   </button>
                   <div x-show="section.addRowMenuOpen"
                        x-cloak
@@ -312,7 +314,7 @@
                             class="flex w-full items-center px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] cursor-pointer"
                             @click="addRow(section, 'library_query'); section.addRowMenuOpen = false">
                       {% include "app/icons/plus.svg" with classes="mr-2 h-4 w-4" %}
-                      Library Row
+                      {% translate "Library Row" %}
                     </button>
                     <button type="button"
                             class="flex w-full items-center border-t border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] cursor-pointer"
@@ -320,7 +322,7 @@
                             :disabled="section.rows.some(row => row.row_type === 'recently_unrated')"
                             :class="{ 'opacity-50 cursor-not-allowed': section.rows.some(row => row.row_type === 'recently_unrated') }">
                       {% include "app/icons/history.svg" with classes="mr-2 h-4 w-4" %}
-                      Recently Played Row
+                      {% translate "Recently Played Row" %}
                     </button>
                   </div>
                 </div>
@@ -329,7 +331,7 @@
                         class="inline-flex items-center rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer"
                         @click="addRow(section, 'custom_list')">
                   {% include "app/icons/list.svg" with classes="mr-2 h-4 w-4" %}
-                  Add List
+                  {% translate "Add List" %}
                 </button>
               </div>
             </div>
@@ -344,8 +346,8 @@
                {% if show_media_type_headers %}checked{% endif %}
                class="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-500 bg-[var(--color-page-bg)] text-indigo-600 focus:ring-indigo-500">
         <span class="min-w-0">
-          <span class="block text-sm font-medium text-[var(--color-text-secondary)]">Show media type headers</span>
-          <span class="block text-xs text-[var(--color-text-muted)]">Group rows under a header (icon + media type) on the home screen.</span>
+          <span class="block text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Show media type headers" %}</span>
+          <span class="block text-xs text-[var(--color-text-muted)]">{% translate "Group rows under a header (icon + media type) on the home screen." %}</span>
         </span>
       </label>
 
@@ -353,7 +355,7 @@
         <button type="submit"
                 class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700 cursor-pointer">
           {% include "app/icons/save.svg" with classes="mr-2 h-4 w-4" %}
-          Save Home Screen
+          {% translate "Save Home Screen" %}
         </button>
       </div>
     </form>
@@ -437,16 +439,16 @@
           return loaded;
         },
         rowTypeLabel(type) {
-          if (type === 'library_query') return 'Library Row';
-          if (type === 'custom_list') return 'List / Smart List';
-          return 'Recently Played';
+          if (type === 'library_query') return gettext('Library Row');
+          if (type === 'custom_list') return gettext('List / Smart List');
+          return gettext('Recently Played');
         },
         rowAutoTitle(section, row) {
           if (row.row_type === 'custom_list') {
-            return row.custom_list_name || 'List / Smart List';
+            return row.custom_list_name || gettext('List / Smart List');
           }
           if (row.row_type === 'recently_unrated') {
-            return 'Recently Played - Not Rated';
+            return gettext('Recently Played - Not Rated');
           }
           return this.describeFilters(section, row);
         },
@@ -505,7 +507,7 @@
           const statuses = this.rowStatusValues(row);
           if (statuses.length) {
             const statusLabels = statuses.map(value => this.fieldOptionLabel(section, 'status', value));
-            labels.push(statuses.length === 1 ? statusLabels[0] : `${statuses.length} Statuses`);
+            labels.push(statuses.length === 1 ? statusLabels[0] : interpolate(ngettext('%s status', '%s Statuses', statuses.length), [statuses.length]));
           }
           for (const key of ['progress', 'rating', 'collection', 'genre', 'year', 'release', 'source', 'language', 'country', 'platform', 'origin', 'format', 'author', 'provider']) {
             const value = row.filters?.[key];
@@ -515,10 +517,10 @@
           const tags = this.rowTagValues(row);
           if (tags.length) {
             const separator = (row.filters?.tag_mode || 'or') === 'and' ? ' & ' : ', ';
-            const prefix = row.filters?.tag_mode === 'not' ? 'Not tagged ' : '';
+            const prefix = row.filters?.tag_mode === 'not' ? gettext('Not tagged ') : '';
             labels.push(prefix + tags.join(separator));
           }
-          if (!labels.length) return 'All';
+          if (!labels.length) return gettext('All');
           if (labels.length === 1) return labels[0];
           return `${labels[0]} +${labels.length - 1}`;
         },
@@ -528,11 +530,11 @@
             const option = this.statusFilterOptions(section).find(candidate => candidate.value === statuses[0]);
             return option ? option.label : statuses[0];
           }
-          return statuses.length ? `${statuses.length} Statuses` : 'Status';
+          return statuses.length ? interpolate(ngettext('%s status', '%s Statuses', statuses.length), [statuses.length]) : gettext('Status');
         },
         sortButtonLabel(section, row) {
           const choice = this.sortChoices(section, row).find(candidate => candidate.value === row.sort_by);
-          return choice ? choice.label : 'Sort';
+          return choice ? choice.label : gettext('Sort');
         },
         defaultSortDirection(value) {
           return ['author', 'popularity', 'runtime', 'start_date', 'title', 'time_left', 'time_to_beat'].includes(value) ? 'asc' : 'desc';
@@ -545,8 +547,8 @@
           const statuses = this.rowStatusValues(row);
           const parts = [];
           if (statuses.length === 1) parts.push(this.fieldOptionLabel(section, 'status', statuses[0]));
-          else if (statuses.length > 1) parts.push(`${statuses.length} Statuses`);
-          else parts.push('Library');
+          else if (statuses.length > 1) parts.push(interpolate(ngettext('%s status', '%s Statuses', statuses.length), [statuses.length]));
+          else parts.push(gettext('Library'));
 
           if (section.media_type === 'music') {
             const subview = row.filters?.subview || 'tracks';
@@ -573,8 +575,8 @@
 
           const tags = this.rowTagValues(row);
           if (tags.length) {
-            const separator = (row.filters?.tag_mode || 'or') === 'and' ? ' & ' : ' or ';
-            const prefix = row.filters?.tag_mode === 'not' ? 'Not tagged ' : '';
+            const separator = (row.filters?.tag_mode || 'or') === 'and' ? ' & ' : gettext(' or ');
+            const prefix = row.filters?.tag_mode === 'not' ? gettext('Not tagged ') : '';
             parts.push(prefix + tags.map(value => labelFor('tag', value)).join(separator));
           }
 
@@ -605,22 +607,22 @@
           const field = this.fieldDefinition(section, key);
           const option = field?.options?.find(candidate => this.normalizeFieldValue(candidate.value) === this.normalizeFieldValue(value));
           if (option) return option.label;
-          return value || 'Any';
+          return value || gettext('Any');
         },
         fieldSelectionLabel(section, row, key) {
           const value = row.filters?.[key];
           if (key === 'status') {
             const statuses = this.rowStatusValues(row);
             if (statuses.length === 1) return this.fieldOptionLabel(section, key, statuses[0]);
-            return statuses.length ? `${statuses.length} Statuses` : 'Any';
+            return statuses.length ? interpolate(ngettext('%s status', '%s Statuses', statuses.length), [statuses.length]) : gettext('Any');
           }
           if (key === 'tag') {
             const tags = this.rowTagValues(row);
-            return tags.length === 1 ? tags[0] : (tags.length ? `${tags.length} Tags` : 'Any');
+            return tags.length === 1 ? tags[0] : (tags.length ? interpolate(ngettext('%s tag', '%s Tags', tags.length), [tags.length]) : gettext('Any'));
           }
           if (!value || value === 'all') {
             const field = this.fieldDefinition(section, key);
-            return field?.options?.[0]?.label || 'Any';
+            return field?.options?.[0]?.label || gettext('Any');
           }
           return this.fieldOptionLabel(section, key, value);
         },
@@ -696,7 +698,7 @@
         defaultFilters(section, rowType) {
           if (rowType !== 'library_query') return {};
           const defaults = {
-            status: ['In progress'],
+            status: [gettext('In progress')],
             progress: ['tv', 'anime'].includes(section.media_type) ? 'not_caught_up' : 'all',
             rating: 'all',
             collection: 'all',

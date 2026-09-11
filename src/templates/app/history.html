@@ -1,9 +1,11 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load user_tags %}
 
 {% block title %}
-  History - Floppy
+  {% translate "History - Floppy" %}
 {% endblock title %}
 
 {% block content %}
@@ -73,7 +75,7 @@
       <div class="flex items-center gap-2 rounded-md border px-3 py-2 shadow-lg toast-info opacity-0"
            x-init="setTimeout(() => $el.classList.add('opacity-100', 'transform-none'), 10); $el.classList.add('transition-all', 'duration-300', 'ease-out', 'transform', 'translate-y-[-1rem]')">
         {% include "app/icons/info.svg" with classes="w-4 h-4 text-indigo-300 shrink-0 animate-pulse" %}
-        <p class="text-sm font-medium flex-1">Refreshing history in background...</p>
+        <p class="text-sm font-medium flex-1">{% translate "Refreshing history in background..." %}</p>
         <button class="text-current opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                 @click="cacheRefreshing = false; cacheUpdater?.stop();">
           {% include "app/icons/x.svg" with classes="w-4 h-4" %}
@@ -93,8 +95,8 @@
         {% if not is_current_month %}
           <a href="?year={{ current_year }}&m={{ current_month_num }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
              class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
-             aria-label="Go to current month"
-             title="Go to current month">
+             aria-label="{% translate "Go to current month" %}"
+             title="{% translate "Go to current month" %}">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
               <path d="m11 17-5-5 5-5"></path>
               <path d="m18 17-5-5 5-5"></path>
@@ -115,7 +117,7 @@
         {% if show_next_month %}
           <a href="?year={{ next_year }}&m={{ next_month }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
              class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
-             aria-label="Go to {{ next_month_name }}">
+             aria-label="{% blocktranslate trimmed with value_1=next_month_name %}Go to {{ value_1 }}{% endblocktranslate %}">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
               <path d="m15 18-6-6 6-6"></path>
             </svg>
@@ -139,7 +141,7 @@
         {# Older month button (toward past) #}
         <a href="?year={{ prev_year }}&m={{ prev_month }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
            class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
-           aria-label="Go to {{ prev_month_name }}">
+           aria-label="{% blocktranslate trimmed with value_1=prev_month_name %}Go to {{ value_1 }}{% endblocktranslate %}">
           <span>{{ prev_month_name }}</span>
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
             <path d="m9 18 6-6-6-6"></path>
@@ -149,8 +151,8 @@
         {# Last button - go back 1 year from current view #}
         <a href="?year={{ view_year|add:'-1' }}&m={{ view_month }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
            class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
-           aria-label="Go back one year"
-           title="Go back one year">
+           aria-label="{% translate "Go back one year" %}"
+           title="{% translate "Go back one year" %}">
           <span>{{ view_year|add:'-1' }}</span>
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
             <path d="m13 17 5-5-5-5"></path>
@@ -167,7 +169,7 @@
       {% if current_page > 1 %}
         <a href="?{% if active_filters %}{% for key, value in active_filters.items %}{{ key }}={{ value }}{% if not forloop.last %}&{% endif %}{% endfor %}{% if active_filters %}&{% endif %}{% endif %}page={{ current_page|add:'-1' }}"
            class="p-2 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer"
-           aria-label="Previous page">
+           aria-label="{% translate "Previous page" %}">
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
                height="24"
@@ -228,7 +230,7 @@
       {% if page_obj and page_obj.has_next %}
         <a href="?{% if active_filters %}{% for key, value in active_filters.items %}{{ key }}={{ value }}{% if not forloop.last %}&{% endif %}{% endfor %}{% if active_filters %}&{% endif %}{% endif %}page={{ current_page|add:'1' }}"
            class="p-2 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer"
-           aria-label="Next page">
+           aria-label="{% translate "Next page" %}">
           <svg xmlns="http://www.w3.org/2000/svg"
                width="24"
                height="24"
@@ -272,7 +274,7 @@
         {% if current_page > 1 %}
           <a href="?{% if active_filters %}{% for key, value in active_filters.items %}{{ key }}={{ value }}{% if not forloop.last %}&{% endif %}{% endfor %}{% if active_filters %}&{% endif %}{% endif %}page={{ current_page|add:'-1' }}"
              class="p-2 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer"
-             aria-label="Previous page">
+             aria-label="{% translate "Previous page" %}">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
                  height="24"
@@ -333,7 +335,7 @@
         {% if page_obj and page_obj.has_next %}
           <a href="?{% if active_filters %}{% for key, value in active_filters.items %}{{ key }}={{ value }}{% if not forloop.last %}&{% endif %}{% endfor %}{% if active_filters %}&{% endif %}{% endif %}page={{ current_page|add:'1' }}"
              class="p-2 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer"
-             aria-label="Next page">
+             aria-label="{% translate "Next page" %}">
             <svg xmlns="http://www.w3.org/2000/svg"
                  width="24"
                  height="24"
@@ -383,8 +385,8 @@
           <polyline points="12 6 12 12 16 14"></polyline>
         </svg>
       </div>
-      <p class="text-lg font-semibold mb-1 text-[var(--color-text)]">No watch history yet</p>
-      <p class="text-sm text-[var(--color-text-muted)]">Start tracking movies and episodes to see them here.</p>
+      <p class="text-lg font-semibold mb-1 text-[var(--color-text)]">{% translate "No watch history yet" %}</p>
+      <p class="text-sm text-[var(--color-text-muted)]">{% translate "Start tracking movies and episodes to see them here." %}</p>
     </div>
     {% endif %}
   {% endif %}
@@ -392,7 +394,7 @@
 </div>
 
 {# History filter FAB + modal #}
-<div x-data="{
+{% translate "Activity (watched)" as media_i18n_19 %}{% translate "TV Show" as media_i18n_20 %}{% translate "Movie" as media_i18n_21 %}{% translate "Anime" as media_i18n_22 %}{% translate "Game" as media_i18n_23 %}{% translate "Music" as media_i18n_24 %}{% translate "Book" as media_i18n_25 %}{% translate "Manga" as media_i18n_26 %}{% translate "Comic" as media_i18n_27 %}{% translate "Podcast" as media_i18n_28 %}{% translate "Board Game" as media_i18n_29 %}{% translate "Release dates" as media_i18n_30 %}<div x-data="{
   open: false,
   startDate: '',
   endDate: '',
@@ -400,7 +402,7 @@
   mediaTypeOpen: false,
   mediaTypeDropdownStyle: {},
   historyMode: '',
-  historyModeLabel: 'Activity (watched)',
+  historyModeLabel: '{{ media_i18n_19|escapejs }}',
   historyModeOpen: false,
   historyModeDropdownStyle: {},
   selectedGenres: [],
@@ -415,16 +417,16 @@
   genreDropdownStyle: {},
   impliedGenreDropdownStyle: {},
   mediaTypeOptions: [
-    { value: 'tv', label: 'TV Show' },
-    { value: 'movie', label: 'Movie' },
-    { value: 'anime', label: 'Anime' },
-    { value: 'game', label: 'Game' },
-    { value: 'music', label: 'Music' },
-    { value: 'book', label: 'Book' },
-    { value: 'manga', label: 'Manga' },
-    { value: 'comic', label: 'Comic' },
-    { value: 'podcast', label: 'Podcast' },
-    { value: 'boardgame', label: 'Board Game' },
+    { value: 'tv', label: '{{ media_i18n_20|escapejs }}' },
+    { value: 'movie', label: '{{ media_i18n_21|escapejs }}' },
+    { value: 'anime', label: '{{ media_i18n_22|escapejs }}' },
+    { value: 'game', label: '{{ media_i18n_23|escapejs }}' },
+    { value: 'music', label: '{{ media_i18n_24|escapejs }}' },
+    { value: 'book', label: '{{ media_i18n_25|escapejs }}' },
+    { value: 'manga', label: '{{ media_i18n_26|escapejs }}' },
+    { value: 'comic', label: '{{ media_i18n_27|escapejs }}' },
+    { value: 'podcast', label: '{{ media_i18n_28|escapejs }}' },
+    { value: 'boardgame', label: '{{ media_i18n_29|escapejs }}' },
   ],
   get activeCount() {
     return [this.startDate, this.endDate, this.selectedMediaTypes.length > 0, this.historyMode === 'release', this.selectedGenres.length > 0, this.selectedImpliedGenres.length > 0].filter(Boolean).length;
@@ -440,7 +442,7 @@
     const impliedGenreParam = p.get('implied_genre') || '';
     this.selectedGenres = genreParam ? genreParam.split(',').map(g => g.trim()).filter(Boolean) : [];
     this.selectedImpliedGenres = impliedGenreParam ? impliedGenreParam.split(',').map(g => g.trim()).filter(Boolean) : [];
-    if (this.historyMode === 'release') this.historyModeLabel = 'Release dates';
+    if (this.historyMode === 'release') this.historyModeLabel = '{{ media_i18n_30|escapejs }}';
   },
   apply() {
     const p = new URLSearchParams(window.location.search);
@@ -573,8 +575,8 @@
   {# FAB button #}
   <button @click="open = true"
           class="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
-          title="Filter history"
-          aria-label="Filter history">
+          title="{% translate "Filter history" %}"
+          aria-label="{% translate "Filter history" %}">
     {% include "app/icons/funnel.svg" with classes="w-5 h-5" %}
     <span x-show="activeCount > 0"
           x-text="activeCount"
@@ -593,7 +595,7 @@
       <div class="bg-[var(--color-surface)] rounded-t-2xl sm:rounded-xl p-6 overflow-y-auto modal-max-height">
         {# Header #}
         <div class="flex items-center justify-between mb-5">
-          <h2 class="text-lg font-semibold text-[var(--color-text)]">Filter History</h2>
+          <h2 class="text-lg font-semibold text-[var(--color-text)]">{% translate "Filter History" %}</h2>
           <button @click="open = false"
                   class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
             {% include "app/icons/x.svg" with classes="w-5 h-5" %}
@@ -603,16 +605,16 @@
         <div class="space-y-4">
           {# Date range #}
           <div class="space-y-2">
-            <label class="block text-sm font-medium text-[var(--color-text-secondary)]">Date range</label>
+            <label class="block text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Date range" %}</label>
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-[var(--color-text-muted)] mb-1">From</label>
+                <label class="block text-xs text-[var(--color-text-muted)] mb-1">{% translate "From" %}</label>
                 <input type="date"
                        x-model="startDate"
                        class="w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
               </div>
               <div>
-                <label class="block text-xs text-[var(--color-text-muted)] mb-1">To</label>
+                <label class="block text-xs text-[var(--color-text-muted)] mb-1">{% translate "To" %}</label>
                 <input type="date"
                        x-model="endDate"
                        class="w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer">
@@ -622,14 +624,14 @@
 
           {# Media type multi-select #}
           <div>
-            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Media type</label>
+            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Media type" %}</label>
             <div class="relative" @click.outside="mediaTypeOpen = false">
               <button type="button"
                       x-ref="mediaTypeTrigger"
                       @click="openMediaTypeDropdown()"
                       class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer text-left"
                       :class="selectedMediaTypes.length ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-muted)]'">
-                <span class="truncate" x-text="selectedMediaTypes.length ? mediaTypeOptions.filter(o => selectedMediaTypes.includes(o.value)).map(o => o.label).join(', ') : 'All types'"></span>
+                {% translate "All types" as media_i18n_31 %}<span class="truncate" x-text="selectedMediaTypes.length ? mediaTypeOptions.filter(o => selectedMediaTypes.includes(o.value)).map(o => o.label).join(', ') : '{{ media_i18n_31|escapejs }}'"></span>
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 text-[var(--color-text-muted)] shrink-0 ml-2"><path d="m6 9 6 6 6-6"></path></svg>
               </button>
               <div x-show="mediaTypeOpen"
@@ -659,7 +661,7 @@
 
           {# History mode #}
           <div>
-            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">View mode</label>
+            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "View mode" %}</label>
             <div class="relative" @click.outside="historyModeOpen = false">
               <button type="button"
                       x-ref="historyModeTrigger"
@@ -679,17 +681,17 @@
                    x-transition:leave-start="transform opacity-100 scale-100"
                    x-transition:leave-end="transform opacity-0 scale-95"
                    class="z-[70] overflow-hidden py-1 bg-[var(--color-panel)] rounded-md shadow-lg border border-gray-600">
-                <button type="button"
-                        @click="historyMode = ''; historyModeLabel = 'Activity (watched)'; historyModeOpen = false"
+                {% translate "Activity (watched)" as media_i18n_19 %}<button type="button"
+                        @click="historyMode = ''; historyModeLabel = '{{ media_i18n_19|escapejs }}'; historyModeOpen = false"
                         class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
                         :class="historyMode === '' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : ''">
-                  Activity (watched)
+                  {% translate "Activity (watched)" %}
                 </button>
-                <button type="button"
-                        @click="historyMode = 'release'; historyModeLabel = 'Release dates'; historyModeOpen = false"
+                {% translate "Release dates" as media_i18n_30 %}<button type="button"
+                        @click="historyMode = 'release'; historyModeLabel = '{{ media_i18n_30|escapejs }}'; historyModeOpen = false"
                         class="block w-full px-3 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
                         :class="historyMode === 'release' ? 'text-[var(--color-text)] bg-[var(--color-surface-strong)]' : ''">
-                  Release dates
+                  {% translate "Release dates" %}
                 </button>
               </div>
             </div>
@@ -697,14 +699,14 @@
 
           {# Genre multi-select #}
           <div>
-            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Genre</label>
+            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Genre" %}</label>
             <button type="button"
                     x-ref="genreTrigger"
                     @click="openGenreDropdown()"
                     @keydown.escape.window="genreOpen = false"
                     class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer text-left"
                     :class="selectedGenres.length ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-muted)]'">
-              <span class="truncate" x-text="selectedGenres.length ? selectedGenres.join(', ') : 'All genres'"></span>
+              {% translate "All genres" as media_i18n_32 %}<span class="truncate" x-text="selectedGenres.length ? selectedGenres.join(', ') : '{{ media_i18n_32|escapejs }}'"></span>
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 text-[var(--color-text-muted)] shrink-0 ml-2"><path d="m6 9 6 6 6-6"></path></svg>
             </button>
             <div x-show="genreOpen"
@@ -722,15 +724,15 @@
               <div class="px-2 pt-2 pb-1 shrink-0">
                 <input type="text"
                        x-model="genreSearch"
-                       placeholder="Filter genres…"
+                       placeholder="{% translate "Filter genres…" %}"
                        class="w-full px-3 py-1.5 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               </div>
               <div class="overflow-y-auto flex-1 py-1">
                 <template x-if="genresLoading">
-                  <div class="px-4 py-3 text-sm text-[var(--color-text-muted)] text-center">Loading…</div>
+                  <div class="px-4 py-3 text-sm text-[var(--color-text-muted)] text-center">{% translate "Loading…" %}</div>
                 </template>
                 <template x-if="!genresLoading && filteredAvailableGenres().length === 0">
-                  <div class="px-4 py-3 text-sm text-[var(--color-text-muted)] text-center">No genres found</div>
+                  <div class="px-4 py-3 text-sm text-[var(--color-text-muted)] text-center">{% translate "No genres found" %}</div>
                 </template>
                 <template x-for="g in filteredAvailableGenres()" :key="g">
                   <button type="button"
@@ -747,14 +749,14 @@
           </div>
 
           <div x-show="selectedMediaTypes.length === 0 || selectedMediaTypes.includes('music')">
-            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Implied Genre</label>
+            <label class="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{% translate "Implied Genre" %}</label>
             <button type="button"
                     x-ref="impliedGenreTrigger"
                     @click="openImpliedGenreDropdown()"
                     @keydown.escape.window="impliedGenreOpen = false"
                     class="flex items-center justify-between w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer text-left"
                     :class="selectedImpliedGenres.length ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-muted)]'">
-              <span class="truncate" x-text="selectedImpliedGenres.length ? selectedImpliedGenres.join(', ') : 'All implied genres'"></span>
+              {% translate "All implied genres" as media_i18n_33 %}<span class="truncate" x-text="selectedImpliedGenres.length ? selectedImpliedGenres.join(', ') : '{{ media_i18n_33|escapejs }}'"></span>
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 text-[var(--color-text-muted)] shrink-0 ml-2"><path d="m6 9 6 6 6-6"></path></svg>
             </button>
             <div x-show="impliedGenreOpen"
@@ -772,15 +774,15 @@
               <div class="px-2 pt-2 pb-1 shrink-0">
                 <input type="text"
                        x-model="impliedGenreSearch"
-                       placeholder="Filter implied genres…"
+                       placeholder="{% translate "Filter implied genres…" %}"
                        class="w-full px-3 py-1.5 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               </div>
               <div class="overflow-y-auto flex-1 py-1">
                 <template x-if="genresLoading">
-                  <div class="px-4 py-3 text-sm text-[var(--color-text-muted)] text-center">Loading…</div>
+                  <div class="px-4 py-3 text-sm text-[var(--color-text-muted)] text-center">{% translate "Loading…" %}</div>
                 </template>
                 <template x-if="!genresLoading && filteredAvailableImpliedGenres().length === 0">
-                  <div class="px-4 py-3 text-sm text-[var(--color-text-muted)] text-center">No implied genres found</div>
+                  <div class="px-4 py-3 text-sm text-[var(--color-text-muted)] text-center">{% translate "No implied genres found" %}</div>
                 </template>
                 <template x-for="g in filteredAvailableImpliedGenres()" :key="g">
                   <button type="button"
@@ -801,11 +803,11 @@
         <div class="flex gap-3 mt-6">
           <button @click="clear()"
                   class="flex-1 px-4 py-2 rounded-md border border-gray-600 text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:border-gray-400 text-sm transition-colors cursor-pointer">
-            Clear filters
+            {% translate "Clear filters" %}
           </button>
           <button @click="apply()"
                   class="flex-1 px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors cursor-pointer">
-            Apply
+            {% translate "Apply" %}
           </button>
         </div>
       </div>

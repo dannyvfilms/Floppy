@@ -1,16 +1,18 @@
 {% extends "base.html" %}
+{% load i18n %}
+
 {% load app_tags %}
 {% load user_tags %}
 
 {% block title %}
-  Search - Floppy
+  {% translate "Search - Floppy" %}
 {% endblock title %}
 
 {% block content %}
   <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-8 gap-y-4">
-    <h2 class="text-2xl font-bold">Search Results</h2>
+    <h2 class="text-2xl font-bold">{% translate "Search Results" %}</h2>
     <div class="flex items-center flex-wrap gap-x-4 gap-y-2">
-      <span class="text-sm text-[var(--color-text-muted)]">Source:</span>
+      <span class="text-sm text-[var(--color-text-muted)]">{% translate "Source:" %}</span>
       <div class="flex gap-x-2">
         {% if source_options %}
           {% for source_option in source_options %}
@@ -30,10 +32,10 @@
         <div class="flex rounded-md overflow-hidden border border-gray-700">
           <a href="?q={{ request.GET.q|urlencode }}&media_type={{ media_type }}{% if source %}&source={{ source }}{% endif %}&layout=grid"
              {% if layout == 'grid' %} class="p-2 cursor-pointer bg-indigo-600 text-white flex items-center" {% else %} class="p-2 cursor-pointer bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] flex items-center" {% endif %}
-             title="Grid View">{% include "app/icons/four-square.svg" with classes="w-5 h-5" %}</a>
+             title="{% translate "Grid View" %}">{% include "app/icons/four-square.svg" with classes="w-5 h-5" %}</a>
           <a href="?q={{ request.GET.q|urlencode }}&media_type={{ media_type }}{% if source %}&source={{ source }}{% endif %}&layout=list"
              {% if layout == 'list' %} class="p-2 cursor-pointer bg-indigo-600 text-white flex items-center" {% else %} class="p-2 cursor-pointer bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] flex items-center" {% endif %}
-             title="List View">{% include "app/icons/list.svg" with classes="w-5 h-5" %}</a>
+             title="{% translate "List View" %}">{% include "app/icons/list.svg" with classes="w-5 h-5" %}</a>
         </div>
       </div>
     </div>
@@ -42,16 +44,16 @@
   {% if media_type == MediaTypes.MUSIC.value %}
     {% if local_music_artists or local_music_albums %}
       <div class="mb-8">
-        <h3 class="text-lg font-semibold text-[var(--color-text-secondary)] mb-4">In Your Library</h3>
+        <h3 class="text-lg font-semibold text-[var(--color-text-secondary)] mb-4">{% translate "In Your Library" %}</h3>
 
         {% if local_music_artists %}
           <div class="mb-8">
             <div class="flex items-center justify-between mb-4">
-              <h4 class="text-base font-semibold text-[var(--color-text-secondary)]">Artists</h4>
+              <h4 class="text-base font-semibold text-[var(--color-text-secondary)]">{% translate "Artists" %}</h4>
               <div class="text-sm text-[var(--color-text-muted)]">
-                {{ local_music_artists_total }} result{{ local_music_artists_total|pluralize }}
+                {% blocktranslate trimmed with value_1=local_music_artists_total count count=local_music_artists_total %}{{ value_1 }} result{% plural %}{{ value_1 }} results{% endblocktranslate %}
                 {% if local_music_artists_total > local_music_artists|length %}
-                  <span class="text-[var(--color-text-muted)]">· Showing first {{ local_music_artists|length }}</span>
+                  <span class="text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=local_music_artists|length %}· Showing first {{ value_1 }}{% endblocktranslate %}</span>
                 {% endif %}
               </div>
             </div>
@@ -66,19 +68,19 @@
         {% if local_music_albums %}
           <div>
             <div class="flex items-center justify-between mb-4">
-              <h4 class="text-base font-semibold text-[var(--color-text-secondary)]">Albums</h4>
+              <h4 class="text-base font-semibold text-[var(--color-text-secondary)]">{% translate "Albums" %}</h4>
               <div class="text-sm text-[var(--color-text-muted)]">
-                {{ local_music_albums_total }} result{{ local_music_albums_total|pluralize }}
+                {% blocktranslate trimmed with value_1=local_music_albums_total count count=local_music_albums_total %}{{ value_1 }} result{% plural %}{{ value_1 }} results{% endblocktranslate %}
                 {% if local_music_albums_total > local_music_albums|length %}
-                  <span class="text-[var(--color-text-muted)]">· Showing first {{ local_music_albums|length }}</span>
+                  <span class="text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=local_music_albums|length %}· Showing first {{ value_1 }}{% endblocktranslate %}</span>
                 {% endif %}
               </div>
             </div>
             <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
               {% for tracker in local_music_albums %}
-                <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square hover:ring-2 hover:ring-indigo-500 transition-all group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
+                <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square hover:ring-2 hover:ring-indigo-500 transition-all group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
                      data-media-type="{{ MediaTypes.MUSIC.value }}"
-                     x-data="{ trackOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
+                     x-data="{ trackOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
                      @click.capture="tapToReveal($event)"
                      @media-card-revealed.window="if ($event.detail !== $root) revealed = false"
            @click.window="if (revealed && !$root.contains($event.target)) revealed = false"
@@ -119,9 +121,9 @@
                         :class="revealed ? 'opacity-100 pointer-events-auto media-card-overlay-revealed' : 'opacity-0 pointer-events-none'">
                       <div class="absolute inset-0 bg-black/50 z-0"></div>
                       <a href="{{ tracker.album|music_album_url }}" class="absolute inset-0 z-0"></a>
-                      <div class="relative z-10 flex items-center justify-center space-x-2.5">
+                      <div class="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
                         <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
-                                title="Edit tracking"
+                                title="{% translate "Edit tracking" %}"
                                 hx-get="{% url 'album_track_modal' tracker.album.id %}"
                                 hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
                                 hx-target="#album-track-modal-{{ tracker.album.id }}"
@@ -131,12 +133,12 @@
                         </button>
                         <a href="{{ tracker.album|music_album_url }}"
                            class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
-                           title="View album">
+                           title="{% translate "View album" %}">
                           {% include "app/icons/speaker.svg" with classes="w-4 h-4" %}
                         </a>
                         <a href="{% url 'history' %}?album={{ tracker.album.id }}"
                            class="p-2.5 bg-amber-600 text-white rounded-full hover:bg-amber-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all duration-200 cursor-pointer"
-                           title="View listening history">
+                           title="{% translate "View listening history" %}">
                           {% include "app/icons/history.svg" with classes="w-4 h-4" %}
                         </a>
                       </div>
@@ -186,11 +188,11 @@
 
     {% if music_online_artists or music_online_releases %}
       <div {% if local_music_artists or local_music_albums %}class="mt-8"{% endif %}>
-        <h3 class="text-lg font-semibold mb-4 text-[var(--color-text-secondary)]">Online Results</h3>
+        <h3 class="text-lg font-semibold mb-4 text-[var(--color-text-secondary)]">{% translate "Online Results" %}</h3>
 
         {% if music_online_artists %}
           <div class="mb-8">
-            <h4 class="text-base font-semibold text-[var(--color-text-secondary)] mb-4">Artists</h4>
+            <h4 class="text-base font-semibold text-[var(--color-text-secondary)] mb-4">{% translate "Artists" %}</h4>
             <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
               {% for artist in music_online_artists %}
                 {% if artist.artist_id %}
@@ -254,7 +256,7 @@
 
         {% if music_online_releases %}
           <div>
-            <h4 class="text-base font-semibold text-[var(--color-text-secondary)] mb-4">Albums</h4>
+            <h4 class="text-base font-semibold text-[var(--color-text-secondary)] mb-4">{% translate "Albums" %}</h4>
             <div class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
               {% for release in music_online_releases %}
                 {% if release.release_id %}
@@ -309,9 +311,9 @@
         <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
           {% include "app/icons/magnifying-glass.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
         </div>
-        <h3 class="text-xl font-semibold mb-2">No results found</h3>
+        <h3 class="text-xl font-semibold mb-2">{% translate "No results found" %}</h3>
         <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">
-          We couldn't find any matches for "{{ request.GET.q }}". Try checking your spelling or using different keywords.
+          {% blocktranslate trimmed with value_1=request.GET.q %}We couldn't find any matches for "{{ value_1 }}". Try checking your spelling or using different keywords.{% endblocktranslate %}
         </p>
       </div>
     {% endif %}
@@ -319,11 +321,11 @@
     {% if local_results %}
       <div class="mb-8">
         <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-semibold text-[var(--color-text-secondary)]">In Your Library</h3>
+          <h3 class="text-lg font-semibold text-[var(--color-text-secondary)]">{% translate "In Your Library" %}</h3>
           <div class="text-sm text-[var(--color-text-muted)]">
-            {{ local_results_total }} result{{ local_results_total|pluralize }}
+            {% blocktranslate trimmed with value_1=local_results_total count count=local_results_total %}{{ value_1 }} result{% plural %}{{ value_1 }} results{% endblocktranslate %}
             {% if local_results_total > local_results|length %}
-              <span class="text-[var(--color-text-muted)]">· Showing first {{ local_results|length }}</span>
+              <span class="text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=local_results|length %}· Showing first {{ value_1 }}{% endblocktranslate %}</span>
             {% endif %}
           </div>
         </div>
@@ -343,7 +345,7 @@
 
     {% if data.results %}
       <div {% if local_results %}class="mt-8"{% endif %}>
-        <h3 class="text-lg font-semibold mb-4 text-[var(--color-text-secondary)]">Online Results</h3>
+        <h3 class="text-lg font-semibold mb-4 text-[var(--color-text-secondary)]">{% translate "Online Results" %}</h3>
         <div {% if layout == 'grid' %}
           class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
           {% for result in data.results %}
@@ -400,7 +402,7 @@
 
         {# Page info text #}
         <div class="text-center text-sm text-[var(--color-text-muted)] mt-3">
-          Page {{ data.page }} of {{ data.total_pages }} ({{ data.total_results }} results)
+          {% blocktranslate trimmed with value_1=data.page value_2=data.total_pages value_3=data.total_results %}Page {{ value_1 }} of {{ value_2 }} ({{ value_3 }} results){% endblocktranslate %}
         </div>
       {% endif %}
     {% endif %}
@@ -410,9 +412,9 @@
         <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
           {% include "app/icons/magnifying-glass.svg" with classes="w-8 h-8 text-[var(--color-text-muted)]" %}
         </div>
-        <h3 class="text-xl font-semibold mb-2">No results found</h3>
+        <h3 class="text-xl font-semibold mb-2">{% translate "No results found" %}</h3>
         <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">
-          We couldn't find any matches for "{{ request.GET.q }}". Try checking your spelling or using different keywords.
+          {% blocktranslate trimmed with value_1=request.GET.q %}We couldn't find any matches for "{{ value_1 }}". Try checking your spelling or using different keywords.{% endblocktranslate %}
         </p>
       </div>
     {% endif %}

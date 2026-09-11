@@ -4,6 +4,7 @@ from django.core.exceptions import PermissionDenied, SuspiciousOperation
 from django.http import Http404, HttpResponse
 from django.urls import path
 from django.views.decorators.csrf import csrf_protect
+from django.views.i18n import JavaScriptCatalog
 
 from app.models import Sources
 from app.providers import services
@@ -72,6 +73,16 @@ def boom_hardcover_401(_request):
     )
 
 
+@login_not_required
+def boom_igdb_not_configured(_request):
+    """Raise an unconfigured-IGDB error for middleware testing."""
+    raise services.ProviderNotConfiguredError(
+        Sources.IGDB.value,
+        "IGDB is not configured. Add your Twitch application's client "
+        "ID and secret in Settings → Metadata providers.",
+    )
+
+
 @csrf_protect
 @login_not_required
 def csrf_protected(_request):
@@ -87,10 +98,16 @@ handler500 = "app.error_views.server_error"
 urlpatterns = [
     path("", home, name="home"),
     path("accounts/login/", account_login, name="account_login"),
+    path(
+        "jsi18n/",
+        login_not_required(JavaScriptCatalog.as_view()),
+        name="javascript-catalog",
+    ),
     path("boom-400/", boom_400),
     path("boom-403/", boom_403),
     path("boom-404/", boom_404),
     path("boom-500/", boom_500),
     path("boom-hardcover-401/", boom_hardcover_401),
+    path("boom-igdb-not-configured/", boom_igdb_not_configured),
     path("csrf-protected/", csrf_protected),
 ]

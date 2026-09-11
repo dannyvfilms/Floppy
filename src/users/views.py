@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import uuid
+from datetime import timedelta
 from io import BytesIO
 from itertools import batched
 from pathlib import Path
@@ -17,6 +18,7 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
@@ -24,9 +26,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import pluralize
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django_celery_beat.models import PeriodicTask
 
+from api import scopes as api_scopes
 from app import helpers as app_helpers
 from app import history_cache, image_cache, statistics_cache
 from app.discover.feeds import get_external_row_definitions
@@ -48,7 +52,12 @@ from app.templatetags import app_tags
 from integrations import exports, plex, stremio_catalog, tasks
 from integrations.imports import trakt as trakt_imports
 from integrations.models import (
+    DEFAULT_INTEGRATION_SCOPES,
+    CatalogGrant,
+    ExternalReference,
+    ExternalReferenceReviewStatus,
     ImportRun,
+    IntegrationToken,
     LastFMAccount,
     PlexAccount,
     PlexWebhookShare,
@@ -104,6 +113,13 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
 
 
 logger = logging.getLogger(__name__)
+
+# Carries a freshly minted token secret across the create redirect, so a refresh
+# cannot mint a second token. The session backend is ``cached_db``, so the secret
+# does sit in the cache and session table for that one request cycle; it is
+# popped on the next render and the database only ever holds the digest.
+NEW_TOKEN_SESSION_KEY = "new_integration_token"  # noqa: S105 - session key, not a secret
+MAX_TOKEN_NAME_LENGTH = 255
 
 
 class CustomSignupView(SignupView):
@@ -752,7 +768,7 @@ def home_screen(request):
 
     context = {
         "home_screen_sections_json": json.dumps(
-            serialize_settings_sections(request.user)
+            serialize_settings_sections(request.user), cls=DjangoJSONEncoder
         ),
         "show_media_type_headers": request.user.home_show_media_type_headers,
         "home_screen_list_search_url": reverse("home_screen_list_search"),
@@ -899,7 +915,7 @@ def preferences(request):
         for library in request.user.get_active_media_types()
         if library in AUTO_PAUSE_MEDIA_TYPES
     ]
-    library_labels = {"all": "All Libraries"}
+    library_labels = {"all": gettext("All Libraries")}
     for library in active_libraries:
         library_labels[library] = app_tags.media_type_readable_plural(library)
     try:
@@ -914,6 +930,24 @@ def preferences(request):
         metadata_language_choices = [
             ("", f"Server Default ({settings.TMDB_LANG})"),
         ]
+    # Provider results are cached across users; localize UI options only here.
+    region_option_labels = {
+        "UNSET": gettext("Not set"),
+        "": gettext("Disabled"),
+    }
+    watch_provider_regions = [
+        (code, region_option_labels.get(code, label))
+        for code, label in watch_provider_regions
+    ]
+    metadata_language_choices = [
+        (
+            code,
+            gettext("Server Default (%(language)s)") % {"language": settings.TMDB_LANG}
+            if not code
+            else label,
+        )
+        for code, label in metadata_language_choices
+    ]
     tv_metadata_source_choices = [
         (choice.value, choice.label)
         for choice in metadata_resolution.available_metadata_sources(
@@ -1324,6 +1358,8 @@ def convert_anime_library(request):
 @require_GET
 def integrations(request):
     """Render the integrations settings page."""
+    from integrations.state import settings_view
+
     user = request.user
     last_received = user.plex_webhook_last_received_at
     rotated_at = user.plex_webhook_token_rotated_at
@@ -1377,6 +1413,25 @@ def integrations(request):
         .select_related("owner")
         .order_by("owner__username")
     )
+    match_review_references = list(
+        ExternalReference.objects.filter(
+            user=user,
+            review_status=ExternalReferenceReviewStatus.NEEDS_REVIEW.value,
+        )
+        .select_related("matched_item", "corrected_item")
+        .order_by("-updated_at")[:100]
+    )
+    match_saved_references = list(
+        ExternalReference.objects.filter(
+            user=user,
+            review_status__in=(
+                ExternalReferenceReviewStatus.CORRECTED.value,
+                ExternalReferenceReviewStatus.IGNORED.value,
+            ),
+        )
+        .select_related("matched_item", "corrected_item")
+        .order_by("-updated_at")[:100]
+    )
     all_plex_library_values = [option["value"] for option in plex_library_options]
     for share in plex_webhook_shares:
         share.selected_libraries_json = json.dumps(
@@ -1395,6 +1450,8 @@ def integrations(request):
         "users/integrations.html",
         {
             "user": user,
+            "sync_bindings": settings_view.binding_rows(user),
+            "sync_conflicts": settings_view.open_conflicts(user),
             "plex_webhook_needs_update": plex_webhook_needs_update,
             "plex_library_options_json": json.dumps(plex_library_options),
             "plex_library_options": plex_library_options,
@@ -1403,6 +1460,8 @@ def integrations(request):
             ),
             "plex_webhook_shares": plex_webhook_shares,
             "received_plex_webhook_shares": received_plex_webhook_shares,
+            "match_review_references": match_review_references,
+            "match_saved_references": match_saved_references,
             "plex_share_recipients": plex_share_recipients,
             "plex_connected": bool(plex_account and plex_account.plex_token),
             "jellyfin_account": jellyfin_account,
@@ -1410,6 +1469,12 @@ def integrations(request):
             "jellyfin_pull_interval_minutes": tasks.JELLYFIN_PULL_INTERVAL_MINUTES,
             "seerr_global_webhook_enabled": bool(settings.SEERR_GLOBAL_WEBHOOK_SECRET),
             "stremio_catalog_readiness": stremio_catalog.catalog_readiness(user),
+            # Popped, not read: the secret is shown once and never again.
+            "new_integration_token": request.session.pop(
+                NEW_TOKEN_SESSION_KEY,
+                None,
+            ),
+            **integration_token_context(user),
         },
     )
 
@@ -2187,7 +2252,11 @@ def _delete_orphaned_metadata(media_type, item_ids):
             manager.filter(item_id__in=item_ids).values_list("item_id", flat=True),
         )
 
-    item_count, _ = Item.objects.filter(id__in=orphaned_ids).delete()
+    # Count the Items themselves, not the cascade total: anything hanging off
+    # an Item (canonical watch state, tags, credits) would otherwise inflate
+    # the "metadata entries" the user is told about.
+    _total, deleted_per_model = Item.objects.filter(id__in=orphaned_ids).delete()
+    item_count = deleted_per_model.get(Item._meta.label, 0)
 
     if media_type == MediaTypes.MUSIC.value:
         item_count += _delete_orphaned_music_catalog()
@@ -2476,6 +2545,123 @@ def delete_export_schedule(request):
     except PeriodicTask.DoesNotExist:
         messages.error(request, "Backup schedule not found.")
     return redirect("export_data")
+
+
+def integration_token_context(user):
+    """Return the named-token context for the integrations page."""
+    return {
+        "integration_tokens": list(
+            IntegrationToken.objects.filter(user=user, revoked_at__isnull=True)
+            .order_by("-created_at"),
+        ),
+        "integration_scope_choices": [
+            {
+                "value": scope,
+                "description": description,
+                "default": scope in DEFAULT_INTEGRATION_SCOPES,
+            }
+            for scope, description in sorted(api_scopes.SCOPE_DESCRIPTIONS.items())
+        ],
+        "integration_tracking_preset_json": json.dumps(
+            list(DEFAULT_INTEGRATION_SCOPES),
+        ),
+        "catalog_grants": list(
+            CatalogGrant.objects.filter(
+                user=user,
+                revoked_at__isnull=True,
+            ).order_by("-created_at"),
+        ),
+    }
+
+
+@require_POST
+def create_catalog_grant(request):
+    """Mint a revocable add-on install credential."""
+    name = (request.POST.get("name") or "").strip()[:MAX_TOKEN_NAME_LENGTH]
+    if not name:
+        messages.error(request, "Give the install a name so you can recognise it.")
+        return redirect("integrations")
+
+    allow_playback_start = request.POST.get("allow_playback_start") == "on"
+    grant, _token = CatalogGrant.generate(
+        user=request.user,
+        name=name,
+        allow_playback_start=allow_playback_start,
+    )
+    messages.success(request, f"Created add-on install '{grant.name}'.")
+    return redirect("integrations")
+
+
+@require_POST
+def revoke_catalog_grant(request, grant_id):
+    """Revoke one add-on install credential."""
+    grant = get_object_or_404(
+        CatalogGrant,
+        pk=grant_id,
+        user=request.user,
+        revoked_at__isnull=True,
+    )
+    grant.revoked_at = timezone.now()
+    grant.save(update_fields=["revoked_at"])
+    messages.success(request, f"Revoked add-on install '{grant.name}'.")
+    return redirect("integrations")
+
+
+@require_POST
+def create_integration_token(request):
+    """Mint a named, scoped API token and show its secret once."""
+    name = (request.POST.get("name") or "").strip()[:MAX_TOKEN_NAME_LENGTH]
+    if not name:
+        messages.error(request, "Give the token a name so you can recognise it later.")
+        return redirect("integrations")
+
+    requested = request.POST.getlist("scopes")
+    scopes = [scope for scope in requested if scope in api_scopes.ALL_SCOPES]
+    if not scopes:
+        messages.error(request, "Select at least one permission for the token.")
+        return redirect("integrations")
+
+    expires_at = None
+    raw_expiry = (request.POST.get("expires_in_days") or "").strip()
+    if raw_expiry:
+        try:
+            days = int(raw_expiry)
+        except ValueError:
+            messages.error(request, "Expiry must be a number of days.")
+            return redirect("integrations")
+        if days < 1:
+            messages.error(request, "Expiry must be at least one day.")
+            return redirect("integrations")
+        expires_at = timezone.now() + timedelta(days=days)
+
+    token, raw_token = IntegrationToken.generate(
+        user=request.user,
+        name=name,
+        scopes=scopes,
+        expires_at=expires_at,
+    )
+    # Never logged and never stored: the session is the one delivery channel.
+    request.session[NEW_TOKEN_SESSION_KEY] = {
+        "name": token.name,
+        "secret": raw_token,
+    }
+    messages.success(request, f"Created token '{token.name}'.")
+    return redirect("integrations")
+
+
+@require_POST
+def revoke_integration_token(request, token_id):
+    """Revoke one of the user's named tokens."""
+    token = get_object_or_404(
+        IntegrationToken,
+        pk=token_id,
+        user=request.user,
+        revoked_at__isnull=True,
+    )
+    token.revoked_at = timezone.now()
+    token.save(update_fields=["revoked_at"])
+    messages.success(request, f"Revoked token '{token.name}'.")
+    return redirect("integrations")
 
 
 @require_POST

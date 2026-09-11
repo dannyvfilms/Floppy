@@ -1,8 +1,10 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 <div class="w-32 shrink-0">
-  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card hover:ring-2 hover:ring-indigo-500 transition-all group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
-       x-data="{ revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches) { return; } if (this.$root.classList.contains('media-card-subtitle-always')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
+  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card hover:ring-2 hover:ring-indigo-500 transition-all group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
+       x-data="{ revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay')) { return; } if (this.$root.classList.contains('media-card-subtitle-always')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
        @click.capture="tapToReveal($event)"
        @media-card-revealed.window="if ($event.detail !== $root) revealed = false"
        @click.window="if (revealed && !$root.contains($event.target)) revealed = false"
@@ -19,7 +21,7 @@
       {% if person.episode_count %}
         <span class="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity
                      bg-gray-900/90 text-white text-[11px] font-medium px-2 py-1 rounded-md shadow-md pointer-events-none">
-          {{ person.episode_count }} ep{{ person.episode_count|pluralize }}
+          {% blocktranslate trimmed with value_1=person.episode_count count count=person.episode_count %}{{ value_1 }} ep{% plural %}{{ value_1 }} eps{% endblocktranslate %}
         </span>
       {% endif %}
     </div>

@@ -1,8 +1,10 @@
+
+{% load i18n %}
 {% load app_tags %}
 
 {% if not results %}
   <p class="text-xs text-[var(--color-text-muted)] py-2">
-    {% if provider %}No matches found. Try a different search.{% endif %}
+    {% if provider %}{% translate "No matches found. Try a different search." %}{% endif %}
   </p>
 {% else %}
   <div class="space-y-2">
@@ -20,7 +22,7 @@
         <span class="flex-1 text-sm text-[var(--color-text-secondary)] truncate">{{ result.title }}</span>
         <button type="submit"
                 class="shrink-0 text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
-          Use this match
+          {% translate "Use this match" %}
         </button>
       </form>
     {% endfor %}

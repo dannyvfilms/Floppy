@@ -30,12 +30,17 @@ JELLYFIN_COLLECTION_SOURCE = "jellyfin"
 
 def _ticks_to_seconds(ticks) -> int | None:
     """Convert Jellyfin 100-nanosecond ticks to whole seconds."""
-    if ticks is None:
+    if ticks is None or isinstance(ticks, bool):
+        return None
+    if isinstance(ticks, float) and not ticks.is_integer():
         return None
     try:
-        return max(0, int(ticks) // 10_000_000)
+        ticks = int(ticks)
     except (TypeError, ValueError):
         return None
+    if ticks < 0:
+        return None
+    return ticks // 10_000_000
 
 
 class JellyfinWebhookProcessor(BaseWebhookProcessor):
@@ -107,13 +112,26 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         return False
 
     def _is_played(self, payload):
-        if payload["Event"] == "MarkPlayed":
+        event_type = payload.get("Event")
+        if event_type == "MarkPlayed":
             return True
 
-        if payload["Event"] == "MarkUnplayed":
+        if event_type in ("MarkUnplayed", "Play", "Pause"):
             return False
 
-        return payload["Item"]["UserData"]["Played"]
+        if event_type == "Stop":
+            position_seconds, duration_seconds = self._get_playback_progress(payload)
+            if position_seconds is not None and duration_seconds is not None:
+                return position_seconds * 5 >= duration_seconds * 4
+
+        item = payload.get("Item") or {}
+        if not isinstance(item, dict):
+            item = {}
+        user_data = item.get("UserData") or {}
+        if not isinstance(user_data, dict):
+            user_data = {}
+        played = user_data.get("Played")
+        return played if isinstance(played, bool) else False
 
     def _is_unplayed(self, payload):
         return payload["Event"] == "MarkUnplayed"
@@ -124,8 +142,21 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
         if played_at or not self._is_played(payload):
             return played_at
 
-        item = payload.get("Item", {}) or {}
-        user_data = item.get("UserData", {}) or {}
+        item = payload.get("Item") or {}
+        if not isinstance(item, dict):
+            item = {}
+        user_data = item.get("UserData") or {}
+        if not isinstance(user_data, dict):
+            user_data = {}
+        position_seconds, duration_seconds = self._get_playback_progress(payload)
+        if (
+            payload.get("Event") == "Stop"
+            and position_seconds is not None
+            and duration_seconds is not None
+            and user_data.get("Played") is not True
+        ):
+            return None
+
         raw_timestamp = user_data.get("LastPlayedDate") or payload.get(
             "LastPlayedDate",
         )
@@ -141,6 +172,21 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 timezone.get_current_timezone(),
             )
         return timezone.localtime(played_at)
+
+    def _get_playback_progress(self, payload):
+        """Extract a Jellyfin position and positive duration in seconds."""
+        item = payload.get("Item") or {}
+        if not isinstance(item, dict):
+            item = {}
+        position_ticks = payload.get("PlaybackPositionTicks")
+        if position_ticks is None:
+            position_ticks = item.get("PlaybackPositionTicks")
+
+        position_seconds = _ticks_to_seconds(position_ticks)
+        duration_seconds = _ticks_to_seconds(item.get("RunTimeTicks"))
+        if duration_seconds is not None and duration_seconds <= 0:
+            duration_seconds = None
+        return position_seconds, duration_seconds
 
     def _get_media_type(self, payload):
         return self.MEDIA_TYPE_MAPPING.get((payload.get("Item") or {}).get("Type"))
@@ -573,15 +619,8 @@ class JellyfinWebhookProcessor(BaseWebhookProcessor):
                 media_id = ids.get("tmdb_id")
 
         # Duration / offset from Jellyfin ticks (100 ns units)
-        duration_seconds = _ticks_to_seconds(item.get("RunTimeTicks"))
-        offset_seconds = _ticks_to_seconds(
-            payload.get("PlaybackPositionTicks") or item.get("PlaybackPositionTicks"),
-        )
-        provider_completed = None
-        if payload.get("Event") == "Stop":
-            played = (item.get("UserData") or {}).get("Played")
-            if isinstance(played, bool):
-                provider_completed = played
+        offset_seconds, duration_seconds = self._get_playback_progress(payload)
+        provider_completed = self._is_played(payload)
 
         live_playback.apply_playback_event(
             user_id=user.id,

@@ -26,7 +26,7 @@ class KodiWebhookProcessor(BaseWebhookProcessor):
         """Return the process payload."""
         event_type = payload.get("event")
         if not self._is_supported_event(event_type):
-            logger.debug("Ignoring Kodi webhook event type: %s", event_type)
+            logger.info("Ignoring Kodi webhook event type: %s", event_type)
             return
 
         ids = self._extract_external_ids(payload)
@@ -35,6 +35,19 @@ class KodiWebhookProcessor(BaseWebhookProcessor):
         if not any(ids.values()):
             logger.warning("Ignoring Kodi webhook: no external ID found in payload.")
             return
+
+        if (
+            event_type == KodiEvent.PLAYBACK_STOP
+            and payload.get("mediaType", "").lower() == "episode"
+            and not self._is_played(payload)
+        ):
+            progress = payload.get("progress", {}) or {}
+            logger.info(
+                "Kodi stop event below watched threshold for episode: "
+                "percent=%s time=%s",
+                progress.get("percent"),
+                progress.get("time"),
+            )
 
         self._process_media(payload, user, ids)
 

@@ -183,6 +183,26 @@ urlpatterns = [
         name="delete_export_schedule",
     ),
     path("regenerate_token", views.regenerate_token, name="regenerate_token"),
+    path(
+        "settings/integrations/catalog-grants/create",
+        views.create_catalog_grant,
+        name="create_catalog_grant",
+    ),
+    path(
+        "settings/integrations/catalog-grants/<int:grant_id>/revoke",
+        views.revoke_catalog_grant,
+        name="revoke_catalog_grant",
+    ),
+    path(
+        "settings/integrations/tokens/create",
+        views.create_integration_token,
+        name="create_integration_token",
+    ),
+    path(
+        "settings/integrations/tokens/<int:token_id>/revoke",
+        views.revoke_integration_token,
+        name="revoke_integration_token",
+    ),
     path("clear_search_cache", views.clear_search_cache, name="clear_search_cache"),
     path(
         "clear_history_cache",

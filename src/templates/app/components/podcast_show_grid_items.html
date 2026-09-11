@@ -1,10 +1,12 @@
+
+{% load i18n %}
 {% load app_tags %}
 {% load user_tags %}
 
 {% for tracker in media_list %}
   <div {% if forloop.last and media_list.has_next %} hx-get="{% url 'medialist' media_type %}?page={{ media_list.next_page_number }}" hx-trigger="revealed threshold:200px" hx-swap="afterend" hx-include="#filter-form" hx-indicator="#loading-indicator" class="pagination-trigger" data-page="{{ media_list.next_page_number }}" {% endif %}
-       class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative"
-       x-data="{ trackOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
+       class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
+       x-data="{ trackOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
        @click.capture="tapToReveal($event)"
        @media-card-revealed.window="if ($event.detail !== $root) revealed = false"
            @click.window="if (revealed && !$root.contains($event.target)) revealed = false">
@@ -55,10 +57,10 @@
         
         <a href="{% url 'podcast_show_detail' tracker.show.id %}" class="absolute inset-0 z-0"></a>
 
-        <div class="relative z-10 flex items-center justify-center space-x-2.5">
+        <div class="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
           {# Track Button #}
           <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
-                  title="Edit tracking"
+                  title="{% translate "Edit tracking" %}"
                   hx-get="{% url 'podcast_show_track_modal' tracker.show.id %}"
                   hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}"}'
                   hx-target="#podcast-show-track-modal-{{ tracker.show.id }}"
@@ -70,14 +72,14 @@
           {# View Show Button #}
           <a href="{% url 'podcast_show_detail' tracker.show.id %}"
              class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
-             title="View show">
+             title="{% translate "View show" %}">
             {% include "app/icons/microphone.svg" with classes="w-4 h-4" %}
           </a>
 
           {# History Button #}
           <a href="{% url 'history' %}?media_type={{ MediaTypes.PODCAST.value }}&podcast_show={{ tracker.show.id }}"
              class="p-2.5 bg-amber-600 text-white rounded-full hover:bg-amber-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(245,158,11,0.5)] transition-all duration-200 cursor-pointer"
-             title="View listening history">
+             title="{% translate "View listening history" %}">
             {% include "app/icons/history.svg" with classes="w-4 h-4" %}
           </a>
         </div>
