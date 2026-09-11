@@ -63,6 +63,7 @@ from integrations.models import (
     PlexWebhookShare,
 )
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
+from users import appearance as appearance_config
 from users import cache_management
 from users.forms import (
     AuthenticatorSetupForm,
@@ -900,8 +901,73 @@ def toggle_obfuscate_episodes(request):
 
 @require_GET
 def ui_preferences(request):
-    """Redirect to sidebar page (UI preferences renamed to Sidebar)."""
-    return redirect("sidebar")
+    """Redirect the legacy UI settings URL to Appearance."""
+    return redirect("appearance")
+
+
+@require_http_methods(["GET", "POST"])
+def appearance(request):
+    """Configure application colors and detail page composition."""
+    if request.method == "POST":
+        if request.user.is_demo:
+            messages.error(request, "This section is view-only for demo accounts.")
+            return redirect("appearance")
+
+        theme = request.POST.get("theme")
+        if theme not in ThemeChoices.values:
+            messages.error(request, "Unsupported theme.")
+            return redirect("appearance")
+        try:
+            custom_theme = appearance_config.parse_custom_theme(
+                request.POST.get("custom_theme")
+            )
+            detail_layouts = appearance_config.parse_detail_layouts(
+                request.POST.get("detail_layouts")
+            )
+        except ValidationError as exc:
+            messages.error(request, exc.messages[0])
+            return redirect("appearance")
+
+        request.user.theme = theme
+        request.user.custom_theme = custom_theme
+        request.user.detail_page_layouts = detail_layouts
+        request.user.save(
+            update_fields=[
+                "theme",
+                "custom_theme",
+                "detail_page_layouts",
+            ]
+        )
+        messages.success(request, "Appearance updated")
+        return redirect("appearance")
+
+    saved_palette = (
+        request.user.custom_theme
+        if isinstance(request.user.custom_theme, dict)
+        else {}
+    )
+    palette = {
+        key: saved_palette.get(key, definition["default"])
+        for key, definition in appearance_config.CUSTOM_THEME_COLORS.items()
+    }
+    palette.update(
+        {
+            key: saved_palette.get(key, definition["default"])
+            for key, definition in appearance_config.CUSTOM_THEME_EFFECTS.items()
+        }
+    )
+    context = {
+        "theme_presets": appearance_config.THEME_PRESETS,
+        "custom_theme_colors": appearance_config.CUSTOM_THEME_COLORS,
+        "custom_theme_effects": appearance_config.CUSTOM_THEME_EFFECTS,
+        "appearance_theme": request.user.theme,
+        "custom_theme_json": palette,
+        "detail_layout_families_json": appearance_config.DETAIL_LAYOUT_FAMILIES,
+        "detail_layouts_json": appearance_config.resolved_detail_layouts(
+            request.user.detail_page_layouts
+        ),
+    }
+    return render(request, "users/appearance.html", context)
 
 
 @require_http_methods(["GET", "POST"])

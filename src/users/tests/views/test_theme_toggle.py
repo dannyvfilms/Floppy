@@ -58,3 +58,23 @@ class ThemeTogglePartialPostTests(TestCase):
 
         self.user.refresh_from_db()
         self.assertFalse(self.user.book_comic_manga_progress_percentage)
+
+    def test_toggle_is_visible_for_basic_themes(self):
+        for theme in ("system", "light", "dark"):
+            with self.subTest(theme=theme):
+                self.user.theme = theme
+                self.user.save(update_fields=["theme"])
+
+                response = self.client.get(reverse("preferences"))
+
+                self.assertContains(response, 'aria-label="Toggle theme"')
+
+    def test_toggle_is_hidden_for_explicit_presets(self):
+        for theme in ("glass", "plex", "catppuccin_mocha", "custom"):
+            with self.subTest(theme=theme):
+                self.user.theme = theme
+                self.user.save(update_fields=["theme"])
+
+                response = self.client.get(reverse("preferences"))
+
+                self.assertNotContains(response, 'aria-label="Toggle theme"')
