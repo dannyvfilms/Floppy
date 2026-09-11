@@ -37,18 +37,7 @@
       </div>
     </div>
 
-    <div class="flex flex-wrap gap-2">
-      {% for option in discover_media_options %}
-        <button type="button"
-                @click="switchMedia('{{ option.value }}')"
-                class="rounded-full border px-3 py-1.5 text-sm transition-colors cursor-pointer"
-                :class="selectedMedia === '{{ option.value }}'
-                  ? 'border-indigo-500 bg-indigo-600 text-white'
-                  : 'border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]'">
-          {% translate option.label %}
-        </button>
-      {% endfor %}
-    </div>
+    {% include "app/components/discover_navigation.html" %}
 
     <div x-cloak
          x-show="cacheRefreshing"

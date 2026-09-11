@@ -12201,3 +12201,60 @@ msgstr "90 Tage"
 #, python-format
 msgid "Server Default (%(language)s)"
 msgstr "Serverstandard (%(language)s)"
+
+msgid "Anime Seasons - Floppy"
+msgstr "Anime-Staffeln – Floppy"
+
+msgid "Browse seasonal anime from MyAnimeList."
+msgstr "Durchsuche saisonale Anime von MyAnimeList."
+
+msgid "Discover sections"
+msgstr "Entdecken-Bereiche"
+
+msgid "Anime Seasons"
+msgstr "Anime-Staffeln"
+
+msgid "Previous season"
+msgstr "Vorherige Staffel"
+
+msgid "Next season"
+msgstr "Nächste Staffel"
+
+msgid "Filters applied"
+msgstr "Filter angewendet"
+
+msgid "Season"
+msgstr "Staffel"
+
+msgid "Winter"
+msgstr "Winter"
+
+msgid "Spring"
+msgstr "Frühling"
+
+msgid "Summer"
+msgstr "Sommer"
+
+msgid "Fall"
+msgstr "Herbst"
+
+msgid "All formats"
+msgstr "Alle Formate"
+
+msgid "TV"
+msgstr "TV"
+
+msgid "OVA"
+msgstr "OVA"
+
+msgid "ONA"
+msgstr "ONA"
+
+msgid "Sort"
+msgstr "Sortierung"
+
+msgid "No anime found for these filters."
+msgstr "Für diese Filter wurden keine Anime gefunden."
+
+msgid "MyAnimeList credentials are not configured. Add a MAL client ID in Settings."
+msgstr "MyAnimeList-Zugangsdaten sind nicht konfiguriert. Füge in den Einstellungen eine MAL-Client-ID hinzu."

@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% load app_tags %}
+{% block title %}
+    {% translate "Anime Seasons - Floppy" %}
+{% endblock title %}
+{% block content %}
+    <div class="space-y-6">
+        <div>
+            <h1 class="text-3xl font-bold text-[var(--color-text)]">{% translate "Discover" %}</h1>
+            <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Browse seasonal anime from MyAnimeList." %}</p>
+        </div>
+        {% include "app/components/discover_navigation.html" with anime_seasons_active=True %}
+        <div class="rounded-lg bg-[var(--color-surface)] p-4 sm:p-6"
+             x-data="{ filtersOpen: false }"
+             @keydown.escape.window="filtersOpen = false">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex items-center self-start rounded-md bg-[var(--color-surface-strong)] p-1">
+                    <a href="?year={{ previous_year }}&amp;season={{ previous_season }}&amp;format={{ selected_format }}&amp;sort={{ selected_sort }}"
+                       class="rounded-md p-2 transition-colors hover:bg-[var(--color-surface-hover)]"
+                       aria-label="{% translate "Previous season" %}">
+                        {% include "app/icons/chevron-left.svg" with classes="h-5 w-5" %}
+                    </a>
+                    <h2 class="min-w-40 px-4 text-center text-lg font-semibold text-[var(--color-text)]">{{ season_label }} {{ year }}</h2>
+                    <a href="?year={{ next_year }}&amp;season={{ next_season }}&amp;format={{ selected_format }}&amp;sort={{ selected_sort }}"
+                       class="rounded-md p-2 transition-colors hover:bg-[var(--color-surface-hover)]"
+                       aria-label="{% translate "Next season" %}">
+                        {% include "app/icons/chevron-right.svg" with classes="h-5 w-5" %}
+                    </a>
+                </div>
+                <div class="relative self-start sm:self-auto"
+                     @click.outside="filtersOpen = false">
+                    <button type="button"
+                            class="flex h-10 cursor-pointer items-center gap-2 rounded-md bg-[var(--color-surface-strong)] px-3 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                            @click="filtersOpen = !filtersOpen"
+                            :aria-expanded="filtersOpen"
+                            aria-controls="anime-season-filters">
+                        {% include "app/icons/funnel.svg" with classes="h-4 w-4" %}
+                        <span>{% translate "Filters" %}</span>
+                        {% if selected_format != "all" or selected_sort != "popularity" %}
+                            <span class="h-2 w-2 rounded-full bg-indigo-400"
+                                  aria-label="{% translate "Filters applied" %}"></span>
+                        {% endif %}
+                        {% include "app/icons/chevron-down.svg" with classes="h-4 w-4" %}
+                    </button>
+                    <div id="anime-season-filters"
+                         x-cloak
+                         x-show="filtersOpen"
+                         x-transition:enter="transition ease-out duration-100"
+                         x-transition:enter-start="transform opacity-0 scale-95"
+                         x-transition:enter-end="transform opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-75"
+                         x-transition:leave-start="transform opacity-100 scale-100"
+                         x-transition:leave-end="transform opacity-0 scale-95"
+                         class="absolute right-auto z-40 mt-2 w-72 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-strong)] p-4 shadow-lg sm:right-0">
+                        <form method="get" class="space-y-4">
+                            <div class="grid grid-cols-2 gap-3">
+                                <label class="text-sm text-[var(--color-text-secondary)]">
+                                    <span>{% translate "Season" %}</span>
+                                    <select name="season"
+                                            class="mt-1 block w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-text)]">
+                                        {% for option in season_options %}
+                                            <option value="{{ option.value }}"
+                                                    {% if option.value == season %}selected{% endif %}>
+                                                {{ option.label }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label class="text-sm text-[var(--color-text-secondary)]">
+                                    <span>{% translate "Year" %}</span>
+                                    <select name="year"
+                                            class="mt-1 block w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-text)]">
+                                        {% for option in year_options %}
+                                            <option value="{{ option }}"{% if option == year %} selected{% endif %}>{{ option }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                            </div>
+                            <label class="block text-sm text-[var(--color-text-secondary)]">
+                                <span>{% translate "Format" %}</span>
+                                <select name="format"
+                                        class="mt-1 block w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-text)]">
+                                    {% for option in format_options %}
+                                        <option value="{{ option.value }}"
+                                                {% if option.value == selected_format %}selected{% endif %}>
+                                            {{ option.label }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label class="block text-sm text-[var(--color-text-secondary)]">
+                                <span>{% translate "Sort" %}</span>
+                                <select name="sort"
+                                        class="mt-1 block w-full rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-text)]">
+                                    {% for option in sort_options %}
+                                        <option value="{{ option.value }}"
+                                                {% if option.value == selected_sort %}selected{% endif %}>
+                                            {{ option.label }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <div class="flex items-center justify-end gap-2 border-t border-[var(--color-border)] pt-4">
+                                <a href="{% url 'anime_seasons' %}"
+                                   class="rounded-md px-3 py-2 text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]">
+                                    {% translate "Clear" %}
+                                </a>
+                                <button type="submit"
+                                        class="cursor-pointer rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700">
+                                    {% translate "Apply" %}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% if error %}
+            <div class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-6 text-[var(--color-text-secondary)]">
+                {{ error }}
+            </div>
+        {% elif not cards %}
+            <div class="rounded-lg border border-dashed border-[var(--color-surface-border)] bg-[var(--color-hover-dim)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
+                {% translate "No anime found for these filters." %}
+            </div>
+        {% else %}
+            <div class="media-grid">
+                {% for card in cards %}
+                    {% include "app/components/media_card.html" with item=card.item media=card.media title=card.title from_grid=True card_media_type="anime" subtitle_override=card.release_date score_chip_mode="conditional" progress_chip_mode="conditional" time_left_chip_mode="conditional" show_release_year_placeholder=False create_tracking_entry=True %}
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+{% endblock content %}

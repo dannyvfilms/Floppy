@@ -1,12 +1,15 @@
 import json
 import logging
 import time
+from datetime import date
 from uuid import uuid4
 
 from django.apps import apps
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from app import discover
@@ -14,14 +17,18 @@ from app.discover import tab_cache as discover_tab_cache
 from app.models import (
     TV,
     AlbumTracker,
+    Anime,
     DiscoverFeedback,
     DiscoverFeedbackType,
     Item,
     MediaTypes,
     PodcastShowTracker,
     Season,
+    Sources,
     Status,
 )
+from app.providers import credentials, mal
+from app.providers import services as provider_services
 from app.services import metadata_resolution
 from app.signals import suppress_media_cache_change_signals
 from app.templatetags import app_tags
@@ -45,6 +52,41 @@ DISCOVER_FAST_LOCAL_PLANNING_MEDIA_TYPES = {
     MediaTypes.TV.value,
     MediaTypes.ANIME.value,
 }
+ANIME_SEASONS = ("winter", "spring", "summer", "fall")
+ANIME_SEASON_MIN_YEAR = 1900
+ANIME_SEASON_FUTURE_YEARS = 2
+ANIME_SEASON_FORMATS = ("all", "tv", "movie", "ova", "ona", "special", "music")
+ANIME_SEASON_SORTS = ("popularity", "score", "title")
+
+
+def _anime_cour_for_date(value: date) -> tuple[int, str]:
+    """Return the conventional anime cour containing the given date."""
+    return value.year, ANIME_SEASONS[(value.month - 1) // 3]
+
+
+def _adjacent_anime_cour(year: int, season: str, offset: int) -> tuple[int, str]:
+    index = ANIME_SEASONS.index(season) + offset
+    return year + index // len(ANIME_SEASONS), ANIME_SEASONS[index % 4]
+
+
+def _coerce_anime_season_params(request):
+    current_year, current_season = _anime_cour_for_date(timezone.localdate())
+    season = (request.GET.get("season") or current_season).lower()
+    if season not in ANIME_SEASONS:
+        season = current_season
+    try:
+        year = int(request.GET.get("year", current_year))
+    except (TypeError, ValueError):
+        year = current_year
+    if not ANIME_SEASON_MIN_YEAR <= year <= current_year + ANIME_SEASON_FUTURE_YEARS:
+        year = current_year
+    anime_format = (request.GET.get("format") or "all").lower()
+    if anime_format not in ANIME_SEASON_FORMATS:
+        anime_format = "all"
+    sort = (request.GET.get("sort") or "popularity").lower()
+    if sort not in ANIME_SEASON_SORTS:
+        sort = "popularity"
+    return year, season, anime_format, sort
 
 
 def _coerce_discover_media_type(raw_media_type: str | None) -> str:
@@ -404,6 +446,128 @@ def discover_page(request):
     )
     context["discover_media_options"] = _discover_media_options(request.user)
     return render(request, "app/discover.html", context)
+
+
+@login_required
+@require_GET
+def anime_seasons_page(request):
+    """Render a MAL seasonal anime grid without changing Discover recommendations."""
+    year, season, anime_format, sort = _coerce_anime_season_params(request)
+    error = ""
+    anime = []
+    if not credentials.is_configured("mal", user=request.user):
+        error = _(
+            "MyAnimeList credentials are not configured. Add a MAL client ID in "
+            "Settings."
+        )
+    else:
+        try:
+            anime = [dict(entry) for entry in mal.seasonal_anime(year, season)]
+        except provider_services.ProviderAPIError as exc:
+            error = str(exc)
+
+    if anime_format != "all":
+        anime = [entry for entry in anime if entry["format"] == anime_format]
+    if sort == "score":
+        anime.sort(
+            key=lambda entry: (
+                entry["score"] is None,
+                -(entry["score"] or 0),
+                entry["title"].casefold(),
+            ),
+        )
+    elif sort == "title":
+        anime.sort(key=lambda entry: entry["title"].casefold())
+    else:
+        anime.sort(
+            key=lambda entry: (
+                entry["popularity_rank"] is None,
+                entry["popularity_rank"] or 0,
+                entry["title"].casefold(),
+            ),
+        )
+
+    media_ids = [entry["media_id"] for entry in anime]
+    items = {
+        item.media_id: item
+        for item in Item.objects.filter(
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            media_id__in=media_ids,
+        )
+    }
+    tracked = {
+        media.item_id: media
+        for media in Anime.objects.filter(
+            user=request.user,
+            item_id__in=[item.id for item in items.values()],
+        )
+    }
+    cards = []
+    for entry in anime:
+        item = items.get(entry["media_id"])
+        if item is None:
+            item = Item(
+                media_id=entry["media_id"],
+                source=entry["source"],
+                media_type=entry["media_type"],
+                title=entry["title"],
+                original_title=entry["original_title"],
+                localized_title=entry["localized_title"],
+                image=entry["image"],
+            )
+        cards.append({"item": item, "media": tracked.get(item.id), **entry})
+
+    previous_year, previous_season = _adjacent_anime_cour(year, season, -1)
+    next_year, next_season = _adjacent_anime_cour(year, season, 1)
+    season_options = [
+        {"value": "winter", "label": _("Winter")},
+        {"value": "spring", "label": _("Spring")},
+        {"value": "summer", "label": _("Summer")},
+        {"value": "fall", "label": _("Fall")},
+    ]
+    return render(
+        request,
+        "app/anime_seasons.html",
+        {
+            "cards": cards,
+            "error": error,
+            "year": year,
+            "season": season,
+            "selected_format": anime_format,
+            "selected_sort": sort,
+            "discover_media_options": _discover_media_options(request.user),
+            "season_label": next(
+                option["label"]
+                for option in season_options
+                if option["value"] == season
+            ),
+            "season_options": season_options,
+            "format_options": [
+                {"value": "all", "label": _("All formats")},
+                {"value": "tv", "label": _("TV")},
+                {"value": "movie", "label": _("Movies")},
+                {"value": "ova", "label": _("OVA")},
+                {"value": "ona", "label": _("ONA")},
+                {"value": "special", "label": _("Specials")},
+                {"value": "music", "label": _("Music")},
+            ],
+            "sort_options": [
+                {"value": "popularity", "label": _("Popularity")},
+                {"value": "score", "label": _("Score")},
+                {"value": "title", "label": _("Title")},
+            ],
+            "year_options": range(
+                timezone.localdate().year + ANIME_SEASON_FUTURE_YEARS,
+                ANIME_SEASON_MIN_YEAR,
+                -1,
+            ),
+            "previous_year": previous_year,
+            "previous_season": previous_season,
+            "next_year": next_year,
+            "next_season": next_season,
+        },
+    )
 
 
 @login_required

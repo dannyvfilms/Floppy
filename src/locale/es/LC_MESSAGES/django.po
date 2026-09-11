@@ -60,3 +60,93 @@ msgstr "Ajustes"
 
 msgid "Logout"
 msgstr "Cerrar sesión"
+
+msgid "Anime Seasons - Floppy"
+msgstr "Temporadas de anime - Floppy"
+
+msgid "Browse seasonal anime from MyAnimeList."
+msgstr "Explora anime de temporada de MyAnimeList."
+
+msgid "Discover sections"
+msgstr "Secciones de Descubrir"
+
+msgid "Anime Seasons"
+msgstr "Temporadas de anime"
+
+msgid "Previous season"
+msgstr "Temporada anterior"
+
+msgid "Next season"
+msgstr "Temporada siguiente"
+
+msgid "Filters applied"
+msgstr "Filtros aplicados"
+
+msgid "Season"
+msgstr "Temporada"
+
+msgid "Winter"
+msgstr "Invierno"
+
+msgid "Spring"
+msgstr "Primavera"
+
+msgid "Summer"
+msgstr "Verano"
+
+msgid "Fall"
+msgstr "Otoño"
+
+msgid "All formats"
+msgstr "Todos los formatos"
+
+msgid "TV"
+msgstr "TV"
+
+msgid "Movies"
+msgstr "Películas"
+
+msgid "OVA"
+msgstr "OVA"
+
+msgid "ONA"
+msgstr "ONA"
+
+msgid "Specials"
+msgstr "Especiales"
+
+msgid "Music"
+msgstr "Música"
+
+msgid "Sort"
+msgstr "Ordenar"
+
+msgid "Popularity"
+msgstr "Popularidad"
+
+msgid "Score"
+msgstr "Puntuación"
+
+msgid "Title"
+msgstr "Título"
+
+msgid "Filters"
+msgstr "Filtros"
+
+msgid "Format"
+msgstr "Formato"
+
+msgid "Year"
+msgstr "Año"
+
+msgid "Apply"
+msgstr "Aplicar"
+
+msgid "Clear"
+msgstr "Limpiar"
+
+msgid "No anime found for these filters."
+msgstr "No se encontró anime con estos filtros."
+
+msgid "MyAnimeList credentials are not configured. Add a MAL client ID in Settings."
+msgstr "Las credenciales de MyAnimeList no están configuradas. Añade un ID de cliente de MAL en Ajustes."

@@ -137,6 +137,7 @@ from app.discover_views import (
     _render_discover_row_fragment,
     _render_discover_rows_fragment,
     _resolve_discover_media_type_for_user,
+    anime_seasons_page,
     discover_action,
     discover_page,
     discover_rows,
@@ -2014,6 +2015,7 @@ def service_worker(request):
 
 
 __all__ = [
+    "anime_seasons_page",
     "DETAIL_EPISODES_PER_PAGE",
     "DETAIL_SECONDARY_FRAGMENT",
     "DISCOVER_ALLOWED_MEDIA_TYPES",
