@@ -117,6 +117,42 @@ def _enrich_comic_issues(issues, user):
     return enriched
 
 
+def _metadata_episode_count(media_metadata):
+    """Return a numeric episode count from metadata, or None when unavailable.
+
+    Providers disagree on the shape of their episode payloads: TVDB and MAL
+    expose ``details["episodes"]`` as a count, while the anime detail preview
+    stores a list of episode rows under the top-level ``episodes`` key. Falling
+    back to the raw value rendered the list itself into the Collection panel
+    (see the "0/[{'media_id': ...}]" report), so collapse any sequence to its
+    length and reject anything that is not a usable count.
+    """
+    candidates = (
+        (media_metadata.get("details") or {}).get("episodes"),
+        media_metadata.get("episodes"),
+    )
+    for candidate in candidates:
+        if isinstance(candidate, bool) or candidate is None:
+            continue
+        if isinstance(candidate, int):
+            if candidate > 0:
+                return candidate
+            continue
+        if isinstance(candidate, str):
+            try:
+                parsed = int(candidate.strip())
+            except (TypeError, ValueError):
+                continue
+            if parsed > 0:
+                return parsed
+            continue
+        if isinstance(candidate, (list, tuple, set, frozenset, dict)) and len(
+            candidate,
+        ):
+            return len(candidate)
+    return None
+
+
 def _get_tv_runtime_display_fallback(detail_item, media_metadata):
     """Return a best-effort runtime string for TV details when provider runtime is missing."""
     if not detail_item or detail_item.media_type != MediaTypes.TV.value:
@@ -1633,9 +1669,7 @@ def media_details(
             # For TV shows, also get collection statistics (episodes/seasons)
             if media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
                 # Use episode count from metadata if available to match Details pane
-                metadata_episode_count = media_metadata.get("details", {}).get(
-                    "episodes"
-                ) or media_metadata.get("episodes")
+                metadata_episode_count = _metadata_episode_count(media_metadata)
                 collection_stats = get_tv_show_collection_stats(
                     request.user, item, metadata_episode_count=metadata_episode_count
                 )

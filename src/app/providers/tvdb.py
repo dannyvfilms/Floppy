@@ -159,6 +159,26 @@ def _coerce_list(value) -> list:
     return [value]
 
 
+def _coerce_episode_count(series_data) -> int | None:
+    """Return the series episode count as a number, never as an episode list.
+
+    TVDB omits `numberOfEpisodes` on some series (e.g. long-running anime) while
+    the extended payload carries `episodes` as a list of rows. Returning that
+    list left downstream consumers rendering it verbatim, so fall back to its
+    length instead.
+    """
+    count = series_data.get("numberOfEpisodes")
+    if isinstance(count, int) and not isinstance(count, bool) and count > 0:
+        return count
+
+    episodes = series_data.get("episodes")
+    if isinstance(episodes, list):
+        return len(episodes) or None
+    if isinstance(episodes, int) and not isinstance(episodes, bool) and episodes > 0:
+        return episodes
+    return None
+
+
 def _normalize_text_value(value) -> str | None:
     """Collapse provider text payloads into a displayable string."""
     if value in (None, ""):
@@ -1000,9 +1020,7 @@ def _build_series_metadata(series_data: dict, *, media_type: str, language: str 
         if isinstance(series_data.get("status"), dict)
         else series_data.get("status"),
         "seasons": len(seasons),
-        "episodes": series_data.get("numberOfEpisodes")
-        or series_data.get("episodes")
-        or None,
+        "episodes": _coerce_episode_count(series_data),
         "runtime": tmdb.get_readable_duration(episode_runtime),
         "studios": _get_company_names(series_data),
         "country": None,
