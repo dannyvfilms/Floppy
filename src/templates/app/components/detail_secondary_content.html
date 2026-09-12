@@ -152,9 +152,9 @@
                       {{ value|user_date_format:user|default_if_none:_("Unknown") }}{% if media.details.last_air_date %} – {{ media.details.last_air_date|user_date_format:user }}{% endif %}
                     </p>
                   {% elif key == "total_runtime" %}
-                    <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "RUNTIME" %}{% if media.details.seasons %} {% blocktranslate trimmed with value_1=media.details.seasons count count=media.details.seasons %}({{ value_1 }} SEASON){% plural %}({{ value_1 }} SEASONs){% endblocktranslate %}{% endif %}</h3>
+                    <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "RUNTIME" %}{% if media.details.seasons %} {% blocktranslate trimmed with value_1=media.details.seasons count count=media.details.seasons|safe_count %}({{ value_1 }} SEASON){% plural %}({{ value_1 }} SEASONs){% endblocktranslate %}{% endif %}</h3>
                     <p class="text-sm text-[var(--color-text-secondary)]">
-                      {{ value|default_if_none:_("Unknown") }}{% if media.details.episodes %}<span class="text-[var(--color-text-muted)] mx-1">·</span>{% blocktranslate trimmed with value_1=media.details.episodes count count=media.details.episodes %}{{ value_1 }} episode{% plural %}{{ value_1 }} episodes{% endblocktranslate %}{% endif %}
+                      {{ value|default_if_none:_("Unknown") }}{% if media.details.episodes %}<span class="text-[var(--color-text-muted)] mx-1">·</span>{% blocktranslate trimmed with value_1=media.details.episodes count count=media.details.episodes|safe_count %}{{ value_1 }} episode{% plural %}{{ value_1 }} episodes{% endblocktranslate %}{% endif %}
                     </p>
                   {% else %}
                     <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{{ key|no_underscore|upper }}</h3>
@@ -173,7 +173,7 @@
                 <div class="mb-4">
                   <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "RUNTIME" %}</h3>
                   <p class="text-sm text-[var(--color-text-secondary)]">
-                    {{ value|default_if_none:_("Unknown") }}{% if media.details.episodes %}<span class="text-[var(--color-text-muted)] mx-1">·</span>{% blocktranslate trimmed with value_1=media.details.episodes count count=media.details.episodes %}{{ value_1 }} episode{% plural %}{{ value_1 }} episodes{% endblocktranslate %}{% endif %}
+                    {{ value|default_if_none:_("Unknown") }}{% if media.details.episodes %}<span class="text-[var(--color-text-muted)] mx-1">·</span>{% blocktranslate trimmed with value_1=media.details.episodes count count=media.details.episodes|safe_count %}{{ value_1 }} episode{% plural %}{{ value_1 }} episodes{% endblocktranslate %}{% endif %}
                   </p>
                 </div>
                 {% endif %}
