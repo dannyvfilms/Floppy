@@ -7078,6 +7078,68 @@ class MediaDetailsViewTests(TestCase):
 
     @patch("app.providers.services.get_media_metadata")
     @patch("app.providers.tmdb.process_episodes")
+    def test_season_details_renders_with_unknown_sibling_season_max_progress(
+        self,
+        mock_process_episodes,
+        mock_get_metadata,
+    ):
+        """A season picker entry with no episode count must not 500 the page.
+
+        Regression test for issue #1159: TVDB's series payload carries no
+        episode count per season, so every related-season entry has
+        max_progress=None. That None reached the season picker's
+        {% blocktranslate count %} in detail_title_block.html and raised
+        TemplateSyntaxError, 500ing every TVDB show's season page. The
+        earlier #1132 fix only covered media_card.html and the secondary
+        fragment, so the full page render stayed broken.
+        """
+        sibling_season = {
+            "media_id": "1668",
+            "media_type": MediaTypes.SEASON.value,
+            "source": Sources.TVDB.value,
+            "season_number": 2,
+            "title": "Test TV Show",
+            "season_title": "Season 2",
+            "image": "http://example.com/season2.jpg",
+            "max_progress": None,
+            "episode_count": None,
+        }
+        mock_get_metadata.side_effect = lambda *_args, **_kwargs: {
+            "title": "Test TV Show",
+            "media_id": "1668",
+            "source": Sources.TVDB.value,
+            "media_type": MediaTypes.TV.value,
+            "image": "http://example.com/image.jpg",
+            "related": {"seasons": [sibling_season]},
+            "season/1": {
+                "title": "Season 1",
+                "season_title": "Season 1",
+                "media_id": "1668",
+                "media_type": MediaTypes.SEASON.value,
+                "source": Sources.TVDB.value,
+                "image": "http://example.com/season.jpg",
+                "episodes": [],
+                "related": {"seasons": [sibling_season]},
+            },
+        }
+        mock_process_episodes.return_value = []
+
+        response = self.client.get(
+            reverse(
+                "season_details",
+                kwargs={
+                    "source": Sources.TVDB.value,
+                    "media_id": "1668",
+                    "title": "test-tv-show",
+                    "season_number": 1,
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    @patch("app.providers.services.get_media_metadata")
+    @patch("app.providers.tmdb.process_episodes")
     def test_season_details_persists_and_self_heals_episode_release_datetime(
         self,
         mock_process_episodes,

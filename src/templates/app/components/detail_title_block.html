@@ -150,7 +150,7 @@
                   <div class="flex-1 text-left">
                     <div class="text-sm font-medium">{{ tv_season.season_title|default:tv_season.title }}</div>
                     <div class="text-xs text-[var(--color-text-muted)]">
-                      {% blocktranslate trimmed with value_1=tv_season.max_progress count count=tv_season.max_progress %}{{ value_1 }} Episode{% plural %}{{ value_1 }} Episodes{% endblocktranslate %}
+                      {% if tv_season.max_progress|safe_count %}{% blocktranslate trimmed with value_1=tv_season.max_progress|safe_count count count=tv_season.max_progress|safe_count %}{{ value_1 }} Episode{% plural %}{{ value_1 }} Episodes{% endblocktranslate %}{% else %}{% translate "? episodes" %}{% endif %}
                       {% if tv_season.first_air_date %}• {{ tv_season.first_air_date|user_date_format:user }}{% endif %}
                     </div>
                   </div>
