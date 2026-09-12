@@ -104,6 +104,26 @@ def _rehome_season(season: Season, surviving_tv: TV) -> None:
     season.delete()
 
 
+def _keeper_has_equivalent(related, field_name: str) -> bool:
+    """Return whether a unique constraint already holds this row's twin on the keeper.
+
+    The IntegrityError fallback below misses constraints over nullable
+    columns: databases treat NULLs as distinct, so e.g. two show-level
+    ItemProviderLink rows (season_number=NULL) never collide and the merge
+    would leave a duplicate. Django's `field=None` lookup is `IS NULL`, so
+    checking explicitly catches those too.
+    """
+    model = type(related)
+    for constraint in model._meta.constraints:
+        fields = getattr(constraint, "fields", ())
+        if field_name not in fields or getattr(constraint, "condition", None):
+            continue
+        lookup = {name: getattr(related, name) for name in fields}
+        if model._base_manager.filter(**lookup).exclude(pk=related.pk).exists():
+            return True
+    return False
+
+
 def _repoint(loser: Item, keeper: Item) -> None:
     """Move everything referencing loser onto keeper."""
     for relation in Item._meta.related_objects:
@@ -129,6 +149,9 @@ def _repoint(loser: Item, keeper: Item) -> None:
         # rows.
         for related in list(related_manager.filter(**{field.name: loser})):
             setattr(related, field.name, keeper)
+            if _keeper_has_equivalent(related, field.name):
+                related.delete()
+                continue
             try:
                 # A savepoint keeps a collision from poisoning the
                 # surrounding transaction, so the rest of the merge can
