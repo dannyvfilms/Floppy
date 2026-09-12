@@ -4776,6 +4776,22 @@ def _match_destination_from_result(result, media_type):
     return destination
 
 
+def _match_candidate_rows(results):
+    """Return renderable destination rows without persisting any Item.
+
+    Rendering used to hand the template an Item pk per result, which meant a
+    search wrote one Item (and its later metadata fan-out) for every hit.
+    """
+    rows = []
+    for result in results:
+        media_id = result.get("media_id") or result.get("id")
+        title = result.get("title") or result.get("name")
+        if not media_id or not title:
+            continue
+        rows.append({"media_id": str(media_id), "title": title, "result": result})
+    return rows
+
+
 def _match_reference_ids(user, source_item):
     """Return only this user's source references affected by the correction."""
     item_ids = [source_item.pk]
@@ -4814,15 +4830,25 @@ def match_fix(request, item_id):
         except services.ProviderAPIError as error:
             messages.error(request, f"Could not search TMDB: {error}")
 
+    candidate_rows = _match_candidate_rows(candidates)
+
     preview = None
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "preview":
-            destination = Item.objects.filter(
-                pk=request.POST.get("destination_item_id"),
-                source=Sources.TMDB.value,
-                media_type=source_item.media_type,
-            ).first()
+            chosen = next(
+                (
+                    row
+                    for row in candidate_rows
+                    if row["media_id"] == request.POST.get("destination_media_id")
+                ),
+                None,
+            )
+            destination = (
+                _match_destination_from_result(chosen["result"], source_item.media_type)
+                if chosen
+                else None
+            )
             if destination is None:
                 messages.error(request, "Choose a valid same-type destination.")
             else:
@@ -4889,13 +4915,7 @@ def match_fix(request, item_id):
 
     context = {
         "source_item": source_item,
-        "candidates": [
-            {
-                "result": result,
-                "item": _match_destination_from_result(result, source_item.media_type),
-            }
-            for result in candidates
-        ],
+        "candidates": candidate_rows,
         "preview": preview,
         "preview_mapping_json": (
             json.dumps(preview["episode_mapping"], sort_keys=True)

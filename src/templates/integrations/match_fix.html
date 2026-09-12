@@ -26,15 +26,15 @@
     {% if candidates %}
       <div class="space-y-2">
         {% for candidate in candidates %}
-          {% if candidate.item %}
+          {% if candidate.media_id %}
             <form method="post"
                   class="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-3">
               {% csrf_token %}
               <input type="hidden" name="action" value="preview">
               <input type="hidden"
-                     name="destination_item_id"
-                     value="{{ candidate.item.id }}">
-              <span class="text-sm text-[var(--color-text)]">{{ candidate.item.title }}
+                     name="destination_media_id"
+                     value="{{ candidate.media_id }}">
+              <span class="text-sm text-[var(--color-text)]">{{ candidate.title }}
                 {% if candidate.result.year %}({{ candidate.result.year }}){% endif %}
               </span>
               <button class="shrink-0 rounded-md border border-indigo-500 px-3 py-1.5 text-sm text-indigo-300 hover:bg-indigo-500/10"
