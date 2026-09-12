@@ -247,6 +247,76 @@ class MatchCorrectionTests(TestCase):
         self.assertEqual(episode.item.episode_number, 3)
         self.assertTrue(Season.objects.filter(related_tv=destination_tv).exists())
 
+    def test_tv_move_to_untracked_destination_repoints_season_items(self):
+        """Seasons must follow the show when the destination is not tracked yet.
+
+        With no destination TV row the correction repoints the source row
+        itself, so source and destination became the same row; the
+        already-seen season map was then pre-filled with the source's own
+        seasons and every season matched itself, leaving app_season.item on
+        the old provider's season Item while the show and its episodes moved.
+        Season lookups key off that Item, so the user's watches went
+        invisible under the corrected identity.
+        """
+        source = Item.objects.create(
+            media_id="501",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Wrong Show",
+        )
+        destination = self._item("502", MediaTypes.TV.value, "Right Show")
+        source_tv = TV.objects.create(
+            user=self.user,
+            item=source,
+            status=Status.IN_PROGRESS.value,
+        )
+        source_season_item = Item.objects.create(
+            media_id="501",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Season 1",
+            season_number=1,
+        )
+        source_season = Season.objects.create(
+            user=self.user,
+            item=source_season_item,
+            related_tv=source_tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.create(
+            media_id="501",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Pilot",
+            season_number=1,
+            episode_number=1,
+        )
+        episode = Episode.objects.create(
+            item=episode_item,
+            related_season=source_season,
+            end_date="2024-01-01T00:00:00Z",
+        )
+
+        preview = preview_match_correction(self.user, source, destination)
+        with patch("app.models.Item.fetch_releases"):
+            apply_match_correction(
+                self.user,
+                source.pk,
+                destination.pk,
+                preview["token"],
+            )
+
+        source_tv.refresh_from_db()
+        source_season.refresh_from_db()
+        episode.refresh_from_db()
+        self.assertEqual(source_tv.item_id, destination.pk)
+        self.assertEqual(source_season.item.media_id, "502")
+        self.assertEqual(source_season.item.source, Sources.TMDB.value)
+        self.assertEqual(source_season.item.season_number, 1)
+        self.assertEqual(episode.item.media_id, "502")
+        self.assertEqual(episode.item.source, Sources.TMDB.value)
+        self.assertEqual(episode.related_season_id, source_season.pk)
+
     def test_reference_lookup_is_user_scoped(self):
         ExternalReference.objects.create(
             user=self.user,

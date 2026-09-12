@@ -432,6 +432,12 @@ def _move_tv(user, source_item, destination_item, mapping, decisions):
     source = TV.objects.filter(user=user, item=source_item).first()
     if not source:
         raise InvalidMatchCorrectionError("The source TV show is not tracked by this user.")
+    # Read the source's seasons before the show can be repointed below: with no
+    # destination row the source row becomes the destination, and these seasons
+    # would then look like they already belong to it.
+    source_seasons = list(
+        Season.objects.filter(user=user, related_tv=source).select_related("item"),
+    )
     destination = TV.objects.filter(user=user, item=destination_item).first()
     if destination:
         _merge_scalars(source, destination, decisions)
@@ -441,13 +447,11 @@ def _move_tv(user, source_item, destination_item, mapping, decisions):
 
     destination_seasons = {
         season.item.season_number: season
-        for season in Season.objects.filter(user=user, related_tv=destination).select_related(
-            "item"
-        )
+        for season in Season.objects.filter(user=user, related_tv=destination)
+        .exclude(pk__in=[season.pk for season in source_seasons])
+        .select_related("item")
     }
-    for season in list(
-        Season.objects.filter(user=user, related_tv=source).select_related("item"),
-    ):
+    for season in source_seasons:
         source_season = season.item.season_number
         destination_season_number = source_season
         if source_season is not None:
