@@ -10046,6 +10046,69 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "2/3")
 
     @patch("app.providers.services.get_media_metadata")
+    def test_anime_media_details_collection_stats_ignore_episode_list_payload(
+        self,
+        mock_get_metadata,
+    ):
+        """A missing episode count must not leak the episode list into the stats."""
+        Item.objects.create(
+            media_id="anime-episode-list-count",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Long Running Anime",
+            image="http://example.com/anime.jpg",
+        )
+
+        mock_get_metadata.return_value = {
+            "media_id": "anime-episode-list-count",
+            "title": "Long Running Anime",
+            "media_type": MediaTypes.ANIME.value,
+            "source": Sources.MAL.value,
+            "source_url": "https://myanimelist.net/anime/anime-episode-list-count",
+            "image": "http://example.com/anime.jpg",
+            "synopsis": "Test synopsis",
+            # Providers omit the episode count for some long-running shows.
+            "details": {"format": "TV", "runtime": "25m", "episodes": None},
+            # The detail page stores the episode preview under this key.
+            "episodes": [
+                {
+                    "media_id": "anime-episode-list-count",
+                    "media_type": MediaTypes.EPISODE.value,
+                    "source": Sources.TVDB.value,
+                    "season_number": 1,
+                    "episode_number": episode_number,
+                }
+                for episode_number in (1, 2, 3)
+            ],
+            "related": {},
+            "cast": [],
+            "crew": [],
+            "studios_full": [],
+            "providers": {},
+            "external_links": {},
+        }
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.MAL.value,
+                    "media_type": MediaTypes.ANIME.value,
+                    "media_id": "anime-episode-list-count",
+                    "title": "long-running-anime",
+                },
+            ),
+            # Collection stats are computed for the secondary fragment.
+            {"fragment": "secondary"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["collection_stats"]["total_episodes"], 3)
+        self.assertContains(response, "COLLECTED EPISODES")
+        self.assertContains(response, "0/3")
+        self.assertNotContains(response, "&#x27;media_id&#x27;")
+
+    @patch("app.providers.services.get_media_metadata")
     def test_tv_media_details_play_stats_skip_placeholder_episode_runtimes(
         self,
         mock_get_metadata,
