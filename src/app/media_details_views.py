@@ -146,9 +146,10 @@ def _metadata_episode_count(media_metadata):
             if parsed > 0:
                 return parsed
             continue
-        if isinstance(candidate, (list, tuple, set, frozenset, dict)):
-            if len(candidate) > 0:
-                return len(candidate)
+        if isinstance(candidate, (list, tuple, set, frozenset, dict)) and len(
+            candidate,
+        ):
+            return len(candidate)
     return None
 
 
