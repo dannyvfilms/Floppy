@@ -10,6 +10,7 @@ from app.models import (
     CollectionEntry,
     Episode,
     Item,
+    ItemProviderLink,
     ItemTag,
     MediaTypes,
     PlaybackProgress,
@@ -204,6 +205,48 @@ class MergeItemTests(TestCase):
         self.assertTrue(CollectionEntry.objects.filter(item=keeper, user=self.user).exists())
         loser_progress.refresh_from_db()
         self.assertEqual(loser_progress.item_id, keeper.pk)
+
+    def test_show_provider_link_collision_is_dropped_not_duplicated(self):
+        """Merging two shows that both carry a show-level provider link keeps one.
+
+        Show-level links have season_number=NULL. Postgres treats NULLs as
+        distinct, so the unique constraint never raised and the loser's link
+        was repointed as a second copy. The next detail render then crashed
+        in update_or_create with MultipleObjectsReturned.
+        """
+        loser = Item.objects.create(
+            media_id="97546",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Ted Lasso",
+            image="",
+        )
+        keeper = Item.objects.create(
+            media_id="383203",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Ted Lasso",
+            image="",
+        )
+        for item in (loser, keeper):
+            ItemProviderLink.objects.create(
+                item=item,
+                provider=Sources.TVDB.value,
+                provider_media_type=MediaTypes.TV.value,
+                provider_media_id="383203" if item is keeper else "383203-loser",
+                season_number=None,
+            )
+
+        item_merge.merge_item(loser, keeper)
+
+        links = ItemProviderLink.objects.filter(
+            item=keeper,
+            provider=Sources.TVDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            season_number=None,
+        )
+        self.assertEqual(links.count(), 1)
+        self.assertEqual(links.get().provider_media_id, "383203")
 
     def test_playback_progress_collision_keeps_keepers_row(self):
         loser = Item.objects.create(
