@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 
 from app.models import (
     TV,
@@ -316,6 +317,95 @@ class MatchCorrectionTests(TestCase):
         self.assertEqual(episode.item.media_id, "502")
         self.assertEqual(episode.item.source, Sources.TMDB.value)
         self.assertEqual(episode.related_season_id, source_season.pk)
+
+    @patch("integrations.views.services.search")
+    def test_match_fix_search_does_not_persist_candidate_items(self, mock_search):
+        """Listing search results must not write an Item per candidate.
+
+        The destination radio used to carry an Item pk, so rendering the
+        result list materialized one Item per hit. A single search wrote
+        rows for every unrelated show it returned, and the metadata
+        backfill then fanned each one out into season, episode, person and
+        calendar rows.
+        """
+        source = Item.objects.create(
+            media_id="601",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Tracked Show",
+        )
+        TV.objects.create(
+            user=self.user,
+            item=source,
+            status=Status.IN_PROGRESS.value,
+        )
+        mock_search.return_value = {
+            "results": [
+                {"media_id": "900", "title": "Right Show", "year": 2020},
+                {"media_id": "901", "title": "Unrelated Show", "year": 2011},
+            ],
+        }
+        self.client.force_login(self.user)
+
+        before = set(Item.objects.values_list("pk", flat=True))
+        response = self.client.get(
+            reverse("match_fix", args=[source.pk]),
+            {"q": "show"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Right Show")
+        self.assertContains(response, "Unrelated Show")
+        self.assertEqual(set(Item.objects.values_list("pk", flat=True)), before)
+        self.assertFalse(
+            Item.objects.filter(
+                media_id__in=("900", "901"),
+                source=Sources.TMDB.value,
+            ).exists(),
+        )
+
+    @patch("integrations.views.services.search")
+    def test_match_fix_preview_materializes_only_the_chosen_destination(
+        self,
+        mock_search,
+    ):
+        """Previewing one candidate creates that destination Item and no other."""
+        source = Item.objects.create(
+            media_id="602",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Tracked Show",
+        )
+        TV.objects.create(
+            user=self.user,
+            item=source,
+            status=Status.IN_PROGRESS.value,
+        )
+        mock_search.return_value = {
+            "results": [
+                {"media_id": "910", "title": "Right Show", "year": 2020},
+                {"media_id": "911", "title": "Unrelated Show", "year": 2011},
+            ],
+        }
+        self.client.force_login(self.user)
+
+        with patch("app.models.Item.fetch_releases"):
+            response = self.client.post(
+                reverse("match_fix", args=[source.pk]) + "?q=show",
+                {"action": "preview", "destination_media_id": "910"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Item.objects.filter(
+                media_id="910",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+            ).exists(),
+        )
+        self.assertFalse(
+            Item.objects.filter(media_id="911", source=Sources.TMDB.value).exists(),
+        )
 
     def test_reference_lookup_is_user_scoped(self):
         ExternalReference.objects.create(
