@@ -3,6 +3,12 @@ services:
     # The harness always sets this before `up`; a default lets `exec` and
     # `down` re-read this file during cleanup without requiring interpolation.
     image: ${FLOPPY_BENCHMARK_IMAGE:-floppy:memory-benchmark}
+    mem_limit: ${FLOPPY_BENCHMARK_MEMORY_LIMIT:-1000000000}
+    memswap_limit: ${FLOPPY_BENCHMARK_MEMORY_LIMIT:-1000000000}
+    # The sampler reads /proc/<pid>/smaps_rollup for every supervised process.
+    # This diagnostic-only capability is not part of the application runtime.
+    cap_add:
+      - SYS_PTRACE
     environment:
       SECRET: memory-benchmark-only-secret
       REDIS_URL: redis://redis:6379
