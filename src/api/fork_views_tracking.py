@@ -17,7 +17,7 @@ from app.fork_services_movie import resolve_or_create_movie
 from app.history_cache_utils import normalize_history_media_type_tokens
 from app.models import Episode, ItemTag, MediaTypes, Movie, Tag
 from app.services import metadata_resolution
-from app.tasks import bulk_episode_plays_task
+from app.tasks_bulk_plays import bulk_episode_plays_task
 from app.templatetags.app_tags import media_url
 
 from .contract_serializers import DetailErrorSerializer

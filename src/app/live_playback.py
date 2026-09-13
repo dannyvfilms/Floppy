@@ -951,7 +951,7 @@ def build_home_playback_card(user) -> dict | None:
             image, image_source = settings.IMG_NONE, "pending"
         guard_key = f"{IMAGE_RESOLVE_GUARD_PREFIX}:{user.id}"
         if cache.add(guard_key, True, IMAGE_RESOLVE_GUARD_SECONDS):
-            from app.tasks import resolve_playback_image
+            from app.tasks_interactive import resolve_playback_image
 
             resolve_playback_image.delay(user.id)
 

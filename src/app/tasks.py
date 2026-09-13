@@ -195,6 +195,10 @@ from app.tasks_igdb_ratings import (  # noqa: E402
     reconcile_igdb_rating_backfill,
 )
 from app.tasks_imdb import refresh_imdb_game_credits_from_datasets  # noqa: E402
+from app.tasks_interactive import (  # noqa: E402
+    refresh_statistics_cache_task,  # noqa: F401
+    resolve_playback_image,  # noqa: F401
+)
 from app.tasks_mal import sync_mal_ratings_from_api  # noqa: E402
 from app.tasks_metadata_cache import (  # noqa: E402
     _clear_item_metadata_cache,
@@ -495,14 +499,6 @@ def _schedule_discover_refresh_for_movie_items(items: list[Item]) -> None:
                 countdown=DISCOVER_METADATA_REFRESH_COUNTDOWN_SECONDS,
                 priority=BACKGROUND_TASK_PRIORITY,
             )
-
-
-@shared_task(name="Resolve live playback image")
-def resolve_playback_image(user_id: int):
-    """Resolve artwork for a cached live playback state in the background."""
-    from app import live_playback
-
-    live_playback.resolve_state_image(user_id)
 
 
 @shared_task(name="Build statistics day caches")
@@ -820,14 +816,6 @@ def repair_history_day_cache_coverage_task(
     else:
         cache.delete(repair_key)
     return result
-
-
-@shared_task
-def refresh_statistics_cache_task(user_id: int, range_name: str):
-    """Rebuild the cached Statistics page for a user and range."""
-    from app import statistics_cache
-
-    statistics_cache.refresh_statistics_cache(user_id, range_name)
 
 
 @shared_task(name="Backfill item metadata")

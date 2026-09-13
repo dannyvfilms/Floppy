@@ -27,7 +27,7 @@ from app.score_views import (
 )
 from app.services.music import sync_artist_discography
 from app.services.music_scrobble import dedupe_artist_albums
-from app.tasks import bulk_music_plays_task
+from app.tasks_bulk_plays import bulk_music_plays_task
 
 from .helpers import paginate_data, parse_limit_offset, try_parse_datetime_input
 from .serializers import serialize_data

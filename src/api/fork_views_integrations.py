@@ -20,26 +20,28 @@ from users.models import ImportModeChoices
 
 logger = logging.getLogger(__name__)
 
-# Username-driven imports: service -> (task, identifier label).
+# Username-driven imports: service -> (task export, identifier label).
+# Resolve the task only when this endpoint is used so URL loading does not
+# import every provider implementation into each Gunicorn worker.
 _USERNAME_IMPORTS = {
-    "mal": (tasks.import_mal, "MyAnimeList username"),
-    "anilist": (tasks.import_anilist, "AniList username"),
-    "kitsu": (tasks.import_kitsu, "Kitsu user ID"),
-    "steam": (tasks.import_steam, "Steam ID"),
+    "mal": ("import_mal", "MyAnimeList username"),
+    "anilist": ("import_anilist", "AniList username"),
+    "kitsu": ("import_kitsu", "Kitsu user ID"),
+    "steam": ("import_steam", "Steam ID"),
 }
 
-# File-driven imports: service -> (task, file label).
+# File-driven imports: service -> (task export, file label).
 _FILE_IMPORTS = {
     # Service key stays "yamtrack": it is a public API parameter value.
-    "yamtrack": (tasks.import_yamtrack, "Floppy backup or Yamtrack CSV"),
-    "trakt-collection": (tasks.import_trakt_collection_csv, "Trakt collection CSV"),
-    "trakt-export": (tasks.import_trakt_export, "Trakt data export zip"),
-    "hltb": (tasks.import_hltb, "HowLongToBeat CSV"),
-    "grouvee": (tasks.import_grouvee, "Grouvee export (JSON or zip)"),
-    "imdb": (tasks.import_imdb, "IMDB CSV"),
-    "goodreads": (tasks.import_goodreads, "Goodreads CSV"),
-    "hardcover": (tasks.import_hardcover, "Hardcover CSV"),
-    "storygraph": (tasks.import_storygraph, "StoryGraph CSV"),
+    "yamtrack": ("import_yamtrack", "Floppy backup or Yamtrack CSV"),
+    "trakt-collection": ("import_trakt_collection_csv", "Trakt collection CSV"),
+    "trakt-export": ("import_trakt_export", "Trakt data export zip"),
+    "hltb": ("import_hltb", "HowLongToBeat CSV"),
+    "grouvee": ("import_grouvee", "Grouvee export (JSON or zip)"),
+    "imdb": ("import_imdb", "IMDB CSV"),
+    "goodreads": ("import_goodreads", "Goodreads CSV"),
+    "hardcover": ("import_hardcover", "Hardcover CSV"),
+    "storygraph": ("import_storygraph", "StoryGraph CSV"),
 }
 
 
@@ -77,7 +79,8 @@ class ImportDispatchView(drf_views.APIView):
             )
 
         if service in _USERNAME_IMPORTS:
-            task_fn, label = _USERNAME_IMPORTS[service]
+            task_export, label = _USERNAME_IMPORTS[service]
+            task_fn = getattr(tasks, task_export)
             username = (str(request.data.get("username") or "")).strip()
             if not username:
                 return Response(
@@ -92,7 +95,8 @@ class ImportDispatchView(drf_views.APIView):
             return Response({"task_id": task.id}, status=HTTP.ACCEPTED)
 
         if service in _FILE_IMPORTS:
-            task_fn, label = _FILE_IMPORTS[service]
+            task_export, label = _FILE_IMPORTS[service]
+            task_fn = getattr(tasks, task_export)
             file = request.FILES.get("file")
             if not file:
                 return Response(

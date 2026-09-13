@@ -244,38 +244,58 @@ USE_X_FORWARDED_PORT = config(
 
 # Application definition
 
-INSTALLED_APPS = [
-    "django.contrib.auth",
-    "django.contrib.admin",
-    "django.contrib.contenttypes",
-    "django.contrib.sessions",
-    "django.contrib.messages",
-    "django.contrib.staticfiles",
-    "app",
-    "events",
-    "integrations",
-    "lists",
-    "users",
-    "django_celery_beat",
-    "django_celery_results",
-    "django_select2",
-    "simple_history",
-    "widget_tweaks",
-    "health_check",
-    "health_check.cache",
-    "health_check.storage",
-    "health_check.contrib.migrations",
-    "health_check.contrib.celery_ping",
-    "health_check.contrib.redis",
-    "health_check.contrib.db_heartbeat",
-    "allauth",
-    "allauth.account",
-    "allauth.socialaccount",
-    "django.contrib.humanize",
-    "rest_framework",
-    "api",
-    "drf_spectacular",
-]
+_CELERY_PROCESS = os.environ.get("FLOPPY_PROCESS_ROLE") in {
+    "background",
+    "combined",
+    "interactive",
+}
+
+if _CELERY_PROCESS:
+    INSTALLED_APPS = [
+        "django.contrib.auth",
+        "django.contrib.contenttypes",
+        "app",
+        "events",
+        "integrations",
+        "lists",
+        "users",
+        "django_celery_beat",
+        "django_celery_results",
+        "simple_history",
+    ]
+else:
+    INSTALLED_APPS = [
+        "django.contrib.auth",
+        "django.contrib.admin",
+        "django.contrib.contenttypes",
+        "django.contrib.sessions",
+        "django.contrib.messages",
+        "django.contrib.staticfiles",
+        "app",
+        "events",
+        "integrations",
+        "lists",
+        "users",
+        "django_celery_beat",
+        "django_celery_results",
+        "django_select2",
+        "simple_history",
+        "widget_tweaks",
+        "health_check",
+        "health_check.cache",
+        "health_check.storage",
+        "health_check.contrib.migrations",
+        "health_check.contrib.celery_ping",
+        "health_check.contrib.redis",
+        "health_check.contrib.db_heartbeat",
+        "allauth",
+        "allauth.account",
+        "allauth.socialaccount",
+        "django.contrib.humanize",
+        "rest_framework",
+        "api",
+        "drf_spectacular",
+    ]
 
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
@@ -362,7 +382,7 @@ if FLOPPY_AUTO_LOGIN_USERNAME:
     _index = MIDDLEWARE.index("django.contrib.auth.middleware.AuthenticationMiddleware")
     MIDDLEWARE.insert(_index + 1, "app.middleware.AutoLoginMiddleware")
 
-ROOT_URLCONF = "config.urls"
+ROOT_URLCONF = "config.celery_urls" if _CELERY_PROCESS else "config.urls"
 
 TEMPLATES = [
     {
@@ -1370,6 +1390,29 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Retry forever rather than exit: the container restarts into the same
 # situation, so giving up only turns a slow Redis into a crash loop.
 CELERY_BROKER_CONNECTION_MAX_RETRIES = 0
+
+# ``integrations.tasks`` keeps its historical public re-exports lazy so web
+# workers do not load every importer while resolving URLs. Celery workers still
+# import every task implementation explicitly and retain the same task names.
+if os.environ.get("FLOPPY_PROCESS_ROLE") == "interactive":
+    CELERY_IMPORTS = (
+        "app.tasks_interactive",
+        "integrations.tasks._plex_sections",
+        "integrations.tasks._webhook",
+    )
+else:
+    CELERY_IMPORTS = (
+        "integrations.tasks._change_log",
+        "integrations.tasks._jellyfin_pull",
+        "integrations.tasks._koito",
+        "integrations.tasks._lastfm",
+        "integrations.tasks._media_imports",
+        "integrations.tasks._plex_collection",
+        "integrations.tasks._plex_sections",
+        "integrations.tasks._receipts",
+        "integrations.tasks._state_sync",
+        "integrations.tasks._webhook",
+    )
 CELERY_REDIS_RETRY_ON_TIMEOUT = True
 
 CELERY_WORKER_HIJACK_ROOT_LOGGER = False

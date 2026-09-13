@@ -468,40 +468,6 @@ def sync_plex_watchlist(user_id, mode="watchlist"):
     return format_watchlist_sync_message(sync_counts, warnings)
 
 
-@shared_task(name="Refresh Plex library sections")
-def refresh_plex_sections(user_id):
-    """Refresh and persist cached Plex library sections for a user.
-
-    Runs off the request thread so a page like Integrations settings never
-    blocks on live Plex connection probing (see integrations() in users/views.py).
-    """
-    from integrations import plex as plex_api
-
-    user = get_user_model().objects.get(id=user_id)
-    account = getattr(user, "plex_account", None)
-    if not account or not account.plex_token:
-        return
-
-    try:
-        sections = plex_api.list_sections(account.plex_token)
-    except plex_api.PlexAuthError as exc:
-        logger.warning(
-            "Plex token expired while refreshing sections for user %s: %s",
-            user.username,
-            exc,
-        )
-        return
-    except Exception as exc:  # pragma: no cover - defensive
-        logger.warning(
-            "Could not refresh Plex libraries for user %s: %s", user.username, exc
-        )
-        return
-
-    account.sections = sections
-    account.sections_refreshed_at = timezone.now()
-    account.save(update_fields=["sections", "sections_refreshed_at"])
-
-
 @shared_task(name=JELLYFIN_PUSH_TASK_NAME)
 def push_jellyfin_watched(user_id):
     """Celery task for pushing Floppy watched state to Jellyfin."""

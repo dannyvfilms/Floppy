@@ -735,7 +735,7 @@ def schedule_statistics_refresh(
             return False
 
     try:
-        from app.tasks import refresh_statistics_cache_task
+        from app.tasks_interactive import refresh_statistics_cache_task
 
         refresh_statistics_cache_task.apply_async(
             args=[user_id, range_name],
