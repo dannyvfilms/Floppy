@@ -27,7 +27,7 @@ msgstr "%s sélectionnés"
 #: inline_translation_extraction/templates/app/components/filter_menu.html.js:4
 #: inline_translation_extraction/templates/users/home_screen.html.js:18
 msgid "Any"
-msgstr "Tous"
+msgstr "Indifférent"
 
 #: inline_translation_extraction/templates/app/components/filter_menu.html.js:5
 #: static/js/statistics-charts.js:36 static/js/statistics-charts.js:704
@@ -1380,13 +1380,13 @@ msgstr "Aucune donnée de statut sur cette période."
 #: static/js/statistics-charts.js:1598
 msgid "How your %(count)s rated item (%(type)s) is distributed."
 msgid_plural "How your %(count)s rated items (%(type)s) are distributed."
-msgstr[0] "Répartition de votre %(count)s élément noté (%(type)s)."
+msgstr[0] "Répartition de %(count)s élément noté (%(type)s)."
 msgstr[1] "Répartition de vos %(count)s éléments notés (%(type)s)."
 
 #: static/js/statistics-charts.js:1599
 msgid "How your %(count)s rated item is distributed."
 msgid_plural "How your %(count)s rated items are distributed."
-msgstr[0] "Répartition de votre %(count)s élément noté."
+msgstr[0] "Répartition de %(count)s élément noté."
 msgstr[1] "Répartition de vos %(count)s éléments notés."
 
 #: static/js/statistics-charts.js:1610

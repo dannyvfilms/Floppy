@@ -1449,7 +1449,7 @@ msgstr "Tous les types"
 #: templates/app/person_detail.html:125
 #: templates/lists/smart_list_detail.html:21
 msgid "Any"
-msgstr "Tous"
+msgstr "Indifférent"
 
 #: templates/app/collection_list.html:11 templates/app/collection_list.html:342
 #: templates/app/components/filter_menu.html:452
