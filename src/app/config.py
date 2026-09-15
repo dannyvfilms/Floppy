@@ -134,7 +134,7 @@ MEDIA_TYPE_CONFIG = {
         "date_key": "end_date",
     },
     MediaTypes.MANGA.value: {
-        "sources": [Sources.MAL, Sources.MANGAUPDATES],
+        "sources": [Sources.MAL, Sources.MANGAUPDATES, Sources.MANGABAKA],
         "default_source": Sources.MAL,
         "unicode_icon": "📚",
         "verb": (gettext_noop("read"), gettext_noop("read")),
