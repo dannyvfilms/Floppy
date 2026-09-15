@@ -95,6 +95,64 @@ class ScrobbleProgressFloorTests(TestCase):
         self.assertEqual(state["view_offset_seconds"], 600)
 
 
+class OffsetlessPauseTests(TestCase):
+    """A pause must keep the position playing had already established."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="offsetlesspause",
+            password="pw",
+        )
+
+    def tearDown(self):
+        live_playback.clear_user_playback_state(self.user.id)
+        cache.clear()
+        super().tearDown()
+
+    @patch("app.live_playback._attach_resolved_image")
+    def _event(self, _mock_image, *, event_type, offset):
+        live_playback.apply_playback_event(
+            user_id=self.user.id,
+            event_type=event_type,
+            playback_media_type=MediaTypes.MOVIE.value,
+            media_id="701",
+            source=Sources.TMDB.value,
+            rating_key="rk-1",
+            title="A Movie",
+            view_offset_seconds=offset,
+            duration_seconds=5340,
+        )
+
+    def test_offsetless_pause_keeps_the_extrapolated_position(self):
+        """Not every client reports a view offset, and a pause writes state.
+
+        Storing the raw offset there discarded what playing had established: a
+        session that began at zero and ran two minutes was stored as zero the
+        moment it was paused, and every reader showed 0:00 for something two
+        minutes in.
+        """
+        self._event(event_type="media.play", offset=0)
+
+        # Two minutes of playback, then a pause the client reports no offset for.
+        state = live_playback.get_user_playback_state(self.user.id)
+        state["updated_at_ts"] = state["updated_at_ts"] - 120
+        live_playback.set_user_playback_state(self.user.id, state)
+
+        self._event(event_type="media.pause", offset=None)
+        paused = live_playback.get_user_playback_state(self.user.id)
+
+        self.assertEqual(paused["status"], live_playback.PLAYBACK_STATUS_PAUSED)
+        self.assertGreaterEqual(paused["view_offset_seconds"], 118)
+
+    def test_a_reported_offset_still_wins(self):
+        """The estimate only stands in when the event says nothing."""
+        self._event(event_type="media.play", offset=0)
+        self._event(event_type="media.pause", offset=42)
+
+        state = live_playback.get_user_playback_state(self.user.id)
+        self.assertEqual(state["view_offset_seconds"], 42)
+
+
 class ApplyPlaybackEventImageTests(TestCase):
     """Image resolution happens when webhook events are applied."""
 

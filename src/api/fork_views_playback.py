@@ -792,12 +792,71 @@ _NOW_PLAYING_SCHEMA = {
         "image": {"type": "string", "nullable": True},
         "status": {"type": "string", "nullable": True},
         "url": {"type": "string", "nullable": True},
-        "progress_percent": {"type": "integer", "nullable": True},
+        # A percentage rounded to two decimals, not an integer — 13.99 is
+        # a value this really returns. Declared as `integer` since the
+        # route was added, which would tell a generated client to
+        # truncate it.
+        "progress_percent": {"type": "number", "nullable": True},
         "offset_seconds": {"type": "integer", "nullable": True},
         "duration_seconds": {"type": "integer", "nullable": True},
         "updated_at": {"type": "string", "format": "date-time", "nullable": True},
+        # Null for an episode, which carries a subtitle instead, and for
+        # anything undated. A film has no subtitle line, so this is the
+        # one other fact a client can show about it.
+        "release_year": {"type": "integer", "nullable": True},
     },
 }
+
+
+def build_now_playing_payload(user):
+    """Build the now-playing body for a user, or None when nothing is playing.
+
+    Shared by the read route and the outgoing playback webhook so both speak
+    exactly one shape; a client that parses one parses the other.
+    """
+    state = live_playback.get_user_playback_state(user.id)
+    if not state:
+        return None
+
+    card = live_playback.build_home_playback_card(user)
+    if not card:
+        # `build_home_playback_card` re-reads the cache and can find it gone —
+        # the state expires lazily, on read. Treat a vanished session as
+        # nothing playing rather than dereferencing None.
+        return None
+
+    state_item = live_playback._resolve_state_item(state)
+
+    return {
+        "active": True,
+        "media_type": state.get("media_type"),
+        "source": state.get("source"),
+        "media_id": state.get("media_id"),
+        "ids": build_provider_ids(state_item),
+        "title": card["title"],
+        "subtitle": card["subtitle"],
+        "episode_code": card["episode_code"],
+        "episode_title": card["episode_title"],
+        "image": card["image"],
+        "status": card["status"],
+        "url": card["details_url"],
+        "progress_percent": card["progress_percent"],
+        "offset_seconds": card["offset_seconds"],
+        "duration_seconds": card["duration_seconds"],
+        # A film has no subtitle line to render — `_resolve_card_subtitle`
+        # builds one only for an episode — so the year is the one true thing a
+        # client can put there. Null whenever the item is unknown or undated,
+        # which a client must handle rather than printing an empty line.
+        "release_year": (
+            state_item.release_datetime.year
+            if state_item is not None and state_item.release_datetime
+            else None
+        ),
+        "updated_at": datetime.fromtimestamp(
+            card["updated_at_ts"],
+            tz=UTC,
+        ).isoformat(),
+    }
 
 
 # /api/v1/playback/now-playing/
@@ -814,32 +873,7 @@ class NowPlayingView(drf_views.APIView):
     )
     def get(self, request):
         """Return the user's active playback state, or {"active": false}."""
-        state = live_playback.get_user_playback_state(request.user.id)
-        if not state:
+        payload = build_now_playing_payload(request.user)
+        if payload is None:
             return Response({"active": False}, status=HTTP.OK)
-
-        card = live_playback.build_home_playback_card(request.user)
-        state_item = live_playback._resolve_state_item(state)
-
-        payload = {
-            "active": True,
-            "media_type": state.get("media_type"),
-            "source": state.get("source"),
-            "media_id": state.get("media_id"),
-            "ids": build_provider_ids(state_item),
-            "title": card["title"],
-            "subtitle": card["subtitle"],
-            "episode_code": card["episode_code"],
-            "episode_title": card["episode_title"],
-            "image": card["image"],
-            "status": card["status"],
-            "url": card["details_url"],
-            "progress_percent": card["progress_percent"],
-            "offset_seconds": card["offset_seconds"],
-            "duration_seconds": card["duration_seconds"],
-            "updated_at": datetime.fromtimestamp(
-                card["updated_at_ts"],
-                tz=UTC,
-            ).isoformat(),
-        }
         return Response(payload, status=HTTP.OK)

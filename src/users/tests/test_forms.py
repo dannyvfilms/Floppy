@@ -43,8 +43,74 @@ class NotificationSettingsFormTests(TestCase):
                 "daily_digest_enabled",
                 "release_notifications_enabled",
                 "premiere_notifications_enabled",
+                "playback_webhook_url",
+                "playback_webhook_secret",
             ],
         )
+
+    def test_playback_webhook_secret_is_never_rendered_back(self):
+        """The secret exists so the page stops showing a credential."""
+        self.user.set_playback_webhook_secret("s3cret")
+        self.user.save(update_fields=["playback_webhook_secret"])
+        rendered = str(NotificationSettingsForm(instance=self.user))
+        self.assertNotIn("s3cret", rendered)
+
+    def test_saved_secret_is_encrypted_at_rest(self):
+        """The column holds ciphertext, like every other stored credential."""
+        form = NotificationSettingsForm(
+            data={
+                "notification_urls": "",
+                "playback_webhook_url": "https://example.com/playback",
+                "playback_webhook_secret": "s3cret",
+            },
+            instance=self.user,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        self.assertNotEqual(saved.playback_webhook_secret, "s3cret")
+        self.assertNotIn("s3cret", saved.playback_webhook_secret)
+        self.assertEqual(saved.get_playback_webhook_secret(), "s3cret")
+
+    def test_an_overlong_secret_is_rejected(self):
+        """The column is unbounded because it holds ciphertext; input is not."""
+        form = NotificationSettingsForm(
+            data={
+                "notification_urls": "",
+                "playback_webhook_url": "https://example.com/playback",
+                "playback_webhook_secret": "x" * 500,
+            },
+            instance=self.user,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("playback_webhook_secret", form.errors)
+
+    def test_blank_secret_keeps_the_stored_one(self):
+        """A password field always posts empty; that must not wipe the secret.
+
+        Otherwise toggling the daily digest would silently stop signing.
+        """
+        self.user.set_playback_webhook_secret("s3cret")
+        self.user.save(update_fields=["playback_webhook_secret"])
+        stored = self.user.playback_webhook_secret
+        form = NotificationSettingsForm(
+            data={
+                "notification_urls": "",
+                "playback_webhook_url": "https://example.com/playback",
+                "playback_webhook_secret": "",
+            },
+            instance=self.user,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        # The stored ciphertext passes through untouched, and still decrypts.
+        self.assertEqual(saved.playback_webhook_secret, stored)
+        self.assertEqual(saved.get_playback_webhook_secret(), "s3cret")
+
+    def test_playback_webhook_url_defaults_blank(self):
+        """Blank is the default, and blank means nothing is ever POSTed."""
+        form = NotificationSettingsForm(instance=self.user)
+        self.assertFalse(form.initial.get("playback_webhook_url"))
+        self.assertFalse(form.fields["playback_webhook_url"].required)
 
     def test_form_widget(self):
         """Test that the form uses the correct widget."""

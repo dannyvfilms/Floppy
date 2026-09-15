@@ -1,8 +1,12 @@
 # FORK: tests for the durable playback progress endpoint used by third-party
 # clients doing bidirectional resume sync (issue #429).
+import hashlib
+import hmac
+import json
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
+import requests
 from django.utils import timezone
 
 from app import live_playback
@@ -596,6 +600,134 @@ class PlaybackProgressScrobbleTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.OK)
 
 
+class PlaybackWebhookTests(FloppyApiTestCase):
+    """A state change POSTs the now-playing body to a configured webhook."""
+
+    def _play(self, user, **overrides):
+        """Write an active movie state, which is what triggers the webhook."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        now_ts = live_playback._now_ts()
+        state = {
+            "event_type": "media.play",
+            "media_type": MediaTypes.MOVIE.value,
+            "media_id": movie_item.media_id,
+            "source": movie_item.source,
+            "rating_key": "rk-1",
+            "title": movie_item.title,
+            "image": "https://example.com/now-playing.jpg",
+            "image_source": "primary",
+            "view_offset_seconds": 60,
+            "duration_seconds": 3000,
+            "started_at_ts": now_ts,
+            "status": live_playback.PLAYBACK_STATUS_PLAYING,
+            "updated_at_ts": now_ts,
+            "expires_at_ts": now_ts + 3600,
+            "pause_expires_at_ts": None,
+            "scrobble_expires_at_ts": None,
+        }
+        state.update(overrides)
+        live_playback.set_user_playback_state(user.id, state)
+        self.addCleanup(live_playback.clear_user_playback_state, user.id)
+
+    def test_no_webhook_configured_sends_nothing(self):
+        """The default is blank, and a blank URL must cost no outbound call."""
+        with patch("requests.post") as post:
+            self._play(self.user1)
+        post.assert_not_called()
+
+    def test_configured_webhook_receives_the_now_playing_body(self):
+        """The POST body is the same shape /playback/now-playing/ returns."""
+        self.user1.playback_webhook_url = "https://example.com/playback"
+        self.user1.save(update_fields=["playback_webhook_url"])
+
+        with patch("requests.post") as post:
+            self._play(self.user1)
+
+        post.assert_called_once()
+        self.assertEqual(post.call_args.args[0], "https://example.com/playback")
+        body = json.loads(post.call_args.kwargs["data"])
+        self.assertTrue(body["active"])
+        self.assertEqual(body["media_type"], MediaTypes.MOVIE.value)
+        self.assertEqual(body["status"], live_playback.PLAYBACK_STATUS_PLAYING)
+        # The fields a client needs to render and to tick between events.
+        for key in ("title", "progress_percent", "duration_seconds", "updated_at"):
+            self.assertIn(key, body)
+
+    def test_a_pause_is_delivered_as_its_own_event(self):
+        """Pause is the state change the whole feature exists to deliver."""
+        self.user1.playback_webhook_url = "https://example.com/playback"
+        self.user1.save(update_fields=["playback_webhook_url"])
+
+        with patch("requests.post") as post:
+            self._play(self.user1, status=live_playback.PLAYBACK_STATUS_PAUSED)
+
+        body = json.loads(post.call_args.kwargs["data"])
+        self.assertEqual(body["status"], live_playback.PLAYBACK_STATUS_PAUSED)
+
+    def test_only_the_configured_user_is_notified(self):
+        """One user's webhook must never receive another user's playback."""
+        self.user1.playback_webhook_url = "https://example.com/playback"
+        self.user1.save(update_fields=["playback_webhook_url"])
+
+        with patch("requests.post") as post:
+            self._play(self.user2)
+        post.assert_not_called()
+
+    def test_signature_verifies_against_the_exact_bytes_sent(self):
+        """The receiver must be able to reproduce the HMAC from the body."""
+        self.user1.playback_webhook_url = "https://example.com/playback"
+        self.user1.set_playback_webhook_secret("s3cret")
+        self.user1.save(
+            update_fields=["playback_webhook_url", "playback_webhook_secret"],
+        )
+
+        with patch("requests.post") as post:
+            self._play(self.user1)
+
+        sent = post.call_args.kwargs["data"]
+        header = post.call_args.kwargs["headers"]["X-Floppy-Signature"]
+        expected = hmac.new(b"s3cret", sent, hashlib.sha256).hexdigest()
+        self.assertEqual(header, f"sha256={expected}")
+        # Signed over raw bytes, so the body must go out as `data`, not `json`
+        # — `requests` re-encoding a dict would produce bytes the receiver
+        # cannot reproduce from what it was given.
+        self.assertNotIn("json", post.call_args.kwargs)
+        self.assertEqual(json.loads(sent)["status"], live_playback.PLAYBACK_STATUS_PLAYING)
+
+    def test_no_secret_sends_no_signature(self):
+        """Signing is optional; without a secret the header is absent."""
+        self.user1.playback_webhook_url = "https://example.com/playback"
+        self.user1.save(update_fields=["playback_webhook_url"])
+
+        with patch("requests.post") as post:
+            self._play(self.user1)
+
+        self.assertNotIn("X-Floppy-Signature", post.call_args.kwargs["headers"])
+
+    def test_redirects_are_not_followed(self):
+        """A user-supplied URL must not redirect the server onto another host."""
+        self.user1.playback_webhook_url = "https://example.com/playback"
+        self.user1.save(update_fields=["playback_webhook_url"])
+
+        with patch("requests.post") as post:
+            self._play(self.user1)
+
+        self.assertFalse(post.call_args.kwargs["allow_redirects"])
+
+    def test_a_failing_endpoint_does_not_break_the_state_write(self):
+        """A dead relay must not take the playback state down with it."""
+        self.user1.playback_webhook_url = "https://example.com/playback"
+        self.user1.save(update_fields=["playback_webhook_url"])
+
+        with patch("requests.post", side_effect=requests.ConnectionError("down")):
+            self._play(self.user1)
+
+        # The state is still readable, which is what the web card renders from.
+        state = live_playback.get_user_playback_state(self.user1.id)
+        self.assertIsNotNone(state)
+        self.assertEqual(state["status"], live_playback.PLAYBACK_STATUS_PLAYING)
+
+
 class NowPlayingTests(FloppyApiTestCase):
     """GET /playback/now-playing/ projects the live_playback cache as JSON."""
 
@@ -650,6 +782,64 @@ class NowPlayingTests(FloppyApiTestCase):
         self.assertIsNotNone(body["url"])
         self.assertIn("ids", body)
         self.assertIsNotNone(body["updated_at"])
+
+    def test_release_year_is_serialized(self):
+        """A film has no subtitle, so the year is what a client can show."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        movie_item.release_datetime = timezone.now()
+        movie_item.save(update_fields=["release_datetime"])
+        now_ts = live_playback._now_ts()
+        live_playback.set_user_playback_state(
+            self.user1.id,
+            {
+                "event_type": "media.play",
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": movie_item.media_id,
+                "source": movie_item.source,
+                "title": movie_item.title,
+                "image": "https://example.com/np.jpg",
+                "view_offset_seconds": 60,
+                "duration_seconds": 3000,
+                "started_at_ts": now_ts,
+                "status": live_playback.PLAYBACK_STATUS_PLAYING,
+                "updated_at_ts": now_ts,
+                "expires_at_ts": now_ts + 3600,
+                "pause_expires_at_ts": None,
+                "scrobble_expires_at_ts": None,
+            },
+        )
+        self.addCleanup(live_playback.clear_user_playback_state, self.user1.id)
+
+        body = self._get().json()
+        self.assertEqual(body["release_year"], timezone.now().year)
+        # And a film still carries no subtitle, which is why the year is here.
+        self.assertIsNone(body["subtitle"])
+
+    def test_release_year_is_null_when_undated(self):
+        """An undated item must not invent a year."""
+        movie_item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        movie_item.release_datetime = None
+        movie_item.save(update_fields=["release_datetime"])
+        now_ts = live_playback._now_ts()
+        live_playback.set_user_playback_state(
+            self.user1.id,
+            {
+                "event_type": "media.play",
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": movie_item.media_id,
+                "source": movie_item.source,
+                "title": movie_item.title,
+                "duration_seconds": 3000,
+                "started_at_ts": now_ts,
+                "status": live_playback.PLAYBACK_STATUS_PLAYING,
+                "updated_at_ts": now_ts,
+                "expires_at_ts": now_ts + 3600,
+                "pause_expires_at_ts": None,
+                "scrobble_expires_at_ts": None,
+            },
+        )
+        self.addCleanup(live_playback.clear_user_playback_state, self.user1.id)
+        self.assertIsNone(self._get().json()["release_year"])
 
     def test_requires_authentication(self):
         """An unauthenticated request is rejected."""
