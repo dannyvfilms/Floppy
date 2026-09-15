@@ -31,6 +31,7 @@ from app.providers import (
     hardcover,
     igdb,
     mal,
+    mangabaka,
     mangaupdates,
     manual,
     musicbrainz,
@@ -1156,7 +1157,9 @@ def get_media_metadata(
             else tvdb_series_metadata(MediaTypes.ANIME.value)
         ),
         MediaTypes.MANGA.value: lambda: (
-            mangaupdates.manga(media_id)
+            mangabaka.manga(media_id)
+            if source == Sources.MANGABAKA.value
+            else mangaupdates.manga(media_id)
             if source == Sources.MANGAUPDATES.value
             else mal.manga(media_id)
         ),
@@ -1493,6 +1496,8 @@ def _lookup_by_numeric_id(media_type, query, source, user=None):
             }
         return tvdb.tv(n, routed_media_type=MediaTypes.ANIME.value)
     if media_type == MediaTypes.MANGA.value:
+        if source == Sources.MANGABAKA.value:
+            return mangabaka.manga(query)
         if source == Sources.MANGAUPDATES.value:
             return mangaupdates.manga(query)
         return mal.manga(n)
@@ -1586,7 +1591,9 @@ def search(
 
     search_handlers = {
         MediaTypes.MANGA.value: lambda: (
-            mangaupdates.search(query, page)
+            mangabaka.search(query, page)
+            if source == Sources.MANGABAKA.value
+            else mangaupdates.search(query, page)
             if source == Sources.MANGAUPDATES.value
             else mal.search(media_type, query, page)
         ),
