@@ -15,6 +15,7 @@ Our bar is practical: **make changes clean, minimal, safe, and well-understood.*
 | **Python Tooling** | Python 3.12 + `uv` | `uv sync --locked` |
 | **Tailwind CSS** | Pinned repo CLI output to `src/static/css/main.css` | `npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css` |
 | **Fast Tests** | Targeted test runner | `SECRET=test-only scripts/test.sh <dotted.path>` |
+| **Faster Tests** | Skip the 141s migration replay while iterating (not for migration changes) | `FLOPPY_TEST_FAST_DB=1 SECRET=test-only scripts/test.sh <dotted.path>` |
 | **Lint / Style** | Ruff (line length 88, migrations excluded) | `uv run --no-sync ruff check src` |
 
 ---

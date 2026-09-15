@@ -1496,6 +1496,11 @@ if not CELERY_TASK_SOFT_TIME_LIMIT:
 # interactive work strands it behind every background batch.
 CELERY_TASK_PRIORITY_INTERACTIVE = 0
 CELERY_TASK_PRIORITY_FOLLOWUP = 3
+# A Statistics refresh continuation must never outrank a webhook just because
+# its run started first. Publishing it above 0 puts it on "interactive:<n>",
+# which the worker's BRPOP drains only after the bare "interactive" key where
+# scrobbles and playback work land.
+CELERY_TASK_PRIORITY_STATISTICS_CONTINUATION = 3
 CELERY_TASK_PRIORITY_DEFAULT = 5
 CELERY_TASK_PRIORITY_BACKGROUND = 9
 # Celery copies task_default_priority onto every task before it consults the
@@ -1503,6 +1508,30 @@ CELERY_TASK_PRIORITY_BACKGROUND = 9
 # priorities during apply_async() and Beat dispatch. The route table below
 # supplies both the explicit classes and the default fallback instead.
 CELERY_TASK_DEFAULT_PRIORITY = None
+
+# Statistics refresh runs. A run is a bounded sequence of interactive chunk
+# tasks; these are the knobs a Docker session turns to keep the slowest chunk
+# inside the interactive latency budget.
+STATISTICS_REFRESH_CHUNK_DAYS = config(
+    "STATISTICS_REFRESH_CHUNK_DAYS",
+    default=25,
+    cast=int,
+)
+# Seconds to delay each continuation. Default 0 on purpose: Celery's Redis
+# transport hands an ETA task to the worker immediately and holds it in memory
+# until due, which with prefetch_multiplier=1 occupies the worker's only
+# prefetch slot. Raise it only if a broker needs the breathing room.
+STATISTICS_REFRESH_CHUNK_COUNTDOWN = config(
+    "STATISTICS_REFRESH_CHUNK_COUNTDOWN",
+    default=0,
+    cast=int,
+)
+# Lease TTL for a run's control record, heartbeated by every chunk.
+STATISTICS_REFRESH_RUN_LEASE = config(
+    "STATISTICS_REFRESH_RUN_LEASE",
+    default=300,
+    cast=int,
+)
 
 CELERY_RESULT_EXTENDED = True
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default=None) or REDIS_URL
@@ -1562,6 +1591,12 @@ CELERY_TASK_ROUTES = {
     "app.tasks.refresh_statistics_cache_task": {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
+    # Each continuation builds one bounded chunk of days and returns, so the
+    # worker is free between chunks. See docs/architecture/statistics-refresh-runs.md.
+    "app.tasks.continue_statistics_refresh_task": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_STATISTICS_CONTINUATION,
     },
     # History cache rebuilds now bound their inline work (see
     # refresh_history_cache in history_cache_reader.py), but they're kept off the

@@ -11,7 +11,12 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from app import statistics_cache, statistics_refresh
+from app import (
+    statistics_aggregator,
+    statistics_cache,
+    statistics_refresh,
+    statistics_refresh_run,
+)
 from app.models import Item, MediaTypes, Movie, Sources, Status
 from app.statistics_aggregator import (
     _aggregate_minutes_per_media_type_from_days,
@@ -67,24 +72,41 @@ class StatisticsRefreshPayloadRetentionTests(TestCase):
     def tearDown(self):
         cache.clear()
 
-    def test_refresh_keeps_only_cache_write_failures_for_aggregation(self):
+    def test_refresh_rebuilds_days_whose_cache_write_failed(self):
+        """A run cannot carry day payloads across Celery task boundaries.
+
+        The single-shot refresh kept a failed day's payload in Python and
+        handed it to the aggregator as ``prebuilt_days``. A chunked run records
+        the day identifier instead and lets the aggregator's existing
+        ``build_missing`` path rebuild it, so the published numbers are
+        unchanged while nothing unbounded is retained between chunks.
+        """
         failed_key = statistics_refresh._day_cache_key(self.user.id, self.days[0])
+        # Creating the fixture already warmed these through the eager refresh
+        # signal; drop them so the run genuinely has to rebuild them.
+        cache.delete_many(
+            [statistics_refresh._day_cache_key(self.user.id, day) for day in self.days]
+        )
         original_set_many = cache.set_many
 
-        def set_many_with_one_reported_failure(values, timeout=None, version=None):
-            original_set_many(values, timeout=timeout, version=version)
+        def set_many_dropping_one_day(values, timeout=None, version=None):
+            original_set_many(
+                {key: value for key, value in values.items() if key != failed_key},
+                timeout=timeout,
+                version=version,
+            )
             return [failed_key] if failed_key in values else []
 
         with (
             patch.object(
-                statistics_refresh.cache,
+                statistics_refresh_run.cache,
                 "set_many",
-                side_effect=set_many_with_one_reported_failure,
+                side_effect=set_many_dropping_one_day,
             ),
             patch(
-                "app.statistics_refresh._aggregate_statistics_from_days",
-                wraps=statistics_refresh._aggregate_statistics_from_days,
-            ) as aggregate,
+                "app.statistics_aggregator.build_stats_for_day",
+                wraps=statistics_aggregator.build_stats_for_day,
+            ) as rebuild,
         ):
             result = statistics_refresh.refresh_statistics_cache(
                 self.user.id,
@@ -92,9 +114,15 @@ class StatisticsRefreshPayloadRetentionTests(TestCase):
             )
 
         self.assertIsNotNone(result)
+        self.assertIn(
+            self.days[0],
+            [call_args.args[1] for call_args in rebuild.call_args_list],
+        )
         self.assertEqual(
-            aggregate.call_args.kwargs["prebuilt_days"].keys(),
-            {self.days[0]},
+            result["hours_per_media_type"],
+            statistics_cache.get_statistics_data(self.user, None, None, "All Time")[
+                "hours_per_media_type"
+            ],
         )
 
 

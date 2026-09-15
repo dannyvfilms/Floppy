@@ -200,6 +200,7 @@ from app.tasks_igdb_ratings import (  # noqa: E402
 )
 from app.tasks_imdb import refresh_imdb_game_credits_from_datasets  # noqa: E402
 from app.tasks_interactive import (  # noqa: E402
+    continue_statistics_refresh_task,  # noqa: F401
     refresh_statistics_cache_task,  # noqa: F401
     resolve_playback_image,  # noqa: F401
 )

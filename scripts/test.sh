@@ -23,26 +23,48 @@ cd "$(dirname "$0")/.."
 APPS=(app users integrations lists events api config)
 COMMON=(--parallel --buffer)
 
+FLOPPY_TEST_TIMEOUT="${FLOPPY_TEST_TIMEOUT:-2700}"
+
+# Dump every thread's stack shortly before the timeout kills the run, so a
+# lost-result hang leaves evidence instead of just a non-zero exit. Only worth
+# arming when the timeout leaves room for it.
+if [ -z "${FLOPPY_TEST_WATCHDOG:-}" ] && [ "$FLOPPY_TEST_TIMEOUT" != "0" ] \
+  && [ "$FLOPPY_TEST_TIMEOUT" -gt 180 ] 2>/dev/null; then
+  export FLOPPY_TEST_WATCHDOG=$((FLOPPY_TEST_TIMEOUT - 120))
+fi
+
+if [ "$FLOPPY_TEST_TIMEOUT" != "0" ] && command -v timeout >/dev/null 2>&1; then
+  # SIGTERM first so the runner can tear its databases down, SIGKILL 30s later
+  # if it is wedged hard enough to ignore that.
+  RUNNER=(timeout --kill-after=30s "$FLOPPY_TEST_TIMEOUT" uv run --no-sync python)
+else
+  RUNNER=(uv run --no-sync python)
+fi
+
+if [ "${FLOPPY_TEST_FAST_DB:-}" = "1" ]; then
+  echo "[test.sh] FLOPPY_TEST_FAST_DB=1: schema built from models, migrations NOT replayed." >&2
+fi
+
 case "${1:-}" in
   --full)
     shift
     exec env FLOPPY_TEST_ALLOW_NETWORK=1 \
-      uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@"
+      "${RUNNER[@]}" src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@"
     ;;
   --slow)
     shift
-    exec uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag slow
+    exec "${RUNNER[@]}" src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag slow
     ;;
   --network)
     shift
     exec env FLOPPY_TEST_ALLOW_NETWORK=1 \
-      uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag network
+      "${RUNNER[@]}" src/manage.py test "${APPS[@]}" "${COMMON[@]}" "$@" --tag network
     ;;
   "")
-    exec uv run --no-sync python src/manage.py test "${APPS[@]}" "${COMMON[@]}" \
+    exec "${RUNNER[@]}" src/manage.py test "${APPS[@]}" "${COMMON[@]}" \
       --exclude-tag slow --exclude-tag network
     ;;
   *)
-    exec uv run --no-sync python src/manage.py test "${COMMON[@]}" "$@"
+    exec "${RUNNER[@]}" src/manage.py test "${COMMON[@]}" "$@"
     ;;
 esac

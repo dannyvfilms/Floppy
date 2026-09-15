@@ -1,3 +1,7 @@
+import faulthandler
+import multiprocessing
+import os
+
 from django.db.backends.signals import connection_created
 from fakeredis import FakeConnection
 
@@ -39,6 +43,52 @@ CACHES = {
         },
     },
 }
+
+# Django's default PBKDF2 hasher costs ~300 ms per call on CI-class hardware.
+# The suite creates a user in hundreds of setUp methods and logs in through
+# `client.login` hundreds more times, so that lands squarely on every
+# auth-touching test: measured at 32 s of the 54 s that `app.tests.views.test_history`
+# spends executing tests (60%). Tests assert on authorization, never on the
+# strength of the hash, so use the cheapest correct hasher. Production is
+# unaffected -- this file is only loaded by the test settings module.
+PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+# Building the test database replays 422 migrations, measured at 141 s before a
+# single test runs -- the same floor for one targeted test as for the whole
+# suite. 99.6% of that is migration application, and `users` alone is 89 s of
+# it: seventeen migrations drop and re-add the ten `*_sort_valid` check
+# constraints on `users_user`, and SQLite rebuilds the whole table for each of
+# those ~30 operations.
+#
+# FLOPPY_TEST_FAST_DB=1 builds the schema straight from the models instead.
+# It is opt-in, not the default, because it stops the suite exercising the
+# migration graph and skips RunPython data migrations. Use it for iterating;
+# let CI and any migration-sensitive run replay the real thing.
+if os.environ.get("FLOPPY_TEST_FAST_DB") == "1":
+    MIGRATION_MODULES = dict.fromkeys(
+        ("app", "users", "lists", "integrations", "events")
+    )
+
+# Django's parallel runner has been seen to lose worker results and then wait
+# for them forever: every worker idle, the parent blocked, and the pool's
+# _handle_results thread gone. See docs/architecture/test-suite-cost.md.
+#
+# faulthandler costs nothing until something goes wrong and turns a hard crash
+# into a stack trace. FLOPPY_TEST_WATCHDOG=<seconds> additionally dumps every
+# thread's stack if the run outlives that budget, which is how to capture the
+# hang the next time it happens.
+faulthandler.enable()
+_watchdog_seconds = os.environ.get("FLOPPY_TEST_WATCHDOG")
+if _watchdog_seconds:
+    faulthandler.dump_traceback_later(float(_watchdog_seconds), repeat=True)
+
+# "spawn" re-imports instead of forking. It was used to test (and disprove) the
+# theory that the lost results came from forking workers out of a parent that
+# already had pool threads running; it hangs under spawn too. Kept as a knob.
+_start_method = os.environ.get("FLOPPY_TEST_START_METHOD")
+if _start_method:
+    multiprocessing.set_start_method(_start_method, force=True)
+
 
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_RESULT_BACKEND = "cache+memory://"

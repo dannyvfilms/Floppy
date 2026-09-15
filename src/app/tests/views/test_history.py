@@ -39,6 +39,29 @@ from app.models import (
 )
 
 
+def _begin_model_metadata_patches():
+    """Start the provider patches and return them for the caller to stop.
+
+    `setUpTestData` runs as a classmethod with no `addCleanup`, so a class-level
+    fixture needs to start and stop these around its own object creation. Test
+    bodies keep using `_start_model_metadata_patches`.
+    """
+    patchers = [
+        patch(
+            "app.models.item.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ),
+        patch(
+            "app.models.media.providers.services.get_media_metadata",
+            return_value={"max_progress": 1},
+        ),
+        patch("app.models.Item.fetch_releases"),
+    ]
+    for patcher in patchers:
+        patcher.start()
+    return patchers
+
+
 def _start_model_metadata_patches(test_case):
     """Prevent history view tests from making provider calls during model saves."""
     mock_item_media_metadata = patch(
@@ -710,11 +733,33 @@ class DeleteHistoryRecordViewTests(TestCase):
 class HistoryMonthViewTests(TestCase):
     """Test unfiltered history month page behavior."""
 
+    credentials = {"username": "month-view", "password": "12345"}
+
+    @classmethod
+    def setUpTestData(cls):
+        """Build the fixture once for the class rather than once per test.
+
+        This class spent 7.0s of its 22.0s re-creating the same user, show,
+        season and episode for every test method. Django rolls each test back
+        to this state, so building it here is equivalent and 20x cheaper.
+        """
+        patchers = _begin_model_metadata_patches()
+        try:
+            cls._build_fixture()
+        finally:
+            for patcher in reversed(patchers):
+                patcher.stop()
+
     def setUp(self):
+        # Patches and login stay per-test: the test client is per-test, and the
+        # test bodies save models too.
         _start_model_metadata_patches(self)
-        self.credentials = {"username": "month-view", "password": "12345"}
-        self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
+        cache.clear()
+
+    @classmethod
+    def _build_fixture(cls):
+        cls.user = get_user_model().objects.create_user(**cls.credentials)
         now = timezone.now()
 
         item = Item.objects.create(
@@ -726,7 +771,7 @@ class HistoryMonthViewTests(TestCase):
         )
         Movie.objects.create(
             item=item,
-            user=self.user,
+            user=cls.user,
             status=Status.COMPLETED.value,
             progress=1,
             start_date=now,
@@ -742,7 +787,7 @@ class HistoryMonthViewTests(TestCase):
         )
         tv = TV.objects.create(
             item=tv_item,
-            user=self.user,
+            user=cls.user,
             status=Status.COMPLETED.value,
         )
         season_item = Item.objects.create(
@@ -755,7 +800,7 @@ class HistoryMonthViewTests(TestCase):
         )
         season = Season.objects.create(
             item=season_item,
-            user=self.user,
+            user=cls.user,
             related_tv=tv,
             status=Status.COMPLETED.value,
         )
@@ -768,13 +813,12 @@ class HistoryMonthViewTests(TestCase):
             season_number=1,
             episode_number=1,
         )
-        with self.captureOnCommitCallbacks(execute=True):
+        with cls.captureOnCommitCallbacks(execute=True):
             Episode.objects.create(
                 item=episode_item,
                 related_season=season,
                 end_date=now,
             )
-        cache.clear()
 
     def test_default_month_view_does_not_bootstrap_cache_status_poll(self):
         response = self.client.get(reverse("history"))
@@ -1280,19 +1324,35 @@ class MusicScoreHistoryInvalidationTests(TestCase):
 class HistoryViewPersonFilterTests(TestCase):
     """Test person-based filtering on the history page."""
 
+    credentials = {"username": "test", "password": "12345"}
+
+    @classmethod
+    def setUpTestData(cls):
+        """Build this class's fixture once instead of once per test."""
+        patchers = _begin_model_metadata_patches()
+        try:
+            cls.user = get_user_model().objects.create_user(**cls.credentials)
+            cls._build_fixture()
+        finally:
+            for patcher in reversed(patchers):
+                patcher.stop()
+
     def setUp(self):
+        # Per-test: the patches cover the test bodies' own saves, and the
+        # test client is rebuilt for every test.
         _start_model_metadata_patches(self)
-        self.credentials = {"username": "test", "password": "12345"}
-        self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
-        self.person = Person.objects.create(
+
+    @classmethod
+    def _build_fixture(cls):
+        cls.person = Person.objects.create(
             source=Sources.TMDB.value,
             source_person_id="900",
             name="Filter Person",
             gender=PersonGender.MALE.value,
         )
 
-        self.movie_item = Item.objects.create(
+        cls.movie_item = Item.objects.create(
             media_id="m1",
             source=Sources.MANUAL.value,
             media_type=MediaTypes.MOVIE.value,
@@ -1300,16 +1360,16 @@ class HistoryViewPersonFilterTests(TestCase):
             image="http://example.com/m1.jpg",
         )
         Movie.objects.create(
-            item=self.movie_item,
-            user=self.user,
+            item=cls.movie_item,
+            user=cls.user,
             status=Status.COMPLETED.value,
             progress=1,
             start_date=timezone.now(),
             end_date=timezone.now(),
         )
         ItemPersonCredit.objects.create(
-            item=self.movie_item,
-            person=self.person,
+            item=cls.movie_item,
+            person=cls.person,
             role_type=CreditRoleType.CAST.value,
             role="Lead",
         )
@@ -1323,7 +1383,7 @@ class HistoryViewPersonFilterTests(TestCase):
         )
         Movie.objects.create(
             item=other_movie_item,
-            user=self.user,
+            user=cls.user,
             status=Status.COMPLETED.value,
             progress=1,
             start_date=timezone.now(),
@@ -1339,7 +1399,7 @@ class HistoryViewPersonFilterTests(TestCase):
         )
         tv = TV.objects.create(
             item=tv_item,
-            user=self.user,
+            user=cls.user,
             status=Status.COMPLETED.value,
         )
         season_item = Item.objects.create(
@@ -1352,7 +1412,7 @@ class HistoryViewPersonFilterTests(TestCase):
         )
         season = Season.objects.create(
             item=season_item,
-            user=self.user,
+            user=cls.user,
             related_tv=tv,
             status=Status.COMPLETED.value,
         )
@@ -1372,7 +1432,7 @@ class HistoryViewPersonFilterTests(TestCase):
         )
         ItemPersonCredit.objects.create(
             item=tv_item,
-            person=self.person,
+            person=cls.person,
             role_type=CreditRoleType.CAST.value,
             role="Lead",
         )
@@ -1386,7 +1446,7 @@ class HistoryViewPersonFilterTests(TestCase):
         )
         other_tv = TV.objects.create(
             item=other_tv_item,
-            user=self.user,
+            user=cls.user,
             status=Status.COMPLETED.value,
         )
         other_season_item = Item.objects.create(
@@ -1399,7 +1459,7 @@ class HistoryViewPersonFilterTests(TestCase):
         )
         other_season = Season.objects.create(
             item=other_season_item,
-            user=self.user,
+            user=cls.user,
             related_tv=other_tv,
             status=Status.COMPLETED.value,
         )
@@ -1417,7 +1477,6 @@ class HistoryViewPersonFilterTests(TestCase):
             related_season=other_season,
             end_date=timezone.now(),
         )
-
     @staticmethod
     def _credit(person, role="Lead", sort_order=0):
         return {
@@ -2095,12 +2154,28 @@ class HistoryViewPersonFilterTests(TestCase):
 class HistoryViewAuthorFilterTests(TestCase):
     """Test author-based reading filters on the history page."""
 
+    credentials = {"username": "author-filter-user", "password": "12345"}
+
+    @classmethod
+    def setUpTestData(cls):
+        """Build this class's fixture once instead of once per test."""
+        patchers = _begin_model_metadata_patches()
+        try:
+            cls.user = get_user_model().objects.create_user(**cls.credentials)
+            cls._build_fixture()
+        finally:
+            for patcher in reversed(patchers):
+                patcher.stop()
+
     def setUp(self):
+        # Per-test: the patches cover the test bodies' own saves, and the
+        # test client is rebuilt for every test.
         _start_model_metadata_patches(self)
-        self.credentials = {"username": "author-filter-user", "password": "12345"}
-        self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
-        self.person = Person.objects.create(
+
+    @classmethod
+    def _build_fixture(cls):
+        cls.person = Person.objects.create(
             source=Sources.OPENLIBRARY.value,
             source_person_id="OL1A",
             name="Open Author",
@@ -2109,7 +2184,7 @@ class HistoryViewAuthorFilterTests(TestCase):
 
         now = timezone.now()
 
-        self.book_item = Item.objects.create(
+        cls.book_item = Item.objects.create(
             media_id="OL123M",
             source=Sources.OPENLIBRARY.value,
             media_type=MediaTypes.BOOK.value,
@@ -2117,21 +2192,21 @@ class HistoryViewAuthorFilterTests(TestCase):
             image="http://example.com/book.jpg",
         )
         Book.objects.create(
-            user=self.user,
-            item=self.book_item,
+            user=cls.user,
+            item=cls.book_item,
             status=Status.COMPLETED.value,
             progress=350,
             start_date=now,
             end_date=now,
         )
         ItemPersonCredit.objects.create(
-            item=self.book_item,
-            person=self.person,
+            item=cls.book_item,
+            person=cls.person,
             role_type=CreditRoleType.AUTHOR.value,
             role="Author",
         )
 
-        self.comic_item = Item.objects.create(
+        cls.comic_item = Item.objects.create(
             media_id="comic-1",
             source=Sources.OPENLIBRARY.value,
             media_type=MediaTypes.COMIC.value,
@@ -2139,21 +2214,21 @@ class HistoryViewAuthorFilterTests(TestCase):
             image="http://example.com/comic.jpg",
         )
         Comic.objects.create(
-            user=self.user,
-            item=self.comic_item,
+            user=cls.user,
+            item=cls.comic_item,
             status=Status.COMPLETED.value,
             progress=10,
             start_date=now,
             end_date=now,
         )
         ItemPersonCredit.objects.create(
-            item=self.comic_item,
-            person=self.person,
+            item=cls.comic_item,
+            person=cls.person,
             role_type=CreditRoleType.AUTHOR.value,
             role="Writer",
         )
 
-        self.manga_item = Item.objects.create(
+        cls.manga_item = Item.objects.create(
             media_id="manga-1",
             source=Sources.OPENLIBRARY.value,
             media_type=MediaTypes.MANGA.value,
@@ -2161,21 +2236,21 @@ class HistoryViewAuthorFilterTests(TestCase):
             image="http://example.com/manga.jpg",
         )
         Manga.objects.create(
-            user=self.user,
-            item=self.manga_item,
+            user=cls.user,
+            item=cls.manga_item,
             status=Status.COMPLETED.value,
             progress=50,
             start_date=now,
             end_date=now,
         )
         ItemPersonCredit.objects.create(
-            item=self.manga_item,
-            person=self.person,
+            item=cls.manga_item,
+            person=cls.person,
             role_type=CreditRoleType.AUTHOR.value,
             role="Author",
         )
 
-        self.uncredited_book_item = Item.objects.create(
+        cls.uncredited_book_item = Item.objects.create(
             media_id="OL999M",
             source=Sources.OPENLIBRARY.value,
             media_type=MediaTypes.BOOK.value,
@@ -2183,14 +2258,13 @@ class HistoryViewAuthorFilterTests(TestCase):
             image="http://example.com/other-book.jpg",
         )
         Book.objects.create(
-            user=self.user,
-            item=self.uncredited_book_item,
+            user=cls.user,
+            item=cls.uncredited_book_item,
             status=Status.COMPLETED.value,
             progress=200,
             start_date=now,
             end_date=now,
         )
-
     def test_history_person_filter_includes_credited_reading_entries(self):
         response = self.client.get(
             reverse("history") + "?person_source=openlibrary&person_id=OL1A",

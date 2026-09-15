@@ -1,7 +1,6 @@
 """Statistics refresh and scheduling — extracted from statistics_cache.py."""
 
 import logging
-import time
 from datetime import datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
@@ -27,29 +26,21 @@ from app.statistics_cache import (
     STATISTICS_TASK_PRIORITY_BACKGROUND,
     STATISTICS_TASK_PRIORITY_FOLLOWUP,
     STATISTICS_TASK_PRIORITY_INTERACTIVE,
-    STATISTICS_WARM_DAYS,
     _cache_key,
-    _collect_stale_reading_score_days,
     _dirty_days_key,
     _get_empty_statistics_data,
-    _load_dirty_days,
     _lock_is_stale,
-    _maybe_clear_metadata_refresh,
     _normalize_hours_per_media_type,
     _preferred_range_for_user,
     _refresh_lock_key,
     _schedule_dedupe_key,
-    _store_dirty_days,
     cache_statistics_data,
     is_statistics_cache_stale,
 )
 from app.statistics_day_builder import (
-    _build_prefetch_for_range,
     _iter_day_range,
-    build_stats_for_day,
 )
 from app.statistics_day_cache import (
-    STATISTICS_DAY_CACHE_TIMEOUT,
     _day_cache_key,
     _get_history_version,
     _normalize_day_value,
@@ -535,185 +526,22 @@ def _enqueue_collected_backfills(user_id: int, collector: dict) -> None:
         )
 
 
-def refresh_statistics_cache(user_id: int, range_name: str):
-    """Rebuild and store statistics for a user and range."""
-    lock_key = _refresh_lock_key(user_id, range_name)
-    user_model = get_user_model()
-    try:
-        user = user_model.objects.get(id=user_id)
-        if range_name not in PREDEFINED_RANGES:
-            logger.warning(
-                "Attempted to refresh cache for non-predefined range: %s", range_name
-            )
-            return None
+def refresh_statistics_cache(user_id: int, range_name: str, chunk_size=None):
+    """Rebuild and store statistics for a user and range, synchronously.
 
-        start_date, end_date = _get_predefined_range_dates(range_name)
-        day_list = _resolve_day_list(user, start_date, end_date)
-        day_list_set = set(day_list)
+    This is the inline driver for the resumable run in
+    ``app.statistics_refresh_run``: it walks the same START -> CHUNK -> FINISH
+    state machine to completion in this process and returns the published
+    payload. Callers that need the result back (the eager/test path, the
+    Celery-unavailable fallback) use this; the interactive worker runs the same
+    machine one chunk per Celery message instead, so it can yield the fast lane
+    in between.
+    """
+    from app import statistics_refresh_run
 
-        dirty_days = _load_dirty_days(user_id)
-        dirty_set = {day for day in dirty_days if day}
-        dirty_dates = {_normalize_day_value(day) for day in dirty_set}
-
-        warm_days = []
-        if STATISTICS_WARM_DAYS and day_list:
-            today = timezone.localdate()
-            for offset in range(STATISTICS_WARM_DAYS):
-                warm_day = today - timedelta(days=offset)
-                if warm_day in day_list:
-                    warm_days.append(warm_day)
-
-        missing_days = set()
-        chunk_size = 50
-        for offset in range(0, len(day_list), chunk_size):
-            chunk = day_list[offset : offset + chunk_size]
-            keys = [_day_cache_key(user_id, day) for day in chunk]
-            cached = cache.get_many(keys)
-            for day, key in zip(chunk, keys, strict=False):
-                if key not in cached:
-                    missing_days.add(day)
-
-        days_to_refresh = set(warm_days)
-        days_to_refresh.update(missing_days)
-        days_to_refresh.update(day for day in dirty_dates if day in day_list)
-        stale_score_days = _collect_stale_reading_score_days(
-            user, day_whitelist=day_list_set
-        )
-        days_to_refresh.update(stale_score_days)
-
-        refreshed_days = 0
-        nonempty_days = 0
-        credit_backfill_hints = 0
-        build_started = time.perf_counter()
-
-        sorted_days = [day for day in sorted(days_to_refresh) if day]
-        # One bulk query per media model across the whole range, bucketed by
-        # day in Python, instead of ~13 queries per day. For a full-history
-        # rebuild spanning hundreds/thousands of days this is the difference
-        # between a handful of round trips and thousands of them.
-        prefetch = _build_prefetch_for_range(user, sorted_days)
-        history_version = _get_history_version(user_id)
-        backfill_collector = {
-            "runtime_item_ids": set(),
-            "genre_item_ids": set(),
-            "episode_runtime_keys": set(),
-            "credit_item_ids": set(),
-        }
-        # The aggregate reader fetches cached days in 50-day chunks. Retaining
-        # every rebuilt payload here duplicates a long history in the
-        # interactive worker until the final aggregate is complete.
-        cache_write_fallback_days = {}
-        pending_writes = {}
-        pending_days = {}
-        write_chunk_size = 500
-        for day in sorted_days:
-            day_stats = build_stats_for_day(
-                user_id,
-                day,
-                user=user,
-                prefetch=prefetch,
-                history_version=history_version,
-                defer_cache_write=True,
-                backfill_collector=backfill_collector,
-            )
-            refreshed_days += 1
-            if day_stats:
-                pending_writes[_day_cache_key(user_id, day)] = day_stats
-                pending_days[day] = day_stats
-                if len(pending_writes) >= write_chunk_size:
-                    failed_keys = set(
-                        cache.set_many(
-                            pending_writes,
-                            timeout=STATISTICS_DAY_CACHE_TIMEOUT,
-                        )
-                        or ()
-                    )
-                    if failed_keys:
-                        cache_write_fallback_days.update(
-                            {
-                                pending_day: pending_day_stats
-                                for pending_day, pending_day_stats in pending_days.items()
-                                if _day_cache_key(user_id, pending_day) in failed_keys
-                            }
-                        )
-                    pending_writes = {}
-                    pending_days = {}
-                credit_backfill_hints += int(
-                    day_stats.get("backfill", {}).get("missing_credits") or 0,
-                )
-                plays_total = sum(
-                    day_stats.get("totals", {}).get("plays_by_type", {}).values()
-                )
-                minutes_total = sum(
-                    day_stats.get("totals", {}).get("minutes_by_type", {}).values()
-                )
-                daily_minutes_total = sum(
-                    day_stats.get("daily_minutes_by_type", {}).values()
-                )
-                if plays_total or minutes_total or daily_minutes_total:
-                    nonempty_days += 1
-        if pending_writes:
-            failed_keys = set(
-                cache.set_many(
-                    pending_writes,
-                    timeout=STATISTICS_DAY_CACHE_TIMEOUT,
-                )
-                or ()
-            )
-            if failed_keys:
-                cache_write_fallback_days.update(
-                    {
-                        pending_day: pending_day_stats
-                        for pending_day, pending_day_stats in pending_days.items()
-                        if _day_cache_key(user_id, pending_day) in failed_keys
-                    }
-                )
-
-        _enqueue_collected_backfills(user_id, backfill_collector)
-
-        stats_data = _aggregate_statistics_from_days(
-            user,
-            day_list,
-            start_date,
-            end_date,
-            build_missing=True,
-            credit_backfill_hints=credit_backfill_hints,
-            prebuilt_days=cache_write_fallback_days,
-        )
-        cache_statistics_data(
-            user_id, range_name, stats_data, history_version=history_version
-        )
-
-        processed = {day.isoformat() for day in days_to_refresh if day}
-        if processed:
-            dirty_set.difference_update(processed)
-            _store_dirty_days(user_id, dirty_set)
-
-        if stale_score_days:
-            logger.info(
-                "stats_score_repair user_id=%s range=%s repaired_days=%s",
-                user_id,
-                range_name,
-                len(stale_score_days),
-            )
-
-        logger.info(
-            "stats_range_summary user_id=%s range=%s days=%s refreshed=%s nonempty=%s elapsed_ms=%.2f totals=%s",
-            user_id,
-            range_name,
-            len(day_list),
-            refreshed_days,
-            nonempty_days,
-            (time.perf_counter() - build_started) * 1000,
-            stats_data.get("hours_per_media_type", {}),
-        )
-    except user_model.DoesNotExist:
-        return None
-    else:
-        return stats_data
-    finally:
-        cache.delete(lock_key)
-        _maybe_clear_metadata_refresh(user_id)
+    return statistics_refresh_run.run_refresh_inline(
+        user_id, range_name, chunk_size=chunk_size
+    )
 
 
 def schedule_statistics_refresh(
@@ -723,6 +551,7 @@ def schedule_statistics_refresh(
     countdown: int = 3,
     allow_inline: bool = True,
     priority: int | None = None,
+    force: bool = False,
 ):
     """Queue a background refresh for a user's statistics cache.
 
@@ -732,13 +561,33 @@ def schedule_statistics_refresh(
         debounce_seconds: Seconds to debounce refresh requests
         countdown: Seconds to delay task execution (default 3)
         allow_inline: Whether to run inline if Celery is unavailable
+        force: Treat this as a user-demanded refresh. A forced request is
+            never silently dropped: if a run is already active it is recorded
+            as a follow-up pass and started when that run finishes.
     """
     if range_name not in PREDEFINED_RANGES:
         return False
 
+    # ``debounce_seconds=0`` has always been how the Refresh button asks for an
+    # unconditional rebuild. Keep that meaning rather than making every caller
+    # pass the new flag.
+    force = force or not debounce_seconds
+
     history_version = _get_history_version(user_id)
     cache_entry = cache.get(_cache_key(user_id, range_name))
-    if not is_statistics_cache_stale(cache_entry, user_id):
+    if not force and not is_statistics_cache_stale(cache_entry, user_id):
+        return False
+
+    from app import statistics_refresh_run
+
+    active_run = statistics_refresh_run.load_run(user_id, range_name)
+    if active_run is not None:
+        # A run owns this user/range. Two normal requests must not become two
+        # heavy concurrent runs; a forced one must not vanish.
+        if force:
+            statistics_refresh_run.request_rerun(
+                user_id, range_name, reason="forced_during_active_run"
+            )
         return False
 
     lock_key = _refresh_lock_key(user_id, range_name)
@@ -761,7 +610,7 @@ def schedule_statistics_refresh(
     cache.set(lock_key, lock_value, lock_ttl)
 
     dedupe_key = None
-    if cache_entry and STATISTICS_SCHEDULE_DEDUPE_TTL:
+    if cache_entry and STATISTICS_SCHEDULE_DEDUPE_TTL and not force:
         dedupe_key = _schedule_dedupe_key(user_id, range_name, history_version)
         if not cache.add(dedupe_key, True, STATISTICS_SCHEDULE_DEDUPE_TTL):
             cache.delete(lock_key)
@@ -771,7 +620,7 @@ def schedule_statistics_refresh(
         from app.tasks_interactive import refresh_statistics_cache_task
 
         refresh_statistics_cache_task.apply_async(
-            args=[user_id, range_name],
+            args=[user_id, range_name, force],
             countdown=countdown,
             priority=(
                 STATISTICS_TASK_PRIORITY_INTERACTIVE if priority is None else priority
