@@ -576,11 +576,20 @@ def person_detail(request, source, person_id, name):
                 return vc
 
             return _sort_with_nulls_last(entries, _vote_count_key, rev)
-        # release_date: entries arrive from provider already sorted newest-first;
-        # asc reverses to oldest-first (chronological).
-        if sort_dir == "asc":
-            return list(reversed(entries))
-        return entries
+        # release_date: sort on the entries' own date fields rather than
+        # trusting the order the provider returned them in. TMDB hands back
+        # newest-first, which is why this used to be a reverse(), but the
+        # author providers (MangaBaka, Hardcover, OpenLibrary) return search
+        # relevance order and carry only `year`, so the default sort was a
+        # no-op and bibliographies looked randomly ordered.
+        def _date_key(e):
+            for field in ("release_date", "first_air_date", "year"):
+                value = e.get(field)
+                if value:
+                    return str(value)
+            return None
+
+        return _sort_with_nulls_last(entries, _date_key, rev)
 
     # Collect tracked items from the unfiltered watched list for filter option building.
     watched_items_for_filter_data = [
