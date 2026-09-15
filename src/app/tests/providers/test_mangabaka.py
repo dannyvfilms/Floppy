@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import requests
 from django.conf import settings
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from app.models import MediaTypes, Sources
 from app.providers import mangabaka, services
@@ -115,6 +115,7 @@ class TestMangaBakaSearch(TestCase):
 
         self.assertEqual(mock_api_request.call_count, 1)
 
+    @override_settings(MU_NSFW=False)
     @patch("app.providers.mangabaka.services.api_request")
     def test_search_filters_nsfw_by_default(self, mock_api_request):
         mock_api_request.return_value = {
@@ -129,6 +130,21 @@ class TestMangaBakaSearch(TestCase):
         # Suggestive is the mild tier holding mainstream seinen; only the
         # erotica/pornographic tiers are filtered out by default.
         self.assertEqual(kwargs["params"]["content_rating"], ["safe", "suggestive"])
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_search_nsfw_setting_drops_the_rating_filter(self, mock_api_request):
+        """MU_NSFW=True lifts the content_rating filter entirely."""
+        mock_api_request.return_value = {
+            "status": 200,
+            "pagination": {"count": 1, "page": 1, "limit": 30},
+            "data": [SEARCH_ITEM],
+        }
+
+        mangabaka.search("Overlord", 1)
+
+        _, kwargs = mock_api_request.call_args
+        self.assertNotIn("content_rating", kwargs["params"])
 
 
 class TestMangaBakaMetadata(TestCase):

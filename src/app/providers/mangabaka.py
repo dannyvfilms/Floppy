@@ -36,12 +36,13 @@ def search(query, page):
             "page": page,
         }
 
-        if not settings.MAL_NSFW:
+        if not settings.MU_NSFW:
             # MangaBaka's content_rating is an exact-match server filter, and
             # repeated params OR together (a comma-joined value 400s). Adult
             # tiers are erotica/pornographic; "suggestive" is the mild tier that
             # holds most mainstream seinen (Ghost in the Shell, Overlord), so
             # filtering it out hides titles every other provider here shows.
+            # MU_NSFW covers both manga providers, so one switch lifts both.
             params["content_rating"] = ["safe", "suggestive"]
 
         try:
