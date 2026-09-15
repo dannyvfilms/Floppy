@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from django.conf import settings
 from django.db.models import Q
 from django.http import HttpResponseBadRequest
@@ -26,6 +28,7 @@ from app.providers import (
     comicvine,
     hardcover,
     igdb,
+    mangabaka,
     mangaupdates,
     openlibrary,
     tmdb,
@@ -95,6 +98,18 @@ def person_detail(request, source, person_id, name):
             "tracked_media_types": (MediaTypes.MANGA.value,),
             "source_url": lambda person_id_value: (
                 f"https://www.mangaupdates.com/authors.html?id={person_id_value}"
+            ),
+            "is_author": True,
+        },
+        Sources.MANGABAKA.value: {
+            "fetcher": mangabaka.author_profile,
+            "entries_key": "bibliography",
+            "tracked_media_types": (MediaTypes.MANGA.value,),
+            # MangaBaka publishes no author pages of its own (mangabaka.org
+            # 404s on /author and /staff), so the search for the credited name
+            # is the closest real destination.
+            "source_url": lambda person_id_value: (
+                "https://mangabaka.org/search?q=" + quote(person_id_value)
             ),
             "is_author": True,
         },

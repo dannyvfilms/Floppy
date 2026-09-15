@@ -1,4 +1,6 @@
+import itertools
 import logging
+import re
 
 import requests
 from django.conf import settings
@@ -441,3 +443,163 @@ def _parse_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+# MangaBaka stores a single person under several romanizations of their name
+# and credits whichever spelling each series happened to use. Kentaro Miura is
+# credited as both "MIURA Kentaro" (4 series) and "Kentarou Miura" (11 series),
+# with no overlap between the two result sets -- so querying the credited
+# spelling alone returns a bibliography missing most of the author's work.
+# Kouji Mori splits 23 vs 17 the same way.
+#
+# The API cannot be asked for a canonical person: there is no /authors endpoint
+# (it 404s), `staff` is the only author filter, and it is an exact string match
+# against the credited name. Searching a bare surname is not an alternative --
+# "MORI" alone matches 5123 series -- so the workable approach is to query each
+# plausible romanization of the credited name and merge the results.
+_LONG_VOWEL_PAIRS = (("ou", "o"), ("uu", "u"), ("oo", "o"))
+# A single-token name has no order or pairing to vary.
+MIN_NAME_TOKENS = 2
+# Long-vowel expansion is applied without a dictionary, so it also yields forms
+# no one uses ("MORI" -> "MouRI"). Those simply match nothing, but they cost a
+# request each, so the fan-out is capped. Two tokens produce 4-8 useful forms.
+MAX_NAME_VARIANTS = 12
+
+
+def _romanization_forms(token):
+    """Return a name token under both long and short vowel renderings."""
+    forms = {token}
+    lowered = token.lower()
+    for long_form, short_form in _LONG_VOWEL_PAIRS:
+        if long_form in lowered:
+            forms.add(re.sub(long_form, short_form, token, flags=re.IGNORECASE))
+    # Expansion applies only to a lone o/u sitting after a consonant and not
+    # followed by another vowel, which is the Japanese long-vowel position.
+    # "Koji" -> "Kouji" and "Kentaro" -> "Kentarou" qualify; the "u" in "MIURA"
+    # does not, because it follows a vowel. Testing for a trailing consonant
+    # instead of "not a vowel" missed "Koji" entirely.
+    for short_form, long_form in (("o", "ou"), ("u", "uu")):
+        if re.search(rf"[bcdfghjklmnpqrstvwxyz]{short_form}(?![aeiou])", lowered):
+            forms.add(
+                re.sub(
+                    rf"([bcdfghjklmnpqrstvwxyz]){short_form}(?![aeiou])",
+                    rf"\1{long_form}",
+                    token,
+                    flags=re.IGNORECASE,
+                ),
+            )
+    return forms
+
+
+def _normalized_token(token):
+    """Fold a name token to a romanization-independent form.
+
+    Comparing raw tokens rejected the variants this module deliberately
+    queries: "Kentarou Miura" would never match a search for "MIURA Kentaro",
+    so the profile silently dropped every series credited under the spelling
+    it had just looked up.
+    """
+    folded = token.lower()
+    for long_form, short_form in _LONG_VOWEL_PAIRS:
+        folded = folded.replace(long_form, short_form)
+    return folded
+
+
+def author_name_variants(name):
+    """Return the plausible spellings MangaBaka may have credited this name under."""
+    tokens = (name or "").split()
+    if len(tokens) < MIN_NAME_TOKENS:
+        return [name] if name else []
+    variants = set()
+    for ordered in (tokens, list(reversed(tokens))):
+        for combination in itertools.product(
+            *[_romanization_forms(token) for token in ordered],
+        ):
+            variants.add(" ".join(combination))
+    return sorted(variants)[:MAX_NAME_VARIANTS]
+
+
+def author_profile(person_id):
+    """Return a MangaBaka author profile with a merged bibliography.
+
+    `person_id` is the credited name, since MangaBaka authors are plain strings
+    with no numeric identifier to key on.
+    """
+    cache_key = f"{Sources.MANGABAKA.value}_person_{person_id}"
+    data = cache.get(cache_key)
+    if data is not None:
+        return data
+
+    wanted = {_normalized_token(token) for token in (person_id or "").split()}
+    bibliography = []
+    seen_ids = set()
+
+    for variant in author_name_variants(person_id):
+        url = f"{base_url}/series/search"
+        params = {"staff": variant, "limit": 100, "page": 1}
+        if not settings.MU_NSFW:
+            params["content_rating"] = list(DEFAULT_CONTENT_RATINGS)
+
+        try:
+            response = services.api_request(
+                Sources.MANGABAKA.value,
+                "GET",
+                url,
+                params=params,
+                headers=headers,
+            )
+        except requests.exceptions.HTTPError:
+            logger.warning("Failed to fetch MangaBaka bibliography for %s", variant)
+            continue
+
+        for series in response.get("data") or []:
+            series_id = series.get("id")
+            if series_id is None or series_id in seen_ids:
+                continue
+
+            # `staff` matches on the credited string, but the same surname can
+            # belong to different people, so confirm this entry really credits
+            # a name made of the same tokens before listing it.
+            credited = [
+                value
+                for value in (series.get("authors") or []) + (series.get("artists") or [])
+                if isinstance(value, str)
+            ]
+            if not any(
+                {_normalized_token(token) for token in value.split()} == wanted
+                for value in credited
+            ):
+                continue
+
+            title = series.get("title")
+            if not title:
+                continue
+
+            seen_ids.add(series_id)
+            bibliography.append(
+                {
+                    "media_id": str(series_id),
+                    "source": Sources.MANGABAKA.value,
+                    "media_type": MediaTypes.MANGA.value,
+                    "title": title,
+                    "image": get_image_url(series, thumbnail=True),
+                    "year": series.get("year"),
+                    "sort_order": len(bibliography),
+                },
+            )
+
+    data = {
+        "person_id": str(person_id),
+        "source": Sources.MANGABAKA.value,
+        "name": person_id or "",
+        # MangaBaka does not publish author images.
+        "image": settings.IMG_NONE,
+        "biography": "",
+        "known_for_department": "Author",
+        "birth_date": None,
+        "death_date": None,
+        "place_of_birth": "",
+        "bibliography": bibliography,
+    }
+    cache.set(cache_key, data)
+    return data

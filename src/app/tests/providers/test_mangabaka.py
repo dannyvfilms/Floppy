@@ -721,3 +721,181 @@ class TestMangaBakaRecommendations(TestCase):
         results = mangabaka.get_recommendations("20703")
 
         self.assertEqual(results[0]["image"], "https://cdn.mangabaka.dev/x350/2")
+
+
+class TestMangaBakaAuthorProfile(TestCase):
+    """Unit tests for the author profile and its name-variant merging."""
+
+    def setUp(self):
+        cache.clear()
+
+    def test_name_variants_cover_both_romanizations_and_orders(self):
+        """MangaBaka credits one person under several spellings.
+
+        Kentaro Miura appears as "MIURA Kentaro" (4 series) and "Kentarou
+        Miura" (11 series) with no overlap, so both must be queried.
+        """
+        variants = mangabaka.author_name_variants("MIURA Kentaro")
+
+        self.assertIn("MIURA Kentaro", variants)
+        self.assertIn("Kentarou MIURA", variants)
+        self.assertIn("MIURA Kentarou", variants)
+        self.assertIn("Kentaro MIURA", variants)
+
+    def test_name_variants_preserve_token_count(self):
+        """Variants reorder and respell tokens; they never duplicate one.
+
+        An earlier implementation concatenated instead of substituting and
+        produced "MIURA Kentaro Kentaro".
+        """
+        variants = mangabaka.author_name_variants("MIURA Kentaro")
+
+        for variant in variants:
+            self.assertEqual(len(variant.split()), 2)
+        # Expansion is not dictionary-driven, so some forms are unused words
+        # ("MouRI"). They match nothing and are capped, but the real spellings
+        # must still be present.
+        self.assertIn("Kentarou MIURA", variants)
+        self.assertIn("MIURA Kentarou", variants)
+
+    def test_name_variants_short_vowel_expansion(self):
+        """A short "o" must also be tried as the long "ou" spelling."""
+        variants = mangabaka.author_name_variants("MORI Koji")
+
+        self.assertIn("MORI Koji", variants)
+        self.assertIn("MORI Kouji", variants)
+
+    def test_name_variants_single_token_passes_through(self):
+        """A one-word credit has no order or pairing to vary."""
+        self.assertEqual(mangabaka.author_name_variants("Madhouse"), ["Madhouse"])
+        self.assertEqual(mangabaka.author_name_variants(""), [])
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_author_profile_merges_variants_without_duplicates(
+        self,
+        mock_api_request,
+    ):
+        """Each variant is queried; a series returned twice appears once.
+
+        Also proves the exact-token check: a different person sharing the
+        surname must not be listed under this author.
+        """
+        def respond(*_args, **kwargs):
+            staff = kwargs["params"]["staff"]
+            if "Kentarou" in staff:
+                return {
+                    "status": 200,
+                    "data": [
+                        {"id": 5858, "title": "Giganto Maxia",
+                         "authors": ["Kentarou Miura"], "year": 2013},
+                    ],
+                }
+            return {
+                "status": 200,
+                "data": [
+                    {"id": 1692, "title": "BERSERK",
+                     "authors": ["MIURA Kentaro"], "artists": ["MIURA Kentaro"],
+                     "year": 1989},
+                    # Same surname, different person.
+                    {"id": 173, "title": "Blue Box",
+                     "authors": ["Kouji Miura"], "year": 2021},
+                ],
+            }
+
+        mock_api_request.side_effect = respond
+
+        data = mangabaka.author_profile("MIURA Kentaro")
+
+        self.assertEqual(
+            [entry["title"] for entry in data["bibliography"]],
+            ["BERSERK", "Giganto Maxia"],
+        )
+        self.assertEqual(data["name"], "MIURA Kentaro")
+        self.assertEqual(data["source"], Sources.MANGABAKA.value)
+        self.assertEqual(data["known_for_department"], "Author")
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_author_profile_deduplicates_series_across_variants(
+        self,
+        mock_api_request,
+    ):
+        """The same series credited under two spellings is listed once."""
+        mock_api_request.return_value = {
+            "status": 200,
+            "data": [
+                {"id": 1692, "title": "BERSERK",
+                 "authors": ["MIURA Kentaro", "Kentarou Miura"], "year": 1989},
+            ],
+        }
+
+        data = mangabaka.author_profile("MIURA Kentaro")
+
+        self.assertEqual(len(data["bibliography"]), 1)
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_author_profile_tolerates_variant_failure(self, mock_api_request):
+        """One failing variant must not lose the whole bibliography."""
+        def respond(*_args, **kwargs):
+            if "Kentarou" in kwargs["params"]["staff"]:
+                raise _http_error(500)
+            return {
+                "status": 200,
+                "data": [
+                    {"id": 1692, "title": "BERSERK", "authors": ["MIURA Kentaro"]},
+                ],
+            }
+
+        mock_api_request.side_effect = respond
+
+        data = mangabaka.author_profile("MIURA Kentaro")
+
+        self.assertEqual([e["media_id"] for e in data["bibliography"]], ["1692"])
+
+    @override_settings(MU_NSFW=False)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_author_profile_gates_adult_tiers(self, mock_api_request):
+        mock_api_request.return_value = {
+            "status": 200,
+            "data": [{"id": 1692, "title": "BERSERK", "authors": ["MIURA Kentaro"]}],
+        }
+
+        mangabaka.author_profile("MIURA Kentaro")
+
+        _, kwargs = mock_api_request.call_args
+        self.assertEqual(
+            kwargs["params"]["content_rating"],
+            ["safe", "suggestive", "erotica"],
+        )
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_author_profile_caches(self, mock_api_request):
+        mock_api_request.return_value = {
+            "status": 200,
+            "data": [{"id": 1692, "title": "BERSERK", "authors": ["MIURA Kentaro"]}],
+        }
+
+        mangabaka.author_profile("MIURA Kentaro")
+        calls_after_first = mock_api_request.call_count
+        mangabaka.author_profile("MIURA Kentaro")
+
+        self.assertEqual(mock_api_request.call_count, calls_after_first)
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_author_profile_skips_entries_without_a_title(self, mock_api_request):
+        mock_api_request.return_value = {
+            "status": 200,
+            "data": [
+                {"id": 1, "authors": ["MIURA Kentaro"]},
+                {"id": 2, "title": "", "authors": ["MIURA Kentaro"]},
+                {"id": 3, "title": "Good", "authors": ["MIURA Kentaro"]},
+            ],
+        }
+
+        data = mangabaka.author_profile("MIURA Kentaro")
+
+        self.assertEqual([e["media_id"] for e in data["bibliography"]], ["3"])
