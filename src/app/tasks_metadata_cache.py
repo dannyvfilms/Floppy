@@ -58,6 +58,10 @@ def _metadata_cache_keys_for_item(item: Item):
         and item.media_type == MediaTypes.BOARDGAME.value
     ):
         keys.add(f"bgg_metadata_{item.media_id}")
+    if item.source == Sources.MANGABAKA.value:
+        from app.providers import mangabaka
+
+        keys.update(mangabaka.metadata_cache_keys(item.media_id))
     if (
         item.source == Sources.MUSICBRAINZ.value
         and item.media_type == MediaTypes.MUSIC.value

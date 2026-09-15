@@ -13,10 +13,62 @@ base_url = "https://api.mangabaka.org/v1"
 # Bumped whenever the search result shape changes, so entries cached before a
 # filter/field change are not served unchanged (same reason as IGDB's).
 SEARCH_CACHE_VERSION = "v2"
+# Metadata payload shape version. Bump when details keys change so detail pages
+# are not served a payload built by the previous normalizer.
+METADATA_CACHE_VERSION = "v2"
+# MangaBaka's tags_v2 is the richest signal it exposes, but its raw form is
+# unusable on a detail page (Overlord carries 107 flat tags, Berserk 306). Three
+# candidate filters do not survive contact with real data:
+#   * `weight` is not a safety or relevance proxy -- Nudity, Child Abuse and
+#     Sexual Abuse are all "defining", Pedophilia and Vore are "recurrent".
+#   * `level` is structural depth, not importance -- it drops Nobility (n=5710)
+#     and Demons (n=5151) while admitting Heretic (n=6).
+#   * `content_rating` and `is_explicit` are both unreliable -- Child Abuse,
+#     Sexual Abuse, Pedophilia and Vore are rated "safe", and `is_explicit` is
+#     also set on harmless tags like Discrimination.
+# The namespace prefix of `name_path` is the dependable signal: the only
+# namespace yielding explicit labels is "Sexual Content" (12 of its 27 sampled
+# tags are pornographic, against 0 elsewhere), so excluding it removes that
+# whole category in one rule. The remaining excluded namespaces are
+# publication/audience metadata rather than themes.
+TAG_EXCLUDED_NAMESPACES = frozenset(
+    {
+        "Sexual Content",
+        "Work Info",
+        "Derivative Work",
+        "Audience Demographics",
+    },
+)
+# Excluded anywhere in the path, not just as the leading segment. "Sex Slave"
+# sits under "Character Types > Victims", so a namespace-only rule lets it
+# through.
+TAG_EXCLUDED_SEGMENTS = frozenset({"Victims"})
+# Relevance gate on how many series carry the tag. Below ~1000 a tag is shared
+# by too few works to describe one, but going higher strips the flavour that
+# makes these worth showing at all: at 2000 the Campfire Cooking entry collapses
+# to 10 generic tags and loses Travel, Elves and Dragons entirely.
+TAG_MIN_SERIES_COUNT = 1000
 # MangaBaka rejects the default python-requests User-Agent with 403.
 headers = {
     "User-Agent": "Mozilla/5.0",
 }
+
+
+def metadata_cache_key(media_id):
+    """Return the versioned metadata cache key for a MangaBaka series."""
+    return (
+        f"{Sources.MANGABAKA.value}_{MediaTypes.MANGA.value}_"
+        f"{METADATA_CACHE_VERSION}_{media_id}"
+    )
+
+
+def metadata_cache_keys(media_id):
+    """Return the versioned MangaBaka cache keys for an item.
+
+    Mirrors tmdb/tvdb so cache invalidation reaches versioned entries rather
+    than only the legacy unversioned shape.
+    """
+    return [metadata_cache_key(media_id)]
 
 
 def search(query, page):
@@ -86,7 +138,7 @@ def search(query, page):
 
 def manga(media_id):
     """Get metadata for a manga from MangaBaka."""
-    cache_key = f"{Sources.MANGABAKA.value}_{MediaTypes.MANGA.value}_{media_id}"
+    cache_key = metadata_cache_key(media_id)
     data = cache.get(cache_key)
 
     if data is None:
@@ -125,6 +177,7 @@ def manga(media_id):
                 "year": series.get("year"),
                 "status_in_country_of_origin": series.get("status"),
                 "volumes": _parse_int(series.get("final_volume")),
+                "themes": get_tags(series),
             },
             "authors_full": get_authors_full(series),
             "related": {
@@ -157,6 +210,39 @@ def get_genres(genres):
     if not genres:
         return None
     return [genre.replace("_", " ").title() for genre in genres]
+
+
+def get_tags(series):
+    """Curate series tags_v2 into display-ready theme names.
+
+    Keeps tags that carry real signal, drops those that are genre duplicates
+    (already shown by get_genres), plot spoilers, sexual content, or
+    publication metadata, and orders by how many series share the tag so the
+    most descriptive appear first. Returns [] when nothing qualifies.
+    """
+    tags = series.get("tags_v2") or []
+
+    def is_theme(tag):
+        if not isinstance(tag, dict):
+            return False
+        if tag.get("is_genre") or tag.get("is_spoiler"):
+            return False
+        segments = [part.strip() for part in (tag.get("name_path") or "").split(" > ")]
+        if not segments or not segments[0]:
+            return False
+        if segments[0] in TAG_EXCLUDED_NAMESPACES:
+            return False
+        if TAG_EXCLUDED_SEGMENTS.intersection(segments):
+            return False
+        return (tag.get("series_count") or 0) >= TAG_MIN_SERIES_COUNT
+
+    themes = [tag for tag in tags if is_theme(tag)]
+    themes.sort(key=lambda tag: tag.get("series_count") or 0, reverse=True)
+    return [
+        tag["name"]
+        for tag in themes
+        if isinstance(tag.get("name"), str) and tag["name"].strip()
+    ]
 
 
 def get_score(rating):
