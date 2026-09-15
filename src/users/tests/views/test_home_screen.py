@@ -287,11 +287,11 @@ class HomeScreenViewTests(TestCase):
         )
 
     @patch("app.models.providers.services.get_media_metadata")
-    def test_home_in_progress_row_hides_fully_watched_stale_seasons(
+    def test_home_in_progress_row_preserves_caught_up_in_progress_seasons(
         self,
         mock_get_metadata,
     ):
-        """Home should derive completed status for fully watched season rows."""
+        """Home should preserve in-progress status for caught-up season rows."""
         self._set_enabled_media_types(MediaTypes.SEASON.value)
 
         stale_season_item = Item.objects.create(
@@ -400,11 +400,9 @@ class HomeScreenViewTests(TestCase):
 
         self.assertEqual(
             [entry.item.title for entry in groups[0]["rows"][0]["items"]],
-            ["Home Active Season 1"],
+            ["Home Active Season 1", "Home Completed Season 1"],
         )
         stale_season.refresh_from_db()
-        # Rewatch protection: an in-progress season is never auto-promoted to
-        # Completed in the DB; Home only derives the status for display.
         self.assertEqual(stale_season.status, Status.IN_PROGRESS.value)
 
     @patch("app.models.providers.services.get_media_metadata")
