@@ -48,7 +48,7 @@
         <template x-for="monthIndex in 12" :key="monthIndex">
           <button type="button"
                   @click="gotoMonth(monthIndex - 1)"
-                  :class="monthIndex - 1 === viewMonth ? 'bg-[var(--color-accent)] text-white' : 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]'"
+                  :class="monthIndex - 1 === viewMonth ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]' : 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]'"
                   class="date-picker-month-cell flex items-center justify-center rounded-md text-sm cursor-pointer transition-colors"
                   x-text="monthShortLabel(monthIndex - 1)"></button>
         </template>
@@ -91,7 +91,7 @@
         <template x-for="year in yearRange()" :key="year">
           <button type="button"
                   @click="viewYear = year; showMonthsView()"
-                  :class="year === viewYear ? 'bg-[var(--color-accent)] text-white' : 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]'"
+                  :class="year === viewYear ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]' : 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]'"
                   class="date-picker-month-cell flex items-center justify-center rounded-md text-sm cursor-pointer transition-colors"
                   x-text="year"></button>
         </template>

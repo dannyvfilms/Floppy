@@ -347,14 +347,18 @@
 </div>
 
 {# Your Notes — same component the movie/season pages use, pointed at the watch that carries the note. #}
+{# Rendered even with no notes yet: the empty section is the anchor episode_save's OOB swap replaces. #}
+<div class="flex flex-col">
 {% if show_notes %}
-  {% include "app/components/detail_notes_section.html" with notes_entries=notes_entries notes_entry=notes_entry detail_notes_target_id=episode_notes_modal_target_id detail_notes_modal_url=episode_notes_modal_url detail_return_url=detail_return_url public_notes_view=public_notes_view %}
+  <div {% detail_section_attrs user "episode" "content" "notes" %}>
+    {% include "app/components/detail_notes_section.html" with notes_entries=notes_entries notes_entry=notes_entry detail_notes_target_id=episode_notes_modal_target_id detail_notes_modal_url=episode_notes_modal_url detail_return_url=detail_return_url public_notes_view=public_notes_view %}
+  </div>
 {% endif %}
 
 {# Cast & Crew — same grid pattern as detail_secondary_content.html #}
 {% if source == Sources.TMDB.value %}
   {% if episode_metadata.cast %}
-    <section class="mb-8"
+    <section class="mb-8" {% detail_section_attrs user "episode" "content" "cast" %}
              x-data="{ castOpen: true, detailGridExpanded: false, detailGridIsMobile: false, detailGridVisibleCount: 6, syncDetailGrid() { this.detailGridIsMobile = window.matchMedia('(max-width: 768px)').matches; this.detailGridVisibleCount = document.body.dataset.mobileGrid === 'comfortable' ? 4 : 6; }, shouldShowDetailCard(index) { return !this.detailGridIsMobile || this.detailGridExpanded || index < this.detailGridVisibleCount; }, canToggleDetailGrid(total) { return this.detailGridIsMobile && total > this.detailGridVisibleCount; } }"
              x-init="syncDetailGrid()"
              @resize.window="syncDetailGrid()">
@@ -423,7 +427,7 @@
   {% endif %}
 
   {% if episode_metadata.crew %}
-    <section class="mb-8"
+    <section class="mb-8" {% detail_section_attrs user "episode" "content" "crew" %}
              x-data="{ crewOpen: true, detailGridExpanded: false, detailGridIsMobile: false, detailGridVisibleCount: 6, syncDetailGrid() { this.detailGridIsMobile = window.matchMedia('(max-width: 768px)').matches; this.detailGridVisibleCount = document.body.dataset.mobileGrid === 'comfortable' ? 4 : 6; }, shouldShowDetailCard(index) { return !this.detailGridIsMobile || this.detailGridExpanded || index < this.detailGridVisibleCount; }, canToggleDetailGrid(total) { return this.detailGridIsMobile && total > this.detailGridVisibleCount; } }"
              x-init="syncDetailGrid()"
              @resize.window="syncDetailGrid()">
@@ -491,6 +495,7 @@
     </section>
   {% endif %}
 {% endif %}
+</div>
 
 <script>
   (function() {

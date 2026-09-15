@@ -1,0 +1,222 @@
+{% extends "users/base.html" %}
+{% load static %}
+
+{% block title %}
+  Appearance - Floppy
+{% endblock title %}
+
+{% block settings_content %}
+  {{ detail_layout_families_json|json_script:"detail-layout-families" }}
+  {{ detail_layouts_json|json_script:"detail-layout-values" }}
+  {{ custom_theme_json|json_script:"custom-theme-values" }}
+
+  <form method="post"
+        class="space-y-8"
+        x-data="appearanceEditor()"
+        x-init="init()">
+    {% csrf_token %}
+    <input type="hidden" name="theme" :value="theme">
+    <input type="hidden" name="custom_theme" :value="JSON.stringify(palette)">
+    <input type="hidden" name="detail_layouts" :value="JSON.stringify(layouts)">
+
+    <section class="preferences-section">
+      <div class="preferences-section-header">
+        <div class="preferences-section-icon">{% include "app/icons/sun.svg" with classes="w-5 h-5" %}</div>
+        <div>
+          <h2>Theme</h2>
+          <p>Choose a starting point, then make it yours.</p>
+        </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {% for value, preset in theme_presets.items %}
+          <button type="button"
+                  @click="theme = '{{ value }}'"
+                  :aria-pressed="(theme === '{{ value }}').toString()"
+                  :class="theme === '{{ value }}' ? 'border-[var(--color-accent)] ring-2 ring-[var(--color-accent)]/30' : 'border-[var(--color-surface-border)] hover:border-[var(--color-text-muted)]'"
+                  class="flex items-center gap-3 rounded-xl border bg-[var(--color-surface)] p-4 text-left transition-colors cursor-pointer">
+            <span class="theme-swatch theme-swatch-{{ value }}" aria-hidden="true"></span>
+            <span class="font-medium">{{ preset.label }}</span>
+          </button>
+        {% endfor %}
+      </div>
+
+      <div x-show="theme === 'custom'"
+           x-cloak
+           class="mt-5 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-panel)] p-4">
+        <h3 class="mb-4 font-semibold">Custom palette</h3>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {% for key, color in custom_theme_colors.items %}
+            <label class="flex items-center justify-between gap-3 rounded-lg bg-[var(--color-surface)] p-3">
+              <span class="text-sm text-[var(--color-text-secondary)]">{{ color.label }}</span>
+              <span class="flex items-center gap-2">
+                <input type="color"
+                       x-model="palette.{{ key }}"
+                       class="h-9 w-11 cursor-pointer rounded border-0 bg-transparent p-0"
+                       aria-label="{{ color.label }} color">
+                <code class="text-xs text-[var(--color-text-muted)]"
+                      x-text="palette.{{ key }}"></code>
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+        <div class="mt-5 grid gap-4 lg:grid-cols-3">
+          {% for key, effect in custom_theme_effects.items %}
+            <label class="rounded-lg bg-[var(--color-surface)] p-3">
+              <span class="mb-2 flex items-center justify-between gap-3 text-sm">
+                <span class="text-[var(--color-text-secondary)]">{{ effect.label }}</span>
+                <output class="font-mono text-xs text-[var(--color-text-muted)]"
+                        x-text="palette.{{ key }} + '{{ effect.unit }}'"></output>
+              </span>
+              <input type="range"
+                     min="{{ effect.min }}"
+                     max="{{ effect.max }}"
+                     step="{{ effect.step }}"
+                     x-model.number="palette.{{ key }}"
+                     class="w-full accent-[var(--color-accent)]"
+                     aria-label="{{ effect.label }}">
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="preferences-section">
+      <div class="preferences-section-header">
+        <div class="preferences-section-icon">{% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5" %}</div>
+        <div>
+          <h2>Detail pages</h2>
+          <p>Keep useful sections visible and place them where you expect them.</p>
+        </div>
+      </div>
+
+      <label class="block md:hidden">
+        <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Page type</span>
+        <select x-model="selectedFamily"
+                class="w-full rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text)]">
+          <template x-for="(family, familyKey) in families" :key="familyKey">
+            <option :value="familyKey" x-text="family.label"></option>
+          </template>
+        </select>
+      </label>
+
+      <div class="hidden flex-wrap gap-2 md:flex"
+           role="tablist"
+           aria-label="Detail page family">
+        <template x-for="(family, familyKey) in families" :key="familyKey">
+          <button type="button"
+                  role="tab"
+                  @click="selectedFamily = familyKey"
+                  :aria-selected="(selectedFamily === familyKey).toString()"
+                  :class="selectedFamily === familyKey ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'"
+                  class="rounded-full px-4 py-2 text-sm font-medium transition-colors cursor-pointer"
+                  x-text="family.label"></button>
+        </template>
+      </div>
+
+      <template x-if="selectedFamily">
+        <div class="mt-5 grid gap-5 lg:grid-cols-2">
+          <template x-for="(zone, zoneKey) in families[selectedFamily].zones"
+                    :key="zoneKey">
+            <div class="rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-panel)] p-4">
+              <h3 class="mb-3 font-semibold" x-text="zone.label"></h3>
+              <div class="space-y-2">
+                <template x-for="section in orderedSections(selectedFamily, zoneKey)"
+                          :key="section.key">
+                  <div class="flex items-center gap-3 rounded-lg bg-[var(--color-surface)] p-3">
+                    <input type="checkbox"
+                           :checked="isEnabled(selectedFamily, zoneKey, section.key)"
+                           @change="toggleSection(selectedFamily, zoneKey, section.key)"
+                           class="size-4 rounded border-[var(--color-surface-border)] text-[var(--color-accent)] focus:ring-[var(--color-accent)]">
+                    <span class="min-w-0 flex-1 text-sm" x-text="section.label"></span>
+                    <div class="flex gap-1">
+                      <button type="button"
+                              @click="moveSection(selectedFamily, zoneKey, section.key, -1)"
+                              :disabled="!canMove(selectedFamily, zoneKey, section.key, -1)"
+                              class="rounded p-1.5 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] disabled:opacity-25 cursor-pointer disabled:cursor-default"
+                              aria-label="Move up">↑</button>
+                      <button type="button"
+                              @click="moveSection(selectedFamily, zoneKey, section.key, 1)"
+                              :disabled="!canMove(selectedFamily, zoneKey, section.key, 1)"
+                              class="rounded p-1.5 text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] disabled:opacity-25 cursor-pointer disabled:cursor-default"
+                              aria-label="Move down">↓</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </section>
+
+    <div class="preferences-actions">
+      <div>
+        <p class="font-medium">Appearance</p>
+        <p class="text-sm text-[var(--color-text-muted)]">Changes apply after saving.</p>
+      </div>
+      <button type="submit"
+              class="rounded-lg bg-[var(--color-accent)] px-5 py-2.5 font-medium text-[var(--color-accent-contrast)] transition-[filter] hover:brightness-110 cursor-pointer">
+        Save appearance
+      </button>
+    </div>
+  </form>
+
+  <script>
+    function appearanceEditor() {
+      return {
+        theme: '{{ appearance_theme|escapejs }}',
+        palette: {},
+        families: {},
+        layouts: {},
+        selectedFamily: '',
+
+        init() {
+          this.palette = JSON.parse(document.getElementById('custom-theme-values').textContent);
+          this.families = JSON.parse(document.getElementById('detail-layout-families').textContent);
+          this.layouts = JSON.parse(document.getElementById('detail-layout-values').textContent);
+          this.selectedFamily = Object.keys(this.families)[0] || '';
+        },
+
+        enabledKeys(familyKey, zoneKey) {
+          return this.layouts[familyKey]?.[zoneKey] || [];
+        },
+
+        isEnabled(familyKey, zoneKey, sectionKey) {
+          return this.enabledKeys(familyKey, zoneKey).includes(sectionKey);
+        },
+
+        orderedSections(familyKey, zoneKey) {
+          const sections = this.families[familyKey].zones[zoneKey].sections;
+          const order = this.enabledKeys(familyKey, zoneKey);
+          return [...sections].sort((left, right) => {
+            const leftIndex = order.indexOf(left.key);
+            const rightIndex = order.indexOf(right.key);
+            return (leftIndex < 0 ? 999 : leftIndex) - (rightIndex < 0 ? 999 : rightIndex);
+          });
+        },
+
+        toggleSection(familyKey, zoneKey, sectionKey) {
+          const keys = this.enabledKeys(familyKey, zoneKey);
+          this.layouts[familyKey][zoneKey] = keys.includes(sectionKey)
+            ? keys.filter(key => key !== sectionKey)
+            : [...keys, sectionKey];
+        },
+
+        canMove(familyKey, zoneKey, sectionKey, direction) {
+          const keys = this.enabledKeys(familyKey, zoneKey);
+          const index = keys.indexOf(sectionKey);
+          return index >= 0 && index + direction >= 0 && index + direction < keys.length;
+        },
+
+        moveSection(familyKey, zoneKey, sectionKey, direction) {
+          if (!this.canMove(familyKey, zoneKey, sectionKey, direction)) return;
+          const keys = [...this.enabledKeys(familyKey, zoneKey)];
+          const index = keys.indexOf(sectionKey);
+          [keys[index], keys[index + direction]] = [keys[index + direction], keys[index]];
+          this.layouts[familyKey][zoneKey] = keys;
+        },
+      };
+    }
+  </script>
+{% endblock settings_content %}
