@@ -126,7 +126,9 @@ class TestMangaBakaSearch(TestCase):
         mangabaka.search("Overlord", 1)
 
         _, kwargs = mock_api_request.call_args
-        self.assertEqual(kwargs["params"]["content_rating"], "safe")
+        # Suggestive is the mild tier holding mainstream seinen; only the
+        # erotica/pornographic tiers are filtered out by default.
+        self.assertEqual(kwargs["params"]["content_rating"], ["safe", "suggestive"])
 
 
 class TestMangaBakaMetadata(TestCase):

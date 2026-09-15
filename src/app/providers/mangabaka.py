@@ -10,6 +10,9 @@ from app.providers import services
 
 logger = logging.getLogger(__name__)
 base_url = "https://api.mangabaka.org/v1"
+# Bumped whenever the search result shape changes, so entries cached before a
+# filter/field change are not served unchanged (same reason as IGDB's).
+SEARCH_CACHE_VERSION = "v2"
 # MangaBaka rejects the default python-requests User-Agent with 403.
 headers = {
     "User-Agent": "Mozilla/5.0",
@@ -19,7 +22,8 @@ headers = {
 def search(query, page):
     """Search for manga on MangaBaka."""
     cache_key = (
-        f"search_{Sources.MANGABAKA.value}_{MediaTypes.MANGA.value}_{query}_{page}"
+        f"search_{SEARCH_CACHE_VERSION}_{Sources.MANGABAKA.value}_"
+        f"{MediaTypes.MANGA.value}_{query}_{page}"
     )
     data = cache.get(cache_key)
 
@@ -33,7 +37,12 @@ def search(query, page):
         }
 
         if not settings.MAL_NSFW:
-            params["content_rating"] = "safe"
+            # MangaBaka's content_rating is an exact-match server filter, and
+            # repeated params OR together (a comma-joined value 400s). Adult
+            # tiers are erotica/pornographic; "suggestive" is the mild tier that
+            # holds most mainstream seinen (Ghost in the Shell, Overlord), so
+            # filtering it out hides titles every other provider here shows.
+            params["content_rating"] = ["safe", "suggestive"]
 
         try:
             response = services.api_request(
