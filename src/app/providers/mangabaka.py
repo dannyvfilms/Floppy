@@ -464,6 +464,10 @@ MIN_NAME_TOKENS = 2
 # no one uses ("MORI" -> "MouRI"). Those simply match nothing, but they cost a
 # request each, so the fan-out is capped. Two tokens produce 4-8 useful forms.
 MAX_NAME_VARIANTS = 12
+# The API accepts up to 100 per page (it 400s on some larger values).
+PAGE_SIZE = 100
+# A prolific author needs several pages: "Gou Nagai" reports 189 series.
+MAX_BIBLIOGRAPHY_PAGES = 6
 
 
 def _romanization_forms(token):
@@ -519,6 +523,48 @@ def author_name_variants(name):
     return sorted(variants)[:MAX_NAME_VARIANTS]
 
 
+def _collect_bibliography(rows, wanted, seen_ids, bibliography):
+    """Append genuinely-credited series from one page of results.
+
+    `staff` matches on the credited string, but the same surname can belong to
+    different people: a lookup for "MORI Kouji" returns 23 rows of which only 9
+    credit him, the rest being anthologies listing unrelated names. Confirm the
+    entry credits a name made of the same tokens before listing it.
+    """
+    for series in rows:
+        series_id = series.get("id")
+        if series_id is None or series_id in seen_ids:
+            continue
+
+        credited = [
+            value
+            for value in (series.get("authors") or []) + (series.get("artists") or [])
+            if isinstance(value, str)
+        ]
+        if not any(
+            {_normalized_token(token) for token in value.split()} == wanted
+            for value in credited
+        ):
+            continue
+
+        title = series.get("title")
+        if not title:
+            continue
+
+        seen_ids.add(series_id)
+        bibliography.append(
+            {
+                "media_id": str(series_id),
+                "source": Sources.MANGABAKA.value,
+                "media_type": MediaTypes.MANGA.value,
+                "title": title,
+                "image": get_image_url(series, thumbnail=True),
+                "year": series.get("year"),
+                "sort_order": len(bibliography),
+            },
+        )
+
+
 def author_profile(person_id):
     """Return a MangaBaka author profile with a merged bibliography.
 
@@ -536,57 +582,39 @@ def author_profile(person_id):
 
     for variant in author_name_variants(person_id):
         url = f"{base_url}/series/search"
-        params = {"staff": variant, "limit": 100, "page": 1}
-        if not settings.MU_NSFW:
-            params["content_rating"] = list(DEFAULT_CONTENT_RATINGS)
 
-        try:
-            response = services.api_request(
-                Sources.MANGABAKA.value,
-                "GET",
-                url,
-                params=params,
-                headers=headers,
-            )
-        except requests.exceptions.HTTPError:
-            logger.warning("Failed to fetch MangaBaka bibliography for %s", variant)
-            continue
+        # A prolific author overflows one page: "Gou Nagai" reports 189 series,
+        # so fetching page 1 alone silently dropped 86 works that genuinely
+        # credit him. Walk the pages until the API stops offering a next one.
+        for page in range(1, MAX_BIBLIOGRAPHY_PAGES + 1):
+            params = {"staff": variant, "limit": PAGE_SIZE, "page": page}
+            if not settings.MU_NSFW:
+                params["content_rating"] = list(DEFAULT_CONTENT_RATINGS)
 
-        for series in response.get("data") or []:
-            series_id = series.get("id")
-            if series_id is None or series_id in seen_ids:
-                continue
+            try:
+                response = services.api_request(
+                    Sources.MANGABAKA.value,
+                    "GET",
+                    url,
+                    params=params,
+                    headers=headers,
+                )
+            except requests.exceptions.HTTPError:
+                logger.warning(
+                    "Failed to fetch MangaBaka bibliography for %s page %s",
+                    variant,
+                    page,
+                )
+                break
 
-            # `staff` matches on the credited string, but the same surname can
-            # belong to different people, so confirm this entry really credits
-            # a name made of the same tokens before listing it.
-            credited = [
-                value
-                for value in (series.get("authors") or []) + (series.get("artists") or [])
-                if isinstance(value, str)
-            ]
-            if not any(
-                {_normalized_token(token) for token in value.split()} == wanted
-                for value in credited
-            ):
-                continue
+            rows = response.get("data") or []
+            if not rows:
+                break
 
-            title = series.get("title")
-            if not title:
-                continue
+            _collect_bibliography(rows, wanted, seen_ids, bibliography)
 
-            seen_ids.add(series_id)
-            bibliography.append(
-                {
-                    "media_id": str(series_id),
-                    "source": Sources.MANGABAKA.value,
-                    "media_type": MediaTypes.MANGA.value,
-                    "title": title,
-                    "image": get_image_url(series, thumbnail=True),
-                    "year": series.get("year"),
-                    "sort_order": len(bibliography),
-                },
-            )
+            if not (response.get("pagination") or {}).get("next"):
+                break
 
     data = {
         "person_id": str(person_id),

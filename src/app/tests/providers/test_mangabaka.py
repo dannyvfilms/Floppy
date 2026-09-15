@@ -886,6 +886,75 @@ class TestMangaBakaAuthorProfile(TestCase):
 
     @override_settings(MU_NSFW=True)
     @patch("app.providers.mangabaka.services.api_request")
+    def test_author_profile_pages_past_the_first_100(self, mock_api_request):
+        """A prolific author overflows one page.
+
+        "Gou Nagai" reports 189 series, so a page-1-only fetch dropped 86
+        works that genuinely credit him.
+        """
+        def respond(*_args, **kwargs):
+            page = kwargs["params"]["page"]
+            if page == 1:
+                return {
+                    "status": 200,
+                    "pagination": {"count": 150, "next": "yes"},
+                    "data": [
+                        {"id": i, "title": f"Page1 #{i}", "authors": ["Go Nagai"]}
+                        for i in range(100)
+                    ],
+                }
+            return {
+                "status": 200,
+                "pagination": {"count": 150, "next": None},
+                "data": [
+                    {"id": i, "title": f"Page2 #{i}", "authors": ["Go Nagai"]}
+                    for i in range(100, 130)
+                ],
+            }
+
+        mock_api_request.side_effect = respond
+
+        data = mangabaka.author_profile("Go Nagai")
+
+        self.assertEqual(len(data["bibliography"]), 130)
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_author_profile_stops_when_no_next_page(self, mock_api_request):
+        """A single-page author must not keep requesting further pages."""
+        mock_api_request.return_value = {
+            "status": 200,
+            "pagination": {"count": 1, "next": None},
+            "data": [{"id": 1, "title": "Only", "authors": ["Go Nagai"]}],
+        }
+
+        mangabaka.author_profile("Go Nagai")
+
+        # Four name variants, one page each -- no variant asks for page 2.
+        pages = [call.kwargs["params"]["page"] for call in mock_api_request.call_args_list]
+        self.assertEqual(set(pages), {1})
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_author_profile_stops_paging_on_failure(self, mock_api_request):
+        """A failed page ends that variant rather than aborting the profile."""
+        def respond(*_args, **kwargs):
+            if kwargs["params"]["page"] == 2:
+                raise _http_error(500)
+            return {
+                "status": 200,
+                "pagination": {"count": 150, "next": "yes"},
+                "data": [{"id": 1, "title": "First", "authors": ["Go Nagai"]}],
+            }
+
+        mock_api_request.side_effect = respond
+
+        data = mangabaka.author_profile("Go Nagai")
+
+        self.assertEqual([e["title"] for e in data["bibliography"]], ["First"])
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
     def test_author_profile_skips_entries_without_a_title(self, mock_api_request):
         mock_api_request.return_value = {
             "status": 200,
