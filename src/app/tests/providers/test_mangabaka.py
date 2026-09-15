@@ -31,6 +31,48 @@ RELATED_SERIES = {
     },
 }
 
+# The /similar envelope: rows carry the full series object plus a similarity
+# score, so no follow-up fetch is needed.
+SIMILAR_RESPONSE = {
+    "status": 200,
+    "data": [
+        {
+            "score": 0.42,
+            "shared_tags_total": 20,
+            "series": {
+                "id": 9602,
+                "title": "Sui's Great Adventure",
+                "type": "manga",
+                "year": 2018,
+                "cover": {"x350": {"x1": "https://cdn.mangabaka.dev/x350/9602"}},
+            },
+        },
+        {
+            "score": 0.75,
+            "shared_tags_total": 15,
+            "series": {
+                "id": 7777,
+                "title": "Highest Scoring",
+                "type": "manga",
+                "year": 2020,
+                "cover": {"x350": {"x1": "https://cdn.mangabaka.dev/x350/7777"}},
+            },
+        },
+        {
+            # An officially related series, which /similar also returns.
+            "score": 0.60,
+            "shared_tags_total": 12,
+            "series": {
+                "id": 5469,
+                "title": "Overlord New World",
+                "type": "manga",
+                "year": 2024,
+                "cover": {"x350": {"x1": "https://cdn.mangabaka.dev/x350/5469"}},
+            },
+        },
+    ],
+}
+
 
 SERIES_DETAIL = {
     "id": 20703,
@@ -199,6 +241,7 @@ class TestMangaBakaMetadata(TestCase):
         mock_api_request.side_effect = [
             {"status": 200, "data": SERIES_DETAIL},
             {"status": 200, "data": RELATED_SERIES},
+            SIMILAR_RESPONSE,
         ]
 
         data = mangabaka.manga("20703")
@@ -243,6 +286,19 @@ class TestMangaBakaMetadata(TestCase):
         self.assertEqual(related[0]["media_id"], "5469")
         self.assertEqual(related[0]["relation_type"], "sequel")
 
+        recommendations = data["related"]["recommendations"]
+        # Sorted by score descending, and the officially-related series is
+        # dropped because it already appears in the related grid above.
+        self.assertEqual(
+            [item["media_id"] for item in recommendations],
+            ["7777", "9602"],
+        )
+        self.assertEqual(recommendations[0]["title"], "Highest Scoring")
+        self.assertEqual(recommendations[0]["source"], Sources.MANGABAKA.value)
+        self.assertEqual(recommendations[0]["media_type"], MediaTypes.MANGA.value)
+        self.assertEqual(recommendations[0]["year"], 2020)
+        self.assertNotEqual(recommendations[0]["image"], settings.IMG_NONE)
+
     @patch("app.providers.mangabaka.services.api_request")
     def test_manga_404(self, mock_api_request):
         mock_api_request.side_effect = _http_error(404)
@@ -257,18 +313,21 @@ class TestMangaBakaMetadata(TestCase):
         mock_api_request.side_effect = [
             {"status": 200, "data": SERIES_DETAIL},
             {"status": 200, "data": RELATED_SERIES},
+            SIMILAR_RESPONSE,
         ]
 
         mangabaka.manga("20703")
         mangabaka.manga("20703")
 
-        self.assertEqual(mock_api_request.call_count, 2)
+        # series + related-series + similar, then nothing on the second call.
+        self.assertEqual(mock_api_request.call_count, 3)
 
     @patch("app.providers.mangabaka.services.api_request")
     def test_related_skips_failed_fetch(self, mock_api_request):
         mock_api_request.side_effect = [
             {"status": 200, "data": SERIES_DETAIL},
             _http_error(404),
+            SIMILAR_RESPONSE,
         ]
 
         data = mangabaka.manga("20703")
@@ -414,3 +473,113 @@ class TestMangaBakaHelpers(TestCase):
             ),
             [],
         )
+
+
+class TestMangaBakaRecommendations(TestCase):
+    """Unit tests for the tag-similar recommendation source."""
+
+    def setUp(self):
+        cache.clear()
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_recommendations_sorted_by_score(self, mock_api_request):
+        """The API's own order is not by score, so it must be re-sorted.
+
+        Fixture scores are 0.75, 0.60 and 0.42, returned out of order.
+        """
+        mock_api_request.return_value = SIMILAR_RESPONSE
+
+        results = mangabaka.get_recommendations("20703")
+
+        self.assertEqual([r["media_id"] for r in results], ["7777", "5469", "9602"])
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_recommendations_skip_officially_related(self, mock_api_request):
+        """A related series must not also appear as a recommendation."""
+        mock_api_request.return_value = SIMILAR_RESPONSE
+
+        results = mangabaka.get_recommendations("20703", exclude_ids=["5469"])
+
+        self.assertEqual([r["media_id"] for r in results], ["7777", "9602"])
+
+    @override_settings(MU_NSFW=False)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_recommendations_gate_adult_tiers(self, mock_api_request):
+        mock_api_request.return_value = SIMILAR_RESPONSE
+
+        mangabaka.get_recommendations("20703")
+
+        _, kwargs = mock_api_request.call_args
+        self.assertEqual(
+            kwargs["params"]["content_rating"],
+            ["safe", "suggestive"],
+        )
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_recommendations_omit_rating_filter_when_nsfw(self, mock_api_request):
+        mock_api_request.return_value = SIMILAR_RESPONSE
+
+        mangabaka.get_recommendations("20703")
+
+        _, kwargs = mock_api_request.call_args
+        self.assertIsNone(kwargs["params"])
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_recommendations_return_empty_on_failure(self, mock_api_request):
+        """A failed lookup degrades to no row rather than breaking the page."""
+        mock_api_request.side_effect = _http_error(500)
+
+        self.assertEqual(mangabaka.get_recommendations("20703"), [])
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_recommendations_skip_rows_without_a_series(self, mock_api_request):
+        mock_api_request.return_value = {
+            "status": 200,
+            "data": [
+                {"score": 0.9, "series": {"id": 1, "title": "Good"}},
+                {"score": 0.8},
+                {"score": 0.7, "series": None},
+                {"score": 0.6, "series": {"title": "No id"}},
+            ],
+        }
+
+        results = mangabaka.get_recommendations("20703")
+
+        self.assertEqual([r["media_id"] for r in results], ["1"])
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_recommendations_handle_missing_data_key(self, mock_api_request):
+        mock_api_request.return_value = {"status": 200}
+
+        self.assertEqual(mangabaka.get_recommendations("20703"), [])
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_recommendations_use_thumbnail_cover(self, mock_api_request):
+        """Grids have no reason to pull the multi-megabyte raw cover."""
+        mock_api_request.return_value = {
+            "status": 200,
+            "data": [
+                {
+                    "score": 0.5,
+                    "series": {
+                        "id": 2,
+                        "title": "Covered",
+                        "cover": {
+                            "raw": {"url": "https://images.mangabaka.dev/raw"},
+                            "x350": {"x1": "https://cdn.mangabaka.dev/x350/2"},
+                        },
+                    },
+                },
+            ],
+        }
+
+        results = mangabaka.get_recommendations("20703")
+
+        self.assertEqual(results[0]["image"], "https://cdn.mangabaka.dev/x350/2")

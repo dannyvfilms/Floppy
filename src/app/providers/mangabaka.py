@@ -158,6 +158,7 @@ def manga(media_id):
             ) from error
 
         series = response["data"]
+        related_manga = get_related(series.get("relationships_v2"))
 
         data = {
             "media_id": str(series["id"]),
@@ -181,8 +182,13 @@ def manga(media_id):
             },
             "authors_full": get_authors_full(series),
             "related": {
-                "related_manga": get_related(series.get("relationships_v2")),
-                "recommendations": [],
+                "related_manga": related_manga,
+                # Excludes anything already in related_manga: /similar counts
+                # official relations as strong matches and returns them too.
+                "recommendations": get_recommendations(
+                    media_id,
+                    exclude_ids=[row["media_id"] for row in related_manga],
+                ),
             },
         }
 
@@ -336,6 +342,62 @@ def get_related(relationships):
             },
         )
     return related
+
+
+def get_recommendations(media_id, *, exclude_ids=None):
+    """Return tag-similar series, ranked by MangaBaka's similarity score.
+
+    `/similar` returns fully populated series objects, so unlike the
+    MangaUpdates path this needs no per-item follow-up fetches.
+    """
+    params = {}
+    if not settings.MU_NSFW:
+        # Same gate as search: the adult tiers are erotica/pornographic, and
+        # this endpoint honours content_rating server-side.
+        params["content_rating"] = ["safe", "suggestive"]
+
+    try:
+        response = services.api_request(
+            Sources.MANGABAKA.value,
+            "GET",
+            f"{base_url}/series/{media_id}/similar",
+            params=params or None,
+            headers=headers,
+        )
+    except requests.exceptions.HTTPError:
+        logger.warning("Failed to fetch MangaBaka similar series for %s", media_id)
+        return []
+
+    excluded = {str(value) for value in (exclude_ids or ())}
+    ranked = []
+    for row in response.get("data") or []:
+        series = row.get("series") or {}
+        series_id = series.get("id")
+        if series_id is None:
+            continue
+        # A series can be both officially related and tag-similar. It already
+        # appears in the related grid, so drop it here rather than render the
+        # same title twice on one page.
+        if str(series_id) in excluded:
+            continue
+        ranked.append(
+            (
+                row.get("score") or 0,
+                {
+                    "source": Sources.MANGABAKA.value,
+                    "media_id": str(series_id),
+                    "media_type": MediaTypes.MANGA.value,
+                    "title": series.get("title", ""),
+                    "image": get_image_url(series, thumbnail=True),
+                    "year": series.get("year"),
+                },
+            ),
+        )
+
+    # The API's own ordering is not by score (related series lead instead), so
+    # sort explicitly to keep the most similar first.
+    ranked.sort(key=lambda entry: entry[0], reverse=True)
+    return [item for _, item in ranked]
 
 
 def _parse_int(value):
