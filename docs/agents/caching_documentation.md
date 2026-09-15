@@ -312,7 +312,7 @@ Default TTL is `CACHE_TIMEOUT` unless specified.
 - MangaUpdates (`src/app/providers/mangaupdates.py`):
   - `search_MANGAUPDATES_{media_type}_nsfw_{MU_NSFW}_{query}_{page}` (the flag selects the result set, so both states cache separately), `MANGAUPDATES_manga_{media_id}`.
 - MangaBaka (`src/app/providers/mangabaka.py`):
-  - `search_v2_MANGABAKA_manga_{query}_{page}` (leading segment is
+  - `search_v3_MANGABAKA_manga_{query}_{page}` (leading segment is
     `SEARCH_CACHE_VERSION`; bump it when the result shape changes).
   - `MANGABAKA_manga_v2_{media_id}` (the `v2` is
     `METADATA_CACHE_VERSION`; bump it when `details` keys change, which is

@@ -14,6 +14,7 @@ SEARCH_ITEM = {
     "type": "manga",
     "year": 2014,
     "content_rating": "suggestive",
+    "genres": ["action", "adventure", "fantasy"],
     "cover": {
         "raw": {"url": "https://images.mangabaka.dev/b/3/5/3/3/7/0/5/0e6c"},
         "x250": {"x1": "https://cdn.mangabaka.dev/imgproxy/plain/x250@1/abc"},
@@ -210,9 +211,90 @@ class TestMangaBakaSearch(TestCase):
         mangabaka.search("Overlord", 1)
 
         _, kwargs = mock_api_request.call_args
-        # Suggestive is the mild tier holding mainstream seinen; only the
-        # erotica/pornographic tiers are filtered out by default.
-        self.assertEqual(kwargs["params"]["content_rating"], ["safe", "suggestive"])
+        # erotica is included: it is where MangaBaka files BERSERK and other
+        # mainstream seinen, not a measure of explicitness.
+        self.assertEqual(
+            kwargs["params"]["content_rating"],
+            ["safe", "suggestive", "erotica"],
+        )
+
+    @override_settings(MU_NSFW=False)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_search_keeps_erotica_tier_mainstream_titles(self, mock_api_request):
+        """BERSERK-style entries are erotica-rated but must still be found.
+
+        MangaBaka files BERSERK under erotica, so an exact-match filter built
+        from the "clean" tiers alone hid the single most obvious result for a
+        search of its own name.
+        """
+        berserk = {
+            "id": 1692,
+            "title": "BERSERK",
+            "type": "manga",
+            "year": 1989,
+            "content_rating": "erotica",
+            "genres": [
+                "action", "adventure", "drama", "fantasy", "horror",
+                "psychological", "mature", "seinen", "supernatural", "tragedy",
+            ],
+        }
+        mock_api_request.return_value = {
+            "status": 200,
+            "pagination": {"count": 1, "page": 1, "limit": 30},
+            "data": [berserk],
+        }
+
+        data = mangabaka.search("Berserk", 1)
+
+        self.assertEqual([r["media_id"] for r in data["results"]], ["1692"])
+
+    @override_settings(MU_NSFW=False)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_search_drops_doujinshi_and_explicit_genres(self, mock_api_request):
+        """The erotica tier admits fan works, so genres must filter them."""
+        doujin = {
+            "id": 33936,
+            "title": "Berserk dj - Cruel",
+            "type": "manga",
+            "year": 2015,
+            "content_rating": "safe",
+            "genres": ["doujinshi", "shounen_ai"],
+        }
+        mock_api_request.return_value = {
+            "status": 200,
+            "pagination": {"count": 2, "page": 1, "limit": 30},
+            "data": [SEARCH_ITEM, doujin],
+        }
+
+        data = mangabaka.search("Berserk", 1)
+
+        self.assertEqual([r["media_id"] for r in data["results"]], ["20703"])
+
+    @override_settings(MU_NSFW=False)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_search_does_not_treat_adult_genre_as_explicit(self, mock_api_request):
+        """"adult" is applied to mainstream titles, so it cannot gate anything.
+
+        Berserk: The Flame Dragon Knight (suggestive) and Tantei Akechi wa
+        Kyouransu (a mystery) both carry the "adult" genre on MangaBaka.
+        """
+        adult_rated = {
+            "id": 82960,
+            "title": "Berserk: The Flame Dragon Knight",
+            "type": "manga",
+            "year": 2015,
+            "content_rating": "suggestive",
+            "genres": ["action", "fantasy", "adult", "adventure", "mature"],
+        }
+        mock_api_request.return_value = {
+            "status": 200,
+            "pagination": {"count": 1, "page": 1, "limit": 30},
+            "data": [adult_rated],
+        }
+
+        data = mangabaka.search("Berserk", 1)
+
+        self.assertEqual([r["media_id"] for r in data["results"]], ["82960"])
 
     @override_settings(MU_NSFW=True)
     @patch("app.providers.mangabaka.services.api_request")
@@ -514,7 +596,7 @@ class TestMangaBakaRecommendations(TestCase):
         _, kwargs = mock_api_request.call_args
         self.assertEqual(
             kwargs["params"]["content_rating"],
-            ["safe", "suggestive"],
+            ["safe", "suggestive", "erotica"],
         )
 
     @override_settings(MU_NSFW=True)
@@ -558,6 +640,62 @@ class TestMangaBakaRecommendations(TestCase):
         mock_api_request.return_value = {"status": 200}
 
         self.assertEqual(mangabaka.get_recommendations("20703"), [])
+
+    @override_settings(MU_NSFW=False)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_recommendations_drop_explicit_genres(self, mock_api_request):
+        """Widening the tiers to erotica must not leak doujinshi into recs."""
+        mock_api_request.return_value = {
+            "status": 200,
+            "data": [
+                {
+                    "score": 0.9,
+                    "series": {
+                        "id": 1,
+                        "title": "Berserk dj - Cruel",
+                        "genres": ["doujinshi", "shounen_ai"],
+                    },
+                },
+                {
+                    "score": 0.8,
+                    "series": {
+                        "id": 2,
+                        "title": "BERSERK",
+                        "content_rating": "erotica",
+                        "genres": ["action", "seinen", "horror"],
+                    },
+                },
+            ],
+        }
+
+        results = mangabaka.get_recommendations("20703")
+
+        self.assertEqual([r["media_id"] for r in results], ["2"])
+
+    @override_settings(MU_NSFW=True)
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_recommendations_keep_explicit_genres_when_nsfw_enabled(
+        self,
+        mock_api_request,
+    ):
+        """MU_NSFW lifts the genre filter along with the rating filter."""
+        mock_api_request.return_value = {
+            "status": 200,
+            "data": [
+                {
+                    "score": 0.9,
+                    "series": {
+                        "id": 1,
+                        "title": "Berserk dj - Cruel",
+                        "genres": ["doujinshi"],
+                    },
+                },
+            ],
+        }
+
+        results = mangabaka.get_recommendations("20703")
+
+        self.assertEqual([r["media_id"] for r in results], ["1"])
 
     @override_settings(MU_NSFW=True)
     @patch("app.providers.mangabaka.services.api_request")

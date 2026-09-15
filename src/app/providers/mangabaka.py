@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 base_url = "https://api.mangabaka.org/v1"
 # Bumped whenever the search result shape changes, so entries cached before a
 # filter/field change are not served unchanged (same reason as IGDB's).
-SEARCH_CACHE_VERSION = "v2"
+SEARCH_CACHE_VERSION = "v3"
 # Metadata payload shape version. Bump when details keys change so detail pages
 # are not served a payload built by the previous normalizer.
 METADATA_CACHE_VERSION = "v2"
@@ -52,6 +52,35 @@ TAG_MIN_SERIES_COUNT = 1000
 headers = {
     "User-Agent": "Mozilla/5.0",
 }
+# The tiers shown when MU_NSFW is off.
+#
+# "erotica" is included deliberately, even though the name reads like the
+# explicit tier. It is MangaBaka's catch-all for anything tagged as having
+# sexual content rather than a measure of how explicit a work is, so it holds
+# mainstream seinen alongside genuine erotica: BERSERK (id 1692, nsfw:erotica),
+# Vagabond and Homunculus all sit in it. Excluding it hid BERSERK from a search
+# for "Berserk" entirely -- the unfiltered result is rank 1 of 60 -- which is
+# the same class of bug as the earlier "suggestive" exclusion that hid Overlord
+# and Ghost in the Shell.
+#
+# The genuinely explicit tier is "pornographic", and it is always excluded here.
+# The residual erotica-tier doujinshi are removed by TAG/content heuristic
+# below, since the API has no server-side genre exclusion (passing an unknown
+# filter key 400s rather than being ignored).
+DEFAULT_CONTENT_RATINGS = ["safe", "suggestive", "erotica"]
+# Genres that mark a work as fan-made or explicit on their own.
+#
+# "adult" and "ecchi" are deliberately absent: MangaBaka applies "adult" to
+# mainstream titles too -- "Berserk: The Flame Dragon Knight" (suggestive) and
+# "Tantei Akechi wa Kyouransu" (a mystery) both carry it -- so treating it as a
+# porn signal would hide ordinary series.
+EXPLICIT_EXCLUDED_GENRES = frozenset({"doujinshi", "hentai", "smut"})
+
+
+def _is_explicit(row):
+    """Return whether a search/similar row is fan-made or explicit by genre."""
+    genres = row.get("genres") or []
+    return bool(EXPLICIT_EXCLUDED_GENRES.intersection(genres))
 
 
 def metadata_cache_key(media_id):
@@ -90,12 +119,9 @@ def search(query, page):
 
         if not settings.MU_NSFW:
             # MangaBaka's content_rating is an exact-match server filter, and
-            # repeated params OR together (a comma-joined value 400s). Adult
-            # tiers are erotica/pornographic; "suggestive" is the mild tier that
-            # holds most mainstream seinen (Ghost in the Shell, Overlord), so
-            # filtering it out hides titles every other provider here shows.
+            # repeated params OR together (a comma-joined value 400s).
             # MU_NSFW covers both manga providers, so one switch lifts both.
-            params["content_rating"] = ["safe", "suggestive"]
+            params["content_rating"] = list(DEFAULT_CONTENT_RATINGS)
 
         try:
             response = services.api_request(
@@ -111,6 +137,10 @@ def search(query, page):
                 error,
             ) from error
 
+        rows = response["data"]
+        if not settings.MU_NSFW:
+            rows = [item for item in rows if not _is_explicit(item)]
+
         results = [
             {
                 "media_id": str(item["id"]),
@@ -120,7 +150,7 @@ def search(query, page):
                 "image": get_image_url(item, thumbnail=True),
                 "year": item.get("year"),
             }
-            for item in response["data"]
+            for item in rows
         ]
 
         total_results = response["pagination"]["count"]
@@ -352,9 +382,10 @@ def get_recommendations(media_id, *, exclude_ids=None):
     """
     params = {}
     if not settings.MU_NSFW:
-        # Same gate as search: the adult tiers are erotica/pornographic, and
-        # this endpoint honours content_rating server-side.
-        params["content_rating"] = ["safe", "suggestive"]
+        # Same tiers as search, including erotica for the same reason: the
+        # mainstream seinen live there, and the residual explicit doujinshi are
+        # dropped by the genre check below instead.
+        params["content_rating"] = list(DEFAULT_CONTENT_RATINGS)
 
     try:
         response = services.api_request(
@@ -379,6 +410,8 @@ def get_recommendations(media_id, *, exclude_ids=None):
         # appears in the related grid, so drop it here rather than render the
         # same title twice on one page.
         if str(series_id) in excluded:
+            continue
+        if not settings.MU_NSFW and _is_explicit(series):
             continue
         ranked.append(
             (
