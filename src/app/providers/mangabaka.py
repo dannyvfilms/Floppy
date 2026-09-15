@@ -201,6 +201,7 @@ OFFICIAL_RELATION_TYPES = frozenset(
         "prequel",
         "source",
         "spin_off",
+        "series",
     },
 )
 
