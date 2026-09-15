@@ -44,8 +44,12 @@ def handle_error(error):
 
 def search(query, page):
     """Search for media on MangaUpdates."""
+    # The NSFW flag changes the result set server-side, so it belongs in the
+    # key: without it, flipping MU_NSFW keeps serving the other mode's cached
+    # page for the full cache lifetime.
     cache_key = (
-        f"search_{Sources.MANGAUPDATES.value}_{MediaTypes.MANGA.value}_{query}_{page}"
+        f"search_{Sources.MANGAUPDATES.value}_{MediaTypes.MANGA.value}_"
+        f"nsfw_{settings.MU_NSFW}_{query}_{page}"
     )
     data = cache.get(cache_key)
 
@@ -59,7 +63,7 @@ def search(query, page):
             "page": page,
         }
 
-        if not settings.MAL_NSFW:
+        if not settings.MU_NSFW:
             params["exclude_genre"] = [
                 "Adult",
                 "Hentai",
