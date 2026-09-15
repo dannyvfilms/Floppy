@@ -20,6 +20,18 @@ SEARCH_ITEM = {
     },
 }
 
+RELATED_SERIES = {
+    "id": 5469,
+    "title": "Overlord New World",
+    "type": "manga",
+    "year": 2024,
+    "cover": {
+        "raw": {"url": "https://images.mangabaka.dev/related/5469"},
+        "x350": {"x1": "https://cdn.mangabaka.dev/imgproxy/plain/x350@1/rel"},
+    },
+}
+
+
 SERIES_DETAIL = {
     "id": 20703,
     "title": "Overlord",
@@ -41,9 +53,8 @@ SERIES_DETAIL = {
     "content_rating": "suggestive",
     "relationships_v2": [
         {
-            "id": "019f3c99-fb6c-7019-9e04-60922eee9359",
-            "to_series_id": 589980,
-            "relation_type": "parody",
+            "to_series_id": 5469,
+            "relation_type": "sequel",
         },
     ],
 }
@@ -126,7 +137,10 @@ class TestMangaBakaMetadata(TestCase):
 
     @patch("app.providers.mangabaka.services.api_request")
     def test_manga_metadata(self, mock_api_request):
-        mock_api_request.return_value = {"status": 200, "data": SERIES_DETAIL}
+        mock_api_request.side_effect = [
+            {"status": 200, "data": SERIES_DETAIL},
+            {"status": 200, "data": RELATED_SERIES},
+        ]
 
         data = mangabaka.manga("20703")
 
@@ -145,9 +159,14 @@ class TestMangaBakaMetadata(TestCase):
             data["details"]["authors"],
             ["Kugane Maruyama", "Oshio Satoshi", "Fugin Miyama"],
         )
-        self.assertEqual(data["genres"], ["action", "adventure", "fantasy"])
+        self.assertEqual(data["genres"], ["Action", "Adventure", "Fantasy"])
         self.assertNotEqual(data["image"], settings.IMG_NONE)
         self.assertIsNone(data["score_count"])
+        related = data["related"]["related_manga"]
+        self.assertEqual(len(related), 1)
+        self.assertEqual(related[0]["title"], "Overlord New World")
+        self.assertEqual(related[0]["media_id"], "5469")
+        self.assertEqual(related[0]["relation_type"], "sequel")
 
     @patch("app.providers.mangabaka.services.api_request")
     def test_manga_404(self, mock_api_request):
@@ -160,12 +179,57 @@ class TestMangaBakaMetadata(TestCase):
 
     @patch("app.providers.mangabaka.services.api_request")
     def test_metadata_caches(self, mock_api_request):
-        mock_api_request.return_value = {"status": 200, "data": SERIES_DETAIL}
+        mock_api_request.side_effect = [
+            {"status": 200, "data": SERIES_DETAIL},
+            {"status": 200, "data": RELATED_SERIES},
+        ]
 
         mangabaka.manga("20703")
         mangabaka.manga("20703")
 
-        self.assertEqual(mock_api_request.call_count, 1)
+        self.assertEqual(mock_api_request.call_count, 2)
+
+    @patch("app.providers.mangabaka.services.api_request")
+    def test_related_skips_failed_fetch(self, mock_api_request):
+        mock_api_request.side_effect = [
+            {"status": 200, "data": SERIES_DETAIL},
+            _http_error(404),
+        ]
+
+        data = mangabaka.manga("20703")
+
+        self.assertEqual(data["related"]["related_manga"], [])
+
+    def test_related_keeps_only_official_types(self):
+        relationships = [
+            {"to_series_id": 1, "relation_type": "main"},
+            {"to_series_id": 2, "relation_type": "side_story"},
+            {"to_series_id": 3, "relation_type": "sequel"},
+            {"to_series_id": 4, "relation_type": "prequel"},
+            {"to_series_id": 5, "relation_type": "source"},
+            {"to_series_id": 6, "relation_type": "spin_off"},
+            {"to_series_id": 7, "relation_type": "parody"},
+            {"to_series_id": 8, "relation_type": "other"},
+            {"to_series_id": 9, "relation_type": None},
+        ]
+
+        with patch(
+            "app.providers.mangabaka.services.api_request",
+        ) as mock_api_request:
+            mock_api_request.side_effect = lambda *a, **k: {
+                "status": 200,
+                "data": {
+                    "id": 1,
+                    "title": "Related",
+                    "cover": {},
+                    "year": 2020,
+                },
+            }
+
+            related = mangabaka.get_related(relationships)
+
+        self.assertEqual(len(related), 6)
+        self.assertEqual(mock_api_request.call_count, 6)
 
 
 class TestMangaBakaHelpers(TestCase):
@@ -187,3 +251,22 @@ class TestMangaBakaHelpers(TestCase):
             mangabaka.get_image_url({"cover": {"raw": {"url": "https://x/y"}}}),
             "https://x/y",
         )
+        series = {
+            "cover": {
+                "raw": {"url": "https://x/raw"},
+                "x350": {"x1": "https://x/350"},
+            },
+        }
+        self.assertEqual(mangabaka.get_image_url(series), "https://x/raw")
+        self.assertEqual(
+            mangabaka.get_image_url(series, thumbnail=True),
+            "https://x/350",
+        )
+
+    def test_get_genres_normalizes_display(self):
+        self.assertEqual(
+            mangabaka.get_genres(["action", "slice_of_life", "school_life"]),
+            ["Action", "Slice Of Life", "School Life"],
+        )
+        self.assertIsNone(mangabaka.get_genres([]))
+        self.assertIsNone(mangabaka.get_genres(None))

@@ -55,7 +55,7 @@ def search(query, page):
                 "source": Sources.MANGABAKA.value,
                 "media_type": MediaTypes.MANGA.value,
                 "title": item["title"],
-                "image": get_image_url(item),
+                "image": get_image_url(item, thumbnail=True),
                 "year": item.get("year"),
             }
             for item in response["data"]
@@ -128,16 +128,25 @@ def manga(media_id):
     return data
 
 
-def get_image_url(series):
-    """Get the image URL for a series, falling back when no cover exists."""
+def get_image_url(series, *, thumbnail=False):
+    """Get the cover URL: full-res raw for detail, x350 thumb for grids."""
     cover = series.get("cover") or {}
-    url = (cover.get("x250") or {}).get("x1") or (cover.get("raw") or {}).get("url")
+    raw_url = (cover.get("raw") or {}).get("url")
+    if not thumbnail and raw_url:
+        return raw_url
+    url = (
+        (cover.get("x350") or {}).get("x1")
+        or (cover.get("x250") or {}).get("x1")
+        or raw_url
+    )
     return url or settings.IMG_NONE
 
 
 def get_genres(genres):
-    """Return the genres for the media."""
-    return genres or None
+    """Return display-normalized genres ("slice_of_life" -> "Slice of Life")."""
+    if not genres:
+        return None
+    return [genre.replace("_", " ").title() for genre in genres]
 
 
 def get_score(rating):
@@ -184,21 +193,52 @@ def get_authors_full(series):
     return normalized
 
 
+OFFICIAL_RELATION_TYPES = frozenset(
+    {
+        "main",
+        "side_story",
+        "sequel",
+        "prequel",
+        "source",
+        "spin_off",
+    },
+)
+
+
 def get_related(relationships):
-    """Return stub related-manga rows without extra API calls."""
+    """Return official related-manga rows with titles resolved from the API."""
     if not relationships:
         return []
-    return [
-        {
-            "source": Sources.MANGABAKA.value,
-            "media_id": str(rel["to_series_id"]),
-            "media_type": MediaTypes.MANGA.value,
-            "title": "",
-            "image": settings.IMG_NONE,
-            "relation_type": rel.get("relation_type", ""),
-        }
-        for rel in relationships
-    ]
+    related = []
+    for rel in relationships:
+        if rel.get("relation_type") not in OFFICIAL_RELATION_TYPES:
+            continue
+        to_id = rel.get("to_series_id")
+        if to_id is None:
+            continue
+        try:
+            response = services.api_request(
+                Sources.MANGABAKA.value,
+                "GET",
+                f"{base_url}/series/{to_id}",
+                headers=headers,
+            )
+        except requests.exceptions.HTTPError:
+            logger.warning("Failed to fetch related MangaBaka series %s", to_id)
+            continue
+        series = response["data"]
+        related.append(
+            {
+                "source": Sources.MANGABAKA.value,
+                "media_id": str(series["id"]),
+                "media_type": MediaTypes.MANGA.value,
+                "title": series.get("title", ""),
+                "image": get_image_url(series, thumbnail=True),
+                "year": series.get("year"),
+                "relation_type": rel.get("relation_type", ""),
+            },
+        )
+    return related
 
 
 def _parse_int(value):
