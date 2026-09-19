@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}
+  Authorise Application - Floppy
+{% endblock title %}
+
+{% block content %}
+  <div class="mx-auto max-w-2xl space-y-6">
+    <div>
+      <h1 class="text-3xl font-bold">Authorise Application</h1>
+      <p class="text-[var(--color-text-muted)] mt-2 text-sm">
+        Enter the code shown on your device, then review the permissions before allowing access.
+      </p>
+    </div>
+
+    <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-5">
+      <form method="get" class="space-y-3">
+        <label for="user_code" class="block text-sm font-medium">Device code</label>
+        <div class="flex flex-col sm:flex-row gap-3">
+          <input id="user_code"
+                 name="user_code"
+                 value="{{ user_code }}"
+                 autocomplete="one-time-code"
+                 spellcheck="false"
+                 class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-strong)] px-3 py-2 font-mono uppercase tracking-wider"
+                 placeholder="ABCD-EFGH"
+                 required>
+          <button type="submit"
+                  class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
+            Continue
+          </button>
+        </div>
+      </form>
+
+      {% if error %}
+        <div class="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm">
+          {{ error }}
+        </div>
+      {% endif %}
+
+      {% if success %}
+        <div class="rounded-md border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm">
+          {{ success }} You can return to your device.
+        </div>
+      {% endif %}
+
+      {% if authorization and not error and not success %}
+        {% if authorization.approved_at %}
+          <div class="rounded-md border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm">
+            This application has already been authorised. You can return to your device.
+          </div>
+        {% elif authorization.denied_at %}
+          <div class="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3 text-sm">
+            This application request has already been denied.
+          </div>
+        {% else %}
+          <div class="border-t border-[var(--color-border)] pt-5 space-y-4">
+            <div>
+              <p class="text-sm text-[var(--color-text-muted)]">Application</p>
+              <h2 class="text-xl font-semibold mt-1">{{ authorization.client.name }}</h2>
+            </div>
+
+            <div>
+              <h3 class="font-medium mb-3">Requested permissions</h3>
+              <div class="space-y-3">
+                {% for item in scope_details %}
+                  <div class="rounded-md bg-[var(--color-surface-strong)] p-3">
+                    <div class="font-medium text-sm">{{ item.label }}</div>
+                    <div class="text-[var(--color-text-muted)] text-xs mt-1">{{ item.description }}</div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+
+            <form method="post" class="flex flex-wrap gap-3 pt-2">
+              {% csrf_token %}
+              <input type="hidden" name="user_code" value="{{ user_code }}">
+              <button type="submit"
+                      name="action"
+                      value="approve"
+                      class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
+                Allow
+              </button>
+              <button type="submit"
+                      name="action"
+                      value="deny"
+                      class="px-4 py-2 rounded-md border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer">
+                Deny
+              </button>
+            </form>
+          </div>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    <p class="text-xs text-[var(--color-text-muted)]">
+      Only approve a code you requested from a device or application you recognise. Floppy never gives the application your password.
+    </p>
+  </div>
+{% endblock content %}

@@ -1,4 +1,7 @@
 {% load app_tags %}
+{% load integration_token_tags %}
+{% active_integration_tokens user as integration_tokens %}
+{% revoked_integration_tokens user as revoked_tokens %}
 {# Named, scoped API tokens. The account token above stays for webhooks; these #}
 {# are what a third-party client should be given, because they can be revoked  #}
 {# one at a time and only reach what their permissions name.                   #}
@@ -96,7 +99,64 @@
       {% endfor %}
     </ul>
   {% else %}
-    <p class="text-[var(--color-text-muted)] text-sm mb-4">No app tokens yet.</p>
+    <p class="text-[var(--color-text-muted)] text-sm mb-4">No active app tokens.</p>
+  {% endif %}
+
+  {% if revoked_tokens %}
+    <details class="bg-[var(--color-surface-dim)] rounded-md p-4 mb-4">
+      <summary class="text-sm font-medium cursor-pointer">
+        Revoked tokens ({{ revoked_tokens|length }})
+      </summary>
+      <p class="text-[var(--color-text-muted)] text-xs mt-2 mb-2">
+        Revoked tokens cannot authenticate. Delete them when you no longer need the token record.
+      </p>
+      <ul class="divide-y divide-[var(--color-border)]">
+        {% for token in revoked_tokens %}
+          <li class="py-3 flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <p class="text-sm font-medium truncate">{{ token.name }}</p>
+                <span class="shrink-0 bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] rounded px-1.5 py-0.5 text-xs">Revoked</span>
+              </div>
+              <p class="text-[var(--color-text-muted)] text-xs font-mono">{{ token.token_prefix }}…</p>
+              <p class="text-[var(--color-text-muted)] text-xs mt-1">
+                Revoked {{ token.revoked_at|datetime_format:user }}
+              </p>
+            </div>
+            <div class="shrink-0"
+                 x-data="{ confirmingDelete: false }"
+                 @keydown.escape="confirmingDelete = false">
+              <button type="button"
+                      x-show="!confirmingDelete"
+                      @click="confirmingDelete = true"
+                      class="px-3 py-1.5 border border-red-500 text-red-400 rounded-md hover:bg-red-500/10 transition-colors text-sm cursor-pointer">
+                Delete
+              </button>
+              <div x-show="confirmingDelete" x-cloak class="text-right max-w-sm">
+                <p class="text-[var(--color-text-secondary)] text-xs mb-2">
+                  Permanently delete {{ token.name }}? The credential record cannot be restored. Existing event receipts are kept.
+                </p>
+                <div class="flex justify-end gap-2">
+                  <button type="button"
+                          @click="confirmingDelete = false"
+                          class="px-3 py-1.5 border border-gray-600 text-[var(--color-text-secondary)] rounded-md hover:bg-[var(--color-surface-strong)] transition-colors text-sm cursor-pointer">
+                    Cancel
+                  </button>
+                  <form method="post"
+                        action="{% url 'delete_integration_token' token.id %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                            class="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm cursor-pointer">
+                      Delete permanently
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </details>
   {% endif %}
 
   <details class="bg-[var(--color-surface-dim)] rounded-md p-4">

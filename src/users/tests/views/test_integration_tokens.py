@@ -7,11 +7,15 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from integrations.models import DEFAULT_INTEGRATION_SCOPES, IntegrationToken
+from integrations.models import (
+    DEFAULT_INTEGRATION_SCOPES,
+    IntegrationEventReceipt,
+    IntegrationToken,
+)
 
 
 class IntegrationTokenLifecycleTests(TestCase):
-    """Create, display once, list, and revoke."""
+    """Create, display once, list, revoke, and delete."""
 
     def setUp(self):
         """Log a user in."""
@@ -114,7 +118,7 @@ class IntegrationTokenLifecycleTests(TestCase):
         self.assertContains(response, "Nuvio living room")
 
     def test_revoke_marks_the_token_revoked(self):
-        """Revoking sets revoked_at and drops it from the list."""
+        """Revoking moves the token from the active list to revoked tokens."""
         self.create()
         token = IntegrationToken.objects.get(user=self.user)
 
@@ -125,7 +129,12 @@ class IntegrationTokenLifecycleTests(TestCase):
 
         token.refresh_from_db()
         self.assertIsNotNone(token.revoked_at)
-        self.assertNotContains(response, token.token_prefix)
+        self.assertContains(response, "Revoked tokens")
+        self.assertContains(response, token.token_prefix)
+        self.assertContains(
+            response,
+            reverse("delete_integration_token", args=[token.id]),
+        )
 
     def test_cannot_revoke_another_users_token(self):
         """Token ids are not a cross-user handle."""
@@ -146,6 +155,18 @@ class IntegrationTokenLifecycleTests(TestCase):
         response = self.client.get(reverse("integrations"))
 
         self.assertNotContains(response, "theirs")
+
+    def test_oauth_access_tokens_are_not_listed_as_app_tokens(self):
+        """OAuth credentials use Connected Applications, not the manual token panel."""
+        IntegrationToken.generate(
+            user=self.user,
+            name="Living room OAuth",
+            client_identifier="flp_oauth_test-client",
+        )
+
+        response = self.client.get(reverse("integrations"))
+
+        self.assertNotContains(response, "Living room OAuth")
 
     def test_create_requires_post(self):
         """A GET must not mint a credential."""
@@ -191,15 +212,20 @@ class IntegrationTokenLifecycleTests(TestCase):
         self.assertFalse(token.is_expired())
         self.assertTrue(token.is_valid())
 
-    def test_revoked_tokens_drop_off_the_list(self):
-        """A revoked token is not offered for revocation again."""
+    def test_revoked_tokens_move_to_the_revoked_section(self):
+        """A revoked token remains manageable but is no longer offered for use."""
         token, _ = IntegrationToken.generate(user=self.user, name="Retired")
         token.revoked_at = timezone.now()
         token.save(update_fields=["revoked_at"])
 
         response = self.client.get(reverse("integrations"))
 
-        self.assertNotContains(response, "Retired")
+        self.assertContains(response, "Revoked tokens")
+        self.assertContains(response, "Retired")
+        self.assertContains(
+            response,
+            reverse("delete_integration_token", args=[token.id]),
+        )
 
     def test_revoking_an_already_revoked_token_is_a_404(self):
         """A stale revoke button does not resurrect or double-revoke."""
@@ -215,3 +241,79 @@ class IntegrationTokenLifecycleTests(TestCase):
         self.assertEqual(response.status_code, 404)
         token.refresh_from_db()
         self.assertEqual(token.revoked_at, revoked_at)
+
+    def test_delete_removes_a_revoked_token_and_preserves_event_receipts(self):
+        """Permanent cleanup keeps idempotency history while dropping the credential."""
+        token, _ = IntegrationToken.generate(user=self.user, name="Retired")
+        token.revoked_at = timezone.now()
+        token.save(update_fields=["revoked_at"])
+        receipt = IntegrationEventReceipt.objects.create(
+            token=token,
+            user=self.user,
+            client_event_id="event-1",
+            payload_digest="a" * 64,
+            response_body={"ok": True},
+        )
+
+        response = self.client.post(
+            reverse("delete_integration_token", args=[token.id]),
+        )
+
+        self.assertRedirects(response, reverse("integrations"))
+        self.assertFalse(IntegrationToken.objects.filter(pk=token.id).exists())
+        receipt.refresh_from_db()
+        self.assertIsNone(receipt.token_id)
+
+    def test_cannot_delete_an_active_token(self):
+        """Deletion cannot bypass the revoke-first security boundary."""
+        token, _ = IntegrationToken.generate(user=self.user, name="Still active")
+
+        response = self.client.post(
+            reverse("delete_integration_token", args=[token.id]),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(IntegrationToken.objects.filter(pk=token.id).exists())
+
+    def test_cannot_delete_another_users_revoked_token(self):
+        """A revoked token id is still not a cross-user delete handle."""
+        token, _ = IntegrationToken.generate(user=self.other, name="theirs")
+        token.revoked_at = timezone.now()
+        token.save(update_fields=["revoked_at"])
+
+        response = self.client.post(
+            reverse("delete_integration_token", args=[token.id]),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(IntegrationToken.objects.filter(pk=token.id).exists())
+
+    def test_cannot_delete_an_oauth_access_token_from_app_tokens(self):
+        """OAuth access-token cleanup belongs to the Connected Applications flow."""
+        token, _ = IntegrationToken.generate(
+            user=self.user,
+            name="OAuth access",
+            client_identifier="flp_oauth_test-client",
+        )
+        token.revoked_at = timezone.now()
+        token.save(update_fields=["revoked_at"])
+
+        response = self.client.post(
+            reverse("delete_integration_token", args=[token.id]),
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(IntegrationToken.objects.filter(pk=token.id).exists())
+
+    def test_delete_requires_post(self):
+        """A GET must never permanently remove a credential record."""
+        token, _ = IntegrationToken.generate(user=self.user, name="Retired")
+        token.revoked_at = timezone.now()
+        token.save(update_fields=["revoked_at"])
+
+        response = self.client.get(
+            reverse("delete_integration_token", args=[token.id]),
+        )
+
+        self.assertEqual(response.status_code, 405)
+        self.assertTrue(IntegrationToken.objects.filter(pk=token.id).exists())

@@ -63,6 +63,7 @@ urlpatterns = [
     # requests for the same URL and applies the request-scoped display policy.
     path("medialist/<str:media_type>", media_list_with_entry_grouping),
     path("", include("app.urls")),
+    path("", include("integrations.oauth_urls")),
     path("", include("integrations.urls")),
     path("", include("users.urls")),
     path("", include("lists.urls")),
