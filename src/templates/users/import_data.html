@@ -588,18 +588,12 @@
           <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import anime and manga from Kitsu." %}</p>
         </button>
 
-        {# MangaBaka has no bundled logo; it uses a violet "MB" chip app-wide. #}
         <button type="button"
                 @click="openModal('mangabaka')"
                 x-show="sourceSupports(['anime_manga'])"
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center">
-              <span class="w-6 h-6 mr-2 rounded-sm flex items-center justify-center text-[10px] font-semibold border border-violet-400/28 bg-violet-500/14 text-violet-400">MB</span>
-              <h4 class="font-medium">MangaBaka</h4>
-            </div>
-          </div>
+          <div class="flex items-center justify-between">{% source_display "mangabaka" %}</div>
           <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import manga from a MangaBaka library." %}</p>
         </button>
 
@@ -2482,10 +2476,7 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
             <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
-              <div class="flex items-center mb-3">
-                <span class="w-6 h-6 mr-2 rounded-sm flex items-center justify-center text-[10px] font-semibold border border-violet-400/28 bg-violet-500/14 text-violet-400">MB</span>
-                <h4 class="font-medium">MangaBaka</h4>
-              </div>
+              <div class="flex items-center mb-3">{% source_display "mangabaka" %}</div>
               <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import manga" %}</p>
               <p class="text-xs text-[var(--color-text-muted)] mb-3">
                 {% blocktranslate %}MangaBaka has no public profile API, so a personal access token is required. Create one under Settings → API and apps on MangaBaka, then paste it below.{% endblocktranslate %}
