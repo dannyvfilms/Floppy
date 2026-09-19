@@ -244,6 +244,16 @@ ONBOARDING_SOURCES: tuple[OnboardingSource, ...] = (
         connect_fields=(("user", "Kitsu User ID", "text"),),
     ),
     OnboardingSource(
+        "mangabaka",
+        (MANGA,),
+        "api_key",
+        tags=("anime_manga",),
+        # MangaBaka keeps other people's libraries off the API entirely, so a
+        # token is the only way in and there is nothing to connect persistently.
+        connect_url_name="import_mangabaka",
+        connect_fields=(("token", "MangaBaka API Token", "password"),),
+    ),
+    OnboardingSource(
         "hltb",
         (GAME,),
         "upload",  # CSV export, not credentials

@@ -588,6 +588,21 @@
           <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import anime and manga from Kitsu." %}</p>
         </button>
 
+        {# MangaBaka has no bundled logo; it uses a violet "MB" chip app-wide. #}
+        <button type="button"
+                @click="openModal('mangabaka')"
+                x-show="sourceSupports(['anime_manga'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <span class="w-6 h-6 mr-2 rounded-sm flex items-center justify-center text-[10px] font-semibold border border-violet-400/28 bg-violet-500/14 text-violet-400">MB</span>
+              <h4 class="font-medium">MangaBaka</h4>
+            </div>
+          </div>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import manga from a MangaBaka library." %}</p>
+        </button>
+
         <button type="button"
                 @click="openModal('yamtrack')"
                 x-show="sourceSupports(['backup', 'screen', 'anime_manga', 'reading', 'games', 'podcasts', 'music'])"
@@ -2449,6 +2464,58 @@
             </button>
           </form>
         </div>
+          </div>
+        </div>
+
+        {# MangaBaka #}
+        <div x-show="activeModal === 'mangabaka'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+             @mousedown.self="closeModal()">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1 rounded-md hover:bg-[var(--color-surface-hover)] bg-[var(--color-surface)]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+            <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
+              <div class="flex items-center mb-3">
+                <span class="w-6 h-6 mr-2 rounded-sm flex items-center justify-center text-[10px] font-semibold border border-violet-400/28 bg-violet-500/14 text-violet-400">MB</span>
+                <h4 class="font-medium">MangaBaka</h4>
+              </div>
+              <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import manga" %}</p>
+              <p class="text-xs text-[var(--color-text-muted)] mb-3">
+                {% blocktranslate %}MangaBaka has no public profile API, so a personal access token is required. Create one under Settings → API and apps on MangaBaka, then paste it below.{% endblocktranslate %}
+              </p>
+
+              <form class="flex items-center"
+                    method="post"
+                    action="{% url 'import_mangabaka' %}">
+                {% csrf_token %}
+                {# MangaBaka imports run once: the token is the only credential. #}
+                <input type="hidden" name="frequency" value="once">
+                <input type="hidden" name="mode" x-model="importMode">
+
+                <div class="flex w-full">
+                  <input placeholder="mb-..."
+                         name="token"
+                         class="relative w-full py-2 px-3 bg-[var(--color-surface)] rounded-l-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-violet-500 focus:outline-none focus:ring focus:ring-violet-200 focus:ring-opacity-50"
+                         type="password"
+                         autocomplete="off"
+                         spellcheck="false"
+                         required>
+                  <button type="submit"
+                          class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          :class="standardImportsDisabled() ? 'bg-gray-600 text-gray-400 border-gray-600 cursor-not-allowed' : 'bg-violet-600 text-white border-violet-600 hover:bg-violet-700'"
+                          :disabled="standardImportsDisabled()">
+                    {% translate "Import" %}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
 
