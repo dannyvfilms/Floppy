@@ -10,7 +10,6 @@ from integrations.oauth_metadata import (
 )
 from integrations.oauth_revocation import oauth_revoke
 from integrations.oauth_token import oauth_token
-from integrations.token_management import delete_integration_token
 
 urlpatterns = [
     path(
@@ -36,10 +35,5 @@ urlpatterns = [
         "settings/integrations/applications/<str:client_id>/revoke",
         oauth_revoke_application,
         name="oauth_revoke_application",
-    ),
-    path(
-        "settings/integrations/tokens/<int:token_id>/delete",
-        delete_integration_token,
-        name="delete_integration_token",
     ),
 ]

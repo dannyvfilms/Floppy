@@ -365,6 +365,18 @@ class OAuthDeviceFlowTests(TestCase):
         )
         self.assertEqual(refresh.status_code, HTTP.OK)
 
+    def test_oauth_access_token_is_not_listed_as_manual_app_token(self):
+        """OAuth-issued credentials stay out of the manual App tokens list."""
+        _device, token_payload = self.approve_and_exchange()
+        access_token = IntegrationToken.objects.get(
+            token_digest=oauth_token_digest(token_payload["access_token"])
+        )
+
+        page = self.client.get(reverse("integrations"))
+
+        self.assertEqual(page.status_code, HTTP.OK)
+        self.assertNotContains(page, access_token.token_prefix)
+
     def test_connected_applications_page_and_revocation_are_user_isolated(self):
         """Settings expose OAuth grants and revoke only the current user's access."""
         _device, token_payload = self.approve_and_exchange()
