@@ -696,6 +696,94 @@ class PersonDetailViewTests(TestCase):
             "45min",
         )
 
+    @patch("app.providers.mangabaka.author_profile")
+    def test_person_detail_author_bibliography_sorts_by_year(self, mock_author_profile):
+        """Providers that return relevance order must still sort by date.
+
+        MangaBaka (like Hardcover and OpenLibrary) returns search-relevance
+        order and carries only `year`, but the default sort trusted the
+        provider to hand back newest-first, so it was a no-op and the
+        bibliography rendered in what looked like random order.
+        """
+        person = Person.objects.create(
+            source=Sources.MANGABAKA.value,
+            source_person_id="MIURA Kentaro",
+            name="MIURA Kentaro",
+        )
+        mock_author_profile.return_value = {
+            "person_id": "MIURA Kentaro",
+            "source": Sources.MANGABAKA.value,
+            "name": "MIURA Kentaro",
+            "known_for_department": "Author",
+            "bibliography": [
+                {"media_id": "3", "media_type": MediaTypes.MANGA.value,
+                 "title": "Middle", "year": 1997},
+                {"media_id": "1", "media_type": MediaTypes.MANGA.value,
+                 "title": "Newest", "year": 2021},
+                {"media_id": "2", "media_type": MediaTypes.MANGA.value,
+                 "title": "Oldest", "year": 1985},
+                {"media_id": "4", "media_type": MediaTypes.MANGA.value,
+                 "title": "Undated", "year": None},
+            ],
+        }
+
+        response = self.client.get(
+            reverse(
+                "person_detail",
+                kwargs={
+                    "source": Sources.MANGABAKA.value,
+                    "person_id": "MIURA Kentaro",
+                    "name": "miura-kentaro",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        titles = [e["title"] for e in response.context["filmography"]]
+        # Default direction is newest-first, undated entries last.
+        self.assertEqual(titles, ["Newest", "Middle", "Oldest", "Undated"])
+
+    @patch("app.providers.mangabaka.author_profile")
+    def test_person_detail_author_bibliography_oldest_first_on_ascending(
+        self,
+        mock_author_profile,
+    ):
+        person = Person.objects.create(
+            source=Sources.MANGABAKA.value,
+            source_person_id="MIURA Kentaro",
+            name="MIURA Kentaro",
+        )
+        mock_author_profile.return_value = {
+            "person_id": "MIURA Kentaro",
+            "source": Sources.MANGABAKA.value,
+            "name": "MIURA Kentaro",
+            "known_for_department": "Author",
+            "bibliography": [
+                {"media_id": "1", "media_type": MediaTypes.MANGA.value,
+                 "title": "Newest", "year": 2021},
+                {"media_id": "2", "media_type": MediaTypes.MANGA.value,
+                 "title": "Oldest", "year": 1985},
+            ],
+        }
+
+        response = self.client.get(
+            reverse(
+                "person_detail",
+                kwargs={
+                    "source": Sources.MANGABAKA.value,
+                    "person_id": "MIURA Kentaro",
+                    "name": "miura-kentaro",
+                },
+            )
+            + "?sort=release_date&direction=asc",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [e["title"] for e in response.context["filmography"]],
+            ["Oldest", "Newest"],
+        )
+
     @patch("app.providers.openlibrary.author_profile")
     def test_person_detail_openlibrary_author_uses_bibliography(
         self, mock_author_profile

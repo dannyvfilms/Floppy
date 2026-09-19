@@ -12,6 +12,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from integrations import exports, tasks
+from integrations.imports import helpers as import_helpers
 from integrations.upload_staging import (
     enqueue_staged_task,
     stage_uploaded_file,
@@ -28,6 +29,13 @@ _USERNAME_IMPORTS = {
     "anilist": ("import_anilist", "AniList username"),
     "kitsu": ("import_kitsu", "Kitsu user ID"),
     "steam": ("import_steam", "Steam ID"),
+}
+
+# Token-driven imports: service -> (task export, credential label). These have
+# no public username to read, so the credential is the only way in, and it is
+# encrypted before it reaches the broker.
+_TOKEN_IMPORTS = {
+    "mangabaka": ("import_mangabaka", "MangaBaka API token"),
 }
 
 # File-driven imports: service -> (task export, file label).
@@ -58,6 +66,7 @@ class ImportDispatchView(drf_views.APIView):
     """Queue a one-off import for a service (mirrors the web import forms).
 
     Username services (mal, anilist, kitsu, steam) take {"username", "mode"}.
+    Token services (mangabaka) take {"token", "mode"} and never a username.
     File services (yamtrack, trakt-collection, trakt-export, hltb, grouvee,
     imdb, goodreads, hardcover, storygraph) take a multipart upload in the
     "file" field plus an optional "mode". Returns 202 with a task_id pollable at
@@ -89,6 +98,22 @@ class ImportDispatchView(drf_views.APIView):
                 )
             task = task_fn.delay(
                 username=username,
+                user_id=request.user.id,
+                mode=mode,
+            )
+            return Response({"task_id": task.id}, status=HTTP.ACCEPTED)
+
+        if service in _TOKEN_IMPORTS:
+            task_export, label = _TOKEN_IMPORTS[service]
+            task_fn = getattr(tasks, task_export)
+            token = (str(request.data.get("token") or "")).strip()
+            if not token:
+                return Response(
+                    {"detail": f"{label} is required in 'token'."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            task = task_fn.delay(
+                token=import_helpers.encrypt(token),
                 user_id=request.user.id,
                 mode=mode,
             )
@@ -130,7 +155,9 @@ class ImportDispatchView(drf_views.APIView):
         return Response(
             {
                 "detail": "Unknown import service.",
-                "services": sorted([*_USERNAME_IMPORTS, *_FILE_IMPORTS]),
+                "services": sorted(
+                    [*_USERNAME_IMPORTS, *_TOKEN_IMPORTS, *_FILE_IMPORTS],
+                ),
             },
             status=HTTP.NOT_FOUND,
         )

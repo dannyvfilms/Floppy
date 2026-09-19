@@ -1860,6 +1860,7 @@ class User(AbstractUser):
             "myanimelist": ["Import from MyAnimeList"],
             "anilist": ["Import from AniList"],
             "kitsu": ["Import from Kitsu"],
+            "mangabaka": ["Import from MangaBaka"],
             "yamtrack": ["Import from Yamtrack"],
             "hltb": ["Import from HowLongToBeat"],
             "grouvee": ["Import from Grouvee"],

@@ -65,6 +65,7 @@ TRACKED_TASK_NAMES = frozenset(
         "Import from MyAnimeList",
         "Import from AniList",
         "Import from Kitsu",
+        "Import from MangaBaka",
         "Import from Yamtrack",
         "Import from HowLongToBeat",
         "Import from Grouvee",

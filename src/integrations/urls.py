@@ -75,6 +75,7 @@ urlpatterns = [
         name="import_anilist_public",
     ),
     path("import/kitsu", views.import_kitsu, name="import_kitsu"),
+    path("import/mangabaka", views.import_mangabaka, name="import_mangabaka"),
     path("import/yamtrack", views.import_yamtrack, name="import_yamtrack"),
     path("import/clz", views.import_clz, name="import_clz"),
     path("import/hltb", views.import_hltb, name="import_hltb"),
