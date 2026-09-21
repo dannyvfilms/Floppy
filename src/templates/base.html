@@ -1,13 +1,15 @@
 {% load static %}
 {% load app_tags %}
 {% load user_tags %}
+{% load brand_tags %}
 {% load i18n %}
 
+{% branding_for user as appearance %}
 <!DOCTYPE html>
 <html lang="{{ LANGUAGE_CODE }}"
       data-img-none="{{ IMG_NONE }}"
-      class="{% if user.is_authenticated and user.theme != 'system' %}{{ user.theme }}{% endif %} bg-[var(--color-page-bg)]"
-      style="{% custom_theme_style user %}">
+      class="{% if appearance.theme != 'system' %}{{ appearance.theme }}{% endif %} bg-[var(--color-page-bg)]"
+      style="{% custom_theme_style appearance %}">
   <head>
     {# Required meta tags #}
     <meta charset="UTF-8">
@@ -170,9 +172,9 @@
     </script>
     <link rel="shortcut icon" href="{% static "favicon/favicon.ico" %}">
     <meta name="msapplication-TileColor" content="#181a1b">
-    {% if user.is_authenticated and user.theme == 'light' %}
+    {% if appearance.theme == 'light' %}
       <meta name="theme-color" content="#f8f9fa">
-    {% elif user.is_authenticated and user.theme == 'dark' %}
+    {% elif appearance.theme == 'dark' %}
       <meta name="theme-color" content="#181a1b">
     {% else %}
       <meta name="theme-color"
@@ -220,23 +222,9 @@
         {% if not public_view|default:False %}
           <aside class="fixed top-0 left-0 z-40 h-screen w-64 bg-[var(--color-sidebar)] transform transition-transform duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
                  :class="isMobileMenuOpen ? 'translate-x-0' : ''">
-            <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
-              <h1 class="flex items-center">
-                {% if user.is_authenticated and user.logo_style == 'monochrome' %}
-                  <img src="{% static 'img/floppy-logo-white.png' %}"
-                       alt="Floppy"
-                       width="158"
-                       height="48"
-                       class="h-9 w-[158px] object-cover object-center">
-                {% else %}
-                <img src="{% static 'img/floppy-logo.png' %}"
-                     srcset="{% static 'img/floppy-logo.png' %} 1x,
-                             {% static 'img/floppy-logo@2x.png' %} 2x"
-                     alt="Floppy"
-                     width="158"
-                     height="48"
-                     class="h-9 w-auto">
-                {% endif %}
+            <div class="min-h-16 border-b border-[var(--color-border)] flex items-center px-6 py-2">
+              <h1 class="sidebar-brand-slot flex w-full items-center justify-center">
+                {% include "users/components/brand_logo.html" %}
               </h1>
             </div>
             {# hx-boost: swap the body instead of reloading on sidebar navigation #}

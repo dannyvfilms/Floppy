@@ -1,0 +1,39 @@
+{% load static brand_tags %}
+{% branding_for user as brand %}
+<a href="{% url 'home' %}"
+   aria-label="Floppy home"
+   data-brand-mode="{{ brand.logo_style }}"
+   class="brand-link {% if brand_size == 'large' %}brand-link-large{% endif %}">
+  {% if brand.logo_style == 'hidden' %}
+    <span class="sr-only">Floppy</span>
+  {% elif brand.logo_style == 'text' %}
+    <span class="brand-wordmark"
+          data-brand-font="{{ brand.logo_text_font }}"
+          data-brand-fill="{{ brand.logo_text_fill }}"
+          style="--brand-font-size: {{ brand.logo_text_size }}px;
+                 --brand-font-weight: {{ brand.logo_text_weight }};
+                 --brand-letter-spacing: {{ brand.logo_text_spacing }}px;
+                 --brand-color-start: {{ brand.logo_text_color_start }};
+                 --brand-color-end: {{ brand.logo_text_color_end }}">{{ brand.logo_text }}</span>
+  {% elif brand.logo_style == 'custom' and brand.custom_logo_data %}
+    <img src="{{ brand.custom_logo_data }}"
+         alt="{{ brand.logo_text|default:'Floppy' }}"
+         width="256"
+         height="64"
+         class="brand-custom-image">
+  {% elif brand.logo_style == 'monochrome' %}
+    <img src="{% static 'img/floppy-logo-white.png' %}"
+         alt="Floppy"
+         width="158"
+         height="48"
+         class="brand-built-in-image">
+  {% else %}
+    <img src="{% static 'img/floppy-logo.png' %}"
+         srcset="{% static 'img/floppy-logo.png' %} 1x,
+                 {% static 'img/floppy-logo@2x.png' %} 2x"
+         alt="Floppy"
+         width="158"
+         height="48"
+         class="brand-built-in-image">
+  {% endif %}
+</a>

@@ -7,20 +7,7 @@
       <div class="w-full max-w-md">
         <div class="text-center mb-8">
           <h1 class="flex justify-center mb-2">
-            {% if user.is_authenticated and user.logo_style == 'monochrome' %}
-              <img src="{% static 'img/floppy-logo-white.png' %}"
-                   alt="Floppy"
-                   width="158"
-                   height="48"
-                   class="h-16 w-[158px] object-cover object-center">
-            {% else %}
-            <img src="{% static 'img/floppy-logo.png' %}"
-                 srcset="{% static 'img/floppy-logo.png' %} 1x, {% static 'img/floppy-logo@2x.png' %} 2x"
-                 alt="Floppy"
-                 width="158"
-                 height="48"
-                 class="h-16 w-auto">
-            {% endif %}
+            {% include "users/components/brand_logo.html" with brand_size="large" %}
           </h1>
 
           <p class="text-[var(--color-text-muted)]">

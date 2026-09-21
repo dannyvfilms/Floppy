@@ -11,13 +11,190 @@
   {{ custom_theme_json|json_script:"custom-theme-values" }}
 
   <form method="post"
+        enctype="multipart/form-data"
         class="space-y-8"
         x-data="appearanceEditor()"
         x-init="init()">
     {% csrf_token %}
     <input type="hidden" name="theme" :value="theme">
+    <input type="hidden" name="logo_style" :value="logoStyle">
     <input type="hidden" name="custom_theme" :value="JSON.stringify(palette)">
     <input type="hidden" name="detail_layouts" :value="JSON.stringify(layouts)">
+
+    <section class="preferences-section">
+      <div class="preferences-section-header">
+        <div class="preferences-section-icon">{% include "app/icons/image.svg" with classes="w-5 h-5" %}</div>
+        <div>
+          <h2>Branding</h2>
+          <p>Choose what appears at the top of the sidebar.</p>
+        </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        {% for value, label in logo_style_choices %}
+          <button type="button"
+                  @click="logoStyle = '{{ value }}'"
+                  :aria-pressed="(logoStyle === '{{ value }}').toString()"
+                  :class="logoStyle === '{{ value }}' ? 'border-[var(--color-accent)] ring-2 ring-[var(--color-accent)]/30' : 'border-[var(--color-surface-border)] hover:border-[var(--color-text-muted)]'"
+                  class="rounded-xl border bg-[var(--color-surface)] px-4 py-3 text-left text-sm font-medium transition-colors cursor-pointer">
+            {{ label }}
+          </button>
+        {% endfor %}
+      </div>
+
+      <div class="mt-5 grid gap-5 rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-panel)] p-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,1fr)]">
+        <div class="space-y-2">
+          <p class="text-xs text-[var(--color-text-muted)]">Preview only. Save appearance to update the sidebar.</p>
+          <div class="flex min-h-24 items-center justify-center rounded-xl bg-[var(--color-sidebar)] px-6">
+            <img x-show="logoStyle === 'colorful'"
+                 x-cloak
+                 src="{% static 'img/floppy-logo.png' %}"
+                 alt="Floppy preview"
+                 class="brand-built-in-image">
+            <img x-show="logoStyle === 'monochrome'"
+                 x-cloak
+                 src="{% static 'img/floppy-logo-white.png' %}"
+                 alt="Floppy preview"
+                 class="brand-built-in-image">
+            <span x-show="logoStyle === 'text'"
+                  x-cloak
+                  class="brand-wordmark"
+                  :data-brand-font="logoTextFont"
+                  :data-brand-fill="logoTextFill"
+                  :style="{ '--brand-font-size': logoTextSize + 'px', '--brand-font-weight': logoTextWeight, '--brand-letter-spacing': logoTextSpacing + 'px', '--brand-color-start': logoTextColorStart, '--brand-color-end': logoTextColorEnd }"
+                  x-text="logoText || 'Floppy'"></span>
+            <img x-show="logoStyle === 'custom' && customLogoPreview"
+                 x-cloak
+                 x-ref="customLogoPreview"
+                 {% if user.custom_logo_data %}src="{{ user.custom_logo_data }}"{% endif %}
+                 :src="customLogoPreview"
+                 alt="Custom logo preview"
+                 class="brand-custom-image">
+            <span x-show="logoStyle === 'custom' && !customLogoPreview"
+                  x-cloak
+                  class="text-sm text-[var(--color-text-muted)]">Choose an image to preview it.</span>
+            <span x-show="logoStyle === 'hidden'"
+                  x-cloak
+                  class="text-sm text-[var(--color-text-muted)]">The logo will be hidden.</span>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <label x-show="logoStyle === 'text' || logoStyle === 'custom'"
+                 x-cloak
+                 class="block">
+            <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Logo text</span>
+            <input type="text"
+                   name="logo_text"
+                   maxlength="{{ logo_text_max_length }}"
+                   x-model="logoText"
+                   class="w-full rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30">
+          </label>
+          <div x-show="logoStyle === 'text'"
+               x-cloak
+               class="grid gap-4 sm:grid-cols-2">
+            <label class="block">
+              <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Font</span>
+              <select name="logo_text_font"
+                      x-model="logoTextFont"
+                      class="w-full rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30">
+                {% for value, label in logo_text_font_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-2 flex items-center justify-between gap-3 text-sm font-medium text-[var(--color-text-secondary)]">
+                <span>Size</span>
+                <output class="font-mono text-xs text-[var(--color-text-muted)]"
+                        x-text="logoTextSize + 'px'"></output>
+              </span>
+              <input type="range"
+                     name="logo_text_size"
+                     min="16"
+                     max="40"
+                     step="1"
+                     x-model.number="logoTextSize"
+                     class="w-full accent-[var(--color-accent)]">
+            </label>
+            <label class="block">
+              <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Weight</span>
+              <select name="logo_text_weight"
+                      x-model.number="logoTextWeight"
+                      class="w-full rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30">
+                {% for value, label in logo_text_weight_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-2 flex items-center justify-between gap-3 text-sm font-medium text-[var(--color-text-secondary)]">
+                <span>Letter spacing</span>
+                <output class="font-mono text-xs text-[var(--color-text-muted)]"
+                        x-text="logoTextSpacing + 'px'"></output>
+              </span>
+              <input type="range"
+                     name="logo_text_spacing"
+                     min="-2"
+                     max="6"
+                     step="1"
+                     x-model.number="logoTextSpacing"
+                     class="w-full accent-[var(--color-accent)]">
+            </label>
+            <label class="block sm:col-span-2">
+              <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Text color</span>
+              <select name="logo_text_fill"
+                      x-model="logoTextFill"
+                      class="w-full rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/30">
+                {% for value, label in logo_text_fill_choices %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+              </select>
+            </label>
+            <label x-show="logoTextFill === 'custom_solid' || logoTextFill === 'custom_gradient'"
+                   x-cloak
+                   class="block">
+              <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]" x-text="logoTextFill === 'custom_solid' ? 'Color' : 'Start color'"></span>
+              <input type="color" name="logo_text_color_start" x-model="logoTextColorStart" class="h-11 w-full cursor-pointer rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-1">
+            </label>
+            <label x-show="logoTextFill === 'custom_gradient'"
+                   x-cloak
+                   class="block">
+              <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">End color</span>
+              <input type="color" name="logo_text_color_end" x-model="logoTextColorEnd" class="h-11 w-full cursor-pointer rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface)] p-1">
+            </label>
+          </div>
+          <label x-show="logoStyle === 'custom'" x-cloak class="block">
+            <span class="mb-2 block text-sm font-medium text-[var(--color-text-secondary)]">Custom image</span>
+            <input type="file"
+                   name="logo_upload"
+                   accept="image/png,image/jpeg,image/webp"
+                   @change="previewLogoUpload($event)"
+                   class="block w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-accent)] file:px-4 file:py-2.5 file:font-medium file:text-[var(--color-accent-contrast)] file:cursor-pointer">
+            <span class="mt-2 block text-xs text-[var(--color-text-muted)]">
+              PNG, JPEG or WebP, up to 2 MB.
+              {% if user.custom_logo_data %}Your current image stays until you replace it.{% endif %}
+            </span>
+          </label>
+          <p x-show="logoStyle === 'hidden'"
+             x-cloak
+             class="text-sm text-[var(--color-text-muted)]">
+            The accessible Home link remains available for keyboard and screen-reader users.
+          </p>
+        </div>
+      </div>
+
+      {% if can_publish_public_appearance %}
+        <div class="mt-5 border-t border-[var(--color-surface-border)] pt-5">
+          <h3 class="text-sm font-semibold text-[var(--color-text)]">Sign-in appearance</h3>
+          <p class="mt-1 text-sm text-[var(--color-text-secondary)]">
+            Saving also updates the branding and theme shown on the sign-in page.
+          </p>
+          <p class="mt-2 text-xs text-[var(--color-text-muted)]">
+            {% if public_branding_active %}Custom branding is published.{% else %}Visitors see the original Floppy logo.{% endif %}
+          </p>
+          <div class="mt-3 flex flex-wrap gap-3">
+            {% if public_branding_active %}
+              <button type="submit" name="public_branding_action" value="reset" class="rounded-lg border border-[var(--color-surface-border)] px-4 py-2.5 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer">Restore original sign-in logo</button>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    </section>
 
     <section class="preferences-section">
       <div class="preferences-section-header">
@@ -153,7 +330,9 @@
     <div class="preferences-actions">
       <div>
         <p class="font-medium">Appearance</p>
-        <p class="text-sm text-[var(--color-text-muted)]">Changes apply after saving.</p>
+        <p class="text-sm text-[var(--color-text-muted)]">
+          {% if can_publish_public_appearance %}Saving also updates the sign-in page.{% else %}Changes apply after saving.{% endif %}
+        </p>
       </div>
       <button type="submit"
               class="rounded-lg bg-[var(--color-accent)] px-5 py-2.5 font-medium text-[var(--color-accent-contrast)] transition-[filter] hover:brightness-110 cursor-pointer">
@@ -166,6 +345,16 @@
     function appearanceEditor() {
       return {
         theme: '{{ appearance_theme|escapejs }}',
+        logoStyle: '{{ user.logo_style|escapejs }}',
+        logoText: '{{ user.logo_text|escapejs }}',
+        logoTextFont: '{{ user.logo_text_font|escapejs }}',
+        logoTextSize: {{ user.logo_text_size }},
+        logoTextWeight: {{ user.logo_text_weight }},
+        logoTextSpacing: {{ user.logo_text_spacing }},
+        logoTextFill: '{{ user.logo_text_fill|escapejs }}',
+        logoTextColorStart: '{{ user.logo_text_color_start|escapejs }}',
+        logoTextColorEnd: '{{ user.logo_text_color_end|escapejs }}',
+        customLogoPreview: '',
         palette: {},
         families: {},
         layouts: {},
@@ -176,6 +365,22 @@
           this.families = JSON.parse(document.getElementById('detail-layout-families').textContent);
           this.layouts = JSON.parse(document.getElementById('detail-layout-values').textContent);
           this.selectedFamily = Object.keys(this.families)[0] || '';
+          this.customLogoPreview = this.$refs.customLogoPreview?.getAttribute('src') || '';
+        },
+
+        previewLogoUpload(event) {
+          const file = event.target.files?.[0];
+          const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+          if (!file || file.size > 2 * 1024 * 1024 || !allowedTypes.includes(file.type)) {
+            this.customLogoPreview = '';
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.addEventListener('load', () => {
+            this.customLogoPreview = typeof reader.result === 'string' ? reader.result : '';
+          }, { once: true });
+          reader.readAsDataURL(file);
         },
 
         enabledKeys(familyKey, zoneKey) {

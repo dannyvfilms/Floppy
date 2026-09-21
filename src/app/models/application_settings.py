@@ -6,6 +6,7 @@ class ApplicationSettings(models.Model):
 
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     image_caching_enabled = models.BooleanField(default=False)
+    public_branding = models.JSONField(default=dict, blank=True)
 
     class Meta:
         """Model metadata."""

@@ -264,6 +264,17 @@ class LogoTextWeightChoices(models.IntegerChoices):
     BLACK = 900, _("Black")
 
 
+class LogoTextFillChoices(models.TextChoices):
+    """Wordmark color treatments with theme-aware and explicit variants."""
+
+    THEME_SOLID = "theme_solid", _("Theme color")
+    CUSTOM_SOLID = "custom_solid", _("Custom color")
+    THEME_GRADIENT = "theme_gradient", _("Theme gradient")
+    CUSTOM_GRADIENT = "custom_gradient", _("Custom gradient")
+
+
+LOGO_TEXT_INPUT_MAX_LENGTH = 20
+LOGO_TEXT_STORAGE_MAX_LENGTH = 32
 LOGO_TEXT_SIZES = tuple(range(16, 41))
 LOGO_TEXT_SPACINGS = tuple(range(-2, 7))
 
@@ -1131,7 +1142,7 @@ class User(AbstractUser):
     )
 
     logo_text = models.CharField(
-        max_length=32,
+        max_length=LOGO_TEXT_STORAGE_MAX_LENGTH,
         default="Floppy",
         help_text="Short navigation wordmark",
     )
@@ -1159,6 +1170,25 @@ class User(AbstractUser):
         default=-1,
         choices=[(value, f"{value}px") for value in LOGO_TEXT_SPACINGS],
         help_text="Letter spacing used by the navigation wordmark",
+    )
+
+    logo_text_fill = models.CharField(
+        max_length=16,
+        default=LogoTextFillChoices.THEME_GRADIENT,
+        choices=LogoTextFillChoices.choices,
+        help_text="Color treatment used by the navigation wordmark",
+    )
+
+    logo_text_color_start = models.CharField(
+        max_length=7,
+        default="#1f2937",
+        help_text="Custom wordmark color or gradient start",
+    )
+
+    logo_text_color_end = models.CharField(
+        max_length=7,
+        default="#2563eb",
+        help_text="Custom wordmark gradient end",
     )
 
     custom_logo_data = models.TextField(

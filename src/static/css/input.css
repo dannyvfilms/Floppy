@@ -4,6 +4,14 @@
   --breakpoint-xs: 30rem;
 }
 
+@font-face {
+  font-family: "Floppy Display";
+  src: url("/static/fonts/roboto-flex.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 100 1000;
+}
+
 :root {
   --color-surface: #2a2f35;
   --color-surface-strong: #39404b;
@@ -539,6 +547,130 @@ main > .container,
   html.oled :where(.media-card, .search-result-card, .search-result-card-square):hover {
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 60%, transparent);
   }
+}
+
+.brand-link {
+  display: inline-flex;
+  flex-shrink: 0;
+  min-width: 0;
+  align-items: center;
+  transform-origin: center;
+  transition:
+    transform var(--motion-duration) var(--motion-ease),
+    filter var(--motion-duration) var(--motion-ease);
+}
+
+.sidebar-brand-slot .brand-link {
+  width: 100%;
+  justify-content: center;
+}
+
+.brand-link:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+/* A hidden mark still needs a visible Home target when reached by keyboard. */
+.brand-link[data-brand-mode="hidden"] {
+  min-height: 2.75rem;
+}
+
+.brand-link[data-brand-mode="hidden"]:focus-visible {
+  border-radius: calc(var(--theme-radius) * 0.65);
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.brand-link[data-brand-mode="hidden"]:focus-visible .sr-only {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 0.5rem 0.75rem;
+  overflow: visible;
+  clip: auto;
+  clip-path: none;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.brand-built-in-image {
+  display: block;
+  flex-shrink: 0;
+  width: 9.875rem;
+  height: 3rem;
+  object-fit: contain;
+}
+
+.brand-custom-image {
+  display: block;
+  flex-shrink: 0;
+  width: auto;
+  height: 3rem;
+  max-width: 11rem;
+  object-fit: contain;
+}
+
+.brand-link-large :is(.brand-built-in-image, .brand-custom-image) {
+  height: 4rem;
+  max-width: 16rem;
+}
+
+.brand-wordmark {
+  min-width: 0;
+  max-width: 14rem;
+  color: var(--color-text);
+  font-family: "Floppy Display", ui-sans-serif, system-ui, sans-serif;
+  font-size: var(--brand-font-size, 23px);
+  font-weight: var(--brand-font-weight, 800);
+  letter-spacing: var(--brand-letter-spacing, -1px);
+  line-height: 1.05;
+  text-align: center;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  text-shadow: 0 1px 0 color-mix(in srgb, var(--color-page-bg) 55%, transparent);
+}
+
+.brand-wordmark[data-brand-font="sans"] {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.brand-wordmark[data-brand-font="serif"] {
+  font-family: ui-serif, Georgia, Cambria, "Times New Roman", serif;
+}
+
+.brand-wordmark[data-brand-font="mono"] {
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+}
+
+.brand-wordmark[data-brand-fill="custom_solid"] {
+  color: var(--brand-color-start);
+}
+
+.brand-wordmark[data-brand-fill="theme_gradient"],
+.brand-wordmark[data-brand-fill="custom_gradient"] {
+  background: linear-gradient(110deg, var(--color-text), var(--color-accent));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand-wordmark[data-brand-fill="custom_gradient"] {
+  background-image: linear-gradient(
+    110deg,
+    var(--brand-color-start),
+    var(--brand-color-end)
+  );
+}
+
+.brand-link-large .brand-wordmark {
+  max-width: 18rem;
+  font-size: calc(var(--brand-font-size, 23px) * 1.4);
+}
+
+html.glass .brand-wordmark[data-brand-fill="theme_gradient"] {
+  background-image: linear-gradient(110deg, #ffffff, #a5f3fc 52%, #c4b5fd);
 }
 
 @media (prefers-reduced-motion: reduce) {

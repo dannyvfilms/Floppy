@@ -224,9 +224,15 @@ def theme_display(theme_value):
 @register.simple_tag
 def custom_theme_style(user):
     """Return validated inline theme tokens for the custom preset."""
-    if not getattr(user, "is_authenticated", False) or user.theme != "custom":
+    theme = user.get("theme") if isinstance(user, dict) else getattr(user, "theme", None)
+    if theme != "custom":
         return ""
-    return custom_theme_css(user.custom_theme)
+    palette = (
+        user.get("custom_theme", {})
+        if isinstance(user, dict)
+        else getattr(user, "custom_theme", {})
+    )
+    return custom_theme_css(palette)
 
 
 @register.simple_tag

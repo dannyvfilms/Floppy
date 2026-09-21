@@ -107,7 +107,7 @@ class ThemeTokenContractTests(SimpleTestCase):
         )
 
         self.assertIn(
-            "user.is_authenticated and user.theme != 'system' %}{{ user.theme }}",
+            "appearance.theme != 'system' %}{{ appearance.theme }}",
             template,
         )
 
@@ -155,6 +155,65 @@ class ThemeTokenContractTests(SimpleTestCase):
 
         self.assertIn("@media (prefers-reduced-motion: reduce)", css)
         self.assertIn("animation-duration: 0.01ms", css)
+
+    def test_sidebar_logo_keeps_its_full_brand_dimensions(self):
+        css = Path(settings.BASE_DIR, "static", "css", "input.css").read_text(
+            encoding="utf-8"
+        )
+        logo_rule = re.search(
+            r"\.brand-built-in-image\s*\{(?P<body>.*?)\n\}",
+            css,
+            re.DOTALL,
+        )
+
+        self.assertIsNotNone(logo_rule)
+        self.assertIn("width: 9.875rem", logo_rule.group("body"))
+        self.assertIn("height: 3rem", logo_rule.group("body"))
+        self.assertIn("flex-shrink: 0", logo_rule.group("body"))
+
+    def test_hidden_branding_has_a_visible_keyboard_focus_state(self):
+        css = Path(settings.BASE_DIR, "static", "css", "input.css").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('.brand-link[data-brand-mode="hidden"]:focus-visible', css)
+        self.assertIn(
+            '.brand-link[data-brand-mode="hidden"]:focus-visible .sr-only',
+            css,
+        )
+
+    def test_wordmark_wraps_instead_of_hiding_the_brand_name(self):
+        css = Path(settings.BASE_DIR, "static", "css", "input.css").read_text(
+            encoding="utf-8"
+        )
+        rule = re.search(r"\.brand-wordmark\s*\{(?P<body>.*?)\n\}", css, re.DOTALL)
+
+        self.assertIsNotNone(rule)
+        self.assertIn("white-space: normal", rule.group("body"))
+        self.assertNotIn("overflow: hidden", rule.group("body"))
+
+    def test_sidebar_brand_slot_can_grow_for_wrapped_wordmarks(self):
+        template = Path(settings.BASE_DIR, "templates", "base.html").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('class="min-h-16 border-b', template)
+        self.assertNotIn('class="h-16 border-b', template)
+
+    def test_glass_wordmark_gradient_keeps_text_clipping(self):
+        css = Path(settings.BASE_DIR, "static", "css", "input.css").read_text(
+            encoding="utf-8"
+        )
+        rule = re.search(
+            r'html\.glass \.brand-wordmark\[data-brand-fill="theme_gradient"\]'
+            r"\s*\{(?P<body>.*?)\n\}",
+            css,
+            re.DOTALL,
+        )
+
+        self.assertIsNotNone(rule)
+        self.assertIn("background-image:", rule.group("body"))
+        self.assertNotIn("background:", rule.group("body"))
 
     def test_home_rows_reserve_hover_lift_clearance(self):
         css = Path(settings.BASE_DIR, "static", "css", "input.css").read_text(

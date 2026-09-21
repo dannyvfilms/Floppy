@@ -20,7 +20,13 @@ from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import IntegrityError
 from django.db.models import Count, Q
-from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseForbidden,
+    JsonResponse,
+    StreamingHttpResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import pluralize
 from django.urls import reverse
@@ -37,6 +43,7 @@ from app.discover.registry import DISCOVER_MEDIA_TYPES
 from app.models import (
     Album,
     AlbumTracker,
+    ApplicationSettings,
     Artist,
     ArtistTracker,
     Item,
@@ -62,7 +69,7 @@ from integrations.models import (
 )
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
 from users import appearance as appearance_config
-from users import cache_management
+from users import branding, cache_management
 from users.forms import (
     AuthenticatorSetupForm,
     NotificationSettingsForm,
@@ -82,6 +89,8 @@ from users.home_screen import (
     toggle_home_row_direction,
 )
 from users.models import (
+    LOGO_TEXT_INPUT_MAX_LENGTH,
+    LOGO_TEXT_STORAGE_MAX_LENGTH,
     ActivityHistoryViewChoices,
     DateFormatChoices,
     DurationFormatChoices,
@@ -89,6 +98,9 @@ from users.models import (
     ImportFrequencyChoices,
     ImportModeChoices,
     LogoStyleChoices,
+    LogoTextFillChoices,
+    LogoTextFontChoices,
+    LogoTextWeightChoices,
     MediaCardSubtitleDisplayChoices,
     MobileGridLayoutChoices,
     PlannedHomeDisplayChoices,
@@ -907,15 +919,52 @@ def ui_preferences(request):
 
 @require_http_methods(["GET", "POST"])
 def appearance(request):
-    """Configure application colors and detail page composition."""
+    """Configure branding, application colors, and detail page composition."""
     if request.method == "POST":
         if request.user.is_demo:
             messages.error(request, "This section is view-only for demo accounts.")
             return redirect("appearance")
 
+        public_action = request.POST.get("public_branding_action")
+        if public_action is not None:
+            if not branding.can_publish_public_appearance(request.user):
+                return HttpResponseForbidden()
+            if public_action not in {"publish", "reset"}:
+                return HttpResponse(status=400)
+            if public_action == "reset":
+                ApplicationSettings.objects.update_or_create(
+                    pk=1,
+                    defaults={"public_branding": {}},
+                )
+                messages.success(request, "Original sign-in logo restored")
+                return redirect("appearance")
+            if "theme" not in request.POST:
+                ApplicationSettings.objects.update_or_create(
+                    pk=1,
+                    defaults={
+                        "public_branding": branding.public_branding_snapshot(
+                            request.user
+                        )
+                    },
+                )
+                messages.success(request, "Sign-in branding updated")
+                return redirect("appearance")
+
         theme = request.POST.get("theme")
         if theme not in ThemeChoices.values:
             messages.error(request, "Unsupported theme.")
+            return redirect("appearance")
+        logo_style = request.POST.get("logo_style", request.user.logo_style)
+        if logo_style not in LogoStyleChoices.values:
+            messages.error(request, "Unsupported logo style.")
+            return redirect("appearance")
+        logo_upload = request.FILES.get("logo_upload")
+        if (
+            logo_style == LogoStyleChoices.CUSTOM
+            and logo_upload is None
+            and not request.user.custom_logo_data
+        ):
+            messages.error(request, "Choose an image for the custom logo.")
             return redirect("appearance")
         try:
             custom_theme = appearance_config.parse_custom_theme(
@@ -924,6 +973,40 @@ def appearance(request):
             detail_layouts = appearance_config.parse_detail_layouts(
                 request.POST.get("detail_layouts")
             )
+            posted_logo_text = request.POST.get("logo_text", request.user.logo_text)
+            logo_text = branding.normalize_logo_text(
+                posted_logo_text,
+                max_length=(
+                    LOGO_TEXT_STORAGE_MAX_LENGTH
+                    if posted_logo_text == request.user.logo_text
+                    else LOGO_TEXT_INPUT_MAX_LENGTH
+                ),
+            )
+            (
+                logo_text_font,
+                logo_text_size,
+                logo_text_weight,
+                logo_text_spacing,
+            ) = branding.normalize_logo_text_style(
+                request.POST.get("logo_text_font", request.user.logo_text_font),
+                request.POST.get("logo_text_size", request.user.logo_text_size),
+                request.POST.get("logo_text_weight", request.user.logo_text_weight),
+                request.POST.get("logo_text_spacing", request.user.logo_text_spacing),
+            )
+            (
+                logo_text_fill,
+                logo_text_color_start,
+                logo_text_color_end,
+            ) = branding.normalize_logo_text_fill(
+                request.POST.get("logo_text_fill", request.user.logo_text_fill),
+                request.POST.get(
+                    "logo_text_color_start", request.user.logo_text_color_start
+                ),
+                request.POST.get("logo_text_color_end", request.user.logo_text_color_end),
+            )
+            custom_logo_data = request.user.custom_logo_data
+            if logo_style == LogoStyleChoices.CUSTOM and logo_upload is not None:
+                custom_logo_data = branding.normalize_logo_upload(logo_upload)
         except ValidationError as exc:
             messages.error(request, exc.messages[0])
             return redirect("appearance")
@@ -931,14 +1014,49 @@ def appearance(request):
         request.user.theme = theme
         request.user.custom_theme = custom_theme
         request.user.detail_page_layouts = detail_layouts
+        request.user.logo_style = logo_style
+        request.user.logo_text = logo_text
+        request.user.logo_text_font = logo_text_font
+        request.user.logo_text_size = logo_text_size
+        request.user.logo_text_weight = logo_text_weight
+        request.user.logo_text_spacing = logo_text_spacing
+        request.user.logo_text_fill = logo_text_fill
+        request.user.logo_text_color_start = logo_text_color_start
+        request.user.logo_text_color_end = logo_text_color_end
+        request.user.custom_logo_data = custom_logo_data
         request.user.save(
             update_fields=[
                 "theme",
                 "custom_theme",
                 "detail_page_layouts",
+                "logo_style",
+                "logo_text",
+                "logo_text_font",
+                "logo_text_size",
+                "logo_text_weight",
+                "logo_text_spacing",
+                "logo_text_fill",
+                "logo_text_color_start",
+                "logo_text_color_end",
+                "custom_logo_data",
             ]
         )
-        messages.success(request, "Appearance updated")
+        publishes_public = branding.can_publish_public_appearance(request.user)
+        if public_action == "publish" or publishes_public:
+            ApplicationSettings.objects.update_or_create(
+                pk=1,
+                defaults={
+                    "public_branding": branding.public_branding_snapshot(request.user)
+                },
+            )
+            messages.success(
+                request,
+                "Sign-in branding updated"
+                if public_action == "publish"
+                else "Appearance and sign-in updated",
+            )
+        else:
+            messages.success(request, "Appearance updated")
         return redirect("appearance")
 
     saved_palette = (
@@ -961,6 +1079,19 @@ def appearance(request):
         "custom_theme_colors": appearance_config.CUSTOM_THEME_COLORS,
         "custom_theme_effects": appearance_config.CUSTOM_THEME_EFFECTS,
         "appearance_theme": request.user.theme,
+        "logo_style_choices": LogoStyleChoices.choices,
+        "logo_text_max_length": LOGO_TEXT_INPUT_MAX_LENGTH,
+        "logo_text_font_choices": LogoTextFontChoices.choices,
+        "logo_text_weight_choices": LogoTextWeightChoices.choices,
+        "logo_text_fill_choices": LogoTextFillChoices.choices,
+        "can_publish_public_appearance": branding.can_publish_public_appearance(
+            request.user
+        ),
+        "public_branding_active": bool(
+            ApplicationSettings.objects.filter(pk=1)
+            .values_list("public_branding", flat=True)
+            .first()
+        ) if branding.can_publish_public_appearance(request.user) else False,
         "custom_theme_json": palette,
         "detail_layout_families_json": appearance_config.DETAIL_LAYOUT_FAMILIES,
         "detail_layouts_json": appearance_config.resolved_detail_layouts(
@@ -1025,7 +1156,6 @@ def preferences(request):
         date_format = request.POST.get("date_format")
         theme = request.POST.get("theme")
         ui_language = request.POST.get("ui_language")
-        logo_style = request.POST.get("logo_style")
         time_format = request.POST.get("time_format")
         activity_history_view = request.POST.get("activity_history_view")
         game_logging_style = request.POST.get("game_logging_style")
@@ -1091,14 +1221,6 @@ def preferences(request):
         ):
             request.user.theme = theme
             fields_to_update.append("theme")
-
-        if (
-            logo_style
-            and logo_style in LogoStyleChoices.values
-            and request.user.logo_style != logo_style
-        ):
-            request.user.logo_style = logo_style
-            fields_to_update.append("logo_style")
 
         if (
             ui_language
