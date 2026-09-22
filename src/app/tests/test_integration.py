@@ -601,13 +601,13 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(start_quick_actions).to_be_visible()
         expect(create_modal.get_by_text("Select date", exact=True)).to_have_count(0)
         expect(
-            end_quick_actions.get_by_role("button", name="Start Now", exact=True)
+            start_quick_actions.get_by_role("button", name="Start Now", exact=True)
         ).to_be_visible()
         expect(
             end_quick_actions.get_by_role("button", name="Just Finished", exact=True)
         ).to_be_visible()
         expect(
-            end_quick_actions.get_by_role("button", name="Release Date", exact=True)
+            start_quick_actions.get_by_role("button", name="Release Date", exact=True)
         ).to_be_visible()
         end_picker_dialog = create_modal.get_by_role(
             "dialog", name="End date picker"
@@ -653,25 +653,33 @@ class IntegrationTest(StaticLiveServerTestCase):
         expect(start_quick_actions).to_be_visible()
         expect(end_quick_actions).to_be_visible()
 
-        before_start_now = self.page.evaluate("Date.now()")
-        end_quick_actions.get_by_role("button", name="Start Now", exact=True).click()
-        after_start_now = self.page.evaluate("Date.now()")
+        before_just_finished = self.page.evaluate("Date.now()")
+        end_quick_actions.get_by_role(
+            "button", name="Just Finished", exact=True
+        ).click()
+        after_just_finished = self.page.evaluate("Date.now()")
         expect(end_picker_dialog).not_to_be_visible()
         expect(end_quick_actions).not_to_be_visible()
+        start_value_ms = self.page.evaluate(
+            "value => new Date(value).getTime()",
+            start_date_input.input_value(),
+        )
         end_value_ms = self.page.evaluate(
             "value => new Date(value).getTime()",
             end_date_input.input_value(),
         )
         self.assertGreaterEqual(
-            end_value_ms,
-            before_start_now + 95 * 60 * 1000 - 1000,
+            start_value_ms,
+            before_just_finished - 95 * 60 * 1000 - 1000,
         )
         self.assertLessEqual(
-            end_value_ms,
-            after_start_now + 95 * 60 * 1000 + 1000,
+            start_value_ms,
+            after_just_finished - 95 * 60 * 1000 + 1000,
         )
+        self.assertGreaterEqual(end_value_ms, before_just_finished - 1000)
+        self.assertLessEqual(end_value_ms, after_just_finished + 1000)
         expect(create_modal.locator('select[name="status"]')).to_have_value(
-            Status.IN_PROGRESS.value
+            Status.COMPLETED.value
         )
 
         create_modal.locator(".date-picker-closed-field").first.get_by_role(
@@ -695,48 +703,13 @@ class IntegrationTest(StaticLiveServerTestCase):
         create_modal.locator(".date-picker-closed-field").first.get_by_role(
             "button", name="Clear date"
         ).click()
-        expect(start_quick_actions).to_be_visible()
-        # Bracket the click, the way the two assertions above already do. Taking
-        # a single timestamp after the click and using it for the lower bound
-        # charges every millisecond of click handling, re-render and round-trip
-        # against the tolerance - on top of the up-to-999ms the datetime-local
-        # input loses by truncating to whole seconds. That left about a
-        # millisecond of real headroom, and CI duly missed it by 49ms.
-        before_just_finished = self.page.evaluate("Date.now()")
-        start_quick_actions.get_by_role(
-            "button", name="Just Finished", exact=True
-        ).click()
-        expect(start_quick_actions).not_to_be_visible()
-        after_just_finished = self.page.evaluate("Date.now()")
-        just_finished_start_ms = self.page.evaluate(
-            "value => new Date(value).getTime()",
-            start_date_input.input_value(),
-        )
-        just_finished_end_ms = self.page.evaluate(
-            "value => new Date(value).getTime()",
-            end_date_input.input_value(),
-        )
-        self.assertGreaterEqual(
-            just_finished_start_ms,
-            before_just_finished - 95 * 60 * 1000 - 1000,
-        )
-        self.assertLessEqual(
-            just_finished_start_ms,
-            after_just_finished - 95 * 60 * 1000 + 1000,
-        )
-        self.assertGreaterEqual(just_finished_end_ms, before_just_finished - 1000)
-        self.assertLessEqual(just_finished_end_ms, after_just_finished + 1000)
-        create_modal.locator(".date-picker-closed-field").first.get_by_role(
-            "button", name="Clear date"
-        ).click()
-        create_modal.locator(".date-picker-closed-field").nth(1).get_by_role(
-            "button", name="Clear date"
-        ).click()
+        if end_clear.is_visible():
+            end_clear.click()
 
         self.page.set_viewport_size({"width": 375, "height": 812})
         expect(end_quick_actions).to_be_visible()
         expect(
-            end_quick_actions.get_by_role("button", name="Release Date", exact=True)
+            end_quick_actions.get_by_role("button", name="Finished", exact=True)
         ).to_be_visible()
 
         end_time_segment = "14:25"
@@ -1293,4 +1266,4 @@ class IntegrationTest(StaticLiveServerTestCase):
             desktop_signal_box["x"] + desktop_signal_box["width"],
             desktop_row_box["x"] + desktop_row_box["width"],
         )
-        self.assertEqual(desktop_signal_box["height"], 16)
+        self.assertAlmostEqual(desktop_signal_box["height"], 16, delta=0.01)

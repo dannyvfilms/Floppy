@@ -487,6 +487,9 @@
   .col-span-2 {
     grid-column: span 2 / span 2;
   }
+  .col-span-full {
+    grid-column: 1 / -1;
+  }
   .col-start-1 {
     grid-column-start: 1;
   }
@@ -5071,6 +5074,11 @@
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
   }
+  .sm\:grid-cols-\[minmax\(0\,12rem\)_1fr\] {
+    @media (width >= 40rem) {
+      grid-template-columns: minmax(0,12rem) 1fr;
+    }
+  }
   .sm\:flex-col {
     @media (width >= 40rem) {
       flex-direction: column;
@@ -6635,6 +6643,55 @@ html.light .theme-toggle-icon-moon {
 .preferences-display-grid > div:nth-child(9) {
   grid-area: talent;
 }
+.preferences-display-grid > div:nth-child(10) {
+  grid-area: chips;
+}
+.media-type-chip {
+  position: absolute;
+  top: 0.3rem;
+  left: 0.3rem;
+  z-index: 20;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  font-size: 0.48rem;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(0.35rem);
+}
+.media-type-chip--solid {
+  color: var(--media-type-chip-contrast);
+  background: var(--media-type-chip-color);
+  border-color: var(--media-type-chip-color);
+}
+.media-type-chip--soft {
+  color: var(--media-type-chip-color);
+  @supports (color: color-mix(in lab, red, red)) {
+    color: color-mix(in srgb, var(--media-type-chip-color) 65%, var(--color-text));
+  }
+  background: var(--media-type-chip-color);
+  @supports (color: color-mix(in lab, red, red)) {
+    background: color-mix(in srgb, var(--media-type-chip-color) 22%, var(--color-page-bg));
+  }
+  border-color: var(--media-type-chip-color);
+  @supports (color: color-mix(in lab, red, red)) {
+    border-color: color-mix(in srgb, var(--media-type-chip-color) 58%, transparent);
+  }
+}
+.media-type-chip--outline {
+  color: var(--media-type-chip-color);
+  @supports (color: color-mix(in lab, red, red)) {
+    color: color-mix(in srgb, var(--media-type-chip-color) 65%, var(--color-text));
+  }
+  background: var(--color-page-bg);
+  @supports (color: color-mix(in lab, red, red)) {
+    background: color-mix(in srgb, var(--color-page-bg) 78%, transparent);
+  }
+  border-color: var(--media-type-chip-color);
+}
 .preferences-actions {
   position: sticky;
   bottom: 1rem;
@@ -6694,7 +6751,7 @@ html.light .theme-toggle-icon-moon {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .preferences-display-grid {
-    grid-template-areas: "theme logo" "date time" "title talent" "subtitle mobile" "progress progress";
+    grid-template-areas: "theme logo" "date time" "title talent" "subtitle mobile" "progress progress" "chips chips";
   }
   .preferences-metadata-grid > div:nth-child(3) {
     grid-column: 1 / -1;

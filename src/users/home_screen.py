@@ -35,6 +35,7 @@ from app.templatetags import app_tags
 from lists import smart_rules
 from lists.models import CustomList
 from users.models import (
+    HOME_ALL_MEDIA_TYPE,
     DirectionChoices,
     HomeScreenRow,
     HomeScreenRowTypeChoices,
@@ -93,6 +94,7 @@ HOME_PROGRESS_MEDIA_TYPES = {
     MediaTypes.TV.value,
     MediaTypes.ANIME.value,
 }
+HOME_PROGRESS_FILTER_MEDIA_TYPES = {*HOME_PROGRESS_MEDIA_TYPES, HOME_ALL_MEDIA_TYPE}
 CRITIC_RATING_MEDIA_TYPES = {
     MediaTypes.TV.value,
     MediaTypes.SEASON.value,
@@ -161,7 +163,7 @@ HOME_QUERY_DEFAULT_FILTERS = {
 # would otherwise round-trip back from the browser and fail validation in
 # validate_library_row_filters() for every media type.
 HOME_SCREEN_FILTER_KEYS = tuple(
-    dict.fromkeys((*HOME_QUERY_DEFAULT_FILTERS.keys(), "subview")),
+    dict.fromkeys((*HOME_QUERY_DEFAULT_FILTERS.keys(), "subview", "media_types")),
 )
 SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
     MediaTypes.TV.value: {
@@ -306,6 +308,15 @@ SUPPORTED_FILTERS_BY_MEDIA_TYPE = {
         "tag",
     },
 }
+SUPPORTED_FILTERS_BY_MEDIA_TYPE[HOME_ALL_MEDIA_TYPE] = {
+    "media_types",
+    "status",
+    "progress",
+    "rating",
+    "collection",
+    "release",
+    "tag",
+}
 
 
 class HomeScreenValidationError(ValidationError):
@@ -350,6 +361,15 @@ def get_enabled_home_media_types(user) -> list[str]:
     return list(user.get_enabled_media_types())
 
 
+def get_all_media_row_types(user) -> list[str]:
+    """Return selectable top-level families for an All media row."""
+    return [
+        media_type
+        for media_type in get_enabled_home_media_types(user)
+        if media_type not in {MediaTypes.SEASON.value, MediaTypes.EPISODE.value}
+    ]
+
+
 def get_home_configurable_media_types(
     user, *, include_disabled_season: bool = True
 ) -> list[str]:
@@ -362,18 +382,28 @@ def get_home_configurable_media_types(
     sidebar setting exactly (used by the Home Screen settings page, so a
     disabled type isn't offered there for configuration).
     """
-    types = list(user.get_enabled_media_types())
+    types = [HOME_ALL_MEDIA_TYPE, *user.get_enabled_media_types()]
     if include_disabled_season and MediaTypes.SEASON.value not in types:
         types.append(MediaTypes.SEASON.value)
 
     preferred_order = getattr(user, "home_screen_media_type_order", None) or []
     ordered = [media_type for media_type in preferred_order if media_type in types]
+    if HOME_ALL_MEDIA_TYPE not in ordered:
+        ordered.insert(0, HOME_ALL_MEDIA_TYPE)
     remaining = [media_type for media_type in types if media_type not in ordered]
     return ordered + remaining
 
 
 def get_allowed_sort_choices(media_type: str, row_type: str) -> list[dict]:
     """Return sort options for a home row."""
+    if media_type == HOME_ALL_MEDIA_TYPE:
+        return [
+            {"value": HomeSortChoices.RECENT, "label": gettext("Recent")},
+            {"value": MediaSortChoices.TITLE, "label": gettext("Title")},
+            {"value": MediaSortChoices.SCORE, "label": gettext("Rating")},
+            {"value": MediaSortChoices.DATE_ADDED, "label": gettext("Date Added")},
+            {"value": HomeSortChoices.RANDOM, "label": gettext("Random")},
+        ]
     sort_choices: list[tuple[str, str]] = [
         (MediaSortChoices.SCORE, gettext("Rating")),
         (MediaSortChoices.TITLE, gettext("Title")),
@@ -434,7 +464,13 @@ def get_allowed_sort_choices(media_type: str, row_type: str) -> list[dict]:
 
 
 def _media_type_group_label(media_type: str) -> str:
+    if media_type == HOME_ALL_MEDIA_TYPE:
+        return gettext("All media")
     return app_tags.media_type_readable_plural(media_type)
+
+
+def _media_type_group_icon_name(media_type: str) -> str:
+    return "home" if media_type == HOME_ALL_MEDIA_TYPE else media_type
 
 
 def _default_library_sort(user, media_type: str) -> str:
@@ -749,14 +785,23 @@ def build_filter_field_data(
     tags_fingerprint = hashlib.md5(  # noqa: S324 - cache key, not security
         "\x1f".join(precomputed_tags or ()).encode(),
     ).hexdigest()[:12]
-    cache_key = f"home_filter_fields_v1_{user.id}_{media_type}_{tags_fingerprint}"
+    filter_media_types = (
+        get_all_media_row_types(user)
+        if media_type == HOME_ALL_MEDIA_TYPE
+        else [media_type]
+    )
+    media_types_fingerprint = "-".join(filter_media_types)
+    cache_key = (
+        f"home_filter_fields_v2_{user.id}_{media_type}_"
+        f"{media_types_fingerprint}_{tags_fingerprint}"
+    )
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
     filter_data = smart_rules.build_rule_filter_data(
         user,
-        [media_type],
+        filter_media_types,
         "all",
         "",
         include_collection_only_untracked=True,
@@ -765,6 +810,15 @@ def build_filter_field_data(
     filter_data["show_authors"] = media_type in AUTHOR_MEDIA_TYPES
 
     field_definitions = [
+        {
+            "key": "media_types",
+            "label": "Media types",
+            "options": [
+                {"value": value, "label": _media_type_group_label(value)}
+                for value in get_all_media_row_types(user)
+            ],
+            "visible": media_type == HOME_ALL_MEDIA_TYPE,
+        },
         {
             "key": "subview",
             "label": "Media Type",
@@ -793,7 +847,7 @@ def build_filter_field_data(
                 {"value": "caught_up", "label": "Caught Up"},
                 {"value": "not_caught_up", "label": "Not Caught Up"},
             ],
-            "visible": media_type in HOME_PROGRESS_MEDIA_TYPES,
+            "visible": media_type in HOME_PROGRESS_FILTER_MEDIA_TYPES,
         },
         {
             "key": "rating",
@@ -1054,8 +1108,15 @@ def serialize_settings_sections(user) -> list[dict]:
             {
                 "media_type": media_type,
                 "label": _media_type_group_label(media_type),
+                "available_media_types": get_all_media_row_types(user)
+                if media_type == HOME_ALL_MEDIA_TYPE
+                else [],
                 "icon_svg": str(
-                    app_tags.icon(media_type, False, "w-5 h-5 text-slate-300")
+                    app_tags.icon(
+                        _media_type_group_icon_name(media_type),
+                        False,
+                        "w-5 h-5 text-slate-300",
+                    )
                 ),
                 "sort_choices": {
                     HomeScreenRowTypeChoices.LIBRARY_QUERY: get_allowed_sort_choices(
@@ -1069,23 +1130,7 @@ def serialize_settings_sections(user) -> list[dict]:
                 },
                 "filter_fields": [],
                 "rows": [
-                    {
-                        "id": row.id,
-                        "client_id": f"row-{row.id}",
-                        "enabled": row.enabled,
-                        "row_type": row.row_type,
-                        "custom_list_id": row.custom_list_id,
-                        "custom_list_name": row.custom_list.name
-                        if row.custom_list_id
-                        else "",
-                        "sort_by": row.sort_by,
-                        "direction": row.direction,
-                        "filters": _normalized_filter_payload(row.filters, media_type),
-                        "title": row_title(row, user),
-                        "custom_title": row.title or "",
-                        "summary": row_summary(row, user),
-                    }
-                    for row in media_rows
+                    _serialize_settings_row(user, row, media_type) for row in media_rows
                 ],
             },
         )
@@ -1213,6 +1258,7 @@ def _normalized_filter_payload(filters: dict | None, media_type: str) -> dict:
     raw_filters = dict(filters or {})
     # subview is a music-only dimension, not a smart-rule filter. handling separately
     raw_subview = raw_filters.pop("subview", None)
+    raw_filters.pop("media_types", None)
     if "status" in raw_filters:
         raw_filters["status"] = _normalize_status_list(raw_filters.get("status"), [])
 
@@ -1236,11 +1282,42 @@ def _normalized_filter_payload(filters: dict | None, media_type: str) -> dict:
     payload = {
         key: normalized.get(key, HOME_QUERY_DEFAULT_FILTERS.get(key, ""))
         for key in HOME_SCREEN_FILTER_KEYS
-        if key != "subview"
+        if key not in {"subview", "media_types"}
     }
     if media_type == MediaTypes.MUSIC.value:
         payload["subview"] = _canonical_music_subview(raw_subview)
     return payload
+
+
+def _all_media_type_selection(user, filters: dict | None) -> list[str]:
+    """Resolve selected enabled families; missing media_types means all."""
+    enabled_media_types = get_all_media_row_types(user)
+    if not isinstance(filters, dict) or "media_types" not in filters:
+        return enabled_media_types
+    requested = {
+        str(value or "").strip() for value in _as_list(filters.get("media_types"))
+    }
+    return [value for value in enabled_media_types if value in requested]
+
+
+def _serialize_settings_row(user, row: HomeScreenRow, media_type: str) -> dict:
+    filters = _normalized_filter_payload(row.filters, media_type)
+    if media_type == HOME_ALL_MEDIA_TYPE:
+        filters["media_types"] = _all_media_type_selection(user, row.filters)
+    return {
+        "id": row.id,
+        "client_id": f"row-{row.id}",
+        "enabled": row.enabled,
+        "row_type": row.row_type,
+        "custom_list_id": row.custom_list_id,
+        "custom_list_name": row.custom_list.name if row.custom_list_id else "",
+        "sort_by": row.sort_by,
+        "direction": row.direction,
+        "filters": filters,
+        "title": row_title(row, user),
+        "custom_title": row.title or "",
+        "summary": row_summary(row, user),
+    }
 
 
 def _row_payload_to_model(
@@ -1249,6 +1326,12 @@ def _row_payload_to_model(
     row_type = str(row_payload.get("row_type") or "").strip()
     if row_type not in HomeScreenRowTypeChoices.values:
         msg = f"Unsupported row type for {media_type}."
+        raise HomeScreenValidationError(msg)
+    if (
+        media_type == HOME_ALL_MEDIA_TYPE
+        and row_type != HomeScreenRowTypeChoices.LIBRARY_QUERY
+    ):
+        msg = "All media only supports library rows."
         raise HomeScreenValidationError(msg)
 
     enabled = bool(row_payload.get("enabled", True))
@@ -1270,7 +1353,9 @@ def _row_payload_to_model(
     elif row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
         sort_choices = []
     else:
-        filters = validate_library_row_filters(row_payload.get("filters"), media_type)
+        filters = validate_library_row_filters(
+            row_payload.get("filters"), media_type, user=user
+        )
         sort_choices = get_allowed_sort_choices(media_type, row_type)
 
     allowed_sort_values = {choice["value"] for choice in sort_choices}
@@ -1303,7 +1388,12 @@ def _row_payload_to_model(
     )
 
 
-def validate_library_row_filters(raw_filters: dict | None, media_type: str) -> dict:
+def validate_library_row_filters(
+    raw_filters: dict | None,
+    media_type: str,
+    *,
+    user=None,
+) -> dict:
     """Validate one library-query filter payload."""
     if raw_filters is None:
         raw_filters = {}
@@ -1325,6 +1415,27 @@ def validate_library_row_filters(raw_filters: dict | None, media_type: str) -> d
             raise HomeScreenValidationError(msg)
 
     normalized = _normalized_filter_payload(raw_filters, media_type)
+    if media_type == HOME_ALL_MEDIA_TYPE and "media_types" in raw_filters:
+        raw_media_types = raw_filters["media_types"]
+        if not isinstance(raw_media_types, list):
+            msg = "All media types must be a list."
+            raise HomeScreenValidationError(msg)
+        enabled_media_types = (
+            get_all_media_row_types(user)
+            if user is not None
+            else [
+                value
+                for value in MediaTypes.values
+                if value not in {MediaTypes.SEASON.value, MediaTypes.EPISODE.value}
+            ]
+        )
+        requested_media_types = {str(value or "").strip() for value in raw_media_types}
+        if requested_media_types - set(enabled_media_types):
+            msg = "An All media type is not enabled."
+            raise HomeScreenValidationError(msg)
+        normalized["media_types"] = [
+            value for value in enabled_media_types if value in requested_media_types
+        ]
     if "status" in raw_filters:
         for raw_status in _as_list(raw_filters.get("status")):
             canonical_status = _canonical_status_filter(raw_status, None)
@@ -1355,7 +1466,7 @@ def validate_library_row_filters(raw_filters: dict | None, media_type: str) -> d
     if (
         raw_progress
         and raw_progress != "all"
-        and media_type not in HOME_PROGRESS_MEDIA_TYPES
+        and media_type not in HOME_PROGRESS_FILTER_MEDIA_TYPES
     ):
         msg = f"Filter 'progress' is not available for {media_type}."
         raise HomeScreenValidationError(msg)
@@ -1472,6 +1583,8 @@ HOME_CARD_UNREAD_ITEM_FIELDS = ("watch_providers",)
 
 
 def _item_matches_home_media_type(item: Item, media_type: str) -> bool:
+    if media_type == HOME_ALL_MEDIA_TYPE:
+        return True
     library_media_type = getattr(item, "library_media_type", "") or ""
     return media_type in (library_media_type, item.media_type)
 
@@ -2011,11 +2124,45 @@ def _is_caught_up_media(media) -> bool:
     return is_caught_up_media(media)
 
 
+def _has_released_regular_episodes(media) -> bool:
+    """Return whether the bulk progress annotation found regular episodes."""
+    return bool(getattr(media, "released_episode_breakdown", None))
+
+
+def _entry_is_series(entry: HomeRowEntry) -> bool:
+    item = getattr(entry, "item", None)
+    return (
+        getattr(item, "media_type", None)
+        in {
+            MediaTypes.TV.value,
+            MediaTypes.ANIME.value,
+        }
+        or getattr(item, "library_media_type", None) == MediaTypes.ANIME.value
+    )
+
+
+def _show_media_type_chip(user, row: HomeScreenRow, media_type: str) -> bool:
+    """Use the poster corner for identity when a status row mixes media."""
+    if media_type != HOME_ALL_MEDIA_TYPE or not user.home_media_type_chips_enabled:
+        return False
+    if row.row_type != HomeScreenRowTypeChoices.LIBRARY_QUERY:
+        return False
+
+    statuses = _normalize_status_list((row.filters or {}).get("status"), [])
+    return len(statuses) == 1 and statuses[0] in {
+        Status.IN_PROGRESS.value,
+        Status.COMPLETED.value,
+    }
+
+
 def _apply_progress_filter(
     entries: list[HomeRowEntry], media_type: str, progress_filter: str
 ) -> list[HomeRowEntry]:
     normalized_progress = _canonical_progress_filter(progress_filter, "all")
-    if normalized_progress == "all" or media_type not in HOME_PROGRESS_MEDIA_TYPES:
+    if (
+        normalized_progress == "all"
+        or media_type not in HOME_PROGRESS_FILTER_MEDIA_TYPES
+    ):
         return entries
 
     # media entries here always come from _media_lookup_for_items, which
@@ -2032,10 +2179,26 @@ def _apply_progress_filter(
             if entry.media and _is_caught_up_media(entry.media)
         ]
     if normalized_progress == "not_caught_up":
+        if media_type != HOME_ALL_MEDIA_TYPE:
+            return [
+                entry
+                for entry in entries
+                if entry.media and not _is_caught_up_media(entry.media)
+            ]
         return [
             entry
             for entry in entries
-            if entry.media and not _is_caught_up_media(entry.media)
+            if entry.media
+            and (
+                (
+                    _entry_is_series(entry)
+                    and _has_released_regular_episodes(entry.media)
+                    and not _is_caught_up_media(entry.media)
+                )
+                or (
+                    not _entry_is_series(entry) and not _is_caught_up_media(entry.media)
+                )
+            )
         ]
     return entries
 
@@ -2278,7 +2441,9 @@ def sort_home_entries(
 
 
 def _library_query_entries(
-    user, row: HomeScreenRow, collection_context_cache: dict | None = None,
+    user,
+    row: HomeScreenRow,
+    collection_context_cache: dict | None = None,
 ) -> list[HomeRowEntry]:
     normalized_filters = _normalized_filter_payload(row.filters or {}, row.media_type)
     if row.media_type == MediaTypes.MUSIC.value:
@@ -2299,8 +2464,15 @@ def _library_query_entries(
             )
         # MUSIC_SUBVIEW_TRACKS falls through to the standard Music/Item query below.
     status_filter = normalized_filters.get("status") or []
+    rule_media_types = (
+        _all_media_type_selection(user, row.filters)
+        if row.media_type == HOME_ALL_MEDIA_TYPE
+        else [row.media_type]
+    )
+    if not rule_media_types:
+        return []
     rule_payload = {
-        "media_types": [row.media_type],
+        "media_types": rule_media_types,
         **normalized_filters,
     }
     item_ids = smart_rules.collect_matching_item_ids(
@@ -2470,6 +2642,10 @@ def home_row_destination_url(row: HomeScreenRow, user) -> str:
             return f"{base}?{query}"
         return base
 
+    # A mixed row has no single library destination.
+    if row.media_type == HOME_ALL_MEDIA_TYPE:
+        return ""
+
     # Library-query / recently-unrated rows open the media list.
     query_pairs = [
         ("sort", row.sort_by),
@@ -2525,7 +2701,9 @@ def _build_row_section(
         entries = _recently_unrated_entries(user, row)
     else:
         entries = _library_query_entries(
-            user, row, collection_context_cache=collection_context_cache,
+            user,
+            row,
+            collection_context_cache=collection_context_cache,
         )
 
     if not entries:
@@ -2543,7 +2721,9 @@ def _build_row_section(
         ):
             image = entry.podcast_show.image
         else:
-            image = getattr(entry.media, "card_image_override", None) or entry.item.image
+            image = (
+                getattr(entry.media, "card_image_override", None) or entry.item.image
+            )
         return not image or image == settings.IMG_NONE
 
     poll_for_covers = media_type in SQUARE_HOME_MEDIA_TYPES and any(
@@ -2562,6 +2742,7 @@ def _build_row_section(
         "total": len(entries),
         "loaded_count": loaded_count,
         "show_played_chip": row.row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED,
+        "show_media_type_chip": _show_media_type_chip(user, row, media_type),
         "card_width_class": "w-44",
         "grid_class": "media-grid media-grid-square"
         if media_type in SQUARE_HOME_MEDIA_TYPES
@@ -2669,7 +2850,11 @@ def build_home_page_groups(
                     "media_type": media_type,
                     "label": _media_type_group_label(media_type),
                     "icon_svg": str(
-                        app_tags.icon(media_type, False, "w-6 h-6 text-gray-300"),
+                        app_tags.icon(
+                            _media_type_group_icon_name(media_type),
+                            False,
+                            "w-6 h-6 text-gray-300",
+                        ),
                     ),
                     "rows": row_sections,
                 },

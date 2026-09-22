@@ -842,6 +842,42 @@ html.light .theme-toggle-icon-moon {
 .preferences-display-grid > div:nth-child(7) { grid-area: progress; }
 .preferences-display-grid > div:nth-child(8) { grid-area: title; }
 .preferences-display-grid > div:nth-child(9) { grid-area: talent; }
+.preferences-display-grid > div:nth-child(10) { grid-area: chips; }
+
+.media-type-chip {
+  position: absolute;
+  top: 0.3rem;
+  left: 0.3rem;
+  z-index: 20;
+  padding: 0.1rem 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  font-size: 0.48rem;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(0.35rem);
+}
+
+.media-type-chip--solid {
+  color: var(--media-type-chip-contrast);
+  background: var(--media-type-chip-color);
+  border-color: var(--media-type-chip-color);
+}
+
+.media-type-chip--soft {
+  color: color-mix(in srgb, var(--media-type-chip-color) 65%, var(--color-text));
+  background: color-mix(in srgb, var(--media-type-chip-color) 22%, var(--color-page-bg));
+  border-color: color-mix(in srgb, var(--media-type-chip-color) 58%, transparent);
+}
+
+.media-type-chip--outline {
+  color: color-mix(in srgb, var(--media-type-chip-color) 65%, var(--color-text));
+  background: color-mix(in srgb, var(--color-page-bg) 78%, transparent);
+  border-color: var(--media-type-chip-color);
+}
 
 .preferences-actions {
   position: sticky;
@@ -911,7 +947,8 @@ html.light .theme-toggle-icon-moon {
       "date time"
       "title talent"
       "subtitle mobile"
-      "progress progress";
+      "progress progress"
+      "chips chips";
   }
 
   .preferences-metadata-grid > div:nth-child(3) {

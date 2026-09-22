@@ -24,13 +24,15 @@ from users import helpers
 PLAYBACK_WEBHOOK_SECRET_MAX_LENGTH = 128
 
 EXCLUDED_SEARCH_TYPES = [MediaTypes.SEASON.value, MediaTypes.EPISODE.value]
+HOME_ALL_MEDIA_TYPE = "all"
 
 VALID_SEARCH_TYPES = [
     value for value in MediaTypes.values if value not in EXCLUDED_SEARCH_TYPES
 ]
 
 VALID_HOME_SCREEN_MEDIA_TYPES = [
-    value for value in MediaTypes.values if value != MediaTypes.EPISODE.value
+    HOME_ALL_MEDIA_TYPE,
+    *[value for value in MediaTypes.values if value != MediaTypes.EPISODE.value],
 ]
 
 MULTI_STATUS_PREFERENCE_FIELDS = {
@@ -1302,6 +1304,25 @@ class User(AbstractUser):
         default=False,
         help_text="Show a media-type header (icon + name) above each group of home screen rows",
     )
+    home_media_type_chips_enabled = models.BooleanField(
+        default=True,
+        help_text="Show media-type labels on mixed in-progress and finished Home rows",
+    )
+    home_media_type_chip_style = models.CharField(
+        max_length=12,
+        default="soft",
+        choices=[
+            ("solid", "Solid"),
+            ("soft", "Soft"),
+            ("outline", "Outline"),
+        ],
+        help_text="Appearance of media-type labels on mixed Home rows",
+    )
+    home_media_type_chip_colors = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Custom hexadecimal label colors keyed by media type",
+    )
     home_screen_media_type_order = models.JSONField(
         default=list,
         blank=True,
@@ -2340,7 +2361,7 @@ class HomeScreenRow(models.Model):
     )
     media_type = models.CharField(
         max_length=16,
-        choices=MediaTypes.choices,
+        choices=[(HOME_ALL_MEDIA_TYPE, "All media"), *MediaTypes.choices],
     )
     position = models.PositiveIntegerField(default=0)
     enabled = models.BooleanField(default=True)

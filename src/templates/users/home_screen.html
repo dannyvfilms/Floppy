@@ -29,17 +29,36 @@
                 {% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}
               </button>
               <button type="button"
-                      class="flex flex-1 items-center justify-between gap-3 text-left cursor-pointer"
+                      class="flex flex-1 items-center gap-3 text-left cursor-pointer"
+                      style="min-height: 2.75rem"
                       @click="section.expanded = !section.expanded; ensureFilterFields(section)">
                 <div class="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-text-secondary)]"
                      x-html="section.icon_svg"></div>
                 <div class="min-w-0 flex-1">
                   <h3 class="font-medium text-[var(--color-text-secondary)]" x-text="section.label"></h3>
                 </div>
-                <div class="shrink-0 text-[var(--color-text-muted)]">
-                  <span x-show="!section.expanded">{% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}</span>
-                  <span x-show="section.expanded">{% include "app/icons/chevron-up.svg" with classes="w-4 h-4" %}</span>
-                </div>
+              </button>
+              <template x-if="section.media_type_chip_color">
+                <label class="flex shrink-0 items-center justify-center rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-page-bg)] cursor-pointer"
+                       style="height: 2.75rem; width: 2.75rem"
+                       :title="section.label + ' ' + gettext('label color')"
+                       @click.stop>
+                  <span class="sr-only" x-text="section.label + ' ' + gettext('label color')"></span>
+                  <input type="color"
+                         :name="'home_media_type_chip_color_' + section.media_type"
+                         x-model="section.media_type_chip_color"
+                         :aria-label="section.label + ' ' + gettext('label color')"
+                         class="h-8 w-8 cursor-pointer rounded border-0 bg-transparent p-0">
+                </label>
+              </template>
+              <button type="button"
+                      class="flex shrink-0 items-center justify-center rounded-md text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] cursor-pointer"
+                      style="height: 2.75rem; width: 2.75rem"
+                      :aria-expanded="section.expanded"
+                      :aria-label="section.expanded ? gettext('Collapse section') : gettext('Expand section')"
+                      @click="section.expanded = !section.expanded; ensureFilterFields(section)">
+                <span x-show="!section.expanded">{% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}</span>
+                <span x-show="section.expanded">{% include "app/icons/chevron-up.svg" with classes="w-4 h-4" %}</span>
               </button>
             </div>
 
@@ -317,6 +336,7 @@
                       {% translate "Library Row" %}
                     </button>
                     <button type="button"
+                            x-show="section.media_type !== 'all'"
                             class="flex w-full items-center border-t border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] cursor-pointer"
                             @click="addRow(section, 'recently_unrated'); section.addRowMenuOpen = false"
                             :disabled="section.rows.some(row => row.row_type === 'recently_unrated')"
@@ -328,6 +348,7 @@
                 </div>
 
                 <button type="button"
+                        x-show="section.media_type !== 'all'"
                         class="inline-flex items-center rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-muted)] cursor-pointer"
                         @click="addRow(section, 'custom_list')">
                   {% include "app/icons/list.svg" with classes="mr-2 h-4 w-4" %}
@@ -339,17 +360,57 @@
         </template>
       </div>
 
-      <label class="mt-6 flex items-start gap-3 rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-3 cursor-pointer">
-        <input type="checkbox"
-               name="show_media_type_headers"
-               value="1"
-               {% if show_media_type_headers %}checked{% endif %}
-               class="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-500 bg-[var(--color-page-bg)] text-indigo-600 focus:ring-indigo-500">
-        <span class="min-w-0">
-          <span class="block text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Show media type headers" %}</span>
-          <span class="block text-xs text-[var(--color-text-muted)]">{% translate "Group rows under a header (icon + media type) on the home screen." %}</span>
-        </span>
-      </label>
+      <input type="hidden" name="home_media_type_chips_present" value="1">
+      <div class="mt-6 grid gap-3 md:grid-cols-2">
+        <div class="rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-3">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <label class="block text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Media Type Headers" %}</label>
+              <p class="mt-1 text-xs text-[var(--color-text-muted)]">{% translate "Show an icon and media type above each group of Home rows." %}</p>
+            </div>
+            <label class="relative inline-flex shrink-0 items-center justify-center cursor-pointer"
+                   style="min-height: 2.75rem; min-width: 2.75rem">
+              <span class="sr-only">{% translate "Toggle media type headers" %}</span>
+              <input type="hidden" name="show_media_type_headers" value="0">
+              <input class="sr-only peer"
+                     type="checkbox"
+                     name="show_media_type_headers"
+                     value="1"
+                     {% if show_media_type_headers %}checked{% endif %}>
+              <span class="relative w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-3">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <label class="block text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Media Type Labels" %}</label>
+              <p class="mt-1 text-xs text-[var(--color-text-muted)]">{% translate "Show labels on posters in Home rows that mix media types." %}</p>
+            </div>
+            <label class="relative inline-flex shrink-0 items-center justify-center cursor-pointer"
+                   style="min-height: 2.75rem; min-width: 2.75rem">
+              <span class="sr-only">{% translate "Toggle media type labels" %}</span>
+              <input type="hidden" name="home_media_type_chips_enabled" value="0">
+              <input class="sr-only peer"
+                     type="checkbox"
+                     name="home_media_type_chips_enabled"
+                     value="1"
+                     {% if user.home_media_type_chips_enabled %}checked{% endif %}>
+              <span class="relative w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></span>
+            </label>
+          </div>
+          <label class="mt-3 block text-xs text-[var(--color-text-muted)]">
+            {% translate "Label appearance" %}
+            <select name="home_media_type_chip_style"
+                    class="mt-1 w-full rounded-md border border-gray-600 bg-[var(--color-page-bg)] px-2 py-2 text-sm text-[var(--color-text-secondary)] focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              {% for value, label in media_type_chip_styles %}
+                <option value="{{ value }}" {% if user.home_media_type_chip_style == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+      </div>
 
       <div class="mt-6 flex items-center justify-end">
         <button type="submit"
@@ -473,6 +534,15 @@
         rowTagValues(row) {
           return this.asList(row.filters?.tag).filter(value => value);
         },
+        rowMediaTypeValues(row) {
+          return this.asList(row.filters?.media_types).filter(value => value);
+        },
+        toggleRowMediaType(row, value) {
+          const mediaTypes = this.rowMediaTypeValues(row);
+          row.filters.media_types = mediaTypes.includes(value)
+            ? mediaTypes.filter(mediaType => mediaType !== value)
+            : [...mediaTypes, value];
+        },
         isRowStatusSelected(row, value) {
           if (value === 'all' || value === 'All') return this.rowStatusValues(row).length === 0;
           return this.rowStatusValues(row).includes(value);
@@ -499,11 +569,24 @@
         },
         isRowFilterOptionSelected(row, key, value) {
           if (key === 'tag') return this.rowTagValues(row).includes(value);
+          if (key === 'media_types') return this.rowMediaTypeValues(row).includes(value);
           if (key === 'status') return this.isRowStatusSelected(row, value);
           return this.normalizeFieldValue(value) === this.normalizeFieldValue(row.filters?.[key]);
         },
         rowFilterLabel(section, row) {
           const labels = [];
+          if (section.media_type === 'all') {
+            const mediaTypeField = this.fieldDefinition(section, 'media_types');
+            const selectedMediaTypes = this.rowMediaTypeValues(row);
+            const availableCount = mediaTypeField?.options?.length || 0;
+            if (selectedMediaTypes.length !== availableCount) {
+              labels.push(selectedMediaTypes.length === 0 ? gettext('No media') : (
+                selectedMediaTypes.length === 1
+                  ? this.fieldOptionLabel(section, 'media_types', selectedMediaTypes[0])
+                  : `${selectedMediaTypes.length} ${gettext('Media types')}`
+              ));
+            }
+          }
           const statuses = this.rowStatusValues(row);
           if (statuses.length) {
             const statusLabels = statuses.map(value => this.fieldOptionLabel(section, 'status', value));
@@ -611,6 +694,11 @@
         },
         fieldSelectionLabel(section, row, key) {
           const value = row.filters?.[key];
+          if (key === 'media_types') {
+            const mediaTypes = this.rowMediaTypeValues(row);
+            if (mediaTypes.length === 1) return this.fieldOptionLabel(section, key, mediaTypes[0]);
+            return mediaTypes.length ? `${mediaTypes.length} ${gettext('Types')}` : gettext('None');
+          }
           if (key === 'status') {
             const statuses = this.rowStatusValues(row);
             if (statuses.length === 1) return this.fieldOptionLabel(section, key, statuses[0]);
@@ -647,6 +735,10 @@
           row.filters[key] = value;
         },
         selectRowFilter(row, key, value) {
+          if (key === 'media_types') {
+            this.toggleRowMediaType(row, value);
+            return;
+          }
           if (key === 'tag') {
             this.toggleRowTag(row, value);
             return;
@@ -661,6 +753,7 @@
           for (const [key, value] of Object.entries(defaults)) {
             if (key === 'status') continue;
             if (key === 'subview') continue;
+            if (key === 'media_types') continue;
             row.filters[key] = value;
           }
         },
@@ -699,7 +792,7 @@
           if (rowType !== 'library_query') return {};
           const defaults = {
             status: [gettext('In progress')],
-            progress: ['tv', 'anime'].includes(section.media_type) ? 'not_caught_up' : 'all',
+            progress: ['all', 'tv', 'anime'].includes(section.media_type) ? 'not_caught_up' : 'all',
             rating: 'all',
             collection: 'all',
             genre: '',
@@ -716,6 +809,11 @@
             tag_mode: 'or'
           };
           if (section.media_type === 'music') defaults.subview = 'tracks';
+          if (section.media_type === 'all') {
+            const mediaTypeField = this.fieldDefinition(section, 'media_types');
+            defaults.media_types = (mediaTypeField?.options || section.available_media_types || [])
+              .map(option => typeof option === 'string' ? option : option.value);
+          }
           return defaults;
         },
         removeRow(section, clientId) {

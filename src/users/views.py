@@ -81,6 +81,12 @@ from users.home_screen import (
     serialize_settings_sections,
     toggle_home_row_direction,
 )
+from users.media_type_chips import (
+    HOME_MEDIA_TYPE_CHIP_STYLES,
+    HOME_MEDIA_TYPE_CHIP_TYPES,
+    default_media_type_chip_color,
+    normalize_media_type_chip_colors,
+)
 from users.models import (
     ActivityHistoryViewChoices,
     DateFormatChoices,
@@ -242,16 +248,20 @@ def _get_stored_plex_account(user):
 
 def _get_import_data_user(user):
     """Load the Import Data page's account relations in a single query."""
-    return user._meta.model.objects.select_related(
-        "plex_account",
-        "audiobookshelf_account",
-        "pocketcasts_account",
-        "lastfm_account",
-        "koito_account",
-    ).prefetch_related(
-        "radarr_instances",
-        "sonarr_instances",
-    ).get(pk=user.pk)
+    return (
+        user._meta.model.objects.select_related(
+            "plex_account",
+            "audiobookshelf_account",
+            "pocketcasts_account",
+            "lastfm_account",
+            "koito_account",
+        )
+        .prefetch_related(
+            "radarr_instances",
+            "sonarr_instances",
+        )
+        .get(pk=user.pk)
+    )
 
 
 def _refresh_cached_plex_sections(
@@ -760,18 +770,79 @@ def home_screen(request):
         except HomeScreenValidationError as exc:
             messages.error(request, str(exc))
         else:
-            request.user.home_show_media_type_headers = bool(
-                request.POST.get("show_media_type_headers"),
+            fields_to_update = []
+            show_media_type_headers = (
+                request.POST.get("show_media_type_headers") == "1"
             )
-            request.user.save(update_fields=["home_show_media_type_headers"])
+            if (
+                request.user.home_show_media_type_headers
+                != show_media_type_headers
+            ):
+                request.user.home_show_media_type_headers = show_media_type_headers
+                fields_to_update.append("home_show_media_type_headers")
+
+            if request.POST.get("home_media_type_chips_present") is not None:
+                chips_enabled = (
+                    request.POST.get("home_media_type_chips_enabled") == "1"
+                )
+                chip_style = request.POST.get("home_media_type_chip_style")
+                submitted_colors = {
+                    media_type: request.POST.get(
+                        f"home_media_type_chip_color_{media_type}"
+                    )
+                    for media_type in HOME_MEDIA_TYPE_CHIP_TYPES
+                    if f"home_media_type_chip_color_{media_type}" in request.POST
+                }
+                chip_colors = normalize_media_type_chip_colors(
+                    request.user.home_media_type_chip_colors
+                )
+                chip_colors.update(
+                    normalize_media_type_chip_colors(submitted_colors)
+                )
+
+                if request.user.home_media_type_chips_enabled != chips_enabled:
+                    request.user.home_media_type_chips_enabled = chips_enabled
+                    fields_to_update.append("home_media_type_chips_enabled")
+                if (
+                    chip_style in HOME_MEDIA_TYPE_CHIP_STYLES
+                    and request.user.home_media_type_chip_style != chip_style
+                ):
+                    request.user.home_media_type_chip_style = chip_style
+                    fields_to_update.append("home_media_type_chip_style")
+                if request.user.home_media_type_chip_colors != chip_colors:
+                    request.user.home_media_type_chip_colors = chip_colors
+                    fields_to_update.append("home_media_type_chip_colors")
+
+            if fields_to_update:
+                request.user.save(update_fields=fields_to_update)
             messages.success(request, "Home screen updated successfully.")
         return redirect("home_screen")
 
+    sections = serialize_settings_sections(request.user)
+    saved_chip_colors = normalize_media_type_chip_colors(
+        request.user.home_media_type_chip_colors
+    )
+    for section in sections:
+        media_type = section["media_type"]
+        section["media_type_chip_color"] = (
+            saved_chip_colors.get(
+                media_type,
+                default_media_type_chip_color(media_type),
+            )
+            if media_type in HOME_MEDIA_TYPE_CHIP_TYPES
+            else None
+        )
+
     context = {
         "home_screen_sections_json": json.dumps(
-            serialize_settings_sections(request.user), cls=DjangoJSONEncoder
+            sections, cls=DjangoJSONEncoder
         ),
         "show_media_type_headers": request.user.home_show_media_type_headers,
+        "media_type_chip_styles": (
+            ("solid", "Solid"),
+            ("soft", "Soft"),
+            ("outline", "Outline"),
+        ),
         "home_screen_list_search_url": reverse("home_screen_list_search"),
         "home_screen_filter_fields_url": reverse("home_screen_filter_fields"),
         "direction_choices_json": json.dumps(
@@ -942,9 +1013,7 @@ def appearance(request):
         return redirect("appearance")
 
     saved_palette = (
-        request.user.custom_theme
-        if isinstance(request.user.custom_theme, dict)
-        else {}
+        request.user.custom_theme if isinstance(request.user.custom_theme, dict) else {}
     )
     palette = {
         key: saved_palette.get(key, definition["default"])
@@ -1084,11 +1153,7 @@ def preferences(request):
             request.user.date_format = date_format
             fields_to_update.append("date_format")
 
-        if (
-            theme
-            and theme in ThemeChoices.values
-            and request.user.theme != theme
-        ):
+        if theme and theme in ThemeChoices.values and request.user.theme != theme:
             request.user.theme = theme
             fields_to_update.append("theme")
 
@@ -1274,9 +1339,7 @@ def preferences(request):
             fields_to_update.append("watch_provider_region")
 
         metadata_language = request.POST.get("metadata_language", "")
-        if metadata_language in {
-            choice[0] for choice in metadata_language_choices
-        }:
+        if metadata_language in {choice[0] for choice in metadata_language_choices}:
             if request.user.metadata_language != metadata_language:
                 request.user.metadata_language = metadata_language
                 fields_to_update.append("metadata_language")
@@ -1579,9 +1642,7 @@ def import_data(request):
             enabled=True,
         ).first()
         if audiobookshelf_periodic_task and audiobookshelf_periodic_task.interval:
-            audiobookshelf_poll_interval = (
-                audiobookshelf_periodic_task.interval.every
-            )
+            audiobookshelf_poll_interval = audiobookshelf_periodic_task.interval.every
 
     # Get Last.fm periodic task status
     lastfm_periodic_task = None
@@ -2564,8 +2625,9 @@ def integration_token_context(user):
     """Return the named-token context for the integrations page."""
     return {
         "integration_tokens": list(
-            IntegrationToken.objects.filter(user=user, revoked_at__isnull=True)
-            .order_by("-created_at"),
+            IntegrationToken.objects.filter(
+                user=user, revoked_at__isnull=True
+            ).order_by("-created_at"),
         ),
         "integration_scope_choices": [
             {
@@ -2793,9 +2855,7 @@ def update_plex_webhook_share(request):
         messages.error(request, "Enter one or more Plex usernames for this share.")
         return redirect("integrations")
 
-    duplicate_usernames = {
-        username.casefold() for username in plex_usernames
-    }
+    duplicate_usernames = {username.casefold() for username in plex_usernames}
     existing_shares = (
         PlexWebhookShare.objects.filter(owner=user)
         .exclude(pk=share.pk or None)

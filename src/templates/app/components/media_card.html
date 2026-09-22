@@ -55,7 +55,17 @@
             </a>
           {% endif %}
 
-          {% if show_status_chip|default_if_none:True %}
+          {% if show_media_type_chip|default:False %}
+            {% with media_type_chip_type|default:resolved_media_type as resolved_media_type_chip %}
+              {% home_media_type_chip user resolved_media_type_chip as media_type_chip %}
+              <div class="media-type-chip media-type-chip--{{ media_type_chip.style }}"
+                   data-media-type-chip="{{ resolved_media_type_chip }}"
+                   data-media-type-chip-style="{{ media_type_chip.style }}"
+                   style="--media-type-chip-color: {{ media_type_chip.color }}; --media-type-chip-contrast: {{ media_type_chip.contrast }}">
+                <span>{{ resolved_media_type_chip|media_type_readable }}</span>
+              </div>
+            {% endwith %}
+          {% elif show_status_chip|default_if_none:True %}
             {% include "app/components/media_card_status_chip.html" with media=media current_sort_value=current_sort_value recommend_mode=recommend_mode show_next_event_chip=show_next_event_chip Status=Status only %}
           {% endif %}
 
