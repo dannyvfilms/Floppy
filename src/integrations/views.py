@@ -1296,6 +1296,35 @@ def import_mal(request):
 
 
 @require_POST
+def import_mangabaka(request):
+    """View for importing a manga library from MangaBaka.
+
+    MangaBaka exposes no public per-user API, so the Personal Access Token is
+    the only credential. That also means there is no username to key a
+    recurring schedule on, which is why this import runs once.
+    """
+    token = (request.POST.get("token") or "").strip()
+    if not token:
+        messages.error(request, "MangaBaka API token is required.")
+        return _integration_redirect(request, connected_slug="mangabaka")
+
+    if request.POST.get("frequency", "once") != "once":
+        messages.error(request, "MangaBaka imports run once only.")
+        return _integration_redirect(request, connected_slug="mangabaka")
+
+    tasks.import_mangabaka.delay(
+        token=helpers.encrypt(token),
+        user_id=request.user.id,
+        mode=request.POST["mode"],
+    )
+    messages.info(
+        request,
+        "The task to import media from MangaBaka has been queued.",
+    )
+    return _integration_redirect(request, connected_slug="mangabaka")
+
+
+@require_POST
 def anilist_oauth(request):
     """Initiate AniList OAuth flow."""
     redirect_uri = app_helpers.build_absolute_app_url(

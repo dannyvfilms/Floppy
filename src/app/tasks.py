@@ -287,6 +287,7 @@ RELEASE_BACKFILL_SOURCES = (
     Sources.TVDB.value,
     Sources.MAL.value,
     Sources.MANGAUPDATES.value,
+    Sources.MANGABAKA.value,
     Sources.IGDB.value,
     Sources.OPENLIBRARY.value,
     Sources.HARDCOVER.value,

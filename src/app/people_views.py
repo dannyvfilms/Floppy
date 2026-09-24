@@ -1,3 +1,5 @@
+from urllib.parse import quote
+
 from django.conf import settings
 from django.db.models import Q
 from django.http import HttpResponseBadRequest
@@ -26,6 +28,7 @@ from app.providers import (
     comicvine,
     hardcover,
     igdb,
+    mangabaka,
     mangaupdates,
     openlibrary,
     tmdb,
@@ -95,6 +98,18 @@ def person_detail(request, source, person_id, name):
             "tracked_media_types": (MediaTypes.MANGA.value,),
             "source_url": lambda person_id_value: (
                 f"https://www.mangaupdates.com/authors.html?id={person_id_value}"
+            ),
+            "is_author": True,
+        },
+        Sources.MANGABAKA.value: {
+            "fetcher": mangabaka.author_profile,
+            "entries_key": "bibliography",
+            "tracked_media_types": (MediaTypes.MANGA.value,),
+            # MangaBaka publishes no author pages of its own (mangabaka.org
+            # 404s on /author and /staff), so the search for the credited name
+            # is the closest real destination.
+            "source_url": lambda person_id_value: (
+                "https://mangabaka.org/search?q=" + quote(person_id_value)
             ),
             "is_author": True,
         },
@@ -561,11 +576,20 @@ def person_detail(request, source, person_id, name):
                 return vc
 
             return _sort_with_nulls_last(entries, _vote_count_key, rev)
-        # release_date: entries arrive from provider already sorted newest-first;
-        # asc reverses to oldest-first (chronological).
-        if sort_dir == "asc":
-            return list(reversed(entries))
-        return entries
+        # release_date: sort on the entries' own date fields rather than
+        # trusting the order the provider returned them in. TMDB hands back
+        # newest-first, which is why this used to be a reverse(), but the
+        # author providers (MangaBaka, Hardcover, OpenLibrary) return search
+        # relevance order and carry only `year`, so the default sort was a
+        # no-op and bibliographies looked randomly ordered.
+        def _date_key(e):
+            for field in ("release_date", "first_air_date", "year"):
+                value = e.get(field)
+                if value:
+                    return str(value)
+            return None
+
+        return _sort_with_nulls_last(entries, _date_key, rev)
 
     # Collect tracked items from the unfiltered watched list for filter option building.
     watched_items_for_filter_data = [

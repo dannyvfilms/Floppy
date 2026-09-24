@@ -49,8 +49,8 @@ APPROVED_IMAGE_HOSTS = frozenset(
         "coverartarchive.org",
         "upload.wikimedia.org",
         "static.pocketcasts.com",
-        "media.kitsu.app",
-        "s4.anilist.co",
+        "cdn.mangabaka.dev",
+        "images.mangabaka.dev",
     },
 )
 APPROVED_IMAGE_HOST_SUFFIXES = (".mzstatic.com",)

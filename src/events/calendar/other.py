@@ -95,7 +95,7 @@ def process_other(item, events_bulk):
             ),
         )
 
-    elif item.source == Sources.MANGAUPDATES.value and content_number:
+    elif item.source in (Sources.MANGAUPDATES.value, Sources.MANGABAKA.value) and content_number:
         content_datetime = datetime.min.replace(tzinfo=ZoneInfo("UTC"))
         events_bulk.append(
             Event(

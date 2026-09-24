@@ -22,6 +22,7 @@ class Sources(models.TextChoices):
     AUDIOBOOKSHELF = "audiobookshelf", "Audiobookshelf"
     STORYTELLER = "storyteller", "Storyteller"
     PLEX = "plex", "Plex"
+    MANGABAKA = "mangabaka", "MangaBaka"
     MANUAL = "manual", gettext_noop("Manual")
 
 

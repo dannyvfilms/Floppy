@@ -136,6 +136,10 @@ SOURCES_CONFIG = {
         "name": "AniList",
         "logo": static("img/anilist-logo.svg"),
     },
+    "mangabaka": {
+        "name": "MangaBaka",
+        "logo": static("img/mangabaka-logo.png"),
+    },
     "simkl": {
         "name": "SIMKL",
         "logo": static("img/simkl-logo.png"),

@@ -74,6 +74,10 @@ def provider_metadata_cache_keys(
                 language=language,
             ),
         )
+    elif source == Sources.MANGABAKA.value:
+        from app.providers import mangabaka
+
+        keys.extend(mangabaka.metadata_cache_keys(media_id))
 
     if source != Sources.TVDB.value:
         # The unversioned shape. Still worth evicting for TMDB, where entries

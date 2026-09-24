@@ -41,6 +41,7 @@ GENRE_BACKFILL_SOURCES = (
     Sources.HARDCOVER.value,
     Sources.COMICVINE.value,
     Sources.MANGAUPDATES.value,
+    Sources.MANGABAKA.value,
 )
 GENRE_BACKFILL_QUEUE_TTL = 60 * 60  # 1 hour
 GENRE_BACKFILL_ITEMS_QUEUE_KEY = "genre_backfill_items_queue"
