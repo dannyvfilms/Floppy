@@ -62,6 +62,7 @@ urlpatterns = [
     # Keep the established named route in app.urls. This earlier route handles
     # requests for the same URL and applies the request-scoped display policy.
     path("medialist/<str:media_type>", media_list_with_entry_grouping),
+    path("", include("app.rapid_rating_urls")),
     path("", include("app.urls")),
     path("", include("integrations.urls")),
     path("", include("users.urls")),
