@@ -63,11 +63,18 @@
             </a>
 
             {% url 'integrations' as integrations_url %}
+            {% url 'oauth_applications' as oauth_applications_url %}
             <a href="{{ integrations_url }}"
                {% if request.path == integrations_url %}aria-current="page"{% endif %}
                class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == integrations_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
               {% include "app/icons/database.svg" with classes="w-5 h-5" %}
               <span>{% translate "Integrations" %}</span>
+            </a>
+            <a href="{{ oauth_applications_url }}"
+               {% if request.path == oauth_applications_url %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 pl-10 pr-2 py-1.5 rounded-md transition-colors text-left border-l-2 cursor-pointer text-xs {% if request.path == oauth_applications_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/key.svg" with classes="w-4 h-4" %}
+              <span>{% translate "Connected Applications" %}</span>
             </a>
 
             {% url 'metadata_settings' as metadata_url %}
