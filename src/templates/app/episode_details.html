@@ -349,6 +349,20 @@
 {# Your Notes — same component the movie/season pages use, pointed at the watch that carries the note. #}
 {# Rendered even with no notes yet: the empty section is the anchor episode_save's OOB swap replaces. #}
 <div class="flex flex-col">
+{% if season_metadata.genres %}
+  <div {% detail_section_attrs user "episode" "content" "genres" %}>
+    {% url 'medialist' media_type=parent_media_type as genre_list_url %}
+    <h2 class="text-xl font-bold mb-4">{% translate "Genres" %}</h2>
+    <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start mb-8">
+      <div class="flex flex-wrap gap-2 justify-center md:justify-start">
+        {% for genre in season_metadata.genres %}
+          <a href="{{ genre_list_url }}?genre={{ genre|urlencode }}"
+             class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)] hover:bg-[var(--color-genre-badge-hover-bg)] transition-colors duration-200">{% translate genre %}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endif %}
 {% if show_notes %}
   <div {% detail_section_attrs user "episode" "content" "notes" %}>
     {% include "app/components/detail_notes_section.html" with notes_entries=notes_entries notes_entry=notes_entry detail_notes_target_id=episode_notes_modal_target_id detail_notes_modal_url=episode_notes_modal_url detail_return_url=detail_return_url public_notes_view=public_notes_view %}

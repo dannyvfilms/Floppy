@@ -93,20 +93,38 @@ def _album_implied_genres(direct_genres: list[str]) -> list[str]:
     ]
 
 
+def _music_item_direct_genres(album: Album) -> list[str]:
+    """Return album genres, or the album artist's genres when the album has none."""
+    from app.providers import musicbrainz
+
+    if album.genres:
+        return list(album.genres)
+    artist_genres = (
+        Artist.objects.filter(id=album.artist_id)
+        .values_list("genres", flat=True)
+        .first()
+    )
+    return musicbrainz._normalize_musicbrainz_genre_names(artist_genres)
+
+
 def _sync_album_music_item_genres(album: Album) -> int:
-    """Propagate album direct/implied genres to linked music Items."""
+    """Propagate album direct/implied genres to linked music Items.
+
+    Direct genres fall back to the album artist's genres when the album has none.
+    """
     update_count = 0
     if not album.id:
         return update_count
 
+    direct_genres = _music_item_direct_genres(album)
     for music in Music.objects.filter(album=album).select_related("item"):
         item = getattr(music, "item", None)
         if not item:
             continue
 
         update_fields = []
-        if item.genres != list(album.genres or []):
-            item.genres = list(album.genres or [])
+        if item.genres != direct_genres:
+            item.genres = list(direct_genres)
             update_fields.append("genres")
         if item.implied_genres != list(album.implied_genres or []):
             item.implied_genres = list(album.implied_genres or [])
@@ -120,12 +138,15 @@ def _sync_album_music_item_genres(album: Album) -> int:
 
 
 def sync_music_item_genres_from_album(item: Item, album: Album | None) -> list[str]:
-    """Copy album direct/implied genres onto a music Item and save if changed."""
+    """Copy album direct/implied genres onto a music Item and save if changed.
+
+    Direct genres fall back to the album artist's genres when the album has none.
+    """
     if not item or not album:
         return []
 
     update_fields = []
-    direct_genres = list(album.genres or [])
+    direct_genres = _music_item_direct_genres(album)
     implied_genres = list(album.implied_genres or [])
 
     if item.genres != direct_genres:

@@ -322,6 +322,19 @@
 
      </div>
 
+    {% if album.genres %}
+      <div {% detail_section_attrs user "music_album" "sidebar" "genres" %}>
+      <h2 class="text-xl font-bold mb-4 mt-6">{% translate "Genres" %}</h2>
+      <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
+        <div class="flex flex-wrap gap-2 justify-center md:justify-start">
+          {% for genre in album.genres %}
+            <span class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)]">{{ genre }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      </div>
+    {% endif %}
+
      <div {% detail_section_attrs user "music_album" "sidebar" "collection" %}>
     <h2 class="text-xl font-bold mb-4 mt-6">{% translate "Collection" %}</h2>
     <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
