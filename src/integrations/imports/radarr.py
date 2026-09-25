@@ -18,6 +18,7 @@ from integrations.imports.helpers import (
     find_item_across_buckets,
 )
 from integrations.models import RadarrInstance
+from integrations.safe_fetch import send_to_self_hosted
 from integrations.source_sync import upsert_collection_source_state
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,8 @@ class RadarrClient:
 
     def _request(self, path: str):
         try:
-            response = requests.get(
+            response = send_to_self_hosted(
+                requests.get,
                 f"{self.base_url}{path}",
                 headers={"X-Api-Key": self.api_key},
                 timeout=20,

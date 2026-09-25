@@ -223,6 +223,39 @@ class ArrMultiInstanceTests(TestCase):
             ).exists()
         )
 
+    def test_disconnect_removes_copies_only_that_instance_created(self):
+        """A synced-only copy goes; one another instance still backs stays."""
+        only = RadarrInstance.objects.create(
+            user=self.user, base_url="https://radarr-a.local", api_key=helpers.encrypt("k")
+        )
+        other = RadarrInstance.objects.create(
+            user=self.user, base_url="https://radarr-b.local", api_key=helpers.encrypt("k")
+        )
+        lone, shared = (
+            Item.objects.create(
+                media_id=media_id,
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title=media_id,
+            )
+            for media_id in ("10", "11")
+        )
+        upsert_collection_source_state(
+            user=self.user, item=lone, source="radarr", source_instance_id=only.id
+        )
+        for instance in (only, other):
+            upsert_collection_source_state(
+                user=self.user,
+                item=shared,
+                source="radarr",
+                source_instance_id=instance.id,
+            )
+
+        self.client.post(reverse("radarr_disconnect"), {"instance_id": only.id})
+
+        self.assertFalse(CollectionEntry.objects.filter(item=lone).exists())
+        self.assertTrue(CollectionEntry.objects.filter(item=shared).exists())
+
     def test_disconnect_scoped_to_owner(self):
         """A user cannot disconnect another user's Radarr instance."""
         other_instance = RadarrInstance.objects.create(

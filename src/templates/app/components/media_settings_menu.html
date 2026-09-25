@@ -66,6 +66,13 @@
       {% translate "Sharing…" as media_i18n_57 %}{% translate "Share View" as media_i18n_58 %}<span x-text="sharing ? '{{ media_i18n_57|escapejs }}' : '{{ media_i18n_58|escapejs }}'"></span>
     </button>
 
+    <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+            type="button"
+            @click="open = false; saveView()">
+      {% include "app/icons/save.svg" with classes="w-4 h-4" %}
+      <span>{% translate "Save View" %}</span>
+    </button>
+
     {% if enable_bulk_select %}
       <button class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
               type="button"

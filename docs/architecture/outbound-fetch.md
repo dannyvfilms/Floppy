@@ -51,3 +51,38 @@ except UnsafeUrlError as error:
 
 Do not add another outbound path for user-configured URLs. If this boundary
 lacks something you need, extend it here so every caller gets the fix.
+
+## Self-hosted servers
+
+Radarr, Sonarr, Mylar3, Audiobookshelf, Koito, KOReader, Storyteller,
+Jellyfin, Emby, Kodi and gPodder talk to a server the user runs, usually on
+their own network. The public-only policy above would refuse exactly those
+addresses, so these clients send through `send_to_self_hosted` instead.
+
+| Control | Why |
+|---|---|
+| http/https only | `file://` reads the disk |
+| Loopback, private and CGNAT (Tailscale) addresses **allowed** | That is where a home server lives |
+| Link-local refused, including `169.254.169.254` and `::ffff:169.254.169.254` | Cloud metadata hands out credentials |
+| `fd00:ec2::254` and `100.100.100.200` refused | Metadata endpoints inside otherwise-allowed ranges |
+| Multicast and reserved refused (IPv6 loopback excepted) | No server lives there |
+| Redirects followed only on the same host, re-validated per hop | An API key in a header must not reach another server |
+| A name that does not resolve is passed through | The request then fails with the ordinary connection error |
+
+Refusals raise `SelfHostedUrlError`, which is also a `requests` error, so each
+client's existing error handling reports it; its message never contains the
+URL. Ports are not restricted, because these servers run on their own ports.
+
+This does not stop a user from pointing Floppy at another service on their own
+network. It stops the address from reaching cloud metadata and stops a server
+from redirecting a key elsewhere. The same DNS-rebinding window described above
+applies. Tests: `integrations.tests.test_safe_fetch.SelfHostedPolicyTests`.
+
+```python
+from integrations.safe_fetch import send_to_self_hosted
+
+response = send_to_self_hosted(requests.get, url, headers=..., timeout=20)
+```
+
+Pass the module's own `requests.get` (or `partial(requests.request, method)`)
+so tests that patch it keep working.

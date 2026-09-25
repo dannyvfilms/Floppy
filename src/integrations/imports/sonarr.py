@@ -18,6 +18,7 @@ from integrations.imports.helpers import (
     retry_on_lock,
 )
 from integrations.models import SonarrInstance
+from integrations.safe_fetch import send_to_self_hosted
 from integrations.source_sync import (
     remove_collection_source_state,
     upsert_collection_source_state,
@@ -38,7 +39,8 @@ class SonarrClient:
 
     def _request(self, path: str, params=None):
         try:
-            response = requests.get(
+            response = send_to_self_hosted(
+                requests.get,
                 f"{self.base_url}{path}",
                 headers={"X-Api-Key": self.api_key},
                 params=params,

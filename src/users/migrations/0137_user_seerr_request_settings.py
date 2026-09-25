@@ -35,7 +35,7 @@ class AddFieldIfNotExists(migrations.AddField):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('users', '0135_merge_20260918_0021'),
+        ('users', '0136_saved_view'),
     ]
 
     operations = [

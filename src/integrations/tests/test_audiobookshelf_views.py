@@ -196,6 +196,7 @@ class AudiobookshelfCoverProxyTests(TestCase):
             headers={"Authorization": f"Bearer {API_TOKEN}"},
             timeout=15,
             stream=True,
+            allow_redirects=False,
         )
 
     def test_returns_404_for_invalid_token(self):
@@ -240,6 +241,18 @@ class AudiobookshelfCoverProxyTests(TestCase):
 
         self.assertPlaceholder(response)
         self.assertIn("request failed", "\n".join(logs.output))
+
+    @patch("integrations.views.requests.get")
+    def test_cover_is_not_fetched_from_a_forbidden_server_address(self, mock_get):
+        """The cover proxy goes through the self-hosted policy like the importer."""
+        self.account.base_url = "http://169.254.169.254"
+        self.account.save(update_fields=["base_url"])
+
+        with self.assertLogs("integrations.views", level="WARNING"):
+            response = self.client.get(self._cover_url())
+
+        self.assertPlaceholder(response)
+        mock_get.assert_not_called()
 
     @patch("integrations.views.requests.get")
     def test_rejects_non_image_content_type(self, mock_get):

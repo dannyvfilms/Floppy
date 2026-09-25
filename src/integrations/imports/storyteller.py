@@ -33,6 +33,7 @@ from app.providers import services
 from integrations import connection_health, import_progress
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import StorytellerAccount
+from integrations.safe_fetch import send_to_self_hosted
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,8 @@ class StorytellerClient:
 
     def _get(self, path: str):
         try:
-            response = requests.get(
+            response = send_to_self_hosted(
+                requests.get,
                 self._url(path),
                 headers=self._headers(),
                 timeout=API_TIMEOUT,
@@ -91,7 +93,8 @@ class StorytellerClient:
 
     def start_device_auth(self) -> dict[str, Any]:
         """Begin the device authorization flow."""
-        response = requests.post(
+        response = send_to_self_hosted(
+            requests.post,
             self._url("/api/v2/device/start"),
             headers={**self._headers(), "content-type": "application/json"},
             data="{}",
@@ -104,7 +107,8 @@ class StorytellerClient:
 
     def poll_device_token(self, device_code: str):
         """Poll for the access token. Returns (data, status_code)."""
-        response = requests.post(
+        response = send_to_self_hosted(
+            requests.post,
             self._url("/api/v2/device/token"),
             headers={**self._headers(), "content-type": "application/json"},
             json={"device_code": device_code},

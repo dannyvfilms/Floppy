@@ -12,6 +12,8 @@
 {% block content %}
   {# Form CSS lives in the content block so boosted navigation keeps it #}
   {% if form %}{{ form.media.css }}{% endif %}
+  {# Editors' bulk selection spans the header too: its Select Items button lives there. #}
+  {% if can_edit %}<div x-data="bulkSelection('list-bulk-action-data', 'bulk-action-refresh')">{% endif %}
   <div class="mb-6">
     <div class="w-full min-w-0">
       <div class="mb-2 flex flex-wrap items-center gap-3">
@@ -376,7 +378,7 @@
     }
   }"
        x-init="
-         $refs.itemsView.addEventListener('htmx:afterSwap', () => {
+         document.getElementById('items-view').addEventListener('htmx:afterSwap', () => {
            renderedLayout = layout;
            if (isOrderEditing) initListSortable(layout);
          });
@@ -384,9 +386,6 @@
        "
        @open-list-edit-modal.window="showModal = true">
 
-    {% if can_edit %}
-      <div x-data="bulkSelection('list-bulk-action-data', 'bulk-action-refresh')">
-    {% endif %}
 
     <!-- Form to manage state -->
     <form id="filter-form" class="hidden">
@@ -700,7 +699,6 @@
     </div>
 
     <div id="items-view"
-         x-ref="itemsView"
          hx-history="false"
          :class="renderedLayout === 'grid' ? 'media-grid' : ''">
       {% if items %}
@@ -787,10 +785,8 @@
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
       </div>
     </div>
-    {% if can_edit %}
-      </div>
-    {% endif %}
     </div>
+  {% if can_edit %}</div>{% endif %}
 {% endblock content %}
 {# djlint:on #}
 

@@ -20,6 +20,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from app import helpers
 from app.discover import tab_cache as discover_tab_cache
+from app.media_list_filters import media_list_entries_for_items
 from app.models import Item, MediaTypes
 from app.providers import services
 from lists.models import (
@@ -387,10 +388,22 @@ def list_recommendations(request, list_id):
         msg = "You do not have permission to view recommendations for this list"
         raise Http404(msg)
 
-    recommendations = custom_list.recommendations.select_related(
-        "item",
-        "recommended_by",
-    ).order_by("-date_recommended")
+    recommendations = list(
+        custom_list.recommendations.select_related(
+            "item",
+            "recommended_by",
+        ).order_by("-date_recommended"),
+    )
+    # Show the viewer's own rating and status on items they already track.
+    media_by_item_id = {
+        entry.item.pk: entry.media
+        for entry in media_list_entries_for_items(
+            request.user,
+            list({rec.item_id: rec.item for rec in recommendations}.values()),
+        )
+    }
+    for rec in recommendations:
+        rec.media = media_by_item_id.get(rec.item_id)
 
     context = {
         "custom_list": custom_list,

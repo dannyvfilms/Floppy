@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from functools import partial
 from http import HTTPStatus
 from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
@@ -11,6 +12,7 @@ import requests
 from django.conf import settings
 
 from app.log_safety import exception_summary, safe_url
+from integrations.safe_fetch import send_to_self_hosted
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +135,8 @@ def _request(
     headers = {"User-Agent": USER_AGENT, **kwargs.pop("headers", {})}
     timeout = kwargs.pop("timeout", settings.REQUEST_TIMEOUT)
     try:
-        response = requests.request(
-            method,
+        response = send_to_self_hosted(
+            partial(requests.request, method),
             url,
             auth=(username, password),
             headers=headers,

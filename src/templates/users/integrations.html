@@ -176,6 +176,13 @@
                 :class="activeIntegration === 'nuvio' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
           {% translate "Nuvio" %}
         </button>
+        <button type="button"
+                @click="activeIntegration = 'navidrome'"
+                :aria-pressed="activeIntegration === 'navidrome'"
+                class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
+                :class="activeIntegration === 'navidrome' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
+          {% translate "Navidrome" %}
+        </button>
       </div>
     </div>
 
@@ -730,6 +737,46 @@
           </form>
         {% else %}
           <p class="text-sm text-[var(--color-warning-text)]">{% translate "Connect Plex from the Import page to load your available libraries." %}</p>
+        {% endif %}
+      </div>
+
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
+        <h4 class="text-sm font-medium mb-3">{% translate "Manual Watched Changes" %}</h4>
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          {% translate "The webhook records what you watch, but Plex sends nothing when you mark an item watched by hand. Enable this to check your Plex history every 15 minutes and add those marks. It uses the libraries selected above. Marking an item unwatched in Plex is not synced." %}
+        </p>
+        {% if plex_connected %}
+          <form method="post"
+                action="{% url 'update_plex_mark_watched' %}"
+                class="space-y-3">
+            {% csrf_token %}
+            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
+              <div class="flex-1">
+                <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
+                  {% include "app/icons/circle-check.svg" with classes="w-5 h-5 mr-2" %}
+                  <span class="text-sm font-medium">{% translate "Sync items marked watched" %}</span>
+                </div>
+                <p class="text-xs text-[var(--color-text-muted)] ml-7">{% translate "Mark media as watched when it is manually marked watched in Plex." %}</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer ml-4">
+                <input class="sr-only peer"
+                       type="checkbox"
+                       name="plex_mark_watched_enabled"
+                       {% if user.plex_account.mark_watched_sync_enabled %}checked{% endif %}>
+                <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+                </div>
+              </label>
+            </div>
+            <div class="pt-1">
+              <button type="submit"
+                      class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+                {% include "app/icons/save.svg" with classes="w-4 h-4 mr-2" %}
+                {% translate "Save Changes" %}
+              </button>
+            </div>
+          </form>
+        {% else %}
+          <p class="text-sm text-[var(--color-warning-text)]">{% translate "Connect Plex from the Import page to use this." %}</p>
         {% endif %}
       </div>
 
@@ -1552,6 +1599,39 @@
             {# djlint:on #}
           </li>
           <li>{% translate "Revoke the token in" %} <a href="#app-tokens" class="text-[var(--color-link)] hover:underline">{% translate "App tokens" %}</a> {% translate "above to disconnect the device. This never deletes your tracking data." %}</li>
+        </ol>
+      </div>
+    </div>
+
+    {# Navidrome: uses the ListenBrainz-compatible endpoint (api/listenbrainz_views.py) #}
+    <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'navidrome'"
+         x-transition.opacity.duration.150ms>
+      <div class="flex items-center mb-3">
+        {% include "app/icons/server.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+        <h3 class="text-base font-medium">{% translate "Navidrome Integration" %}</h3>
+      </div>
+      <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+        {% translate "Record what you play in Navidrome through its built-in ListenBrainz scrobbler. Needs music tracking turned on." %}
+      </p>
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md">
+        <h4 class="text-sm font-medium mb-3">{% translate "Setup Instructions" %}</h4>
+        <ol class="list-decimal list-inside space-y-2 text-sm text-[var(--color-text-secondary)]">
+          <li>
+            {% translate "Set ND_LISTENBRAINZ_BASEURL in Navidrome to this address and restart it. This applies to every Navidrome user." %}
+            {# djlint:off #}
+            <div class="mt-2 inline-flex items-center gap-2 w-[calc(100%-30px)]">
+              <input readonly id="navidrome-listenbrainz-url" class="w-full bg-[var(--color-surface-dim)] rounded-md text-[var(--color-text-muted)] text-sm border-0 focus:ring-0 outline-none font-mono" type="text" value="{% absolute_app_url '/apis/listenbrainz/1/' %}">
+              <span class="flex items-center cursor-pointer group" title="{% translate "Copy" %}" data-copy-target="#navidrome-listenbrainz-url">
+                {% include "app/icons/copy.svg" with classes="w-5 h-5 text-[var(--color-text-muted)] group-hover:text-[var(--color-link)] transition-colors" %}
+              </span>
+            </div>
+            {# djlint:on #}
+          </li>
+          <li>
+            {% translate "Create an" %} <a href="#app-tokens" class="text-[var(--color-link)] hover:underline">{% translate "app token" %}</a> {% translate "above and copy its secret." %}
+          </li>
+          <li>{% translate "In Navidrome, go to Personal, turn on Scrobble to ListenBrainz and paste the secret." %}</li>
         </ol>
       </div>
     </div>

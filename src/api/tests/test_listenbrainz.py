@@ -1,13 +1,18 @@
 # FORK: tests for the ListenBrainz-compatible ingest endpoints used by
 # Multi-Scrobbler and any other client accepting a custom ListenBrainz URL.
+import json
+import posixpath
+import re
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 from django.contrib.auth import get_user_model
-from django.urls import reverse
+from django.urls import resolve, reverse
 from rest_framework.test import APITestCase
 
 from app.models import Music
+from integrations.models import IntegrationToken
 
 SUBMIT_URL = "/apis/listenbrainz/1/submit-listens"
 VALIDATE_URL = "/apis/listenbrainz/1/validate-token"
@@ -279,3 +284,202 @@ class ListenBrainzMetadataTests(ListenBrainzTestCase):
         )
 
         self.assertEqual(mock_record.call_args.args[0].duration_ms, 195000)
+
+    @patch("integrations.webhooks.listenbrainz.music_scrobble.record_music_playback")
+    def test_spec_tracknumber_key_is_read(self, mock_record):
+        """The spec's `tracknumber` spelling reaches the playback event."""
+        mock_record.return_value = None
+        self.submit(
+            {
+                "listen_type": "single",
+                "payload": [_listen(additional_info={"tracknumber": 7})],
+            },
+        )
+
+        self.assertEqual(mock_record.call_args.args[0].track_number, 7)
+
+
+def _navidrome_listen(listened_at=None):
+    """Build a listen shaped exactly like Navidrome's ListenBrainz agent sends.
+
+    Mirrors formatListen() in navidrome/adapters/listenbrainz/agent.go:
+    `playing_now` listens carry no `listened_at`.
+    """
+    listen = {
+        "track_metadata": {
+            "artist_name": "Boards of Canada",
+            "track_name": "Roygbiv",
+            "release_name": "Music Has the Right to Children",
+            "additional_info": {
+                "submission_client": "Navidrome",
+                "submission_client_version": "0.58.0",
+                "tracknumber": 7,
+                "artist_names": ["Boards of Canada"],
+                "artist_mbids": ["art-1"],
+                "recording_mbid": "rec-1",
+                "release_mbid": "rel-1",
+                "release_group_mbid": "rg-1",
+                "duration_ms": 142000,
+            },
+        },
+    }
+    if listened_at is not None:
+        listen["listened_at"] = listened_at
+    return listen
+
+
+class NavidromeConformanceTests(ListenBrainzTestCase):
+    """Replays the requests Navidrome makes when pointed at Floppy.
+
+    Navidrome joins its ListenBrainz BaseURL with the endpoint name, so paths
+    arrive without a trailing slash, and it authenticates with
+    `Authorization: Token <key>`. The key is a scoped integration token.
+    """
+
+    NAVIDROME_CONTENT_TYPE = "application/json; charset=UTF-8"
+
+    def setUp(self):
+        """Issue a scrobble-scoped integration token, as the setup guide says."""
+        super().setUp()
+        _, raw = IntegrationToken.generate(
+            user=self.user,
+            name="Navidrome",
+            scopes=["scrobble:write"],
+        )
+        self.navidrome_auth = {"HTTP_AUTHORIZATION": f"Token {raw}"}
+
+    def navidrome_request(self, method, url, body, auth=None):
+        """Send a request with Navidrome's headers and JSON body."""
+        # generic() sends the JSON body even on GET, as Navidrome does.
+        return self.client.generic(
+            method,
+            url,
+            json.dumps(body),
+            content_type=self.NAVIDROME_CONTENT_TYPE,
+            **(self.navidrome_auth if auth is None else auth),
+        )
+
+    def test_link_validates_token(self):
+        """Linking in Navidrome's UI sends GET validate-token with a `{}` body."""
+        response = self.navidrome_request("GET", VALIDATE_URL, {})
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertIs(response.json()["valid"], True)
+        self.assertEqual(response.json()["user_name"], self.user.username)
+
+    def test_now_playing_is_accepted_and_not_recorded(self):
+        """Navidrome warns unless the reply's status is `ok`."""
+        response = self.navidrome_request(
+            "POST",
+            SUBMIT_URL,
+            {"listen_type": "playing_now", "payload": [_navidrome_listen()]},
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["status"], "ok")
+        self.assertEqual(Music.objects.filter(user=self.user).count(), 0)
+
+    # Navidrome's MBIDs trigger MusicBrainz lookups by ID; answer them offline.
+    @patch("app.providers.musicbrainz.get_cover_art", return_value=None)
+    @patch("app.services.music_scrobble.sync_artist_discography")
+    @patch("app.services.music_scrobble.musicbrainz.get_artist")
+    @patch("app.services.music_scrobble.musicbrainz.recording")
+    def test_scrobble_records_a_play(
+        self,
+        mock_recording,
+        mock_get_artist,
+        _mock_sync,
+        _mock_cover,
+    ):
+        """A finished track becomes a music play for the token's user."""
+        mock_recording.return_value = {
+            "title": "Roygbiv",
+            "_artist_name": "Boards of Canada",
+            "_artist_id": "art-1",
+            "_album_title": "Music Has the Right to Children",
+            "_album_id": "rel-1",
+            "image": "",
+            "genres": [],
+            "details": {"duration_minutes": 2.4, "release_date": "1998-04-20"},
+            "max_progress": None,
+        }
+        mock_get_artist.return_value = {"sort_name": "Boards of Canada"}
+
+        response = self.navidrome_request(
+            "POST",
+            SUBMIT_URL,
+            {
+                "listen_type": "single",
+                "payload": [_navidrome_listen(listened_at=1700000000)],
+            },
+        )
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["status"], "ok")
+        self.assertEqual(Music.objects.filter(user=self.user).count(), 1)
+
+    @patch("integrations.webhooks.listenbrainz.music_scrobble.record_music_playback")
+    def test_scrobble_metadata_is_mapped(self, mock_record):
+        """Navidrome's MBIDs, duration and track number all reach the event."""
+        mock_record.return_value = None
+        self.navidrome_request(
+            "POST",
+            SUBMIT_URL,
+            {
+                "listen_type": "single",
+                "payload": [_navidrome_listen(listened_at=1700000000)],
+            },
+        )
+
+        event = mock_record.call_args.args[0]
+        self.assertEqual(
+            event.external_ids,
+            {
+                "musicbrainz_recording": "rec-1",
+                "musicbrainz_release": "rel-1",
+                "musicbrainz_artist": "art-1",
+            },
+        )
+        self.assertEqual(event.track_number, 7)
+        self.assertEqual(event.duration_ms, 142000)
+        self.assertEqual(event.entry_source, "listenbrainz")
+
+    def test_token_without_scrobble_scope_cannot_submit(self):
+        """A token missing `scrobble:write` is refused, so nothing is recorded."""
+        _, raw = IntegrationToken.generate(
+            user=self.user,
+            name="read only",
+            scopes=["watchlist:read"],
+        )
+        response = self.navidrome_request(
+            "POST",
+            SUBMIT_URL,
+            {
+                "listen_type": "single",
+                "payload": [_navidrome_listen(listened_at=1700000000)],
+            },
+            auth={"HTTP_AUTHORIZATION": f"Token {raw}"},
+        )
+
+        self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+        self.assertEqual(Music.objects.filter(user=self.user).count(), 0)
+
+    def test_settings_page_url_reaches_the_endpoints(self):
+        """The Base URL on the Integrations page is one Navidrome can use.
+
+        Navidrome appends the endpoint name with Go's path.Join, so the copied
+        URL plus `submit-listens` / `validate-token` must hit these views.
+        """
+        self.client.force_login(self.user)
+        page = self.client.get(reverse("integrations")).content.decode()
+        match = re.search(r'id="navidrome-listenbrainz-url"[^>]*value="([^"]+)"', page)
+        self.assertIsNotNone(match)
+        base_path = urlsplit(match.group(1)).path
+
+        for endpoint, view_name in (
+            ("submit-listens", "listenbrainz_submit_listens"),
+            ("validate-token", "listenbrainz_validate_token"),
+        ):
+            with self.subTest(endpoint=endpoint):
+                joined = posixpath.join(base_path, endpoint)
+                self.assertEqual(resolve(joined).url_name, view_name)

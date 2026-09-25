@@ -722,12 +722,20 @@ def media_list_entries_for_items(user, items) -> list[MediaListEntry]:
     media_by_item_id = {}
     for media_type, item_ids in item_ids_by_type.items():
         model = apps.get_model("app", media_type)
-        owner = (
-            {"related_season__user": user}
-            if media_type == MediaTypes.EPISODE.value
-            else {"user": user}
-        )
-        rows = model.objects.filter(item_id__in=item_ids, **owner).select_related("item")
+        if media_type == MediaTypes.EPISODE.value:
+            owner = {"related_season__user": user}
+            # Episode cards read max_progress and status through their season.
+            related = (
+                "item",
+                "related_season",
+                "related_season__item",
+                "related_season__related_tv",
+                "related_season__related_tv__item",
+            )
+        else:
+            owner = {"user": user}
+            related = ("item",)
+        rows = model.objects.filter(item_id__in=item_ids, **owner).select_related(*related)
         rows = list(BasicMedia.objects._apply_prefetch_related(rows, media_type, list_mode=True))
         if media_type != MediaTypes.EPISODE.value:
             BasicMedia.objects._aggregate_duplicate_data(rows, user, media_type)

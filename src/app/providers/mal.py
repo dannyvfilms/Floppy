@@ -311,7 +311,23 @@ def get_localized_title(response):
     if isinstance(english_title, str):
         english_title = english_title.strip()
 
-    return english_title or None
+    if english_title:
+        return english_title
+
+    # MAL leaves "en" blank for some entries and keeps the English name only
+    # in synonyms, which carry no language tag; use the first one that is not
+    # a copy of the main title.
+    original_title = (response.get("title") or "").strip()
+    return next(
+        (
+            title.strip()
+            for title in alternative_titles.get("synonyms") or []
+            if isinstance(title, str)
+            and title.strip()
+            and title.strip() != original_title
+        ),
+        None,
+    )
 
 
 def get_title_fields(response):

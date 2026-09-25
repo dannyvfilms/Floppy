@@ -467,7 +467,6 @@ class AppTagsTests(TestCase):
                 "user": self.user,
                 "title": item.title,
                 "show_status_chip": False,
-                "show_progress_chip": False,
             },
             request=request,
         )
@@ -516,7 +515,6 @@ class AppTagsTests(TestCase):
                 "user": self.user,
                 "title": item.title,
                 "show_status_chip": False,
-                "show_progress_chip": False,
                 "from_grid": True,
             },
             request=request,
@@ -646,7 +644,6 @@ class AppTagsTests(TestCase):
                 "title": item.title,
                 "from_grid": True,
                 "show_status_chip": False,
-                "show_progress_chip": False,
             },
             request=request,
         )
@@ -763,7 +760,6 @@ class AppTagsTests(TestCase):
                 "title": self.tv_item.title,
                 "from_grid": True,
                 "show_status_chip": False,
-                "show_progress_chip": False,
                 "enable_bulk_select": True,
             },
             request=request,

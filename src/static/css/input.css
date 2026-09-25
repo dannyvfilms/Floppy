@@ -1370,11 +1370,7 @@ html.light .theme-toggle-icon-moon {
   }
 }
 
-.media-card .media-status-chip,
-.media-card .media-score-chip,
-.media-card .media-progress-chip,
-.media-card .media-time-left-chip,
-.media-card .media-repeat-chip {
+.media-card .media-status-chip {
   z-index: 6;
 }
 
@@ -1693,11 +1689,7 @@ html.light .theme-toggle-icon-moon {
 
 /* Keep revealed controls above the title gradient and poster badges. */
 .media-card.media-card-revealed .media-card-body,
-.media-card.media-card-revealed .media-status-chip,
-.media-card.media-card-revealed .media-score-chip,
-.media-card.media-card-revealed .media-progress-chip,
-.media-card.media-card-revealed .media-time-left-chip,
-.media-card.media-card-revealed .media-repeat-chip {
+.media-card.media-card-revealed .media-status-chip {
   z-index: 4;
 }
 
@@ -1963,31 +1955,6 @@ html.light .theme-toggle-icon-moon {
     background-color: transparent !important;
     padding: 0 !important;
     border-radius: 0 !important;
-  }
-
-  .media-progress-chip[data-progress-chip-mode="conditional"] {
-    display: none !important;
-  }
-
-  .media-progress-chip[data-progress-chip-mode="conditional"][data-mobile-show="true"] {
-    display: flex !important;
-  }
-
-  .media-time-left-chip[data-time-left-mode="conditional"] {
-    display: none !important;
-  }
-
-  .media-time-left-chip[data-time-left-mode="conditional"][data-mobile-show="true"] {
-    display: flex !important;
-  }
-
-  .media-score-chip[data-score-chip-mode="conditional"] {
-    display: none !important;
-  }
-
-  .media-score-chip[data-score-chip-mode="conditional"][data-mobile-show="true"] {
-    display: flex !important;
-    top: calc(var(--spacing) * 2) !important;
   }
 
   .media-status-chip[data-mobile-hide-on-mobile="true"] {

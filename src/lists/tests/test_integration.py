@@ -177,7 +177,7 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.locator("li").filter(has_text=re.compile(r"^Anime$")).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
-        expect(self.page.locator("#lists-anime-437")).to_contain_text(
+        expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text(
             "You haven't created any lists yet.",
         )
 
@@ -197,11 +197,11 @@ class IntegrationTest(StaticLiveServerTestCase):
         self.page.locator("li").filter(has_text=re.compile(r"^Anime$")).click()
         self.search_and_submit("perfect blue")
         self.click_card_lists_action()
-        expect(self.page.locator("#lists-anime-437")).to_contain_text("Lists test Add")
-        self.wait_for_htmx_settle(self.page.locator("#lists-anime-437"))
+        expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Lists test Add")
+        self.wait_for_htmx_settle(self.page.locator('[id^="lists-anime-437-"]'))
         self.page.get_by_role("button", name="Add item to test", exact=True).click()
-        expect(self.page.locator("#lists-anime-437")).to_contain_text("Remove")
-        self.page.locator("#lists-anime-437").get_by_role("button").first.click()
+        expect(self.page.locator('[id^="lists-anime-437-"]')).to_contain_text("Remove")
+        self.page.locator('[id^="lists-anime-437-"]').get_by_role("button").first.click()
 
         # Edit list
         self.page.get_by_role("link", name="Lists").click()
@@ -289,7 +289,7 @@ class IntegrationTest(StaticLiveServerTestCase):
             page.locator(
                 '.media-card-overlay button[title="Add to custom lists"]',
             ).first.dispatch_event("click")
-            modal = page.locator("#lists-anime-437")
+            modal = page.locator('[id^="lists-anime-437-"]')
             expect(modal).to_contain_text("Remove")
             toggle_button = modal.locator(
                 f'button[aria-label="Remove item from {custom_list.name}"]'

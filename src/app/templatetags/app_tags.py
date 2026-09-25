@@ -13,7 +13,7 @@ from django.utils.translation import get_language_info, npgettext, pgettext
 from django.utils.translation import gettext as _
 from unidecode import unidecode
 
-from app import config, helpers, image_cache
+from app import card_surfaces, config, helpers, image_cache
 from app.models import Item, MediaTypes, Sources, Status
 from app.providers import tmdb
 from app.services import metadata_resolution
@@ -942,11 +942,19 @@ def get_sidebar_media_types(user):
     else:
         enabled_types = user.get_sidebar_media_types()
 
+    saved_views_by_type = {}
+    if user and user.is_authenticated:
+        for saved_view in user.saved_views.all():
+            saved_views_by_type.setdefault(saved_view.media_type, []).append(
+                saved_view,
+            )
+
     # Format the types for sidebar
     return [
         {
             "media_type": media_type,
             "display_name": media_type_readable_plural(media_type),
+            "saved_views": saved_views_by_type.get(media_type, []),
         }
         for media_type in enabled_types
     ]
@@ -1809,3 +1817,12 @@ def show_media_score(rating, user):
 
     hide_zero = getattr(user, "hide_zero_rating", False)
     return not hide_zero or rating_value > 0
+
+
+@register.inclusion_tag("app/components/media_card.html", takes_context=True)
+def media_card(context, surface, **values):
+    """Render the shared media card as ``surface`` declares it.
+
+    See ``app.card_surfaces`` for the surfaces and the values a card accepts.
+    """
+    return card_surfaces.card_context(context.flatten(), surface, values)

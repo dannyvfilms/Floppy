@@ -219,3 +219,114 @@ def safe_fetch(url, *, headers=None, session=None):
 
     msg = "This URL redirected too many times."
     raise UnsafeUrlError(REASON_TOO_MANY_REDIRECTS, msg)
+
+
+# --- Self-hosted servers -----------------------------------------------------
+#
+# Radarr, Jellyfin, Mylar3 and the other self-hosted integrations live on the
+# user's own network, so the public-only policy above would refuse the very
+# addresses they need. This policy keeps loopback, private and CGNAT (Tailscale)
+# addresses working and refuses only what no media server legitimately uses:
+# link-local (the cloud metadata endpoint 169.254.169.254), multicast and
+# reserved ranges, plus the metadata addresses that sit inside
+# otherwise-allowed ranges. Redirects are followed only on the same host, so an
+# API key sent in a header is never forwarded to a different server.
+
+SELF_HOSTED_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+METADATA_ADDRESSES = frozenset(
+    {
+        ipaddress.ip_address("100.100.100.200"),  # Alibaba Cloud, inside CGNAT
+        ipaddress.ip_address("fd00:ec2::254"),  # AWS IPv6, inside ULA
+    },
+)
+
+REASON_CROSS_HOST_REDIRECT = "cross_host_redirect"
+
+
+class SelfHostedUrlError(UnsafeUrlError, requests.exceptions.InvalidURL):
+    """Refused self-hosted destination.
+
+    Also a ``requests`` error, so every integration's existing
+    ``except requests.RequestException`` reports it like any other
+    unreachable server. The message never contains the URL.
+    """
+
+
+def _self_hosted_address_is_forbidden(address):
+    """Return whether no self-hosted media server could live at ``address``."""
+    mapped = getattr(address, "ipv4_mapped", None)
+    if mapped is not None:
+        address = mapped
+    return bool(
+        address.is_link_local
+        or address.is_multicast
+        # ::1 sits inside the reserved ::/8 block; loopback must stay usable.
+        or (address.is_reserved and not address.is_loopback)
+        or address in METADATA_ADDRESSES
+    )
+
+
+def validate_self_hosted_url(url):
+    """Refuse a self-hosted server URL that points somewhere no server lives.
+
+    A name that does not resolve is let through: the request itself then
+    fails with the ordinary connection error the user already sees today.
+    """
+    try:
+        parsed = urlparse(str(url or "").strip())
+        hostname = (parsed.hostname or "").rstrip(".")
+    except ValueError as error:
+        msg = "This server address could not be read."
+        raise SelfHostedUrlError(REASON_UNPARSABLE_URL, msg) from error
+    if parsed.scheme.lower() not in ALLOWED_SCHEMES:
+        msg = "Only http and https server addresses are supported."
+        raise SelfHostedUrlError(REASON_FORBIDDEN_SCHEME, msg)
+    if not hostname:
+        msg = "This server address has no host."
+        raise SelfHostedUrlError(REASON_MISSING_HOST, msg)
+
+    try:
+        infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, UnicodeError):
+        return
+    for info in infos:
+        try:
+            address = ipaddress.ip_address(info[4][0].split("%", 1)[0])
+        except ValueError:
+            continue
+        if _self_hosted_address_is_forbidden(address):
+            msg = "This server address is not one Floppy will contact."
+            raise SelfHostedUrlError(REASON_FORBIDDEN_ADDRESS, msg)
+
+
+def send_to_self_hosted(send, url, **kwargs):
+    """Send one request to a user's self-hosted server through the policy.
+
+    ``send`` is the ``requests`` callable the caller already used
+    (``requests.get``, or ``functools.partial(requests.request, method)``);
+    it is passed in so each module's own ``requests`` stays patchable in tests.
+    """
+    kwargs["allow_redirects"] = False
+    current = url
+    for _hop in range(MAX_REDIRECTS + 1):
+        validate_self_hosted_url(current)
+        response = send(current, **kwargs)
+        if response.status_code not in SELF_HOSTED_REDIRECT_STATUSES:
+            return response
+
+        location = response.headers.get("Location")
+        if not location:
+            return response
+        target = requests.compat.urljoin(current, location)
+        if urlparse(target).hostname != urlparse(current).hostname:
+            response.close()
+            msg = (
+                "The server redirected to a different host. "
+                "Enter the address it redirects to instead."
+            )
+            raise SelfHostedUrlError(REASON_CROSS_HOST_REDIRECT, msg)
+        response.close()
+        current = target
+
+    msg = "The server redirected too many times."
+    raise SelfHostedUrlError(REASON_TOO_MANY_REDIRECTS, msg)

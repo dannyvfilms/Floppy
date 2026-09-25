@@ -437,7 +437,7 @@
   }"
   x-init="
     init();
-    $refs.itemsView.addEventListener('htmx:afterSwap', () => {
+    document.getElementById('items-view').addEventListener('htmx:afterSwap', () => {
       renderedLayout = layout;
       if (isOrderEditing) initListSortable(layout);
     });
@@ -779,7 +779,6 @@
     </div>
 
     <div id="items-view"
-         x-ref="itemsView"
          hx-history="false"
          :class="renderedLayout === 'grid' ? 'media-grid' : ''">
       {% if current_layout == 'table' %}

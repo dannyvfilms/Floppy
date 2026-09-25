@@ -157,7 +157,7 @@ what the user approved, and the settings page names the shortfall as
 | Jellyfin | Yes | Yes — `PlayedItems` is a *set*, so read-first retry is safe | inbound + outbound |
 | Emby | Yes | Unverified here | inbound only |
 | Kodi | Yes, via library id lookup | Unverified; its write assigns a *count* | inbound only |
-| Plex | Existing webhooks and history | `/:/scrobble` is undocumented | inbound only |
+| Plex | Existing webhooks and history; manual marks via an opt-in 15-minute history poll (Plex sends no webhook for them) | `/:/scrobble` is undocumented | inbound only |
 | Stremio | Existing bitfield parsing | `datastorePut` is a read-modify-write of an opaque bitfield with no CAS | inbound only |
 | Audiobookshelf | Existing pull | Documented, unverified | inbound only |
 | Last.fm / ListenBrainz / Koito | Listens | Append-only | out of scope — listens have no unwatch |

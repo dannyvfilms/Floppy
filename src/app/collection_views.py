@@ -27,6 +27,7 @@ from app.collection_fields import (
 )
 from app.forms import CollectionEntryForm
 from app.log_safety import exception_summary
+from app.media_list_filters import media_list_entries_for_items
 from app.models import (
     CollectionEntry,
     CollectionField,
@@ -209,6 +210,16 @@ def collection_list(request, media_type=None):
         page_obj = paginator.page(paginator.num_pages)
 
     page_entries = list(page_obj.object_list)
+    # The card shows the user's rating and status the same way the library does.
+    media_by_item_id = {
+        library_entry.item.pk: library_entry.media
+        for library_entry in media_list_entries_for_items(
+            request.user,
+            list({entry.item_id: entry.item for entry in page_entries}.values()),
+        )
+    }
+    for entry in page_entries:
+        entry.media = media_by_item_id.get(entry.item_id)
     badge_entries = [
         entry
         for entry in page_entries

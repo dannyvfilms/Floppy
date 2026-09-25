@@ -71,11 +71,12 @@ ANIME_LIST_DEFAULT_SORT_MAX_QUERIES = (
     # one, each once per cold cache (an hour in production, every test here).
 )
 ANIME_LIST_GROUPED_MAX_QUERIES = (
-    24  # grouped (TV-backed) anime adds no per-show runtime queries;
+    25  # grouped (TV-backed) anime adds no per-show runtime queries;
     # +1 for the page COUNT: the list is paged by the library-query engine
     # instead of counting a fully loaded list (#1248);
     # +4 from the Genres/Tags column Prefetch("item__item_tags") added in #457;
-    # +2 from the instance and personal provider-credential reads
+    # +2 from the instance and personal provider-credential reads;
+    # +1 from the sidebar's saved-views read (#413)
 )
 MANGA_LIST_DEFAULT_SORT_MAX_QUERIES = 14
 MANGA_LIST_NO_STATUS_MAX_QUERIES = 19  # +1 from the custom-list collaborators prefetch
@@ -88,8 +89,9 @@ GAME_LIST_START_DATE_SORT_MAX_QUERIES = (
 HOME_ROW_FRAGMENT_MAX_QUERIES = (
     123  # +2 from the Tags column Prefetch (#457); +1 from the provider-credential read
 )
-CUSTOM_LIST_DETAIL_MAX_QUERIES = 34  # +3 from prefilled release-year metadata;
-# +1 from the custom-list collaborators prefetch
+CUSTOM_LIST_DETAIL_MAX_QUERIES = 35  # +3 from prefilled release-year metadata;
+# +1 from the custom-list collaborators prefetch; +1 from the sidebar's
+# saved-views read (#413)
 SEASON_PAGE_FIRST_VIEW_EPISODE_COUNT = 18
 SEASON_PAGE_FIRST_VIEW_MAX_QUERIES = 46  # +1 from the per-item metadata language override lookup (#1009)
 SESSION_HISTORY_MODAL_MAX_QUERIES = 60

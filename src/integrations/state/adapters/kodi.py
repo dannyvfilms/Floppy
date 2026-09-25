@@ -18,6 +18,7 @@ import requests
 
 from app.models import MediaTypes, Sources
 from integrations.models import CAPABILITY_WATCHED_READ
+from integrations.safe_fetch import send_to_self_hosted
 from integrations.state.adapters.base import (
     RemoteState,
     TerminalAdapterError,
@@ -54,7 +55,8 @@ class KodiStateAdapter:
             auth = (self.account.username, decrypt(self.account.password) or "")
 
         try:
-            response = requests.post(
+            response = send_to_self_hosted(
+                requests.post,
                 self.account.base_url,
                 json={
                     "jsonrpc": "2.0",

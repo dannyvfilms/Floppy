@@ -118,6 +118,7 @@ class CustomList(models.Model):
         ("local", "Local"),
         ("trakt", "Trakt"),
         ("mdblist", "MDBList"),
+        ("wetrakr", "WeTrakr"),
     ]
 
     VISIBILITY_CHOICES = [

@@ -248,6 +248,10 @@ SOURCES_CONFIG = {
         "name": "TV Time",
         "logo": static("img/tvtime-logo.png"),
     },
+    "wetrakr": {
+        "name": "WeTrakr",
+        "logo": static("img/wetrakr-logo.svg"),
+    },
     "radarr": {
         "name": "Radarr",
         "logo": static("img/plex-logo.svg"),
@@ -255,6 +259,10 @@ SOURCES_CONFIG = {
     "sonarr": {
         "name": "Sonarr",
         "logo": static("img/plex-logo.svg"),
+    },
+    "mylar": {
+        "name": "Mylar3",
+        "logo": static("img/mylar-logo.png"),
     },
 }
 

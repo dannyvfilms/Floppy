@@ -4,12 +4,15 @@ CLZ has no fixed export schema — the user chooses the columns — so these
 fixtures exercise the header-mapped contract rather than one canonical file.
 """
 
+from hashlib import blake2s
 from io import BytesIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.urls import reverse
 
+from app.collection_field_import import normalize_label as normalize
 from app.models import (
     CollectionEntry,
     CollectionEntrySource,
@@ -21,7 +24,7 @@ from app.models import (
 )
 from integrations.imports import clz
 from integrations.imports.helpers import MediaImportError
-from lists.models import CustomList
+from lists.models import CustomList, CustomListItem
 
 COMICS_CSV = (
     "Series,Issue Nr,Release Year,Story Arc,Publisher,Storage Box,Variant,"
@@ -29,6 +32,15 @@ COMICS_CSV = (
     '"Saga",001,2012,"Chapter One","Image","Box A","Cover A",2,"In Collection"\n'
     '"Saga",002,2012,"Chapter One","Image","Box A","Cover B",1,"In Collection"\n'
     '"Saga",003,2012,"Chapter Two","Image","Box B","Cover A",1,"On Wishlist"\n'
+)
+
+# The shape of a real CLZ Comics export (issue #809): the issue column is
+# headed "Issue", not "Issue Nr", and nothing else marks it as comics.
+CLZ_COMICS_EXPORT_CSV = (
+    "Series,Issue,Publisher,Format,Storage Box,Collection Status\n"
+    '"Death Note [GER]",1,"Tokyopop","Manga","Kallax 1","In Collection"\n'
+    '"Death Note [GER]",2,"Tokyopop","Graphic Novel","Kallax 1","In Collection"\n'
+    '"Death Note [GER]",3,"Tokyopop","Manga","","On Wishlist"\n'
 )
 
 GAMES_CSV = (
@@ -293,3 +305,230 @@ class CLZImportTests(TestCase):
 
         self.assertEqual(counts["rejected"], 1)
         self.assertIn("no title", warnings)
+
+
+def legacy_identity(record, item):
+    """Return the derived identity versions before #809 stored for *record*.
+
+    Those versions hashed the resolved item into the identity and only read
+    "Issue Nr"/"Issue Number", so an export that fell back to Movie produced
+    links a corrected re-import could never find by the current identity.
+    """
+    parts = [
+        item.media_type,
+        item.source,
+        item.media_id,
+        record.get("Series", ""),
+        record.get("Issue Nr", ""),
+        "",  # volume
+        "",  # year
+        record.get("Publisher", ""),
+        "",  # platform
+        "",  # edition
+        "",  # variant
+        record.get("Format", ""),
+        "",  # identifier
+    ]
+    return blake2s(
+        "|".join(normalize(part) for part in parts).encode("utf-8"),
+        digest_size=16,
+    ).hexdigest()
+
+
+class CLZMediaTypeTests(TestCase):
+    """Issue #809: CLZ Comics exports must not land as movies."""
+
+    def setUp(self):
+        """Create the importing user and stub out provider lookups."""
+        self.user = get_user_model().objects.create_user(
+            username="clz",
+            password="12345",
+        )
+        patcher = patch(
+            "integrations.imports.clz.services.search",
+            return_value={"results": []},
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_import(self, content, mode="new", media_type=None):
+        """Run the CLZ importer over the in-memory export *content*."""
+        return clz.importer(
+            upload("clz.csv", content),
+            self.user,
+            mode,
+            media_type=media_type,
+        )
+
+    def legacy_movie_import(self):
+        """Store copies the way the old Movie fallback left them."""
+        records, _ = clz.parse_csv(CLZ_COMICS_EXPORT_CSV)
+        item = Item.objects.create(
+            media_id=Item.generate_manual_id(),
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.MOVIE.value,
+            library_media_type=MediaTypes.MOVIE.value,
+            title="Death Note [GER]",
+        )
+        entries = []
+        for position, record in enumerate(records[:2]):
+            entry = CollectionEntry.objects.create(
+                user=self.user,
+                item=item,
+                media_type=record["Format"],
+            )
+            CollectionEntrySource.objects.create(
+                user=self.user,
+                source="clz",
+                source_record_id=legacy_identity(record, item),
+                occurrence=position * 1000,
+                derived_identity=True,
+                entry=entry,
+            )
+            entries.append(entry)
+        wishlist = CustomList.objects.create(
+            owner=self.user,
+            name=clz.WISHLIST_LIST_NAME,
+        )
+        CustomListItem.objects.create(custom_list=wishlist, item=item)
+        return item, entries, wishlist
+
+    def test_issue_column_identifies_a_comics_export(self):
+        """A plain "Issue" header is enough to detect comic issues."""
+        self.run_import(CLZ_COMICS_EXPORT_CSV)
+
+        types = set(
+            CollectionEntry.objects.filter(user=self.user).values_list(
+                "item__media_type",
+                flat=True,
+            ),
+        )
+        self.assertEqual(types, {MediaTypes.COMIC_ISSUE.value})
+
+    def test_issue_column_keeps_volumes_apart(self):
+        """Each volume becomes its own item instead of merging by series."""
+        self.run_import(CLZ_COMICS_EXPORT_CSV)
+
+        titles = set(
+            CollectionEntry.objects.filter(user=self.user).values_list(
+                "item__title",
+                flat=True,
+            ),
+        )
+        self.assertEqual(titles, {"Death Note [GER] #1", "Death Note [GER] #2"})
+
+    def test_format_stays_on_the_copy(self):
+        """The CLZ Format is the copy's physical format, not the item type."""
+        self.run_import(CLZ_COMICS_EXPORT_CSV)
+
+        entry = CollectionEntry.objects.get(item__title="Death Note [GER] #2")
+        self.assertEqual(entry.media_type, "Graphic Novel")
+
+    def test_chosen_media_type_overrides_detection(self):
+        """Picking Manga on the import page imports manga items."""
+        self.run_import(CLZ_COMICS_EXPORT_CSV, media_type=MediaTypes.MANGA.value)
+
+        types = set(
+            Item.objects.filter(collectionentry__user=self.user).values_list(
+                "media_type",
+                flat=True,
+            ),
+        )
+        self.assertEqual(types, {MediaTypes.MANGA.value})
+
+    def test_undetectable_export_warns_instead_of_guessing_silently(self):
+        """Falling back to Movie tells the user how to choose the type."""
+        _, warnings = self.run_import("Title,Notes\nSomething,Hi\n")
+
+        self.assertIn("Import as", warnings)
+
+    def test_overwrite_moves_copies_imported_as_movies(self):
+        """Overwrite re-types the old copies in place, without duplicates."""
+        old_item, entries, _ = self.legacy_movie_import()
+
+        counts, _ = self.run_import(CLZ_COMICS_EXPORT_CSV, mode="overwrite")
+
+        self.assertEqual(counts["updated"], 2)
+        self.assertEqual(counts.get("collection", 0), 0)
+        moved = CollectionEntry.objects.filter(user=self.user).order_by("id")
+        self.assertEqual([entry.id for entry in moved], [e.id for e in entries])
+        self.assertEqual(
+            [entry.item.title for entry in moved],
+            ["Death Note [GER] #1", "Death Note [GER] #2"],
+        )
+        self.assertTrue(
+            all(e.item.media_type == MediaTypes.COMIC_ISSUE.value for e in moved),
+        )
+
+    def test_overwrite_deletes_the_emptied_placeholder(self):
+        """The old Movie placeholder goes once nothing references it."""
+        old_item, _, wishlist = self.legacy_movie_import()
+        wishlist.customlistitem_set.all().delete()
+
+        self.run_import(CLZ_COMICS_EXPORT_CSV, mode="overwrite")
+
+        self.assertFalse(Item.objects.filter(id=old_item.id).exists())
+
+    def test_overwrite_reports_old_wishlist_rows_without_deleting(self):
+        """A same-titled Movie wishlist entry is reported, never removed.
+
+        Wishlist rows carry no source identity, so the old entry cannot be
+        told apart from a Movie the user added to the list by hand.
+        """
+        old_item, _, wishlist = self.legacy_movie_import()
+
+        _, warnings = self.run_import(CLZ_COMICS_EXPORT_CSV, mode="overwrite")
+
+        titles = set(
+            wishlist.customlistitem_set.values_list("item__title", flat=True),
+        )
+        self.assertEqual(titles, {"Death Note [GER]", "Death Note [GER] #3"})
+        self.assertTrue(Item.objects.filter(id=old_item.id).exists())
+        self.assertIn("Death Note [GER]: the CLZ Wishlist list also has", warnings)
+
+    def test_wishlist_rows_of_other_types_are_not_reported(self):
+        """Only the type an earlier run could have used is flagged."""
+        wishlist = CustomList.objects.create(
+            owner=self.user,
+            name=clz.WISHLIST_LIST_NAME,
+        )
+        book = Item.objects.create(
+            media_id=Item.generate_manual_id(),
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.BOOK.value,
+            library_media_type=MediaTypes.BOOK.value,
+            title="Death Note [GER]",
+        )
+        CustomListItem.objects.create(custom_list=wishlist, item=book)
+
+        _, warnings = self.run_import(CLZ_COMICS_EXPORT_CSV, mode="overwrite")
+
+        self.assertNotIn("also has", warnings)
+
+    def test_new_mode_recognises_old_copies_without_duplicating(self):
+        """A repeat import in the default mode skips the old copies."""
+        self.legacy_movie_import()
+
+        counts, _ = self.run_import(CLZ_COMICS_EXPORT_CSV)
+
+        self.assertEqual(counts["skipped"], 2)
+        self.assertEqual(CollectionEntry.objects.filter(user=self.user).count(), 2)
+
+    def test_overwrite_keeps_an_old_item_still_in_use(self):
+        """The old item survives if anything else still points at it."""
+        old_item, _, wishlist = self.legacy_movie_import()
+        wishlist.customlistitem_set.all().delete()
+        other = get_user_model().objects.create_user(username="other")
+        CollectionEntry.objects.create(user=other, item=old_item)
+
+        self.run_import(CLZ_COMICS_EXPORT_CSV, mode="overwrite")
+
+        self.assertTrue(Item.objects.filter(id=old_item.id).exists())
+
+    def test_import_page_offers_the_media_type_picker(self):
+        """The CLZ window lets the user choose what the export contains."""
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("import_data"))
+
+        self.assertContains(response, 'name="clz_media_type"')

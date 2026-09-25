@@ -234,3 +234,91 @@ class FetchTests(TestCase):
             fetch("https://example.com/m.json", session=session)
 
         self.assertFalse(session.get.call_args.kwargs["allow_redirects"])
+
+
+def _response(status, location=None):
+    response = Mock(status_code=status, headers={"Location": location} if location else {})
+    return response
+
+
+class SelfHostedPolicyTests(TestCase):
+    """Home servers stay reachable; metadata endpoints and host hops do not."""
+
+    def test_home_network_addresses_are_allowed(self):
+        """Loopback, LAN, Docker and Tailscale are where these servers live."""
+        for address in ("127.0.0.1", "192.168.1.10", "172.18.0.4", "100.101.2.3", "::1"):
+            with self.subTest(address=address), public(address):
+                safe_fetch.validate_self_hosted_url("http://radarr.home:7878")
+
+    def test_an_unresolvable_host_is_left_to_the_request(self):
+        """The connection then fails with the error users already see today."""
+        with patch.object(
+            safe_fetch.socket, "getaddrinfo", side_effect=safe_fetch.socket.gaierror
+        ):
+            safe_fetch.validate_self_hosted_url("http://nowhere.invalid")
+
+    def test_metadata_and_link_local_addresses_are_refused(self):
+        for address in (
+            "169.254.169.254",
+            "::ffff:169.254.169.254",
+            "fe80::1",
+            "fd00:ec2::254",
+            "100.100.100.200",
+            "224.0.0.1",
+        ):
+            with self.subTest(address=address), public(address):
+                with self.assertRaises(safe_fetch.SelfHostedUrlError) as caught:
+                    safe_fetch.validate_self_hosted_url("http://metadata.example/")
+                self.assertEqual(caught.exception.reason_code, "forbidden_address")
+
+    def test_an_unparsable_address_is_a_policy_refusal(self):
+        """Callers catch requests errors, so a bad bracketed host must not escape as ValueError."""
+        with self.assertRaises(safe_fetch.SelfHostedUrlError) as caught:
+            safe_fetch.validate_self_hosted_url("http://[bad")
+        self.assertEqual(caught.exception.reason_code, "unparsable_url")
+
+    def test_refusal_is_a_requests_error_without_the_url(self):
+        """Existing ``except requests.RequestException`` handlers catch it."""
+        import requests
+
+        with public("169.254.169.254"), self.assertRaises(
+            requests.RequestException
+        ) as caught:
+            safe_fetch.send_to_self_hosted(Mock(), "http://host.example/?apikey=s3cret")
+        self.assertNotIn("s3cret", str(caught.exception))
+
+    def test_non_http_schemes_are_refused(self):
+        with self.assertRaises(safe_fetch.SelfHostedUrlError):
+            safe_fetch.validate_self_hosted_url("file:///etc/passwd")
+
+    def test_same_host_redirect_is_followed_with_headers(self):
+        """Moving from http to https on the same server is the common reverse-proxy case."""
+        send = Mock(
+            side_effect=[
+                _response(301, "https://radarr.home/api/v3/movie"),
+                _response(200),
+            ],
+        )
+        with public("192.168.1.10"):
+            response = safe_fetch.send_to_self_hosted(
+                send, "http://radarr.home/api/v3/movie", headers={"X-Api-Key": "k"}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        second = send.call_args_list[1]
+        self.assertEqual(second.args[0], "https://radarr.home/api/v3/movie")
+        self.assertEqual(second.kwargs["headers"], {"X-Api-Key": "k"})
+        self.assertFalse(second.kwargs["allow_redirects"])
+
+    def test_redirect_to_another_host_is_not_followed(self):
+        """Following it would hand the API key to a different server."""
+        send = Mock(return_value=_response(302, "http://169.254.169.254/latest"))
+        with public("192.168.1.10"), self.assertRaises(
+            safe_fetch.SelfHostedUrlError
+        ) as caught:
+            safe_fetch.send_to_self_hosted(
+                send, "http://radarr.home/", headers={"X-Api-Key": "k"}
+            )
+
+        self.assertEqual(caught.exception.reason_code, "cross_host_redirect")
+        send.assert_called_once()

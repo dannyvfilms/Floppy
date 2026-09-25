@@ -127,6 +127,15 @@ ONBOARDING_SOURCES: tuple[OnboardingSource, ...] = (
         connect_fields=(("base_url", "Base URL", "url"), ("api_key", "API Key", "password")),
     ),
     OnboardingSource(
+        "mylar",
+        (COMIC,),
+        "host_url",
+        "mylar_instances",
+        tags=("reading",),
+        connect_url_name="mylar_connect",
+        connect_fields=(("base_url", "Base URL", "url"), ("api_key", "API Key", "password")),
+    ),
+    OnboardingSource(
         "stremio",
         (MOVIE, TV),
         "credentials",

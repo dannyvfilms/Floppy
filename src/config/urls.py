@@ -13,11 +13,11 @@ from allauth.urls import build_provider_urlpatterns
 from django.conf import settings
 from django.contrib import admin
 from django.contrib.auth.decorators import login_not_required
+from django.contrib.staticfiles.views import serve
 from django.http import JsonResponse
 from django.urls import include, path, re_path
 from django.views.decorators.cache import never_cache
 from django.views.i18n import JavaScriptCatalog
-from django.views.static import serve
 from health_check.views import MainView
 
 from api.contract_views import (
@@ -137,13 +137,14 @@ if settings.ENABLE_DEBUG_TOOLBAR:
     urlpatterns.append(path("__debug__/", include("debug_toolbar.urls")))
 
 # Serve static files for local Django commands like runserver even when
-# DEBUG is disabled in the user's .env.
+# DEBUG is disabled in the user's .env. The finders cover installed apps'
+# static (django_select2, admin), not just the project's own directory.
 if not settings.IS_PROD:
     static_url_pattern = re.escape(settings.STATIC_URL.lstrip("/"))
     urlpatterns.append(
         re_path(
             rf"^{static_url_pattern}(?P<path>.*)$",
             login_not_required(serve),
-            {"document_root": str(settings.STATICFILES_DIRS[0])},
+            {"insecure": True},
         ),
     )

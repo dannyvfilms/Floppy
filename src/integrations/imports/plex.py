@@ -1,8 +1,9 @@
 """Plex history importer."""
 
+import json
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 
 import urllib3
@@ -44,6 +45,15 @@ logger = logging.getLogger(__name__)
 MAX_SKIPPED_USER_SAMPLES = 5
 RATING_SCALE_MAX = 10
 RATING_PERCENTAGE_SCALE_MAX = 100
+MARK_WATCHED_TASK_NAME = "Sync Plex Watched Marks"
+MARK_WATCHED_INTERVAL_MINUTES = 15
+# Each poll re-reads this much history before it started. Libraries are read
+# one after another, so a mark landing on an already-read library mid-poll is
+# caught next time; the "new" mode dedupe drops the rows seen twice.
+MARK_WATCHED_OVERLAP = timedelta(minutes=10)
+# How long an entry that failed to import keeps the checkpoint held back, so a
+# transient failure is retried but a permanent one cannot pin it forever.
+MARK_WATCHED_RETRY_WINDOW = timedelta(days=1)
 
 # Matching an imported history record against a pre-existing row (e.g. one
 # already created by a live webhook, or by a Trakt import) is handled by the
@@ -67,12 +77,83 @@ def importer(library, user, mode):
     return plex_importer.import_data()
 
 
+def mark_watched_importer(library, user, mode):
+    """Import Plex history newer than the account's checkpoint.
+
+    Plex sends no webhook when an item is marked watched by hand, but it does
+    write the mark into its history. Polling only the new rows catches those
+    marks; plays a webhook already recorded are skipped by the usual "new"
+    mode dedupe.
+    """
+    account = getattr(user, "plex_account", None)
+    if not account or not account.plex_token:
+        msg = "Plex is not connected for this user."
+        raise MediaImportError(msg)
+
+    poll_started = timezone.now()
+    previous = account.mark_watched_checkpoint or poll_started
+    plex_importer = PlexHistoryImporter(
+        user=user,
+        account=account,
+        mode=mode,
+        library=library,
+        since=previous,
+    )
+    result = plex_importer.import_data()
+
+    checkpoint = poll_started - MARK_WATCHED_OVERLAP
+    failed_at = plex_importer.oldest_failed_viewed_at
+    if failed_at:
+        checkpoint = min(checkpoint, failed_at - timedelta(seconds=1))
+    checkpoint = max(checkpoint, poll_started - MARK_WATCHED_RETRY_WINDOW, previous)
+    account.mark_watched_checkpoint = checkpoint
+    account.save(update_fields=["mark_watched_checkpoint"])
+    return result
+
+
+def set_mark_watched_sync(account, enabled):
+    """Turn the recurring watched-mark poll on or off for one Plex account."""
+    from django_celery_beat.models import IntervalSchedule, PeriodicTask
+
+    task_name = f"{MARK_WATCHED_TASK_NAME} for user {account.user_id}"
+    if not enabled:
+        PeriodicTask.objects.filter(name=task_name).delete()
+        account.mark_watched_sync_enabled = False
+        account.save(update_fields=["mark_watched_sync_enabled"])
+        return
+
+    interval, _ = IntervalSchedule.objects.get_or_create(
+        every=MARK_WATCHED_INTERVAL_MINUTES,
+        period=IntervalSchedule.MINUTES,
+    )
+    PeriodicTask.objects.update_or_create(
+        name=task_name,
+        defaults={
+            "task": MARK_WATCHED_TASK_NAME,
+            "interval": interval,
+            "kwargs": json.dumps({"user_id": account.user_id}),
+            "enabled": True,
+        },
+    )
+    update_fields = ["mark_watched_sync_enabled"]
+    if not account.mark_watched_sync_enabled:
+        # Start from now, so turning this on never replays old history.
+        account.mark_watched_checkpoint = timezone.now()
+        update_fields.append("mark_watched_checkpoint")
+    account.mark_watched_sync_enabled = True
+    account.save(update_fields=update_fields)
+
+
 class PlexHistoryImporter:
     """Importer that replays Plex history through TMDB-backed bulk creation."""
 
-    def __init__(self, user, account, mode, library, fast_mode=True):
+    def __init__(self, user, account, mode, library, fast_mode=True, since=None):
         """Store the extra keyword arguments this form needs."""
         self.user = user
+        # When set, only history viewed after this moment is fetched, and the
+        # library ratings pass is skipped (see mark_watched_importer).
+        self.since_ts = int(since.timestamp()) if since else None
+        self.oldest_failed_viewed_at = None
         self.account = account
         self.mode = mode
         # Accept a bare string for backward compatibility with already-scheduled
@@ -468,12 +549,14 @@ class PlexHistoryImporter:
                 self._process_entry(entry, uri_used, section_type)
             except MediaImportError as exc:
                 self.warnings.append(str(exc))
+                self._record_failed_entry(entry)
             except Exception as exc:  # pragma: no cover - defensive
                 logger.warning(
                     "Failed to import a Plex history entry: %s",
                     exception_summary(exc),
                 )
                 self.warnings.append(f"Failed to import a Plex entry: {exc}")
+                self._record_failed_entry(entry)
 
         logger.info(
             "Processed %s Plex history entries from library %s on %s "
@@ -486,6 +569,9 @@ class PlexHistoryImporter:
             len(self._episode_records),
             self._skipped_user_count - skipped_users_before,
         )
+
+        if self.since_ts is not None:
+            return
 
         # Fetch and apply ratings from library items
         try:
@@ -529,7 +615,13 @@ class PlexHistoryImporter:
                     if not page:
                         break
 
+                    reached_checkpoint = False
+                    if self.since_ts is not None:
+                        page, reached_checkpoint = self._entries_since(page)
+
                     entries.extend(page)
+                    if reached_checkpoint:
+                        break
                     start += len(page)
                     import_progress.report(
                         len(entries),
@@ -568,6 +660,30 @@ class PlexHistoryImporter:
         if max_items is None:
             return entries, uri_used
         return entries[:max_items], uri_used
+
+    def _entries_since(self, page: list[dict]) -> tuple[list[dict], bool]:
+        """Keep entries viewed after the checkpoint; history is newest first."""
+        newer = []
+        reached_checkpoint = False
+        for entry in page:
+            try:
+                viewed_at = int(entry.get("viewedAt"))
+            except (TypeError, ValueError):
+                continue
+            if viewed_at <= self.since_ts:
+                reached_checkpoint = True
+                continue
+            newer.append(entry)
+        return newer, reached_checkpoint
+
+    def _record_failed_entry(self, entry: dict):
+        """Remember the oldest entry that failed, so a poll can retry it."""
+        try:
+            failed = datetime.fromtimestamp(int(entry.get("viewedAt")), tz=UTC)
+        except (TypeError, ValueError):
+            return
+        if self.oldest_failed_viewed_at is None or failed < self.oldest_failed_viewed_at:
+            self.oldest_failed_viewed_at = failed
 
     def _is_server_owned(self, machine_identifier) -> bool:
         """Return whether the user owns the server hosting this section."""

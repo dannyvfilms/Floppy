@@ -28,6 +28,19 @@ Column identity is matched with `clz.column_key`, which folds case, Unicode
 form and separators **and then drops spaces** — the CSV header
 `Purchase Price` and the XML tag `<purchaseprice>` are the same column.
 
+## Media type
+
+The import window's **Import as** picker sets the item media type for the
+whole export. Left on auto-detect, `_detect_media_type` reads the headers:
+an issue column (`Issue`, `Issue Nr`, `Issue No`) or `Story Arc` means comic
+issues, `Platform` means games, `ISBN`/`Author`/`Pages` means books, and
+anything else falls back to movies. The fallback adds a warning to the import
+result unless a movie column (`IMDb`, `TMDb`, `Director`, `Runtime`) is present.
+
+CLZ's `Format` column ("Graphic Novel", "Manga", "Blu-ray") is the copy's
+physical format and lands on `CollectionEntry.media_type`. It never sets the
+item type: one manga collection is commonly spread across several formats.
+
 ## What happens to each column
 
 1. **Structural** (`STRUCTURAL_COLUMNS`) — title, series, issue, barcode,
@@ -79,7 +92,19 @@ box, so editing those in CLZ does not orphan the copy.
 - **New mode (default)** imports new records only; a record already linked to
   a copy is skipped.
 - **Overwrite mode** updates only source-linked copies, and only with the
-  values the export supplied. Copies the user made by hand are untouched.
+  values the export supplied. Copies the user made by hand are untouched. A
+  copy whose record now resolves to a different item (for example after
+  choosing the right media type) moves to that item, and the manual item it
+  left is deleted once nothing else references it.
+
+Derived ids never include the resolved item, so correcting the media type
+still finds the same copy. Versions before issue #809 did hash the item in;
+`_find_link` recognises those links by recomputing the old id and re-keys
+them on first sight.
+
+Wishlist rows have no source identity, so an Overwrite run never deletes
+one. A same-titled manual entry of the type an older version would have
+detected is reported in the import result for the user to remove.
 
 Wishlist rows (`Collection Status`) go to a dedicated **CLZ Wishlist** list.
 No copy is created and no reading progress is inferred; their columns are

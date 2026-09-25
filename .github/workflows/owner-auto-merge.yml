@@ -1,0 +1,50 @@
+name: Owner Auto-merge
+
+# Turn on GitHub's native auto-merge for pull requests the repository owner
+# opens from a branch in this repository. GitHub then merges the PR only after
+# every required status check on the base branch passes. Nobody else's PRs,
+# fork PRs, and drafts are left alone; a draft is picked up when it is marked
+# ready for review.
+#
+# Needs, in repository settings:
+# - "Allow auto-merge" turned on.
+# - A branch protection rule (or ruleset) on the base branch that requires
+#   status checks. Without one there is nothing to wait for, so GitHub refuses
+#   to enable auto-merge and this job fails instead of merging.
+# - An AUTO_MERGE_TOKEN secret: a fine-grained personal access token from the
+#   owner with Contents and Pull requests read/write on this repository. A merge
+#   made through the built-in GITHUB_TOKEN does not trigger push workflows, so
+#   the Docker image for the base branch would never be published.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  enable-auto-merge:
+    if: >-
+      github.event.pull_request.user.login == github.repository_owner &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
+          PR_ID: ${{ github.event.pull_request.node_id }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::AUTO_MERGE_TOKEN secret is not set."
+            exit 1
+          fi
+          # Call the API directly: `gh pr merge --auto` merges on the spot when
+          # the PR has no required checks to wait for.
+          gh api graphql -f id="$PR_ID" -f query='
+            mutation($id: ID!) {
+              enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: MERGE}) {
+                pullRequest { number }
+              }
+            }'

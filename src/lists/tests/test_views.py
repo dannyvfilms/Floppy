@@ -23,7 +23,7 @@ from app.models import (
 )
 from lists import smart_rules
 from lists.feeds import FloppyRssFeed
-from lists.models import CustomList, CustomListItem, ListActivity
+from lists.models import CustomList, CustomListItem, ListActivity, ListRecommendation
 from users.models import DateFormatChoices
 
 
@@ -2573,6 +2573,93 @@ class ListDetailViewTests(TestCase):
         self.assertNotContains(response, "hero_track_button")
         self.assertNotContains(response, "empty overlay")
 
+    def test_select_items_button_sits_inside_the_bulk_selection_scope(self):
+        """The header's Select Items button must be inside bulkSelection, or it is dead.
+
+        Alpine reads selectMode from the closest component; a button above it
+        threw "selectMode is not defined" and did nothing.
+        """
+        smart_list = CustomList.objects.create(
+            name="Smart Scope",
+            owner=self.user,
+            is_smart=True,
+        )
+        for custom_list in (self.custom_list, smart_list):
+            with self.subTest(smart=custom_list.is_smart):
+                content = self.client.get(
+                    reverse("list_detail", args=[custom_list.id]),
+                ).content.decode()
+                scope = content.index('x-data="bulkSelection(')
+                self.assertGreater(content.index("toggleSelectMode()"), scope)
+                # $refs cannot see a ref inside the nested bulkSelection component.
+                self.assertNotIn("$refs.itemsView", content)
+
+    def test_viewer_who_can_only_recommend_gets_no_select_items_button(self):
+        """Bulk actions edit the list, so a recommend-only viewer has no selection."""
+        self.custom_list.visibility = "public"
+        self.custom_list.allow_recommendations = True
+        self.custom_list.save()
+        self.client.login(**self.other_credentials)
+
+        response = self.client.get(reverse("list_detail", args=[self.custom_list.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Recommend Item")
+        self.assertNotContains(response, "toggleSelectMode()")
+
+    @patch.object(get_user_model(), "update_preference")
+    @patch.object(CustomList, "user_can_view")
+    def test_list_detail_episode_card_shows_rating(
+        self,
+        mock_user_can_view,
+        mock_update_preference,
+    ):
+        """A rated episode's card shows its rating, like every other card."""
+        mock_update_preference.side_effect = ["date_added", None]
+        mock_user_can_view.return_value = True
+
+        episode_item = Item.objects.create(
+            media_id="9002",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="The Rated One",
+            season_number=1,
+            episode_number=1,
+            image=settings.IMG_NONE,
+        )
+        season_item = Item.objects.create(
+            media_id="9002",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            image=settings.IMG_NONE,
+        )
+        tv_item = Item.objects.create(
+            media_id="9002",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            image=settings.IMG_NONE,
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode = Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            score=7.5,
+        )
+        episode_list = CustomList.objects.create(name="Rated Episodes", owner=self.user)
+        CustomListItem.objects.create(custom_list=episode_list, item=episode_item)
+
+        response = self.client.get(reverse("list_detail", args=[episode_list.id]))
+
+        self.assertContains(response, f'id="media-card-rating-{episode.id}"')
+        self.assertContains(response, ">7.5</span>")
+
     @patch("lists.views.services.get_media_metadata")
     @patch.object(get_user_model(), "update_preference")
     @patch.object(CustomList, "user_can_view")
@@ -4371,3 +4458,56 @@ class QuickAddListItemTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Test Track - Test Artist")
         self.assertContains(response, "Showing page 1 of 3")
+
+
+class ListRecommendationsViewTests(TestCase):
+    """Tests for the list recommendations queue."""
+
+    def setUp(self):
+        """Create a list owner with one tracked and one untracked recommendation."""
+        self.credentials = {"username": "owner", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.custom_list = CustomList.objects.create(name="Queue", owner=self.user)
+        self.tracked_item = Item.objects.create(
+            media_id="rec-tracked",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Tracked Recommendation",
+        )
+        self.untracked_item = Item.objects.create(
+            media_id="rec-untracked",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Untracked Recommendation",
+        )
+        ListRecommendation.objects.create(
+            custom_list=self.custom_list,
+            item=self.tracked_item,
+            anonymous_name="Friend",
+        )
+        ListRecommendation.objects.create(
+            custom_list=self.custom_list,
+            item=self.untracked_item,
+            anonymous_name="Friend",
+        )
+
+    def test_card_shows_viewer_rating_and_status_for_tracked_items(self):
+        """A recommended item the owner already tracks shows their rating and status."""
+        movie = Movie.objects.create(
+            item=self.tracked_item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            score=9,
+        )
+        self.client.login(**self.credentials)
+
+        response = self.client.get(
+            reverse("list_recommendations", args=[self.custom_list.id]),
+        )
+
+        content = response.content.decode()
+        self.assertIn("Untracked Recommendation", content)
+        self.assertIn(f'id="media-card-rating-{movie.id}"', content)
+        self.assertIn(f'id="media-status-chip-{movie.id}"', content)
+        self.assertEqual(content.count('class="media-status-chip '), 1)

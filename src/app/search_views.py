@@ -2,7 +2,7 @@ import logging
 
 from django.conf import settings
 from django.contrib import messages
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import render
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET
@@ -13,6 +13,7 @@ from app.models import (
     AlbumTracker,
     ArtistTracker,
     BasicMedia,
+    CollectionEntry,
     Item,
     MediaTypes,
     PodcastShowTracker,
@@ -101,6 +102,70 @@ def _matched_title(item_obj, search_query, user):
             if predicate(candidate):
                 return candidate
     return None
+
+
+def _collected_untracked_items(user, media_type, query, tracked_item_ids):
+    """Return a queryset of the user's collected ``media_type`` items no tracker covers.
+
+    Collection entries have no Media row, so the tracker queries above miss
+    them (#1270). A collected episode stands for its show, as it does in the
+    media list. Kept as one relational query so a large collection stays
+    bounded by the caller's slice.
+    """
+    user_entries = CollectionEntry.objects.filter(user=user)
+    collected = Exists(user_entries.filter(item_id=OuterRef("pk")))
+    if media_type in {MediaTypes.TV.value, MediaTypes.ANIME.value}:
+        collected |= Exists(
+            user_entries.filter(
+                item__media_type=MediaTypes.EPISODE.value,
+                item__media_id=OuterRef("media_id"),
+                item__source=OuterRef("source"),
+            ),
+        )
+
+    include_anime_in_anime, include_anime_in_tv = (
+        metadata_resolution.anime_library_visibility(user)
+    )
+    grouped_anime = Q(
+        media_type=MediaTypes.TV.value,
+        library_media_type=MediaTypes.ANIME.value,
+    )
+    if media_type == MediaTypes.ANIME.value:
+        type_filter = Q(media_type=MediaTypes.ANIME.value)
+        if include_anime_in_anime:
+            type_filter |= grouped_anime
+    elif media_type == MediaTypes.TV.value:
+        type_filter = Q(media_type=MediaTypes.TV.value)
+        if not include_anime_in_tv:
+            type_filter &= ~grouped_anime
+    else:
+        type_filter = Q(media_type=media_type)
+
+    return (
+        Item.objects.filter(type_filter, collected, title__icontains=query)
+        .exclude(id__in=tracked_item_ids)
+        .order_by("title", "id")
+    )
+
+
+def _merge_collected_items(local_media, collected_items, media_type, limit):
+    """Merge tracked media and collected items by title, capped at ``limit``.
+
+    Returns ``(media, item)`` pairs; ``media`` is None for a collected-only item.
+    """
+    merged = [(media, media.item) for media in local_media[:limit]]
+    merged += [(None, item) for item in collected_items[:limit]]
+    merged.sort(key=lambda pair: (pair[1].title or "").lower())
+    merged = merged[:limit]
+    if media_type == MediaTypes.ANIME.value:
+        _mark_grouped_anime_route(
+            [
+                item
+                for media, item in merged
+                if media is None and item.media_type == MediaTypes.TV.value
+            ],
+        )
+    return merged
 
 
 @require_GET
@@ -280,18 +345,30 @@ def media_search(request):
                         ).lower(),
                     )
 
-                local_results_total = len(local_media)
-                local_media = local_media[:local_results_limit]
-                BasicMedia.objects.annotate_max_progress(local_media, media_type)
+                collected_items = _collected_untracked_items(
+                    request.user,
+                    media_type,
+                    query,
+                    [media.item_id for media in local_media],
+                )
+                local_results_total = len(local_media) + collected_items.count()
+                merged = _merge_collected_items(
+                    local_media,
+                    collected_items,
+                    media_type,
+                    local_results_limit,
+                )
+                BasicMedia.objects.annotate_max_progress(
+                    [media for media, _item in merged if media is not None],
+                    media_type,
+                )
                 local_results = [
                     {
-                        "item": media.item,
+                        "item": item,
                         "media": media,
-                        "matched_title": _matched_title(
-                            media.item, query, request.user
-                        ),
+                        "matched_title": _matched_title(item, query, request.user),
                     }
-                    for media in local_media
+                    for media, item in merged
                 ]
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug("Local search failed: %s", exception_summary(exc))
@@ -523,8 +600,20 @@ def get_saved_suggestions(user, media_type, query, limit=8):
             ).lower(),
         )
 
-    for media in local_media[:limit]:
-        item = getattr(media, "item", None)
+    collected_items = _collected_untracked_items(
+        user,
+        media_type,
+        query,
+        [media.item_id for media in local_media],
+    )
+    local_items = [
+        item
+        for _media, item in _merge_collected_items(
+            local_media, collected_items, media_type, limit
+        )
+    ]
+
+    for item in local_items:
         if item is None:
             continue
         url = _safe_url(media_url, item)

@@ -346,13 +346,15 @@ class TV(Media):
 
         if not seasons:
             return
-        desired_status = (
-            Status.COMPLETED.value
-            if all(season.status == Status.COMPLETED.value for season in seasons)
-            else Status.IN_PROGRESS.value
-        )
-        if self.status != desired_status:
-            self.status = desired_status
+        if all(season.status == Status.COMPLETED.value for season in seasons):
+            # Only the provider's production status can finish the show; a
+            # returning series stays in progress after its rewatch ends.
+            self._handle_completed_season(
+                max(season.item.season_number for season in seasons),
+            )
+            return
+        if self.status != Status.IN_PROGRESS.value:
+            self.status = Status.IN_PROGRESS.value
             bulk_update_with_history([self], TV, fields=["status"])
 
     @property
@@ -1637,11 +1639,22 @@ class Season(Media):
         cache_utils.clear_time_left_cache_for_user(self.user_id)
         cache_utils.clear_media_list_cache_for_user(self.user_id)
 
-    def _sync_status_after_episode_change(self):
-        """Recalculate season (and TV) status using local data (no provider calls)."""
+    def _sync_status_after_episode_change(self, *, max_progress=None, plays_added=False):
+        """Recalculate season (and TV) status from local episode history.
+
+        `max_progress` is the provider's episode count when the caller already
+        has it; otherwise release events and the local count stand in.
+        `plays_added` marks a write that logged new plays (bulk Episode Plays):
+        like `Episode.save`, it resumes a paused season and completes an
+        in-progress one instead of reading In progress as a manual reopen.
+
+        Whether the show is finished is never decided here: a season that
+        becomes complete hands off to `TV._handle_completed_season`, the one
+        place that checks the provider's production status.
+        """
         if self.status == Status.DROPPED.value:
             return
-        if self.status == Status.PAUSED.value:
+        if self.status == Status.PAUSED.value and not plays_added:
             return
 
         # What episodes do we have logged?
@@ -1662,7 +1675,7 @@ class Season(Media):
             or 0
         )
         local_total = self.item.local_season_episode_count or 0
-        known_total = total_eps or local_total or None
+        known_total = max_progress or total_eps or local_total or None
 
         # Keep an explicit empty-history fallback: the shared derived-status
         # helper intentionally preserves the current status when there is no
@@ -1673,6 +1686,7 @@ class Season(Media):
         else:
             desired_status = self.derived_status_from_episode_progress(
                 max_progress=known_total,
+                resume_paused=plays_added,
             )
 
             # A manually reopened season is deliberately kept in progress even
@@ -1680,43 +1694,45 @@ class Season(Media):
             if (
                 desired_status == Status.COMPLETED.value
                 and self.status == Status.IN_PROGRESS.value
+                and not plays_added
             ):
                 desired_status = Status.IN_PROGRESS.value
 
-        season_updates = []
+        became_completed = (
+            desired_status == Status.COMPLETED.value
+            and self.status != Status.COMPLETED.value
+        )
         if desired_status and self.status != desired_status:
             self.status = desired_status
-            season_updates.append(self)
+            bulk_update_with_history([self], Season, fields=["status"])
+        if plays_added:
+            self.finish_rewatch_if_complete(max_progress=known_total)
 
         # Align the parent TV unless it was dropped explicitly
-        tv_updates = []
         tv = getattr(self, "related_tv", None)
-        if tv and tv.status != Status.DROPPED.value and desired_status:
-            if desired_status == Status.COMPLETED.value:
-                # Only mark TV complete if all real seasons are complete
-                has_incomplete = (
-                    tv.seasons.filter(
-                        item__season_number__gt=0,
-                    )
-                    .exclude(status=Status.COMPLETED.value)
-                    .exists()
-                )
-                tv_target = (
-                    Status.COMPLETED.value
-                    if not has_incomplete
-                    else Status.IN_PROGRESS.value
-                )
-            else:
-                tv_target = Status.IN_PROGRESS.value
-
-            if tv.status != tv_target:
-                tv.status = tv_target
-                tv_updates.append(tv)
-
-        if season_updates:
-            bulk_update_with_history(season_updates, Season, fields=["status"])
-        if tv_updates:
-            bulk_update_with_history(tv_updates, TV, fields=["status"])
+        if not tv or tv.status == Status.DROPPED.value or not desired_status:
+            return
+        if desired_status == Status.COMPLETED.value and (
+            became_completed
+            or plays_added
+            or not tv.seasons.filter(item__season_number__gt=0)
+            .exclude(status=Status.COMPLETED.value)
+            .exists()
+        ):
+            if tv.status == Status.PLANNING.value:
+                # Logged plays mean the show has started, whether or not
+                # the handoff below goes on to finish it.
+                tv.status = Status.IN_PROGRESS.value
+                bulk_update_with_history([tv], TV, fields=["status"])
+            # Starts the next season, or completes the show only when the
+            # provider says it has ended (a returning series stays open).
+            # Also runs on a re-sync with every season complete, so a show
+            # left open by a provider outage is finished once it answers.
+            tv._handle_completed_season(self.item.season_number)
+            return
+        if tv.status != Status.IN_PROGRESS.value:
+            tv.status = Status.IN_PROGRESS.value
+            bulk_update_with_history([tv], TV, fields=["status"])
 
     def get_tv(self):
         """Get related TV instance for a season and create it if it doesn't exist."""
@@ -2310,6 +2326,10 @@ class Episode(models.Model):
                 fields=["status"],
                 default_change_reason=EPISODE_PLAYED_REASON,
             )
+
+    # Episode is not a Media subclass; share its score formatting so an episode
+    # card shows its rating like every other card.
+    formatted_score = Media.formatted_score
 
     @property
     def progress(self):

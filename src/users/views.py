@@ -7,7 +7,7 @@ from datetime import timedelta
 from io import BytesIO
 from itertools import batched
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 from allauth.account.views import SignupView
 from allauth.socialaccount.views import SignupView as SocialSignupView
@@ -26,6 +26,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.defaultfilters import pluralize
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django_celery_beat.models import PeriodicTask
@@ -49,6 +50,7 @@ from app.models import (
 from app.providers import credentials, tmdb
 from app.templatetags import app_tags
 from integrations import exports, plex, seerr_api, stremio_catalog, tasks
+from integrations.imports import plex as plex_import
 from integrations.imports import trakt as trakt_imports
 from integrations.models import (
     DEFAULT_INTEGRATION_SCOPES,
@@ -91,9 +93,11 @@ from users.models import (
     ImportModeChoices,
     LogoStyleChoices,
     MediaCardSubtitleDisplayChoices,
+    MediaStatusChoices,
     MobileGridLayoutChoices,
     PlannedHomeDisplayChoices,
     RatingScaleChoices,
+    SavedView,
     SessionDurationChoices,
     ThemeChoices,
     TimeFormatChoices,
@@ -252,6 +256,7 @@ def _get_import_data_user(user):
     ).prefetch_related(
         "radarr_instances",
         "sonarr_instances",
+        "mylar_instances",
     ).get(pk=user.pk)
 
 
@@ -1566,6 +1571,7 @@ def import_data(request):
             koito_history_button_label = "Reimport full history"
     radarr_instances = list(user.radarr_instances.order_by("created_at"))
     sonarr_instances = list(user.sonarr_instances.order_by("created_at"))
+    mylar_instances = list(user.mylar_instances.order_by("created_at"))
     stremio_account = getattr(user, "stremio_account", None)
     xbox_account = getattr(user, "xbox_account", None)
     psn_account = getattr(user, "psn_account", None)
@@ -1648,6 +1654,10 @@ def import_data(request):
         "koito_account": koito_account,
         "radarr_instances": radarr_instances,
         "sonarr_instances": sonarr_instances,
+        "mylar_instances": mylar_instances,
+        "radarr_connected": any(i.is_connected() for i in radarr_instances),
+        "sonarr_connected": any(i.is_connected() for i in sonarr_instances),
+        "mylar_connected": any(i.is_connected() for i in mylar_instances),
         "stremio_account": stremio_account,
         "xbox_account": xbox_account,
         "psn_account": psn_account,
@@ -2424,6 +2434,10 @@ def delete_import_schedule(request):
         PlexAccount.objects.filter(user=request.user).update(
             watchlist_sync_enabled=False,
         )
+    if task.task == plex_import.MARK_WATCHED_TASK_NAME:
+        PlexAccount.objects.filter(user=request.user).update(
+            mark_watched_sync_enabled=False,
+        )
     task.delete()
     messages.success(request, "Import schedule deleted.")
     return redirect("import_data")
@@ -2715,6 +2729,22 @@ def update_plex_usernames(request):
         messages.success(request, "Plex usernames updated successfully")
 
     return redirect(redirect_target)
+
+
+@require_POST
+def update_plex_mark_watched(request):
+    """Turn the Plex manual watched-mark sync on or off for the user."""
+    account = getattr(request.user, "plex_account", None)
+    if not account:
+        messages.error(request, "Connect Plex before changing this setting.")
+        return redirect("integrations")
+
+    plex_import.set_mark_watched_sync(
+        account,
+        enabled="plex_mark_watched_enabled" in request.POST,
+    )
+    messages.success(request, "Plex watched settings updated successfully")
+    return redirect("integrations")
 
 
 @require_POST
@@ -3165,3 +3195,102 @@ def update_tmdb_proxy(request):
     )
 
     return redirect("advanced")
+
+
+# Form fields that describe the save request itself, not the media list view.
+_SAVED_VIEW_SKIP_PARAMS = frozenset(
+    {"csrfmiddlewaretoken", "edit_smart_rules", "media_type", "name", "page"},
+)
+
+
+def _saved_view_query(params) -> str:
+    """Return the media list query string a saved view should reopen."""
+    pairs = [
+        (key, value.strip())
+        for key in params
+        if key not in _SAVED_VIEW_SKIP_PARAMS
+        for value in params.getlist(key)
+        if value.strip()
+    ]
+    # Without a status param the media list falls back to the last-used
+    # status, so "all statuses" has to be spelled out.
+    if not any(key == "status" for key, _ in pairs):
+        pairs.append(("status", MediaStatusChoices.ALL.value))
+    return urlencode(pairs)
+
+
+@login_required
+@require_POST
+def saved_view_create(request):
+    """Save the current media list filters as a named sidebar view."""
+    if request.user.is_demo:
+        return JsonResponse(
+            {"error": "This section is view-only for demo accounts."},
+            status=403,
+        )
+
+    media_type = request.POST.get("media_type", "")
+    if media_type not in request.user.get_sidebar_media_types():
+        return JsonResponse({"error": "Invalid media type."}, status=400)
+
+    name = request.POST.get("name", "").strip()[:100]
+    if not name:
+        return JsonResponse({"error": "Give the view a name."}, status=400)
+
+    last = (
+        SavedView.objects.filter(user=request.user, media_type=media_type)
+        .order_by("-position")
+        .first()
+    )
+    saved_view = SavedView.objects.create(
+        user=request.user,
+        media_type=media_type,
+        name=name,
+        query=_saved_view_query(request.POST),
+        position=last.position + 1 if last else 0,
+    )
+    return JsonResponse({"url": saved_view.get_absolute_url()})
+
+
+@login_required
+@require_POST
+def saved_view_delete(request, view_id: int):
+    """Delete one of the user's saved views and return to the page it was on."""
+    saved_view = get_object_or_404(SavedView, id=view_id, user=request.user)
+    if not request.user.is_demo:
+        saved_view.delete()
+
+    next_url = request.POST.get("next", "")
+    if not url_has_allowed_host_and_scheme(
+        next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        next_url = reverse("medialist", args=[saved_view.media_type])
+    return redirect(next_url)
+
+
+@login_required
+@require_POST
+def saved_view_reorder(request):
+    """Store a new order for one media type's saved views."""
+    if request.user.is_demo:
+        return HttpResponse(status=403)
+
+    media_type = request.POST.get("media_type", "")
+    views_by_id = {
+        str(saved_view.id): saved_view
+        for saved_view in SavedView.objects.filter(
+            user=request.user,
+            media_type=media_type,
+        )
+    }
+    ordered_ids = [
+        view_id for view_id in request.POST.getlist("ids") if view_id in views_by_id
+    ]
+    # Views missing from the request keep their relative order at the end.
+    ordered_ids += [view_id for view_id in views_by_id if view_id not in ordered_ids]
+    for position, view_id in enumerate(ordered_ids):
+        views_by_id[view_id].position = position
+    SavedView.objects.bulk_update(views_by_id.values(), ["position"])
+    return HttpResponse(status=204)

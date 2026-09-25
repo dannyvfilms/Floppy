@@ -1714,49 +1714,6 @@
         </div>
       {% endif %}
 
-      <!-- Top Rated Media Section -->
-      {% comment %}
-      COMMENTED OUT: Old "ALL MEDIA - Top Rated Media" section
-      REPLACED BY: New 3-card rows in Movies and TV Shows Activity Overview sections (Top Rated cards)
-      Location: After "Movie Plays by Time of Day" chart (Movies) and "Episode Plays by Time of Day" chart (TV Shows)
-      To restore: Uncomment this entire section
-      <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 mobile-tight-section stat-scroll-safe mb-4 sm:mb-6">
-        <div class="flex flex-col space-y-1 mb-3 sm:mb-4">
-          <span class="text-sm uppercase tracking-widest text-[var(--color-text-muted)]">{% translate "All Media" %}</span>
-          <h2 class="text-2xl font-semibold text-[var(--color-text)]">Top Rated Media</h2>
-        </div>
-
-        {% if top_rated %}
-          <div class="media-grid">
-            {% for media in top_rated %}
-              {% include "app/components/media_card.html" with media=media item=media.item title=media.item from_grid=True secondary_color=True user=user current_sort='progress' %}
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="flex flex-col items-center justify-center py-16">
-            <div class="bg-[var(--color-surface-strong)] rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-              <svg xmlns="http://www.w3.org/2000/svg"
-                   width="24"
-                   height="24"
-                   viewBox="0 0 24 24"
-                   fill="none"
-                   stroke="currentColor"
-                   stroke-width="2"
-                   stroke-linecap="round"
-                   stroke-linejoin="round"
-                   class="w-8 h-8 text-[var(--color-text-muted)]">
-                <path d="m15.477 12.89 1.515 8.526a.5.5 0 0 1-.81.47l-3.58-2.687a1 1 0 0 0-1.197 0l-3.586 2.686a.5.5 0 0 1-.81-.469l1.514-8.526">
-                </path>
-                <circle cx="12" cy="8" r="6"></circle>
-              </svg>
-            </div>
-            <h3 class="text-lg font-medium mb-2">No ratings yet</h3>
-            <p class="text-[var(--color-text-muted)] text-center max-w-md">Rate your media items to see score distribution statistics.</p>
-          </div>
-        {% endif %}
-      </div>
-      {% endcomment %}
-
     </div>
   </div>
 
@@ -2028,6 +1985,7 @@
         </div>
       </div>
     </div>
+  </div>
   </div>
 {% endblock content %}
 

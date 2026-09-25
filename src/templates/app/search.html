@@ -332,7 +332,7 @@
         <div {% if layout == 'grid' %}
           class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
           {% for result in local_results %}
-            {% include "app/components/media_card.html" with item=result.item title=result.item.title media=result.media user=user from_grid=True matched_title=result.matched_title %}
+            {% media_card "search" item=result.item title=result.item.title media=result.media matched_title=result.matched_title %}
           {% endfor %}
         {% else %}
           class="grid grid-cols-1 gap-4">
@@ -340,6 +340,7 @@
             {% include "app/components/media_card_list.html" with item=result.item title=result.item.title media=result.media user=user matched_title=result.matched_title %}
           {% endfor %}
         {% endif %}
+      </div>
       </div>
     {% endif %}
 
@@ -349,7 +350,7 @@
         <div {% if layout == 'grid' %}
           class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-4">
           {% for result in data.results %}
-            {% include "app/components/media_card.html" with item=result.item title=result.item.title media=result.media user=user from_grid=True matched_title=result.matched_title %}
+            {% media_card "search" item=result.item title=result.item.title media=result.media matched_title=result.matched_title %}
           {% endfor %}
         {% else %}
           class="grid grid-cols-1 gap-4">
@@ -405,6 +406,7 @@
           {% blocktranslate trimmed with value_1=data.page value_2=data.total_pages value_3=data.total_results %}Page {{ value_1 }} of {{ value_2 }} ({{ value_3 }} results){% endblocktranslate %}
         </div>
       {% endif %}
+      </div>
     {% endif %}
 
     {% if not local_results and not data.results %}

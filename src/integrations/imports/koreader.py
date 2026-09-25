@@ -7,6 +7,7 @@ import logging
 import re
 from datetime import UTC, datetime
 from difflib import SequenceMatcher
+from functools import partial
 from http import HTTPStatus
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from app.providers import services
 from integrations import connection_health, import_progress
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import KoreaderAccount, KoreaderDocumentLink
+from integrations.safe_fetch import send_to_self_hosted
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +90,8 @@ class KoreaderClient:
         return f"{self.server_url}/{path.lstrip('/')}"
 
     def _request(self, method: str, path: str, **kwargs):
-        response = requests.request(
-            method,
+        response = send_to_self_hosted(
+            partial(requests.request, method),
             self._url(path),
             headers=self._headers(),
             timeout=kwargs.pop("timeout", API_TIMEOUT),

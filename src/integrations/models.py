@@ -53,6 +53,18 @@ class PlexAccount(models.Model):
         help_text="Last Plex watchlist sync error",
     )
     watchlist_last_error_at = models.DateTimeField(blank=True, null=True)
+    mark_watched_sync_enabled = models.BooleanField(
+        default=False,
+        help_text=(
+            "Whether recurring Plex history polling for manually marked "
+            "watched items is enabled"
+        ),
+    )
+    mark_watched_checkpoint = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Newest Plex history viewedAt already polled",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -714,6 +726,58 @@ class SonarrInstance(models.Model):
         return bool(self.base_url and self.api_key) and not self.connection_broken
 
 
+class MylarInstance(models.Model):
+    """Store connection settings and sync state for one Mylar3 instance.
+
+    Mylar3 keys its series and issues by Comic Vine id, so a sync can mark
+    Floppy's Comic Vine comic issues as owned without title matching.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="mylar_instances",
+    )
+    name = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional label to distinguish multiple instances",
+    )
+    base_url = models.URLField(help_text="Mylar3 server URL")
+    api_key = models.TextField(help_text="Encrypted Mylar3 API key")
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_sync_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Model options."""
+
+        verbose_name = "Mylar3 instance"
+        verbose_name_plural = "Mylar3 instances"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "base_url"],
+                name="integrations_mylarinstance_unique_user_base_url",
+            ),
+        ]
+
+    def __str__(self):
+        """Return a readable label for this Mylar3 instance."""
+        return f"{self.display_name} ({self.user})"
+
+    @property
+    def display_name(self):
+        """Return the instance's label, falling back to a generic name."""
+        return self.name or "Mylar3"
+
+    def is_connected(self):
+        """Return True when the instance appears connected."""
+        return bool(self.base_url and self.api_key) and not self.connection_broken
+
+
 class MDBListAccount(models.Model):
     """Store MDBList connection settings and sync state for a user."""
 
@@ -842,6 +906,7 @@ class CollectionSourceState(models.Model):
         ("jellyfin", "Jellyfin"),
         ("radarr", "Radarr"),
         ("sonarr", "Sonarr"),
+        ("mylar", "Mylar3"),
     ]
 
     user = models.ForeignKey(
@@ -859,7 +924,7 @@ class CollectionSourceState(models.Model):
         null=True,
         blank=True,
         help_text=(
-            "PK of the RadarrInstance/SonarrInstance this row came from; "
+            "PK of the Radarr/Sonarr/Mylar instance this row came from; "
             "unused for plex/jellyfin"
         ),
     )

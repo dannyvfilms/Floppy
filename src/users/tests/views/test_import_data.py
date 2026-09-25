@@ -362,3 +362,27 @@ class ImportDataViewTests(TestCase):
         self.assertEqual(self.user.plex_account.sections[0]["title"], "Movies")
         self.assertIsNotNone(self.user.plex_account.sections_refreshed_at)
         mock_list_sections.assert_called_once_with(self.plex_token)
+
+    def test_arr_cards_show_connected_only_for_a_working_instance(self):
+        """The Radarr/Sonarr/Mylar3 cards read their instance lists, not an account."""
+        from integrations.imports.helpers import encrypt
+        from integrations.models import MylarInstance, RadarrInstance, SonarrInstance
+
+        RadarrInstance.objects.create(
+            user=self.user, base_url="https://radarr.local", api_key=encrypt("k")
+        )
+        SonarrInstance.objects.create(
+            user=self.user,
+            base_url="https://sonarr.local",
+            api_key=encrypt("k"),
+            connection_broken=True,
+        )
+        MylarInstance.objects.create(
+            user=self.user, base_url="https://mylar.local", api_key=encrypt("k")
+        )
+
+        response = self.client.get(reverse("import_data"))
+
+        self.assertTrue(response.context["radarr_connected"])
+        self.assertFalse(response.context["sonarr_connected"])
+        self.assertTrue(response.context["mylar_connected"])

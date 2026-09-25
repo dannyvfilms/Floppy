@@ -85,7 +85,11 @@ class ListenBrainzScrobbleProcessor:
             track_title=track_title,
             artist_name=artist_name,
             album_title=album_title,
-            track_number=_coerce_int(additional.get("track_number")),
+            # The ListenBrainz spec (and Navidrome) name it `tracknumber`; some
+            # clients send `track_number`.
+            track_number=_coerce_int(
+                additional.get("tracknumber") or additional.get("track_number")
+            ),
             duration_ms=_resolve_duration_ms(additional),
             plex_rating_key=None,
             external_ids=external_ids,

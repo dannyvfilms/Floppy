@@ -273,13 +273,96 @@
 
                 {% get_sidebar_media_types user as sidebar_media_types %}
                 {% for item in sidebar_media_types %}
-                  <li>
-                    <a href="{% url 'medialist' media_type=item.media_type %}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if media_type == item.media_type %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% icon item.media_type is_active=media_type|str_equals:item.media_type %}
-                      <span>{{ item.display_name }}</span>
-                    </a>
-                  </li>
+                  {% if item.saved_views %}
+                    {% url 'saved_view_reorder' as saved_view_reorder_url %}
+                    <li x-data="savedViewGroup('{{ item.media_type|escapejs }}', '{{ saved_view_reorder_url|escapejs }}', '{{ csrf_token|escapejs }}')">
+                      <div class="flex items-center rounded-md transition-colors duration-200 text-sm {% if media_type == item.media_type %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                        <a href="{% url 'medialist' media_type=item.media_type %}"
+                           class="flex-1 min-w-0 flex items-center space-x-3 pl-4 py-2">
+                          {% icon item.media_type is_active=media_type|str_equals:item.media_type %}
+                          <span>{{ item.display_name }}</span>
+                        </a>
+                        <button type="button"
+                                class="mr-2 p-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] cursor-pointer"
+                                :aria-expanded="open.toString()"
+                                aria-label="{% blocktrans with name=item.display_name %}Saved {{ name }} views{% endblocktrans %}"
+                                @click="toggle()">
+                          <span class="block transition-transform duration-200"
+                                :class="open ? '' : '-rotate-90'">
+                            {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
+                          </span>
+                        </button>
+                      </div>
+                      <ul class="mt-1 ml-8 space-y-1" x-ref="list" x-show="open" x-cloak>
+                        {% for saved_view in item.saved_views %}
+                          {% with saved_view_url=saved_view.get_absolute_url %}
+                            <li class="group relative flex items-center gap-2 pl-3 pr-1 rounded-md transition-colors duration-200 text-sm {% if request.get_full_path == saved_view_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}"
+                                data-saved-view-id="{{ saved_view.id }}"
+                                x-data="{ menu: false }"
+                                @click.outside="menu = false"
+                                @keydown.escape="menu = false">
+                              <span class="saved-view-drag-handle shrink-0 cursor-grab text-[var(--color-text-muted)]"
+                                    x-show="reordering"
+                                    x-cloak>
+                                {% include "app/icons/drag-handle.svg" with classes="w-4 h-4" %}
+                              </span>
+                              <a href="{{ saved_view_url }}"
+                                 {% if request.get_full_path == saved_view_url %}aria-current="page"{% endif %}
+                                 :class="reordering && 'pointer-events-none'"
+                                 class="flex-1 min-w-0 truncate py-1.5">{{ saved_view.name }}</a>
+                              <button type="button"
+                                      class="shrink-0 p-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] cursor-pointer pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus:opacity-100"
+                                      :class="menu && 'pointer-fine:opacity-100'"
+                                      x-show="!reordering"
+                                      :aria-expanded="menu.toString()"
+                                      aria-label="{% blocktrans with name=saved_view.name %}Options for {{ name }}{% endblocktrans %}"
+                                      @click="menu = !menu">
+                                {% include "app/icons/ellipsis.svg" with classes="w-4 h-4" %}
+                              </button>
+                              <div class="absolute right-0 top-full z-50 mt-1 w-36 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-gray-700"
+                                   x-show="menu"
+                                   x-cloak>
+                                <button type="button"
+                                        class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] cursor-pointer"
+                                        @click="menu = false; startReorder()">
+                                  {% include "app/icons/arrows-up-down.svg" with classes="w-4 h-4" %}
+                                  <span>{% translate "Reorder" %}</span>
+                                </button>
+                                <form method="post"
+                                      action="{% url 'saved_view_delete' saved_view.id %}"
+                                      class="m-0"
+                                      hx-confirm="{% blocktrans with name=saved_view.name %}Delete the saved view “{{ name }}”?{% endblocktrans %}">
+                                  {% csrf_token %}
+                                  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                  <button type="submit"
+                                          class="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-[var(--color-surface-hover)] cursor-pointer">
+                                    {% include "app/icons/trashcan.svg" with classes="w-4 h-4" %}
+                                    <span>{% translate "Delete" %}</span>
+                                  </button>
+                                </form>
+                              </div>
+                            </li>
+                          {% endwith %}
+                        {% endfor %}
+                        <li x-show="reordering" x-cloak>
+                          <button type="button"
+                                  class="flex items-center gap-2 w-full pl-3 pr-1 py-1.5 rounded-md text-sm text-left text-[var(--color-link)] hover:bg-[var(--color-hover-dim)] cursor-pointer"
+                                  @click="finishReorder()">
+                            {% include "app/icons/checkmark.svg" with classes="w-4 h-4 shrink-0" %}
+                            <span>{% translate "Done" %}</span>
+                          </button>
+                        </li>
+                      </ul>
+                    </li>
+                  {% else %}
+                    <li>
+                      <a href="{% url 'medialist' media_type=item.media_type %}"
+                         class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if media_type == item.media_type %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                        {% icon item.media_type is_active=media_type|str_equals:item.media_type %}
+                        <span>{{ item.display_name }}</span>
+                      </a>
+                    </li>
+                  {% endif %}
                 {% endfor %}
               </ul>
 
@@ -835,6 +918,7 @@
     <script src="{% static 'js/sessionHistory.js' %}{% get_static_file_mtime 'js/sessionHistory.js' %}"></script>
     <script src="{% static 'js/episodeBulkTrackForm.js' %}{% get_static_file_mtime 'js/episodeBulkTrackForm.js' %}"></script>
     <script src="{% static 'js/bulkSelection.js' %}{% get_static_file_mtime 'js/bulkSelection.js' %}"></script>
+    <script src="{% static 'js/savedViews.js' %}{% get_static_file_mtime 'js/savedViews.js' %}"></script>
     <script src="{% static 'js/collectionCustomFields.js' %}{% get_static_file_mtime 'js/collectionCustomFields.js' %}"></script>
     <script src="{% static 'js/searchShortcut.js' %}{% get_static_file_mtime 'js/searchShortcut.js' %}"></script>
     <script src="{% static 'js/searchAutocomplete.js' %}{% get_static_file_mtime 'js/searchAutocomplete.js' %}"></script>

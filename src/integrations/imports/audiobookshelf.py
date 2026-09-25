@@ -32,6 +32,7 @@ from app.providers import services
 from integrations import audiobookshelf_cover, connection_health, import_progress
 from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 from integrations.models import AudiobookshelfAccount
+from integrations.safe_fetch import send_to_self_hosted
 
 logger = logging.getLogger(__name__)
 HTTP_BAD_REQUEST = 400
@@ -86,7 +87,8 @@ class AudiobookshelfClient:
         attempt = 0
         while True:
             try:
-                response = requests.get(
+                response = send_to_self_hosted(
+                    requests.get,
                     url,
                     headers={"Authorization": f"Bearer {self.token}"},
                     timeout=20,

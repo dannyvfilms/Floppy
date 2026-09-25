@@ -83,6 +83,9 @@ urlpatterns = [
     path("import/radarr/connect", views.radarr_connect, name="radarr_connect"),
     path("import/radarr/disconnect", views.radarr_disconnect, name="radarr_disconnect"),
     path("import/radarr", views.import_radarr, name="import_radarr"),
+    path("import/mylar/connect", views.mylar_connect, name="mylar_connect"),
+    path("import/mylar/disconnect", views.mylar_disconnect, name="mylar_disconnect"),
+    path("import/mylar", views.import_mylar, name="import_mylar"),
     path("import/sonarr/connect", views.sonarr_connect, name="sonarr_connect"),
     path("import/sonarr/disconnect", views.sonarr_disconnect, name="sonarr_disconnect"),
     path("import/sonarr", views.import_sonarr, name="import_sonarr"),
@@ -112,6 +115,7 @@ urlpatterns = [
     path("import/hardcover", views.import_hardcover, name="import_hardcover"),
     path("import/storygraph", views.import_storygraph, name="import_storygraph"),
     path("import/tvtime", views.import_tvtime, name="import_tvtime"),
+    path("import/wetrakr", views.import_wetrakr, name="import_wetrakr"),
     path(
         "import/audiobookshelf/connect",
         views.audiobookshelf_connect,

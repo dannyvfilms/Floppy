@@ -326,3 +326,79 @@ class SeasonCompletionEvidenceTests(TestCase):
         Season.objects.filter(pk=self.season.pk).update(status=Status.IN_PROGRESS.value)
 
         self.assertEqual(self._sync_status(), Status.IN_PROGRESS.value)
+
+    def test_resync_of_completed_season_leaves_a_returning_show_in_progress(self):
+        """Editing a play of a finished season does not finish an airing show (#1265).
+
+        The re-sync used to mark the show Completed as soon as every season
+        was, without asking the provider whether the show has ended.
+        """
+        self._record_episodes(range(1, 11))
+        Season.objects.filter(pk=self.season.pk).update(status=Status.COMPLETED.value)
+        TV.objects.filter(pk=self.tv.pk).update(status=Status.IN_PROGRESS.value)
+        returning = {
+            "details": {"status": "Continuing"},
+            "related": {"seasons": [{"season_number": 1}]},
+        }
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=returning,
+        ):
+            self.assertEqual(self._sync_status(), Status.COMPLETED.value)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.IN_PROGRESS.value)
+
+    def test_completed_season_finishes_an_ended_show(self):
+        self._record_episodes(range(1, 11))
+        ended = {
+            "details": {"status": "Ended"},
+            "related": {"seasons": [{"season_number": 1}]},
+        }
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=ended,
+        ):
+            self.assertEqual(self._sync_status(), Status.COMPLETED.value)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.COMPLETED.value)
+
+    def test_added_plays_complete_an_in_progress_season(self):
+        """New plays covering every episode complete the season (#1265).
+
+        Unlike a bare re-sync, where In progress means a manual reopen.
+        """
+        self._record_episodes(range(1, 11))
+        Season.objects.filter(pk=self.season.pk).update(status=Status.IN_PROGRESS.value)
+        self.season.refresh_from_db()
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value={"details": {"status": "Ended"}},
+        ):
+            self.season._sync_status_after_episode_change(plays_added=True)
+
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.COMPLETED.value)
+
+    def test_resync_of_completed_season_finishes_an_ended_show(self):
+        """A show left open by a provider outage is finished on a later re-sync."""
+        self._record_episodes(range(1, 11))
+        Season.objects.filter(pk=self.season.pk).update(status=Status.COMPLETED.value)
+        TV.objects.filter(pk=self.tv.pk).update(status=Status.IN_PROGRESS.value)
+        ended = {
+            "details": {"status": "Ended"},
+            "related": {"seasons": [{"season_number": 1}]},
+        }
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=ended,
+        ):
+            self.assertEqual(self._sync_status(), Status.COMPLETED.value)
+
+        self.tv.refresh_from_db()
+        self.assertEqual(self.tv.status, Status.COMPLETED.value)

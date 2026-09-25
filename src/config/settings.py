@@ -1702,6 +1702,7 @@ CELERY_TASK_ROUTES = {
     # background tasks so a backlog of low-priority work doesn't delay them.
     "Import from Radarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Import from Sonarr (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
+    "Import from Mylar3 (Recurring)": {"priority": CELERY_TASK_PRIORITY_FOLLOWUP},
     "Import from Audiobookshelf (Recurring)": {
         "priority": CELERY_TASK_PRIORITY_FOLLOWUP,
     },

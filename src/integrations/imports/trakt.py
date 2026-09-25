@@ -1704,7 +1704,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         updated_at = parse_datetime(
             entry.get("listed_at")
             or entry.get("rated_at")
-            or (entry.get("comment") or entry.get("note") or {}).get("updated_at"),
+            or (entry.get("comment") or entry.get("note") or {}).get("updated_at")
+            # An entry may carry no date at all (e.g. a WeTrakr export row).
+            or "",
         )
 
         # A rating, a comment, or a note says nothing about whether the user

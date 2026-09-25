@@ -1,8 +1,21 @@
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import Client, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from app.models import CollectionEntry, Game, Item, MediaTypes, Sources, Status
+from app.models import (
+    TV,
+    CollectionEntry,
+    Episode,
+    Game,
+    Item,
+    MediaTypes,
+    Movie,
+    Season,
+    Sources,
+    Status,
+)
 from integrations.models import CollectionSourceState
 
 
@@ -79,6 +92,146 @@ class CollectionListViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context["collection_entries"]), 0)
 
+    def test_collection_card_shows_tracked_rating_and_status(self):
+        """A collected item the user tracks shows the same rating and status as the library."""
+        movie = Movie.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            score=8.5,
+        )
+        CollectionEntry.objects.create(user=self.user, item=self.item)
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"))
+
+        content = response.content.decode()
+        self.assertIn(f'id="media-card-rating-{movie.id}"', content)
+        self.assertIn(">8.5</span>", content)
+        self.assertIn(f'id="media-status-chip-{movie.id}"', content)
+        self.assertIn('class="media-status-chip ', content)
+
+    def test_collection_card_for_untracked_item_has_no_rating_or_status(self):
+        """An owned but untracked item shows no status chip and no rating."""
+        CollectionEntry.objects.create(user=self.user, item=self.item)
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"))
+
+        content = response.content.decode()
+        self.assertIn("Test Movie", content)
+        self.assertNotIn("media-card-rating-", content)
+        self.assertNotIn('class="media-status-chip ', content)
+
+    def test_collection_card_rating_ignores_other_users_tracking(self):
+        """Another user's rating of the same item never appears on this user's card."""
+        other_user = get_user_model().objects.create_user(
+            username="other",
+            password="12345",
+        )
+        Movie.objects.create(
+            item=self.item,
+            user=other_user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            score=3,
+        )
+        CollectionEntry.objects.create(user=self.user, item=self.item)
+        self.client.login(**self.credentials)
+
+        response = self.client.get(reverse("collection_list"))
+
+        self.assertNotContains(response, "media-card-rating-")
+
+    def test_collection_card_lookup_does_not_grow_with_page_size(self):
+        """Loading ratings for the page is a fixed number of queries, not one per card."""
+        self.client.login(**self.credentials)
+
+        def add_tracked_movies(start, count):
+            for index in range(start, start + count):
+                item = Item.objects.create(
+                    media_id=f"query-{index}",
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.MOVIE.value,
+                    title=f"Query Movie {index}",
+                )
+                Movie.objects.create(
+                    item=item,
+                    user=self.user,
+                    status=Status.COMPLETED.value,
+                    progress=1,
+                    score=7,
+                )
+                CollectionEntry.objects.create(user=self.user, item=item)
+
+        def count_queries():
+            with CaptureQueriesContext(connection) as queries:
+                self.client.get(reverse("collection_list"))
+            return len(queries)
+
+        add_tracked_movies(0, 2)
+        count_queries()  # the first visit also runs one-time setup queries
+        small_page = count_queries()
+        add_tracked_movies(2, 8)
+        large_page = count_queries()
+
+        self.assertEqual(small_page, large_page)
+
+
+    def test_collection_episode_cards_do_not_query_per_episode(self):
+        """Episode cards read their season; it is loaded with the page, not per card."""
+        self.client.login(**self.credentials)
+        show_item = Item.objects.create(
+            media_id="ep-show",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Episode Show",
+        )
+        season_item = Item.objects.create(
+            media_id="ep-show",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Episode Show",
+        )
+        tv = TV.objects.create(
+            item=show_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        def add_tracked_episodes(start, count):
+            for number in range(start, start + count):
+                item = Item.objects.create(
+                    media_id="ep-show",
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.EPISODE.value,
+                    season_number=1,
+                    episode_number=number,
+                    title=f"Episode {number}",
+                )
+                Episode.objects.create(item=item, related_season=season)
+                CollectionEntry.objects.create(user=self.user, item=item)
+
+        def count_queries():
+            with CaptureQueriesContext(connection) as queries:
+                self.client.get(reverse("collection_list"))
+            return len(queries)
+
+        add_tracked_episodes(1, 2)
+        count_queries()  # the first visit also runs one-time setup queries
+        small_page = count_queries()
+        add_tracked_episodes(3, 4)
+        large_page = count_queries()
+
+        self.assertEqual(small_page, large_page)
 
 class CollectionCompletenessTest(TestCase):
     """Test the collection page's partial/full collection filter and badge."""

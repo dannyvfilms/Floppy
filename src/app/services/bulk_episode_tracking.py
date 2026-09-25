@@ -1170,9 +1170,21 @@ def apply_bulk_episode_plays(
                 normalize_completed_entry(episode)
             created_count = len(episodes_to_create)
 
-    for season_tracker in touched_seasons.values():
+    # bulk_create skips Episode.save, which is what completes a season on a
+    # single play, so settle each season here with the provider's episode
+    # count, in watch order so each completion hands on to the next season.
+    for season_number in sorted(touched_seasons):
+        season_tracker = touched_seasons[season_number]
         season_tracker.refresh_from_db()
-        season_tracker._sync_status_after_episode_change()
+        season_payload = domain["season_payloads"][season_number]
+        season_tracker._sync_status_after_episode_change(
+            max_progress=(
+                season_payload.get("max_progress")
+                or len(season_payload.get("episodes") or [])
+                or None
+            ),
+            plays_added=bool(created_count),
+        )
 
     if created_count or replaced_episode_count:
         flush_media_change_side_effects(

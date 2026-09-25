@@ -535,6 +535,146 @@ class EpisodeBulkSaveViewTests(TestCase):
             1,
         )
 
+    def _bulk_watch_whole_show(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+        *,
+        production_status,
+    ):
+        """Bulk-log every episode of a two-season show, one season part-watched.
+
+        No release events exist (the calendar reloads after the save), so the
+        season totals can only come from the provider payload.
+        """
+        seasons = [
+            {
+                "season_number": number,
+                "season_title": f"Season {number}",
+                "episodes": [
+                    _season_episode(1, air_date="2024-01-01"),
+                    _season_episode(2, air_date="2024-01-02"),
+                ],
+            }
+            for number in (1, 2)
+        ]
+        base_payload = _tv_base_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        base_payload["details"]["status"] = production_status
+        tv_with_seasons = _tv_with_seasons_payload(
+            "1396",
+            Sources.TMDB.value,
+            title="Breaking Bad",
+            seasons=seasons,
+        )
+        mock_get_metadata.side_effect = lambda media_type, *_args, **_kwargs: (
+            tv_with_seasons if media_type == "tv_with_seasons" else base_payload
+        )
+        mock_resolve_detail_metadata.return_value = self.default_resolution
+
+        tv = TV.objects.create(
+            item=Item.objects.create(
+                media_id="1396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title="Breaking Bad",
+            ),
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_one = Season.objects.create(
+            item=Item.objects.create(
+                media_id="1396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                season_number=1,
+                title="Breaking Bad",
+            ),
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        Episode.objects.create(
+            item=Item.objects.create(
+                media_id="1396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=1,
+                episode_number=1,
+                title="Episode 1",
+            ),
+            related_season=season_one,
+            end_date=datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+        )
+
+        response = self._post_bulk(
+            {
+                "media_id": "1396",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.TV.value,
+                "library_media_type": MediaTypes.TV.value,
+                "identity_media_type": "",
+                "instance_id": str(tv.id),
+                "return_url": self.return_url,
+                "first_season_number": 1,
+                "first_episode_number": 1,
+                "last_season_number": 2,
+                "last_episode_number": 2,
+                "write_mode": "add",
+                "distribution_mode": "even",
+                "start_date": "2024-02-01T00:00",
+                "end_date": "2024-02-02T00:00",
+            },
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(
+            list(
+                Season.objects.filter(user=self.user, item__media_id="1396")
+                .order_by("item__season_number")
+                .values_list("status", flat=True),
+            ),
+            [Status.COMPLETED.value, Status.COMPLETED.value],
+        )
+        tv.refresh_from_db()
+        return tv
+
+    @patch("app.views.metadata_resolution.resolve_detail_metadata")
+    @patch("app.providers.services.get_media_metadata")
+    def test_bulk_watching_every_episode_completes_seasons_and_ended_show(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+    ):
+        """Bulk plays complete fully watched seasons, even in-progress ones (#1265)."""
+        tv = self._bulk_watch_whole_show(
+            mock_get_metadata,
+            mock_resolve_detail_metadata,
+            production_status="Ended",
+        )
+
+        self.assertEqual(tv.status, Status.COMPLETED.value)
+
+    @patch("app.views.metadata_resolution.resolve_detail_metadata")
+    @patch("app.providers.services.get_media_metadata")
+    def test_bulk_watching_every_episode_keeps_returning_series_in_progress(
+        self,
+        mock_get_metadata,
+        mock_resolve_detail_metadata,
+    ):
+        """Every aired season complete does not finish a show still airing (#1265)."""
+        tv = self._bulk_watch_whole_show(
+            mock_get_metadata,
+            mock_resolve_detail_metadata,
+            production_status="Returning Series",
+        )
+
+        self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+
     @patch("app.views.metadata_resolution.resolve_detail_metadata")
     @patch("app.providers.services.get_media_metadata")
     def test_bulk_rewatch_inherits_prior_rating(
