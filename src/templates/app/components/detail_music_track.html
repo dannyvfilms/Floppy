@@ -1,0 +1,101 @@
+{% load i18n %}
+{% load app_tags %}
+{% load user_tags %}
+
+<div class="flex flex-col md:flex-row gap-8 md:gap-10 mb-12 md:mb-8">
+  <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
+    {% if album_display_image and album_display_image != IMG_NONE %}
+      <img alt="{{ track.title }}"
+           class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
+           src="{{ album_display_image|image_url }}"
+           referrerpolicy="origin">
+    {% else %}
+      <div class="w-full aspect-square rounded-lg shadow-lg bg-[var(--color-surface)] flex items-center justify-center">
+        {% icon 'music' is_active=False extra_classes="w-24 h-24 text-[var(--color-text-muted)]" %}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="md:w-3/4">
+    <div class="mb-1 text-center md:text-start">
+      <h1 class="text-3xl font-bold">{{ track.title }}</h1>
+    </div>
+    <div class="mb-3 text-center text-sm font-medium text-[var(--color-text-muted)] md:text-start">
+      {% with credits=album.artist_credits.all %}
+        {% if credits %}
+          {% for credit in credits %}
+            <a href="{{ credit.artist|music_artist_url }}"
+               class="hover:text-indigo-500 transition-colors duration-200">{{ credit.artist.name }}</a>{{ credit.join_phrase|music_artist_join_phrase }}
+          {% endfor %}
+        {% elif artist %}
+          <a href="{{ artist|music_artist_url }}"
+             class="hover:text-indigo-500 transition-colors duration-200">{{ artist.name }}</a>
+        {% else %}
+          {% translate "Unknown Artist" %}
+        {% endif %}
+      {% endwith %}
+      <span class="mx-2 text-gray-600">•</span>
+      <a href="{{ album|music_album_url }}"
+         class="hover:text-indigo-500 transition-colors duration-200">{{ album.title }}</a>
+    </div>
+  </div>
+</div>
+
+<div class="flex flex-col md:flex-row gap-12 md:gap-10">
+  <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0">
+    <h2 class="text-xl font-bold mb-4">{% translate "Details" %}</h2>
+    <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
+      {% if track.track_number %}
+        <div class="mb-4">
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "TRACK" %}</h3>
+          <p class="text-[var(--color-text-secondary)]">
+            {{ track.track_number }}
+            {% if track.disc_number > 1 %}
+              {% blocktranslate trimmed with value_1=track.disc_number %}(Disc {{ value_1 }}){% endblocktranslate %}
+            {% endif %}
+          </p>
+        </div>
+      {% endif %}
+      {% if track.duration_formatted %}
+        <div>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "DURATION" %}</h3>
+          <p class="text-[var(--color-text-secondary)]">{{ track.duration_formatted }}</p>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if track_genres %}
+      <h2 class="text-xl font-bold mb-4 mt-6">{% translate "Genres" %}</h2>
+      <div class="bg-[var(--color-surface)] p-4 rounded-lg text-center md:text-start">
+        <div class="flex flex-wrap gap-2 justify-center md:justify-start">
+          {% for genre in track_genres %}
+            <span class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)]">{{ genre }}</span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="w-full md:w-3/4">
+    <section class="mb-8">
+      <h2 class="text-xl font-bold mb-4">{% translate "Play history" %}</h2>
+      {% if track_history %}
+        <div class="space-y-2">
+          {% for entry in track_history %}
+            <div class="bg-[var(--color-surface)] rounded-lg p-4">
+              <p class="text-sm text-[var(--color-text)]">{{ entry.end_date|user_datetime_format:user }}</p>
+              {% if entry.origin_url %}
+                <a href="{{ entry.origin_url }}"
+                   class="mt-1 block text-sm text-[var(--color-text-muted)] hover:text-indigo-500 break-all">{{ entry.origin_url }}</a>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="bg-[var(--color-surface)] p-6 rounded-lg text-center">
+          <p class="text-[var(--color-text-muted)]">{% translate "Not listened yet" %}</p>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+</div>

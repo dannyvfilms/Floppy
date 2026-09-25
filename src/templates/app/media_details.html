@@ -17,6 +17,8 @@
     {% include "app/components/detail_music_artist.html" %}
   {% elif music_detail_kind == "album" %}
     {% include "app/components/detail_music_album.html" %}
+  {% elif music_detail_kind == "track" %}
+    {% include "app/components/detail_music_track.html" %}
   {% else %}
     {% if not render_secondary_only %}
       {# Top section #}
@@ -92,7 +94,7 @@
 
   {% endif %}
 
-  {% if music_detail_kind != "album" %}
+  {% if music_detail_kind != "album" and music_detail_kind != "track" %}
     <div x-data="{ sessionHistoryOpen: false }"
          @open-session-history.window="sessionHistoryOpen = true; $nextTick(() => $el.querySelector('[data-session-history-close]')?.focus())"
          @keydown.escape.window="if (!$event.target.closest('[data-session-history-track-modal]')) sessionHistoryOpen = false">

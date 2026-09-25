@@ -376,7 +376,10 @@
                   <div class="flex-1">
                     <div class="flex justify-between items-start mb-2 space-x-2 px-4">
                       <div class="flex-1 min-w-0">
-                        <h3 class="text-lg font-semibold mb-1 line-clamp-1">{{ track_data.track.title }}</h3>
+                        <h3 class="text-lg font-semibold mb-1 line-clamp-1">
+                          <a href="{{ track_data.track|music_track_url }}"
+                             class="hover:text-indigo-500 transition-colors duration-200">{{ track_data.track.title }}</a>
+                        </h3>
                         <p class="text-sm text-[var(--color-text-muted)]">
                           {% if track_data.track.track_number %}
                             {% blocktranslate trimmed with value_1=track_data.track.track_number %}Track {{ value_1 }}{% endblocktranslate %}

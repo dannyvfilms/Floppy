@@ -1764,6 +1764,294 @@ class MediaDetailsViewTests(TestCase):
             ),
         )
 
+    def _track_details_kwargs(self, artist, album, track, artist_name, album_title):
+        return {
+            "artist_id": artist.id,
+            "artist_slug": artist_name,
+            "album_id": album.id,
+            "album_slug": album_title,
+            "track_id": track.id,
+            "track_slug": "track-one",
+        }
+
+    def test_music_track_details_renders_shared_media_details_template(self):
+        artist = Artist.objects.create(name="Test Artist")
+        album = Album.objects.create(title="Debut Album", artist=artist)
+        track = Track.objects.create(
+            album=album,
+            title="Track One",
+            track_number=1,
+            duration_ms=180000,
+        )
+
+        response = self.client.get(
+            reverse(
+                "music_track_details",
+                kwargs=self._track_details_kwargs(
+                    artist,
+                    album,
+                    track,
+                    "test-artist",
+                    "debut-album",
+                ),
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "app/media_details.html")
+        self.assertTemplateUsed(response, "app/components/detail_music_track.html")
+        self.assertEqual(response.context["music_detail_kind"], "track")
+        self.assertContains(response, "Track One")
+        self.assertContains(response, artist.name)
+        self.assertContains(response, "Debut Album")
+        self.assertContains(
+            response,
+            reverse(
+                "music_artist_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "test-artist",
+                },
+            ),
+        )
+        self.assertContains(
+            response,
+            reverse(
+                "music_album_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "test-artist",
+                    "album_id": album.id,
+                    "album_slug": "debut-album",
+                },
+            ),
+        )
+        self.assertContains(response, "Not listened yet")
+
+    def test_music_track_details_uses_track_genres_before_album_genres(self):
+        artist = Artist.objects.create(name="Genre Artist")
+        album = Album.objects.create(
+            title="Genre Album",
+            artist=artist,
+            genres=["House"],
+        )
+        track = Track.objects.create(
+            album=album,
+            title="Track One",
+            genres=["Bass House"],
+        )
+
+        response = self.client.get(
+            reverse(
+                "music_track_details",
+                kwargs=self._track_details_kwargs(
+                    artist,
+                    album,
+                    track,
+                    "genre-artist",
+                    "genre-album",
+                ),
+            ),
+        )
+
+        self.assertContains(response, "Bass House")
+        self.assertNotContains(response, ">House<")
+
+    def test_music_track_details_falls_back_to_album_genres(self):
+        artist = Artist.objects.create(name="Fallback Artist")
+        album = Album.objects.create(
+            title="Fallback Album",
+            artist=artist,
+            genres=["Bass House"],
+        )
+        track = Track.objects.create(album=album, title="Track One", genres=[])
+
+        response = self.client.get(
+            reverse(
+                "music_track_details",
+                kwargs=self._track_details_kwargs(
+                    artist,
+                    album,
+                    track,
+                    "fallback-artist",
+                    "fallback-album",
+                ),
+            ),
+        )
+
+        self.assertContains(response, "Bass House")
+
+    def test_music_track_details_lists_play_history_with_origin_url(self):
+        artist = Artist.objects.create(name="Play Artist")
+        album = Album.objects.create(title="Play Album", artist=artist)
+        track = Track.objects.create(album=album, title="Track One")
+        item = Item.objects.create(
+            media_id="recording-track-1",
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Track One",
+        )
+        Music.objects.create(
+            item=item,
+            user=self.user,
+            artist=artist,
+            album=album,
+            track=track,
+            status=Status.COMPLETED.value,
+            end_date=datetime(2026, 2, 2, 18, 0, tzinfo=UTC),
+            origin_url="https://soundcloud.example/track",
+        )
+
+        response = self.client.get(
+            reverse(
+                "music_track_details",
+                kwargs=self._track_details_kwargs(
+                    artist,
+                    album,
+                    track,
+                    "play-artist",
+                    "play-album",
+                ),
+            ),
+        )
+
+        self.assertContains(response, "https://soundcloud.example/track")
+        self.assertNotContains(response, "Not listened yet")
+
+    def test_music_track_details_redirects_when_album_path_is_wrong(self):
+        artist = Artist.objects.create(name="Right Artist")
+        album = Album.objects.create(title="Right Album", artist=artist)
+        other = Album.objects.create(title="Other Album", artist=artist)
+        track = Track.objects.create(album=album, title="Track One")
+
+        response = self.client.get(
+            reverse(
+                "music_track_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "right-artist",
+                    "album_id": other.id,
+                    "album_slug": "other-album",
+                    "track_id": track.id,
+                    "track_slug": "track-one",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            reverse(
+                "music_track_details",
+                kwargs=self._track_details_kwargs(
+                    artist,
+                    album,
+                    track,
+                    "right-artist",
+                    "right-album",
+                ),
+            ),
+        )
+
+    def test_music_track_details_redirects_when_artist_path_is_wrong(self):
+        artist = Artist.objects.create(name="Right Artist")
+        wrong_artist = Artist.objects.create(name="Wrong Artist")
+        album = Album.objects.create(title="Right Album", artist=artist)
+        track = Track.objects.create(album=album, title="Track One")
+
+        response = self.client.get(
+            reverse(
+                "music_track_details",
+                kwargs={
+                    "artist_id": wrong_artist.id,
+                    "artist_slug": "wrong-artist",
+                    "album_id": album.id,
+                    "album_slug": "right-album",
+                    "track_id": track.id,
+                    "track_slug": "track-one",
+                },
+            ),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            reverse(
+                "music_track_details",
+                kwargs=self._track_details_kwargs(
+                    artist,
+                    album,
+                    track,
+                    "right-artist",
+                    "right-album",
+                ),
+            ),
+        )
+
+    def test_legacy_music_track_detail_redirects_to_canonical_route(self):
+        artist = Artist.objects.create(name="Redirect Artist")
+        album = Album.objects.create(title="Redirect Album", artist=artist)
+        track = Track.objects.create(album=album, title="Track One")
+
+        response = self.client.get(reverse("track_detail", args=[track.id]))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"],
+            reverse(
+                "music_track_details",
+                kwargs=self._track_details_kwargs(
+                    artist,
+                    album,
+                    track,
+                    "redirect-artist",
+                    "redirect-album",
+                ),
+            ),
+        )
+
+    @patch("app.services.music_scrobble.is_incomplete_album", return_value=False)
+    @patch("app.services.music_scrobble.dedupe_artist_albums")
+    def test_music_album_track_title_links_to_track_details(
+        self,
+        _mock_dedupe_artist_albums,
+        _mock_is_incomplete_album,
+    ):
+        artist = Artist.objects.create(name="Link Artist")
+        album = Album.objects.create(
+            title="Link Album",
+            artist=artist,
+            tracks_populated=True,
+        )
+        track = Track.objects.create(album=album, title="Linked Track")
+
+        response = self.client.get(
+            reverse(
+                "music_album_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "link-artist",
+                    "album_id": album.id,
+                    "album_slug": "link-album",
+                },
+            ),
+        )
+
+        self.assertContains(
+            response,
+            reverse(
+                "music_track_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "link-artist",
+                    "album_id": album.id,
+                    "album_slug": "link-album",
+                    "track_id": track.id,
+                    "track_slug": "linked-track",
+                },
+            ),
+        )
+
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_renders_links_action_with_source_and_external_links(
         self,

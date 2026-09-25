@@ -507,6 +507,8 @@ path("details/music/album/<int:album_id>/releases", views.list_music_releases, n
 path("details/music/album/<int:album_id>/release", views.set_music_release, name="set_music_release"),
 ```
 
+A track detail page uses the same shared media details shell, nested under its album: `/details/music/artist/<artist_id>/<artist_slug>/album/<album_id>/<album_slug>/track/<track_id>/<track_slug>/`. `music/track/<track_id>/` redirects there. Genre chips show `Track.genres` when that list has entries, otherwise the album's genres.
+
 ## Templates
 
 ### Artist Detail (`src/templates/app/music_artist_detail.html`)

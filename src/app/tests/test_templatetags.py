@@ -21,6 +21,7 @@ from app.models import (
     Sources,
     Status,
     Studio,
+    Track,
 )
 from app.templatetags import app_tags
 from users.models import DateFormatChoices, TimeFormatChoices
@@ -418,6 +419,27 @@ class AppTagsTests(TestCase):
                     "artist_slug": "short-name",
                     "album_id": 17,
                     "album_slug": "live-at-home",
+                },
+            ),
+        )
+
+    def test_music_track_url_returns_nested_canonical_details_path(self):
+        """Music tracks should resolve under their album on the shared route."""
+        artist = Artist.objects.create(name="The Amazing Artist")
+        album = Album.objects.create(title="First Record", artist=artist)
+        track = Track.objects.create(album=album, title="Opening Song")
+
+        self.assertEqual(
+            app_tags.music_track_url(track),
+            reverse(
+                "music_track_details",
+                kwargs={
+                    "artist_id": artist.id,
+                    "artist_slug": "the-amazing-artist",
+                    "album_id": album.id,
+                    "album_slug": "first-record",
+                    "track_id": track.id,
+                    "track_slug": "opening-song",
                 },
             ),
         )

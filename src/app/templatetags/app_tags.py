@@ -879,6 +879,36 @@ def music_album_url(album):
     )
 
 
+@register.filter
+def music_track_url(track):
+    """Return the canonical shared media-details URL for a music track."""
+    if track is None or isinstance(track, dict):
+        return ""
+
+    track_id = getattr(track, "id", None)
+    album = getattr(track, "album", None)
+    if track_id is None or album is None or getattr(album, "id", None) is None:
+        return ""
+
+    artist = getattr(album, "artist", None)
+    artist_id = getattr(artist, "id", None)
+    artist_name = getattr(artist, "name", None)
+    return reverse(
+        "music_track_details",
+        kwargs={
+            "artist_id": artist_id or 0,
+            "artist_slug": _music_slug(
+                artist_name or "Unknown Artist",
+                artist_id or "artist",
+            ),
+            "album_id": album.id,
+            "album_slug": _music_slug(album.title, album.id),
+            "track_id": track_id,
+            "track_slug": _music_slug(getattr(track, "title", ""), track_id),
+        },
+    )
+
+
 def _studio_slug(value, fallback):
     """Return a stable slug with a safe fallback for studio links."""
     normalized = slug(value or "")
