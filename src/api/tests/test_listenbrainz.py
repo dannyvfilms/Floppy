@@ -253,6 +253,7 @@ class ListenBrainzMetadataTests(ListenBrainzTestCase):
                             "artist_mbids": ["art-1", "art-2"],
                             "duration_ms": 210000,
                             "track_number": 4,
+                            "origin_url": "https://soundcloud.com/duskymusic/dusky-careless",
                         },
                     ),
                 ],
@@ -270,6 +271,10 @@ class ListenBrainzMetadataTests(ListenBrainzTestCase):
         )
         self.assertEqual(event.duration_ms, 210000)
         self.assertEqual(event.track_number, 4)
+        self.assertEqual(
+            event.origin_url,
+            "https://soundcloud.com/duskymusic/dusky-careless",
+        )
         self.assertTrue(event.completed)
 
     @patch("integrations.webhooks.listenbrainz.music_scrobble.record_music_playback")
