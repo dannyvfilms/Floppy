@@ -65,6 +65,17 @@
         <p class="text-[var(--color-text-muted)] mb-4 text-center md:text-start">{% blocktranslate trimmed with value_1=show.author %}by {{ value_1 }}{% endblocktranslate %}</p>
       {% endif %}
 
+      {% if show.genres %}
+        <div class="mb-6" {% detail_section_attrs user "podcast" "sidebar" "genres" %}>
+          <h2 class="text-xl font-bold mb-4">{% translate "Genres" %}</h2>
+          <div class="flex flex-wrap gap-2 justify-center md:justify-start">
+            {% for genre in show.genres %}
+              <span class="inline-flex h-6 items-center rounded-full border border-[var(--color-genre-badge-border)] bg-[var(--color-genre-badge-bg)] px-2.5 text-xs font-medium text-[var(--color-genre-badge-text)]">{{ genre }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
       {% if show.website_url %}
         <p class="mb-4 text-center md:text-start">
           <a href="{{ show.website_url }}"

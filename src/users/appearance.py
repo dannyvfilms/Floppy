@@ -184,6 +184,7 @@ DETAIL_LAYOUT_FAMILIES = {
             "sidebar": _zone(
                 "Information column",
                 ("details", "Details"),
+                ("genres", "Genres"),
                 ("collection", "Collection"),
             ),
             "content": _zone(
