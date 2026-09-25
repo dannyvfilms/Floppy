@@ -1356,6 +1356,48 @@
             </div>
           </div>
 
+          <div class="border-t border-[var(--color-surface-border)] pt-3">
+            <p class="text-[var(--color-text-muted)] text-sm mb-3">
+              {% translate "Connect Seerr to request movies and shows from their Floppy page." %}
+            </p>
+            <label for="seerr_url" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              {% translate "Seerr URL" %}
+            </label>
+            <input type="url"
+                   id="seerr_url"
+                   name="seerr_url"
+                   placeholder="http://192.168.1.10:5055"
+                   value="{{ request.user.seerr_url }}"
+                   class="w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+          </div>
+
+          <div>
+            <label for="seerr_api_key" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              {% translate "Seerr API key" %}
+            </label>
+            <input type="password"
+                   id="seerr_api_key"
+                   name="seerr_api_key"
+                   autocomplete="off"
+                   placeholder="{% if request.user.seerr_api_key %}{% translate "Saved - leave blank to keep" %}{% else %}{% translate "Settings > General > API Key" %}{% endif %}"
+                   class="w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+          </div>
+
+          <div>
+            <label for="seerr_username" class="block text-[var(--color-text-secondary)] text-sm font-medium mb-1">
+              {% translate "Seerr username" %}
+            </label>
+            <input type="text"
+                   id="seerr_username"
+                   name="seerr_username"
+                   autocomplete="off"
+                   value="{{ request.user.seerr_username }}"
+                   class="w-full px-3 py-2 bg-[var(--color-panel)] border border-gray-600 rounded-md text-[var(--color-text-secondary)] text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+            <p class="text-[var(--color-text-muted)] text-xs mt-1">
+              {% translate "Required. The username or email you sign in to Seerr with (Plex and Jellyfin logins work too). Requests are made as this user, with their permissions, quotas and approval rules." %}
+            </p>
+          </div>
+
           <div class="pt-2">
             <button type="submit"
                     class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">

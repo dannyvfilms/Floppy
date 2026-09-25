@@ -7,6 +7,7 @@ from datetime import timedelta
 from io import BytesIO
 from itertools import batched
 from pathlib import Path
+from urllib.parse import urlparse
 
 from allauth.account.views import SignupView
 from allauth.socialaccount.views import SignupView as SocialSignupView
@@ -47,7 +48,7 @@ from app.models import (
 )
 from app.providers import credentials, tmdb
 from app.templatetags import app_tags
-from integrations import exports, plex, stremio_catalog, tasks
+from integrations import exports, plex, seerr_api, stremio_catalog, tasks
 from integrations.imports import trakt as trakt_imports
 from integrations.models import (
     DEFAULT_INTEGRATION_SCOPES,
@@ -2982,17 +2983,71 @@ def update_jellyseerr_settings(request):
     else:
         allowed_usernames = ""
 
+    # Requesting from Floppy: URL + API key + Seerr user (#772).
+    from integrations.imports.helpers import (
+        MediaImportError,
+        decrypt_or_raise,
+        encrypt,
+    )
+
+    seerr_url = (request.POST.get("seerr_url") or "").strip().rstrip("/")
+    if seerr_url:
+        # Not URLValidator: it refuses bare LAN/Docker hosts like http://seerr:5055.
+        parsed = urlparse(seerr_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            messages.error(request, "Seerr URL must be an http(s) address.")
+            return redirect(request.META.get("HTTP_REFERER", "/settings/integrations"))
+    raw_api_key = (request.POST.get("seerr_api_key") or "").strip()
+    seerr_username = (request.POST.get("seerr_username") or "").strip()
+    seerr_user_id = None
+    # Every request is attributed to a real Seerr user, so it gets that user's
+    # permissions, quotas and approval flow instead of the API key owner's.
+    # Resolving the name here also proves the URL and key work.
+    unchanged = (
+        seerr_url == user.seerr_url
+        and seerr_username == user.seerr_username
+        and not raw_api_key
+        and user.seerr_user_id
+    )
+    if unchanged:
+        # Saving the webhook half of this form must not depend on Seerr being up.
+        seerr_user_id = user.seerr_user_id
+    elif seerr_url:
+        if not seerr_username:
+            messages.error(request, "A Seerr username is required to request from Seerr.")
+            return redirect(request.META.get("HTTP_REFERER", "/settings/integrations"))
+        try:
+            api_key = raw_api_key or decrypt_or_raise(user.seerr_api_key)
+            seerr_user_id = seerr_api.SeerrClient(seerr_url, api_key).find_user_id(
+                seerr_username
+            )
+        except (seerr_api.SeerrError, MediaImportError) as error:
+            messages.error(request, f"Seerr settings not saved: {error}")
+            return redirect(request.META.get("HTTP_REFERER", "/settings/integrations"))
+
     # Save
     user.jellyseerr_enabled = enabled
     user.jellyseerr_trigger_statuses = trigger_statuses
     user.jellyseerr_allowed_usernames = allowed_usernames
     user.jellyseerr_default_added_status = default_status
+    user.seerr_url = seerr_url
+    # A blank key keeps the stored one; clearing the URL disconnects.
+    if not seerr_url:
+        user.seerr_api_key = ""
+    elif raw_api_key:
+        user.seerr_api_key = encrypt(raw_api_key)
+    user.seerr_username = seerr_username if seerr_url else ""
+    user.seerr_user_id = seerr_user_id
     user.save(
         update_fields=[
             "jellyseerr_enabled",
             "jellyseerr_trigger_statuses",
             "jellyseerr_allowed_usernames",
             "jellyseerr_default_added_status",
+            "seerr_url",
+            "seerr_api_key",
+            "seerr_username",
+            "seerr_user_id",
         ],
     )
 

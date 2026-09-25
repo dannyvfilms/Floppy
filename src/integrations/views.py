@@ -32,7 +32,11 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import (
+    require_GET,
+    require_http_methods,
+    require_POST,
+)
 
 import users
 from app import helpers as app_helpers
@@ -52,6 +56,7 @@ from integrations import (
     lastfm_api,
     pocketcasts_api,
     psn_api,
+    seerr_api,
     stremio_catalog,
     stremio_queue,
     tasks,
@@ -5077,3 +5082,48 @@ def match_reference_status(request, reference_id, status):
     else:
         messages.error(request, "Unknown match decision.")
     return redirect("integrations")
+
+
+@require_http_methods(["GET", "POST"])
+def seerr_request(request, media_type, media_id):
+    """Show a title's Seerr state, and request it (or some seasons) on POST."""
+    user = request.user
+    if (
+        media_type not in (MediaTypes.MOVIE.value, MediaTypes.TV.value)
+        or not user.seerr_url
+        or not user.seerr_api_key
+        or not user.seerr_user_id
+    ):
+        return HttpResponseNotFound()
+
+    error = None
+    summary = None
+    try:
+        client = seerr_api.SeerrClient.for_user(user)
+        if request.method == "POST":
+            seasons = [
+                int(number)
+                for number in request.POST.getlist("season")
+                if number.isdigit()
+            ]
+            client.request(
+                media_type,
+                media_id,
+                user.seerr_user_id,
+                seasons=seasons or None,
+            )
+        summary = seerr_api.summarize(media_type, client.media(media_type, media_id))
+    except (seerr_api.SeerrError, helpers.MediaImportError) as exc:
+        error = str(exc)
+
+    return render(
+        request,
+        "integrations/seerr_request.html",
+        {
+            "media_type": media_type,
+            "media_id": media_id,
+            "summary": summary,
+            "error": error,
+            "seerr_page_url": f"{user.seerr_url}/{media_type}/{media_id}",
+        },
+    )

@@ -239,6 +239,11 @@ urlpatterns = [
         name="jellyseerr_webhook",
     ),
     path(
+        "seerr/<str:media_type>/<int:media_id>/",
+        views.seerr_request,
+        name="seerr_request",
+    ),
+    path(
         "webhook/seerr/global/",
         views.seerr_global_webhook,
         name="seerr_global_webhook",
