@@ -57,9 +57,20 @@
         </div>
       {% endif %}
       {% if track.duration_formatted %}
-        <div>
+        <div class="mb-4">
           <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "DURATION" %}</h3>
           <p class="text-[var(--color-text-secondary)]">{{ track.duration_formatted }}</p>
+        </div>
+      {% elif recording_runtime %}
+        <div class="mb-4">
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "DURATION" %}</h3>
+          <p class="text-[var(--color-text-secondary)]">{{ recording_runtime }}</p>
+        </div>
+      {% endif %}
+      {% if recording_release_date %}
+        <div>
+          <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% translate "RELEASE DATE" %}</h3>
+          <p class="text-[var(--color-text-secondary)]">{{ recording_release_date|user_date_format:user }}</p>
         </div>
       {% endif %}
     </div>

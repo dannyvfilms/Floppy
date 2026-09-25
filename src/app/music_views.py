@@ -135,6 +135,80 @@ def _music_entry_for_track(user, track):
     return music_entry
 
 
+def _lookup_text(value):
+    """Return a comparable lowercase form of a title or artist."""
+    return "".join(ch for ch in (value or "").lower() if ch.isalnum())
+
+
+def _search_recording_id(track):
+    """Return a MusicBrainz recording id from an artist and title search."""
+    from app.providers import musicbrainz
+
+    artist = track.album.artist
+    artist_name = artist.name if artist else ""
+    query = " ".join(part for part in (artist_name, track.title) if part).strip()
+    if not query:
+        return ""
+
+    results = musicbrainz.search(query, page=1, skip_cover_art=True)
+    expected_title = _lookup_text(track.title)
+    for result in (results or {}).get("results") or []:
+        if expected_title and expected_title in _lookup_text(result.get("title")):
+            return result.get("media_id") or ""
+    return ""
+
+
+def _lookup_unlistened_recording(track):
+    """Fetch MusicBrainz recording metadata when this user has no listen."""
+    from app.providers import musicbrainz
+
+    recording_id = (track.musicbrainz_recording_id or "").strip()
+    try:
+        if not recording_id:
+            recording_id = _search_recording_id(track)
+        if not recording_id:
+            return None
+        return musicbrainz.recording(recording_id)
+    except Exception as exc:
+        logger.debug(
+            "Track %s recording lookup failed: %s",
+            track.id,
+            exception_summary(exc),
+        )
+        return None
+
+
+def _recording_genre_names(recording):
+    """Return title-cased genre labels from a MusicBrainz recording payload."""
+    return [
+        name.title()
+        for name in _nonempty_genre_names((recording or {}).get("genres"))
+    ]
+
+
+def _recording_display(track, recording):
+    """Return the recording fields the track page does not already show.
+
+    Artist and album stay in the header. Ids and the minute-rounded duration
+    stay off the page. Runtime is included only when the track has no duration.
+    """
+    if not recording:
+        return {"release_date": "", "runtime": "", "image": ""}
+
+    details = recording.get("details") or {}
+    image = recording.get("image") or ""
+    if image == settings.IMG_NONE:
+        image = ""
+    runtime = ""
+    if details.get("runtime") and not track.duration_formatted:
+        runtime = details["runtime"]
+    return {
+        "release_date": details.get("release_date") or "",
+        "runtime": runtime,
+        "image": image,
+    }
+
+
 def _track_play_history(music_entry):
     """Return completed listens for a Music row, newest first."""
     if music_entry is None:
@@ -1204,7 +1278,19 @@ def _render_music_track_details(request, track):
     album = track.album
     artist = album.artist
     music_entry = _music_entry_for_track(request.user, track)
+    track_genres = _track_page_genres(track)
+    recording_display = {"release_date": "", "runtime": "", "image": ""}
+    if music_entry is None:
+        recording = _lookup_unlistened_recording(track)
+        if recording and not track_genres:
+            track_genres = _recording_genre_names(recording)
+        recording_display = _recording_display(track, recording)
     album_display_image = album.image or settings.IMG_NONE
+    if (
+        recording_display["image"]
+        and album_display_image in ("", settings.IMG_NONE)
+    ):
+        album_display_image = recording_display["image"]
     context = {
         "user": request.user,
         "music_detail_kind": "track",
@@ -1213,7 +1299,9 @@ def _render_music_track_details(request, track):
         "album": album,
         "track": track,
         "album_display_image": album_display_image,
-        "track_genres": _track_page_genres(track),
+        "track_genres": track_genres,
+        "recording_release_date": recording_display["release_date"],
+        "recording_runtime": recording_display["runtime"],
         "track_history": _track_play_history(music_entry),
         "media": {
             "media_type": MediaTypes.MUSIC.value,
