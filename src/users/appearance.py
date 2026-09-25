@@ -142,6 +142,7 @@ DETAIL_LAYOUT_FAMILIES = {
         "zones": {
             "content": _zone(
                 "Content",
+                ("genres", "Genres"),
                 ("notes", "Notes"),
                 ("cast", "Cast"),
                 ("crew", "Crew"),
