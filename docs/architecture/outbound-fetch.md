@@ -54,7 +54,7 @@ lacks something you need, extend it here so every caller gets the fix.
 
 ## Self-hosted servers
 
-Radarr, Sonarr, Mylar3, Audiobookshelf, Koito, KOReader, Storyteller,
+Radarr, Sonarr, Seerr, Mylar3, Audiobookshelf, Koito, KOReader, Storyteller,
 Jellyfin, Emby, Kodi and gPodder talk to a server the user runs, usually on
 their own network. The public-only policy above would refuse exactly those
 addresses, so these clients send through `send_to_self_hosted` instead.

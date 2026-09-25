@@ -1,8 +1,8 @@
 """Request movies and shows through the user's own Seerr instance (#772).
 
-The URL is one the user configured for their own server, which is almost always
-on the LAN, so this calls it directly like the Radarr/Sonarr clients rather than
-through `safe_fetch` (which refuses private addresses by design).
+The URL is one the user configured for their own server, usually on the LAN,
+so calls go through `send_to_self_hosted` like the other self-hosted clients
+(docs/architecture/outbound-fetch.md).
 
 No `connection_broken` bookkeeping: Seerr answers 403 both for a bad API key and
 for a permission or quota refusal, so a rejected call cannot be read as rejected
@@ -10,11 +10,14 @@ credentials (see docs/architecture/connection-health.md). Errors are shown in
 the request panel instead.
 """
 
+from functools import partial
+
 import requests
 
 from app.log_safety import exception_summary
 from app.models import MediaTypes
 from integrations.imports.helpers import decrypt_or_raise
+from integrations.safe_fetch import SelfHostedUrlError, send_to_self_hosted
 
 MEDIA_STATUSES = {
     1: "unknown",
@@ -49,13 +52,16 @@ class SeerrClient:
 
     def _call(self, method, path, **kwargs):
         try:
-            response = requests.request(
-                method,
+            response = send_to_self_hosted(
+                partial(requests.request, method),
                 f"{self.base_url}/api/v1{path}",
                 headers={"X-Api-Key": self.api_key},
                 timeout=20,
                 **kwargs,
             )
+        except SelfHostedUrlError as error:
+            # The policy's refusal message never contains the URL.
+            raise SeerrError(str(error)) from error
         except requests.RequestException as error:
             # Not str(error): it carries the configured URL (outbound-fetch.md).
             msg = f"Could not reach Seerr ({exception_summary(error)})"

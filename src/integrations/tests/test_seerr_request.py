@@ -121,6 +121,13 @@ class SeerrClientTests(SimpleTestCase):
             str(caught.exception), "Could not reach Seerr (ConnectionError)"
         )
 
+    @patch("integrations.seerr_api.requests.request")
+    def test_metadata_address_is_refused_by_self_hosted_policy(self, mock_request):
+        with self.assertRaises(seerr_api.SeerrError) as caught:
+            seerr_api.SeerrClient("http://169.254.169.254", "key").media("movie", 603)
+        mock_request.assert_not_called()
+        self.assertNotIn("169.254", str(caught.exception))
+
 
 class FindUserTests(SimpleTestCase):
     @patch("integrations.seerr_api.requests.request")
