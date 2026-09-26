@@ -1,9 +1,10 @@
 from unittest.mock import patch
 
 from django.conf import settings
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from app.models import Artist
+from app.services.music import resolve_artist_mbid
 from app.tasks_music import prefetch_artist_images_batch
 
 
@@ -71,3 +72,38 @@ class PrefetchArtistImagesBatchTests(TestCase):
         result = prefetch_artist_images_batch([999999])
 
         self.assertEqual(result, {"artists": 1, "images_updated": 0})
+
+
+class ResolveArtistMbidTests(SimpleTestCase):
+    """Automatic MBID attach has to match the name, not the first search hit."""
+
+    @patch("app.providers.musicbrainz.search_artists")
+    def test_skips_a_different_person_ranked_first(self, search):
+        """Ray Treblo must not become Ray Charles because he was result 1."""
+        search.return_value = {
+            "results": [
+                {
+                    "id": "ray-charles",
+                    "name": "Ray Charles",
+                    "sort_name": "Charles, Ray",
+                },
+            ],
+        }
+
+        mbid, _count, _variant = resolve_artist_mbid("Ray Treblo")
+
+        self.assertIsNone(mbid)
+
+    @patch("app.providers.musicbrainz.search_artists")
+    def test_accepts_a_candidate_with_the_same_name(self, search):
+        """An exact name match still attaches, even if it is not result 1."""
+        search.return_value = {
+            "results": [
+                {"id": "ray-charles", "name": "Ray Charles"},
+                {"id": "ray-treblo", "name": "Ray Treblo"},
+            ],
+        }
+
+        mbid, _count, _variant = resolve_artist_mbid("Ray Treblo")
+
+        self.assertEqual(mbid, "ray-treblo")
