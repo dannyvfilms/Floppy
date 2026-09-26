@@ -883,6 +883,12 @@ _DETAIL_LINK_BRANDS = {
         "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
         "fallback_text": "LFM",
     },
+    "soundcloud": {
+        "chip_classes": "border-orange-400/18 bg-orange-500/[0.07]",
+        "badge_classes": "border-orange-400/28 bg-orange-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "SC",
+    },
     "imdb": {
         "logo_src": static("img/imdb-logo.png"),
         "chip_classes": "border-amber-400/18 bg-amber-500/[0.07]",

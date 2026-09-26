@@ -386,6 +386,12 @@
                             {% if track_data.track.track_number %} • {% endif %}{{ track_data.track.duration_formatted }}
                           {% endif %}
                         </p>
+                        {% if "soundcloud.com" in track_data.origin_url %}
+                          <a href="{{ track_data.origin_url }}"
+                             target="_blank"
+                             rel="noreferrer"
+                             class="mt-1 inline-block text-sm text-[var(--color-text-muted)] hover:text-indigo-500">SoundCloud</a>
+                        {% endif %}
                       </div>
 
                       <div class="flex space-x-2 shrink-0">

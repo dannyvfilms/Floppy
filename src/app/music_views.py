@@ -81,6 +81,31 @@ def _music_album_detail_url(album):
     return app_tags.music_album_url(album)
 
 
+def _safe_origin_url(value):
+    """Return an http(s) origin URL, or an empty string."""
+    text = (value or "").strip()
+    if text.lower().startswith(("https://", "http://")):
+        return text
+    return ""
+
+
+def _soundcloud_play_links(tracks_with_data):
+    """Return one SoundCloud chip per distinct play URL on this album."""
+    links = {}
+    for track_data in tracks_with_data:
+        music = track_data.get("music")
+        if music is None:
+            continue
+        url = _safe_origin_url(getattr(music, "origin_url", ""))
+        if "soundcloud.com" not in url.lower():
+            continue
+        label = "SoundCloud"
+        if label in links and links[label] != url:
+            label = track_data["track"].title or url
+        links.setdefault(label, url)
+    return links
+
+
 def _selected_music_release(user, album):
     """Return the user's valid release preference and its detailed metadata."""
     from app.models import MusicReleasePreference
@@ -921,6 +946,9 @@ def _render_music_album_details(request, artist, album):
             {
                 "track": track,
                 "music": music_entry,
+                "origin_url": _safe_origin_url(
+                    getattr(music_entry, "origin_url", "") if music_entry else "",
+                ),
                 "history": (
                     list(music_entry.history.all().order_by("-end_date"))
                     if music_entry
@@ -999,6 +1027,7 @@ def _render_music_album_details(request, artist, album):
     detail_link_sections = view_barrel._build_detail_link_sections(
         {
             "source_url": album_details.get("musicbrainz_url", ""),
+            "external_links": _soundcloud_play_links(tracks_with_data),
         },
         MediaTypes.MUSIC.value,
         Sources.MUSICBRAINZ.value,
