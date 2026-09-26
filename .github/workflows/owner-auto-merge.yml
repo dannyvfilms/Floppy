@@ -35,6 +35,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
           PR_ID: ${{ github.event.pull_request.node_id }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::AUTO_MERGE_TOKEN secret is not set."
@@ -42,9 +43,44 @@ jobs:
           fi
           # Call the API directly: `gh pr merge --auto` merges on the spot when
           # the PR has no required checks to wait for.
-          gh api graphql -f id="$PR_ID" -f query='
+          if gh api graphql -f id="$PR_ID" -f query='
             mutation($id: ID!) {
               enablePullRequestAutoMerge(input: {pullRequestId: $id, mergeMethod: MERGE}) {
                 pullRequest { number }
               }
-            }'
+            }'; then
+            exit 0
+          fi
+
+          # GitHub refuses auto-merge on a PR that can already merge, which
+          # happens when a draft is marked ready after its checks finished.
+          # Merge it now, but only if it has required checks and all passed.
+          state=$(gh api graphql -f id="$PR_ID" -f query='
+            query($id: ID!) {
+              node(id: $id) {
+                ... on PullRequest {
+                  mergeStateStatus
+                  headRefOid
+                  commits(last: 1) { nodes { commit { statusCheckRollup {
+                    contexts(first: 100) { nodes {
+                      ... on CheckRun { conclusion isRequired(pullRequestId: $id) }
+                    } }
+                  } } } }
+                }
+              }
+            }')
+          echo "$state"
+          if echo "$state" | jq -e '
+            .data.node as $pr
+            | [$pr.commits.nodes[0].commit.statusCheckRollup.contexts.nodes[]
+               | select(.isRequired)] as $required
+            | ($pr.mergeStateStatus | IN("CLEAN", "UNSTABLE", "HAS_HOOKS"))
+              and ($required | length > 0)
+              and all($required[]; .conclusion == "SUCCESS")
+          ' >/dev/null; then
+            gh pr merge --merge --match-head-commit \
+              "$(echo "$state" | jq -r .data.node.headRefOid)" "$PR_URL"
+          else
+            echo "::error::Could not enable auto-merge and required checks have not all passed."
+            exit 1
+          fi
