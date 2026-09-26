@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
@@ -535,6 +536,132 @@ class LastFMAccount(models.Model):
         self.history_import_started_at = None
         self.history_import_completed_at = None
         self.history_import_last_error_message = ""
+
+
+class MALFullSyncStatus(models.TextChoices):
+    """Lifecycle of a manual full sync to MyAnimeList."""
+
+    IDLE = "idle", "Not started"
+    QUEUED = "queued", "Queued"
+    RUNNING = "running", "Running"
+    COMPLETED = "completed", "Completed"
+    FAILED = "failed", "Failed"
+
+
+# Progress (full_sync_processed/results) is saved after every entry, so
+# updated_at is a live heartbeat while a sync genuinely runs. A queued/running
+# row this quiet means the worker died mid-sync (e.g. the container
+# restarted), not that the sync is merely slow.
+STALE_FULL_SYNC_AGE = timedelta(minutes=15)
+
+
+class MALAccount(models.Model):
+    """Store a user's MyAnimeList OAuth connection, used to sync watch status.
+
+    Floppy pushes status/progress/score to MyAnimeList. A full sync can also
+    adopt higher MAL progress and missing ratings locally, when enabled
+    (pull_higher_progress_enabled, pull_ratings_enabled).
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="mal_account",
+    )
+    mal_username = models.CharField(max_length=255, blank=True, default="")
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    token_expires_at = models.DateTimeField()
+    sync_enabled = models.BooleanField(default=True)
+    connection_broken = models.BooleanField(
+        default=False,
+        help_text="True once MyAnimeList rejects the refresh token, until reconnected",
+    )
+    last_error_message = models.TextField(blank=True, default="")
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    per_item_sync_enabled = models.BooleanField(
+        default=True,
+        help_text="Push status/progress/score to MyAnimeList as each entry is edited",
+    )
+    sync_filter_completed = models.BooleanField(
+        default=True,
+        help_text="Include Completed entries in a full sync to MyAnimeList",
+    )
+    sync_filter_in_progress = models.BooleanField(
+        default=True,
+        help_text="Include In Progress entries in a full sync to MyAnimeList",
+    )
+    sync_filter_dropped = models.BooleanField(
+        default=True,
+        help_text="Include Dropped entries in a full sync to MyAnimeList",
+    )
+    sync_filter_planning = models.BooleanField(
+        default=False,
+        help_text="Include Planning entries in a full sync to MyAnimeList",
+    )
+    sync_filter_paused = models.BooleanField(
+        default=False,
+        help_text="Include Paused entries in a full sync to MyAnimeList",
+    )
+    sync_filter_rated_only = models.BooleanField(
+        default=False,
+        help_text="Only include entries that have a score set in a full sync to MyAnimeList",
+    )
+    sync_ratings_enabled = models.BooleanField(
+        default=True,
+        help_text="Include the score/rating when pushing status to MyAnimeList",
+    )
+    pull_higher_progress_enabled = models.BooleanField(
+        default=True,
+        help_text="Adopt MyAnimeList's progress locally when it's ahead of Floppy's own record",
+    )
+    pull_ratings_enabled = models.BooleanField(
+        default=True,
+        help_text="Adopt a MyAnimeList rating locally when Floppy doesn't have one recorded",
+    )
+    full_sync_status = models.CharField(
+        max_length=16,
+        choices=MALFullSyncStatus,
+        default=MALFullSyncStatus.IDLE,
+    )
+    full_sync_total = models.PositiveIntegerField(default=0)
+    full_sync_processed = models.PositiveIntegerField(default=0)
+    full_sync_succeeded = models.PositiveIntegerField(default=0)
+    full_sync_failed = models.PositiveIntegerField(default=0)
+    full_sync_results = models.JSONField(default=list, blank=True)
+    full_sync_started_at = models.DateTimeField(null=True, blank=True)
+    full_sync_completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Meta options for MALAccount."""
+
+        verbose_name = "MyAnimeList account"
+
+    def __str__(self):
+        """Return a readable representation of the connection."""
+        return f"{self.user}'s MyAnimeList connection"
+
+    @property
+    def is_connected(self):
+        """Return True when we have a token stored and the connection isn't broken."""
+        return bool(self.access_token) and not self.connection_broken
+
+    @property
+    def full_sync_is_active(self):
+        """Return True while a manual full sync is queued or running."""
+        return self.full_sync_status in {
+            MALFullSyncStatus.QUEUED,
+            MALFullSyncStatus.RUNNING,
+        }
+
+    @property
+    def full_sync_is_stale(self):
+        """True once an active sync's heartbeat has gone quiet too long to be alive."""
+        if not self.full_sync_is_active:
+            return False
+        return self.updated_at < timezone.now() - STALE_FULL_SYNC_AGE
 
 
 class KoitoAccount(models.Model):

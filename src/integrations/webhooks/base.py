@@ -459,6 +459,14 @@ class BaseWebhookProcessor:
                 media_id,
                 preferred_library_media_type=MediaTypes.ANIME.value,
             )
+            # A TV-bucket row (e.g. one a Plex show rating created) must not
+            # take episodes from a show the user tracks as flat MAL anime.
+            if (
+                existing_tv_item
+                and existing_tv_item.library_media_type != MediaTypes.ANIME.value
+                and self._find_existing_anime_home(user, media_id, tvdb_id)
+            ):
+                existing_tv_item = None
             if existing_tv_item:
                 logger.info(
                     "Routing episode to existing TV tracking item instead of flat "

@@ -15,6 +15,7 @@ from app.models import (
     Anime,
     Episode,
     Item,
+    ItemProviderLink,
     MediaTypes,
     Movie,
     ProviderMetadataStatus,
@@ -2515,6 +2516,57 @@ class PlexWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         tv_instance.refresh_from_db()
         self.assertEqual(tv_instance.score, 7)
+
+    @patch("app.providers.tmdb.tv")
+    def test_show_rating_goes_to_flat_mal_anime(self, _mock_tv):
+        """A show tracked as flat MAL anime takes the rating on its Anime row.
+
+        A TV-library row is invisible to the anime details page and MAL sync,
+        so the rating must not create one.
+        """
+        anime_item = Item.objects.create(
+            media_id="35078",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Mitsuboshi Colors",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="76134",
+            season_number=1,
+        )
+        anime = Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=8,
+        )
+
+        def rate(user_rating):
+            return self._post_payload(
+                {
+                    "event": "media.rate",
+                    "Account": {"title": "testuser"},
+                    "Metadata": {
+                        "type": "show",
+                        "title": "Mitsuboshi Colors",
+                        "userRating": user_rating,
+                        "Guid": [{"id": "tmdb://76134"}],
+                    },
+                },
+            )
+
+        self.assertEqual(rate(8).status_code, 200)
+        anime.refresh_from_db()
+        self.assertEqual(anime.score, 8)
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+
+        self.assertEqual(rate(-1).status_code, 200)
+        anime.refresh_from_db()
+        self.assertIsNone(anime.score)
 
     @patch("app.providers.tmdb.search")
     @patch("app.providers.tmdb.find")

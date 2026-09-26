@@ -85,6 +85,35 @@ def get_mal_id_from_tvdb(
     )
 
 
+def get_mal_id_from_series(mapping_data, provider, series_id, season, episode):
+    """Resolve only unique, one-to-one episode mappings for outbound counts."""
+    if provider not in {"tmdb", "tvdb"}:
+        return None, None
+    candidates = set()
+    targets = mapping_data.get(f"{provider}_show:{series_id}:s{season}", {})
+    try:
+        for descriptor, ranges in targets.items():
+            mal_id = _parse_mal_descriptor(descriptor)
+            if mal_id is None:
+                continue
+            if "," in descriptor:
+                return None, None
+            if not ranges:
+                candidates.add((mal_id, episode))
+            for source_range, target_range in ranges.items():
+                source_start, source_end = _parse_episode_range(source_range)
+                if episode < source_start or (source_end is not None and episode > source_end):
+                    continue
+                if "|" in target_range:
+                    return None, None
+                mapped = _map_target_episode_number(target_range, episode - source_start)
+                if mapped is not None:
+                    candidates.add((mal_id, mapped))
+    except (TypeError, ValueError, AttributeError):
+        return None, None
+    return candidates.pop() if len(candidates) == 1 else (None, None)
+
+
 def get_mal_id_from_tmdb_movie(mapping_data, tmdb_movie_id):
     """Find MAL ID from TMDB movie mapping."""
     return _get_mal_mapping(

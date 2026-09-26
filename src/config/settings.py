@@ -1222,6 +1222,18 @@ MAL_API = config(
 )
 MAL_NSFW = config("MAL_NSFW", default=False, cast=bool)
 
+# Only used to sync watch status back to MyAnimeList. Unlike MAL_API (search),
+# OAuth requires a redirect URI registered to a specific app, so this can't
+# ship a shared default the way IGDB_SECRET does - each user or instance
+# needs their own MyAnimeList API application (see integrations.mal_sync).
+MAL_API_SECRET = config(
+    "MAL_API_SECRET",
+    default=secret(
+        "MAL_API_SECRET_FILE",
+        "",
+    ),
+)
+
 MU_NSFW = config("MU_NSFW", default=False, cast=bool)
 
 IGDB_ID = config(
@@ -1484,6 +1496,7 @@ else:
         "integrations.tasks._jellyfin_pull",
         "integrations.tasks._koito",
         "integrations.tasks._lastfm",
+        "integrations.tasks._mal_sync",
         "integrations.tasks._media_imports",
         "integrations.tasks._plex_collection",
         "integrations.tasks._plex_sections",
@@ -1636,6 +1649,13 @@ CELERY_TASK_ROUTES = {
     },
     "Sync IMDB ratings from datasets": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Sync MAL ratings from API": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    # A user is watching a spinner for this. It makes many provider calls, so
+    # it stays off the single-slot interactive worker, but it must not queue
+    # behind metadata backfills on the background worker.
+    "Preview sync to MyAnimeList": {"priority": CELERY_TASK_PRIORITY_INTERACTIVE},
+    # A per-item push is one quick API call that follows a watch or an edit.
+    # At default priority it starved behind back-to-back statistics syncs.
+    "Sync status to MyAnimeList": {"priority": CELERY_TASK_PRIORITY_INTERACTIVE},
     "Warm Discover API Cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover Startup Tabs": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},

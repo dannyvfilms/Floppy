@@ -142,6 +142,7 @@ urlpatterns = [
         name="import_data_plex_sections",
     ),
     path("settings/export", views.export_data, name="export_data"),
+    path("settings/export/mal", views.mal_export, name="mal_export"),
     path("settings/advanced", views.advanced, name="advanced"),
     path(
         "settings/advanced/image-cache",

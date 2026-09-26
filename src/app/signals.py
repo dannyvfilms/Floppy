@@ -718,7 +718,12 @@ def flush_media_change_side_effects(
         normalized_items.append(item)
 
     if normalized_items:
+        from integrations.mal_sync import queue_grouped_sync
         from lists.tasks import sync_smart_lists_for_items_task
+
+        grouped_items = [item for item in normalized_items if item.media_type == "tv"]
+        for item in grouped_items or normalized_items:
+            queue_grouped_sync(owner.id, item)
 
         sync_smart_lists_for_items_task.delay(owner.id, list(seen_item_ids))
         DiscoverFeedback.objects.filter(

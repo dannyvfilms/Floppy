@@ -581,7 +581,10 @@
                 x-show="sourceSupports(['anime_manga'])"
                 x-transition.opacity.duration.150ms
                 class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
-          <div class="flex items-center justify-between">{% source_display "myanimelist" %}</div>
+          <div class="flex items-center justify-between">
+            {% source_display "myanimelist" %}
+            {% if mal_account and mal_account.is_connected %}<span class="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30" title="Sync connected">{% include "app/icons/checkmark.svg" with classes="w-3 h-3" %}</span>{% endif %}
+          </div>
           <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import anime and manga from MyAnimeList." %}</p>
         </button>
 
@@ -2485,6 +2488,21 @@
               </button>
             </div>
           </form>
+
+          <div class="mt-4 pt-4 border-t border-[var(--color-surface-border)] space-y-3">
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-[var(--color-text-muted)]">{% translate "Sync watch status back to MyAnimeList" %}</p>
+              {% if mal_account and mal_account.is_connected %}
+                <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">{% translate "Connected" %}</span>
+              {% else %}
+                <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Disconnected" %}</span>
+              {% endif %}
+            </div>
+            <p class="text-xs text-[var(--color-text-muted)]">
+              {% translate "Connecting, syncing, and scheduling exports back to MyAnimeList now live on their own page." %}
+              <a href="{% url 'mal_export' %}" class="text-[var(--color-link)] hover:underline">{% translate "Manage syncing to trackers" %}</a>
+            </p>
+          </div>
         </div>
           </div>
         </div>

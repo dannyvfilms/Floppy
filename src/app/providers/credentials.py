@@ -281,9 +281,18 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             user_scope=True,
             label="MyAnimeList",
             logo_slug="myanimelist",
-            description="Anime and manga metadata.",
+            description="Anime and manga metadata, and syncing watch status back.",
             docs_url="https://myanimelist.net/apiconfig",
-            fields=(CredentialField("client_id", "Client ID", "MAL_API"),),
+            fields=(
+                CredentialField("client_id", "Client ID", "MAL_API"),
+                CredentialField(
+                    "client_secret",
+                    "Client secret",
+                    "MAL_API_SECRET",
+                    required=False,
+                    placeholder="Only needed to sync status back to MyAnimeList",
+                ),
+            ),
         ),
         ProviderCredentialSpec(
             slug="igdb",

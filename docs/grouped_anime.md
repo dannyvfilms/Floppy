@@ -74,6 +74,47 @@ track the same show in both libraries.
 To move existing shows between shapes, use the per-show Move action or the
 "Convert anime library shape" task, both of which ask first.
 
+## MyAnimeList Sync
+
+MAL sync projects grouped anime episode history into one update per MAL cour,
+using the AniBridge episode mappings also used by webhooks. Preview and full
+sync use current grouped progress instead of stale migrated flat Anime rows.
+Rewatches do not count as additional episodes. Unmapped episodes are skipped;
+sync does not guess a MAL title from a show name or season number.
+
+Episode watch-state changes, show/season edits, and bulk episode actions queue
+automatic sync after commit when per-item sync is enabled. Triggers for the
+same show within five seconds collapse into one push, sent after that window. Full sync continues
+to respect the account's status and rating filters. Preview requests unfiltered
+MAL lists so provider-filtered titles are not repeatedly reported as missing.
+
+The Sync to Trackers page restores the complete latest full-sync report from
+the database on every page load. All write results remain visible, alongside
+an "Anime with mapping issues" list naming unresolved episode coordinates.
+Preview also shows these issues before confirmation. A new full sync replaces
+the previous report; per-item sync does not erase it.
+
+Preview runs as a read-only Celery task on the background queue. The page starts
+it with a CSRF-protected POST and polls with an expiring, user-bound token, so
+large libraries do not have to finish within a web/proxy request timeout. The
+background worker must be running; restart it along with the web process after
+deploying changes to preview tasks. HTML proxy errors and expired logins are
+reported separately from provider errors.
+
+When AniBridge cannot uniquely map an episode, the Mapping Issues tab accepts
+a MAL title ID and MAL episode number for that grouped episode. These overrides
+are stored as user-scoped `ExternalReference` decisions and take precedence
+over automatic mappings on later previews, full syncs, and per-item syncs.
+Saving the same grouped episode again updates its override. Floppy does not
+guess through ambiguous, split, or ratio mappings because MAL only accepts a
+single watched-episode count.
+
+The repair wizard searches the complete MAL anime catalogue, including titles
+hidden by the normal search preference, then loads the selected title's episode
+count. A single unresolved episode can be mapped independently. When every
+tracked episode in a season is unresolved, "Fix whole season" stores one
+override per source episode, sequentially from the selected MAL episode.
+
 ## Classification policy
 
 The shared classifier is intentionally fail-closed. A title is routed to

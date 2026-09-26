@@ -49,7 +49,7 @@ from app.models import (
 )
 from app.providers import credentials, tmdb
 from app.templatetags import app_tags
-from integrations import exports, plex, stremio_catalog, tasks
+from integrations import exports, mal_sync, plex, stremio_catalog, tasks
 from integrations.imports import plex as plex_import
 from integrations.imports import trakt as trakt_imports
 from integrations.models import (
@@ -65,7 +65,7 @@ from integrations.models import (
 )
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
 from users import appearance as appearance_config
-from users import cache_management
+from users import cache_management, helpers
 from users.forms import (
     AuthenticatorSetupForm,
     NotificationSettingsForm,
@@ -253,6 +253,7 @@ def _get_import_data_user(user):
         "pocketcasts_account",
         "lastfm_account",
         "koito_account",
+        "mal_account",
     ).prefetch_related(
         "radarr_instances",
         "sonarr_instances",
@@ -1556,6 +1557,9 @@ def import_data(request):
     # Get Last.fm account
     lastfm_account = getattr(user, "lastfm_account", None)
 
+    # Get MyAnimeList sync account
+    mal_account = getattr(user, "mal_account", None)
+
     # Get Koito account
     koito_account = getattr(user, "koito_account", None)
     koito_history_status_label = "Not started"
@@ -1651,6 +1655,8 @@ def import_data(request):
         "pocketcasts_account": pocketcasts_account,
         "gpodder_account": gpodder_account,
         "lastfm_account": lastfm_account,
+        "mal_account": mal_account,
+        "mal_sync_configured": mal_sync.is_sync_configured(user),
         "koito_account": koito_account,
         "radarr_instances": radarr_instances,
         "sonarr_instances": sonarr_instances,
@@ -1851,6 +1857,43 @@ def export_data(request):
         "db_snapshot_status": _db_snapshot_status(),
     }
     return render(request, "users/export_data.html", context)
+
+
+@require_GET
+def mal_export(request):
+    """Render the MyAnimeList export (status sync) settings page."""
+    user = request.user
+    mal_account = getattr(user, "mal_account", None)
+    schedule = None
+    periodic_task = (
+        PeriodicTask.objects.filter(
+            Q(kwargs__contains=f'"user_id": {user.id},')
+            | Q(kwargs__contains=f'"user_id": {user.id}' + "}"),
+            task=tasks.MAL_FULL_SYNC_TASK_NAME,
+        )
+        .select_related("crontab")
+        .first()
+    )
+    if periodic_task:
+        schedule_info = helpers.get_export_next_run_info(periodic_task)
+        if schedule_info:
+            schedule = {
+                "task": periodic_task,
+                "last_run": periodic_task.last_run_at,
+                "next_run": schedule_info["next_run"],
+                "frequency": schedule_info["frequency"],
+            }
+
+    context = {
+        "user": user,
+        "mal_account": mal_account,
+        "mal_sync_configured": mal_sync.is_sync_configured(user),
+        "mal_export_schedule": schedule,
+        "mal_sync_initial": mal_sync.full_sync_report(mal_account) if mal_account else None,
+        "mal_ignored_mappings": mal_sync.ignored_mappings(user) if mal_account else [],
+        "mal_manual_mappings": mal_sync.manual_episode_mappings(user) if mal_account else [],
+    }
+    return render(request, "users/mal_export.html", context)
 
 
 @require_GET
