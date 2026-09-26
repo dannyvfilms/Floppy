@@ -30,6 +30,7 @@ from app.services.music import (
     populate_album_implied_genres,
     prefetch_album_covers,
     refresh_album_cover_art,
+    store_matched_genres,
     sync_artist_discography,
     sync_music_item_genres_from_album,
 )
@@ -162,8 +163,9 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
     This resolves canonical metadata (MusicBrainz when possible), ensures
     Artist/Album/Track/Item existence, and updates the per-user Music row.
     An album saved without genres is then filled from its MusicBrainz release
-    group, outside the write transaction. The play then copies the album's
-    genres, or the artist's when the album still has none.
+    group, outside the write transaction.     The play then copies the album's genres, or the artist's when the album still
+    has none. After that, any genre list found on the album, item, track, or
+    artist is stored on the others that are still empty.
     """
     played_at = event.played_at or timezone.now()
 
@@ -250,6 +252,11 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
                     exception_summary(exc),
                 )
         sync_music_item_genres_from_album(item, album)
+
+    for row in (item, album, track, artist):
+        if row is not None and row.pk:
+            row.refresh_from_db(fields=["genres"])
+    store_matched_genres(artist=artist, album=album, track=track, item=item)
 
     return music
 

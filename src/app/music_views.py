@@ -81,6 +81,13 @@ def _music_album_detail_url(album):
     return app_tags.music_album_url(album)
 
 
+def _album_display_genres(album):
+    """Return album genres, or the artist's when the album has none."""
+    if album is None:
+        return []
+    return sync_services._music_item_direct_genres(album)
+
+
 def _selected_music_release(user, album):
     """Return the user's valid release preference and its detailed metadata."""
     from app.models import MusicReleasePreference
@@ -677,6 +684,10 @@ def _render_music_artist_details(request, artist):
         genre_chips = [g["name"].title() for g in genres[:6]]
     elif tags:
         genre_chips = [t["name"].title() for t in tags[:6]]
+    else:
+        from app.providers import musicbrainz
+
+        genre_chips = musicbrainz._normalize_musicbrainz_genre_names(artist.genres)
 
     collection_stats = get_artist_collection_stats(request.user, artist)
     notes_entry = artist_tracker if artist_tracker and artist_tracker.notes else None
@@ -1022,11 +1033,12 @@ def _render_music_album_details(request, artist, album):
             or f"album-{album.id}"
         ),
     ).first()
+    album_genres = _album_display_genres(album)
     detail_tag_sections = _build_detail_tag_sections(
         {},
         detail_item,
         request.user,
-        fallback_genres=album.genres,
+        fallback_genres=album_genres,
         fallback_implied_genres=album.implied_genres,
         genre_list_media_type=MediaTypes.MUSIC.value,
     )
@@ -1037,6 +1049,7 @@ def _render_music_album_details(request, artist, album):
         "media_type": MediaTypes.MUSIC.value,
         "artist": artist or album.artist,
         "album": album,
+        "album_genres": album_genres,
         "album_display_image": album_display_image,
         "media": {
             "media_type": MediaTypes.MUSIC.value,
