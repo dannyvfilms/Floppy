@@ -89,17 +89,24 @@ def _safe_origin_url(value):
     return ""
 
 
-def _soundcloud_play_links(tracks_with_data):
-    """Return one SoundCloud chip per distinct play URL on this album."""
+def _play_link_label(url):
+    """Return the play-link label for a SoundCloud or Spotify URL."""
+    host = (url or "").lower()
+    if "soundcloud.com" in host:
+        return "SoundCloud"
+    if "spotify.com" in host:
+        return "Spotify"
+    return ""
+
+
+def _external_play_links(tracks_with_data):
+    """Return one play chip per distinct SoundCloud or Spotify URL on this album."""
     links = {}
     for track_data in tracks_with_data:
-        music = track_data.get("music")
-        if music is None:
+        url = track_data.get("origin_url") or ""
+        label = _play_link_label(url)
+        if not label:
             continue
-        url = _safe_origin_url(getattr(music, "origin_url", ""))
-        if "soundcloud.com" not in url.lower():
-            continue
-        label = "SoundCloud"
         if label in links and links[label] != url:
             label = track_data["track"].title or url
         links.setdefault(label, url)
@@ -942,13 +949,15 @@ def _render_music_album_details(request, artist, album):
         if music_entry and music_entry.item_id:
             collection_entry = collection_entries_by_item_id.get(music_entry.item_id)
 
+        origin_url = _safe_origin_url(
+            getattr(music_entry, "origin_url", "") if music_entry else "",
+        )
         tracks_with_data.append(
             {
                 "track": track,
                 "music": music_entry,
-                "origin_url": _safe_origin_url(
-                    getattr(music_entry, "origin_url", "") if music_entry else "",
-                ),
+                "origin_url": origin_url,
+                "origin_label": _play_link_label(origin_url),
                 "history": (
                     list(music_entry.history.all().order_by("-end_date"))
                     if music_entry
@@ -1027,7 +1036,7 @@ def _render_music_album_details(request, artist, album):
     detail_link_sections = view_barrel._build_detail_link_sections(
         {
             "source_url": album_details.get("musicbrainz_url", ""),
-            "external_links": _soundcloud_play_links(tracks_with_data),
+            "external_links": _external_play_links(tracks_with_data),
         },
         MediaTypes.MUSIC.value,
         Sources.MUSICBRAINZ.value,

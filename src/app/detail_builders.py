@@ -889,6 +889,12 @@ _DETAIL_LINK_BRANDS = {
         "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
         "fallback_text": "SC",
     },
+    "spotify": {
+        "chip_classes": "border-green-400/18 bg-green-500/[0.07]",
+        "badge_classes": "border-green-400/28 bg-green-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "SP",
+    },
     "imdb": {
         "logo_src": static("img/imdb-logo.png"),
         "chip_classes": "border-amber-400/18 bg-amber-500/[0.07]",

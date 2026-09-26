@@ -96,7 +96,7 @@ class ListenBrainzScrobbleProcessor:
             completed=True,
             played_at=played_at,
             entry_source="listenbrainz",
-            origin_url=(additional.get("origin_url") or "").strip(),
+            origin_url=_play_origin_url(additional),
         )
 
         try:
@@ -152,6 +152,18 @@ class ListenBrainzScrobbleProcessor:
                 stats["errors"] += 1
 
         return stats
+
+
+def _play_origin_url(additional):
+    """Return the client origin URL, or a Spotify track URL when that is all that was sent."""
+    origin = (additional.get("origin_url") or "").strip()
+    if origin:
+        return origin
+    spotify = (additional.get("spotify_id") or "").strip()
+    lowered = spotify.lower()
+    if lowered.startswith(("https://", "http://")) and "spotify.com" in lowered:
+        return spotify
+    return ""
 
 
 def _coerce_int(value) -> int | None:
