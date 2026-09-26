@@ -1086,6 +1086,26 @@ class User(AbstractUser):
         default=Status.PLANNING.value,
         help_text="Status to set when adding media via Jellyseerr webhook",
     )
+    seerr_url = models.URLField(
+        blank=True,
+        help_text="Seerr server URL, used to request movies and shows from Floppy",
+    )
+    seerr_api_key = models.TextField(
+        blank=True,
+        default="",
+        help_text="Encrypted Seerr API key",
+    )
+    seerr_username = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Seerr login (username or email) the requests are made as",
+    )
+    seerr_user_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Seerr user id resolved from seerr_username when settings are saved",
+    )
     tmdb_proxy_url = models.TextField(
         blank=True,
         help_text=(

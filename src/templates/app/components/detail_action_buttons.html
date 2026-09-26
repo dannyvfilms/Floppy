@@ -239,6 +239,27 @@
               </div>
             </div>
 
+            {% if request.user.seerr_url and request.user.seerr_api_key and request.user.seerr_user_id and media.source == Sources.TMDB.value and media_type in "movie,tv" %}
+              <div x-data="{ seerrOpen: false }" class="flex-1 sm:flex-none">
+                <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11"
+                        title="{% translate "Request in Seerr" %}"
+                        hx-get="{% url 'seerr_request' media_type media.media_id %}"
+                        hx-target="#{% component_id 'seerr' media %}"
+                        hx-trigger="click"
+                        @click="seerrOpen = true">{% include "app/icons/download.svg" with classes="w-4 h-4" %}</button>
+
+                <div x-show="seerrOpen"
+                @mousedown.self="seerrOpen = false"
+                     x-cloak
+                     @keydown.escape.window="seerrOpen = false"
+                     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                  <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60">
+                    <div id="{% component_id 'seerr' media %}"></div>
+                  </div>
+                </div>
+              </div>
+            {% endif %}
+
             <a class="inline-flex h-11 w-full flex-1 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer sm:size-11 sm:w-11 sm:flex-none"
                title="{% translate "View your activity history" %}"
                href="{% url 'history' %}?{% if media_type == MediaTypes.SEASON.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}&season_number={{ media.season_number }}{% elif media_type == MediaTypes.TV.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% elif media_type == MediaTypes.PODCAST.value and podcast_show %}media_type={{ MediaTypes.PODCAST.value }}&podcast_show={{ podcast_show.id }}{% else %}media_type={{ media_type }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% endif %}{% if media_type == MediaTypes.GAME.value or media_type == MediaTypes.BOARDGAME.value %}&logging_style=sessions{% endif %}">
