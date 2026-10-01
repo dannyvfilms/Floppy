@@ -233,7 +233,17 @@ class PlexHistoryImporter:
         self._pending_external_references: list[dict] = []
 
     def import_data(self):
-        """Import history for the selected library."""
+        """Import history for the selected library.
+
+        Replayed plays save rows one by one, so their per-item MyAnimeList
+        pushes are skipped; a full sync sends the imported state.
+        """
+        from integrations.mal_sync import suppress_per_item_push
+
+        with suppress_per_item_push():
+            return self._import_data()
+
+    def _import_data(self):
         self._ensure_account_id()
         self._init_allowed_usernames()
         self._init_allowed_account_ids()

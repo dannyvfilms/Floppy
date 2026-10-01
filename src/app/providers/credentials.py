@@ -295,9 +295,18 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             user_scope=True,
             label="MyAnimeList",
             logo_slug="myanimelist",
-            description="Anime and manga metadata.",
+            description="Anime and manga metadata, and syncing watch status back.",
             docs_url="https://myanimelist.net/apiconfig",
-            fields=(CredentialField("client_id", "Client ID", "MAL_API"),),
+            fields=(
+                CredentialField("client_id", "Client ID", "MAL_API"),
+                CredentialField(
+                    "client_secret",
+                    "Client secret",
+                    "MAL_API_SECRET",
+                    required=False,
+                    placeholder="Sync to MyAnimeList: set with the Client ID from the same app",
+                ),
+            ),
         ),
         ProviderCredentialSpec(
             slug="igdb",
@@ -621,6 +630,31 @@ def get(slug, field_name, user=None):
         or _instance_map().get(slug, {}).get(field_name, "")
         or default_value(field)
     )
+
+
+def get_together(slug, field_names, user=None):
+    """Return several fields from the first tier that supplies all of them.
+
+    For credentials that only work as a set, like an OAuth client ID and
+    secret: resolving each field on its own can pair values from two
+    different apps. Returns empty strings when no single tier has them all.
+    """
+    user = _resolve_user(user)
+    spec = REGISTRY.get(slug)
+    fields = [get_field(slug, name) for name in field_names]
+    if spec is None or None in fields:
+        return tuple("" for _ in field_names)
+    tiers = (
+        lambda field: user_value(spec, field, user),
+        env_value,
+        lambda field: _instance_map().get(slug, {}).get(field.name, ""),
+        default_value,
+    )
+    for tier in tiers:
+        values = tuple(tier(field) for field in fields)
+        if all(values):
+            return values
+    return tuple("" for _ in field_names)
 
 
 def cache_suffix(slug, *field_names, user=None):

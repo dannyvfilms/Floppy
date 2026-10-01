@@ -190,6 +190,24 @@ def _entry_activity_datetime(entry: AnimeEntryPayload):
     return entry.end_date or entry.progressed_at or entry.created_at or timezone.now()
 
 
+def _unfinished_status(entries, default=None) -> str:
+    """Return the status for a not-fully-completed group of flat entries.
+
+    A dropped or paused status on the most recently active entry is kept;
+    otherwise the group is in progress once anything was watched.
+    """
+    latest = max(entries, key=_entry_activity_datetime)
+    if latest.status in {Status.DROPPED.value, Status.PAUSED.value}:
+        return latest.status
+    if default is not None:
+        return default
+    return (
+        Status.IN_PROGRESS.value
+        if any(entry.progress for entry in entries)
+        else Status.PLANNING.value
+    )
+
+
 def _mapped_entries(anime_entries: list[Anime], provider: str, series_id: str):
     matches: list[tuple[Anime, dict]] = []
     for anime in anime_entries:
@@ -746,11 +764,7 @@ def _persist_preflight_once(
             if not all(
                 entry.status == Status.COMPLETED.value for entry in season_entries
             ):
-                desired_status = (
-                    Status.IN_PROGRESS.value
-                    if any(entry.progress for entry in season_entries)
-                    else Status.PLANNING.value
-                )
+                desired_status = _unfinished_status(season_entries)
             if season.status != desired_status:
                 season.status = desired_status
                 bulk_update_with_history([season], Season, fields=["status"])
@@ -769,7 +783,7 @@ def _persist_preflight_once(
                 season.status == Status.COMPLETED.value
                 for season in created_seasons.values()
             )
-            else Status.IN_PROGRESS.value
+            else _unfinished_status(preflight.entries, default=Status.IN_PROGRESS.value)
         )
         if grouped_tv.status != desired_tv_status:
             grouped_tv.status = desired_tv_status

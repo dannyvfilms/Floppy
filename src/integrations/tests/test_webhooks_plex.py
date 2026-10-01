@@ -15,6 +15,7 @@ from app.models import (
     Anime,
     Episode,
     Item,
+    ItemProviderLink,
     MediaTypes,
     Movie,
     ProviderMetadataStatus,
@@ -2515,6 +2516,187 @@ class PlexWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         tv_instance.refresh_from_db()
         self.assertEqual(tv_instance.score, 7)
+
+    @patch("app.providers.tmdb.tv")
+    def test_show_rating_goes_to_flat_mal_anime(self, _mock_tv):
+        """A show tracked as flat MAL anime takes the rating on its Anime row.
+
+        A TV-library row is invisible to the anime details page and MAL sync,
+        so the rating must not create one.
+        """
+        anime_item = Item.objects.create(
+            media_id="35078",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Mitsuboshi Colors",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="76134",
+            season_number=1,
+        )
+        anime = Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=8,
+        )
+
+        def rate(user_rating):
+            return self._post_payload(
+                {
+                    "event": "media.rate",
+                    "Account": {"title": "testuser"},
+                    "Metadata": {
+                        "type": "show",
+                        "title": "Mitsuboshi Colors",
+                        "userRating": user_rating,
+                        "Guid": [{"id": "tmdb://76134"}],
+                    },
+                },
+            )
+
+        self.assertEqual(rate(8).status_code, 200)
+        anime.refresh_from_db()
+        self.assertEqual(anime.score, 8)
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+
+        self.assertEqual(rate(-1).status_code, 200)
+        anime.refresh_from_db()
+        self.assertIsNone(anime.score)
+
+    @patch("app.providers.tmdb.tv")
+    def test_show_rating_stays_on_a_tracked_tv_row_beside_a_flat_mal_entry(self, _mock_tv):
+        """Regression: a flat MAL entry linked to the show (an OVA, one cour)
+        took the Plex rating away from the user's real TV-library row.
+        """
+        tv_item = Item.objects.create(
+            media_id="76134", source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value, title="Mitsuboshi Colors",
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=Item.objects.create(
+                media_id="76134", source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value, season_number=1,
+                title="Mitsuboshi Colors",
+            ),
+            user=self.user, related_tv=tv, status=Status.IN_PROGRESS.value,
+        )
+        Episode.objects.create(
+            item=Item.objects.create(
+                media_id="76134", source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value, season_number=1, episode_number=1,
+                title="Episode 1",
+            ),
+            related_season=season,
+        )
+        anime_item = Item.objects.create(
+            media_id="35078", source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value, title="Mitsuboshi Colors OVA", image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item, provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value, provider_media_id="76134",
+            season_number=0,
+        )
+        anime = Anime.objects.create(
+            item=anime_item, user=self.user, status=Status.COMPLETED.value, progress=1,
+        )
+
+        self._post_payload(
+            {
+                "event": "media.rate",
+                "Account": {"title": "testuser"},
+                "Metadata": {
+                    "type": "show",
+                    "title": "Mitsuboshi Colors",
+                    "userRating": 8,
+                    "Guid": [{"id": "tmdb://76134"}],
+                },
+            },
+        )
+
+        tv.refresh_from_db()
+        anime.refresh_from_db()
+        self.assertEqual(tv.score, 8)
+        self.assertIsNone(anime.score)
+
+    def test_season_rating_no_flat_entry_covers_takes_the_tv_path(self):
+        """Regression: a season-2 rating beside a flat season-1 MAL entry
+        matched no title and was dropped instead of rating the season.
+        """
+        from integrations.webhooks.plex import PlexWebhookProcessor
+
+        anime_item = Item.objects.create(
+            media_id="35078", source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value, title="Mitsuboshi Colors", image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item, provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value, provider_media_id="76134",
+            season_number=1,
+        )
+        Anime.objects.create(
+            item=anime_item, user=self.user, status=Status.IN_PROGRESS.value, progress=8,
+        )
+
+        handled = PlexWebhookProcessor()._apply_flat_anime_rating(
+            self.user, "76134", 8, season_number=2,
+        )
+
+        self.assertFalse(handled)
+
+    @patch("app.providers.tmdb.tv")
+    def test_show_rating_reaches_a_rewatched_flat_mal_anime(self, _mock_tv):
+        """A rewatch row doesn't make the title ambiguous.
+
+        Regression: two Anime rows for one title were treated as two matches,
+        so the rating was skipped for every rewatched show.
+        """
+        anime_item = Item.objects.create(
+            media_id="35078",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Mitsuboshi Colors",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="76134",
+            season_number=1,
+        )
+        for status, progress in ((Status.COMPLETED.value, 12), (Status.IN_PROGRESS.value, 3)):
+            Anime.objects.create(
+                item=anime_item, user=self.user, status=status, progress=progress,
+            )
+
+        response = self._post_payload(
+            {
+                "event": "media.rate",
+                "Account": {"title": "testuser"},
+                "Metadata": {
+                    "type": "show",
+                    "title": "Mitsuboshi Colors",
+                    "userRating": 9,
+                    "Guid": [{"id": "tmdb://76134"}],
+                },
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            sorted(
+                Anime.all_objects.filter(user=self.user, item=anime_item)
+                .values_list("score", flat=True)
+            ),
+            [9, 9],
+        )
 
     @patch("app.providers.tmdb.search")
     @patch("app.providers.tmdb.find")

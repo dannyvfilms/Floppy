@@ -102,6 +102,14 @@
               <span>{% translate "Export Data" %}</span>
             </a>
 
+            {% url 'mal_export' as mal_export_url %}
+            <a href="{{ mal_export_url }}"
+               {% if request.path == mal_export_url %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.path == mal_export_url %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/export.svg" with classes="w-5 h-5" %}
+              <span>{% translate "Sync to Trackers" %}</span>
+            </a>
+
             {% url 'advanced' as advanced_url %}
             <a href="{{ advanced_url }}"
                {% if request.path == advanced_url %}aria-current="page"{% endif %}

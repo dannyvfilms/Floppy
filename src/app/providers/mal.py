@@ -92,9 +92,13 @@ def rating(media_id):
     return result
 
 
-def search(media_type, query, page):
+def search(media_type, query, page, *, include_nsfw=None):
     """Search for media on MyAnimeList."""
-    cache_key = f"search_{Sources.MAL.value}_{media_type}_{query}_{page}"
+    include_nsfw = settings.MAL_NSFW if include_nsfw is None else include_nsfw
+    cache_key = (
+        f"search_{Sources.MAL.value}_{media_type}_{query}_{page}_"
+        f"nsfw_{int(include_nsfw)}"
+    )
     data = cache.get(cache_key)
 
     if data is None:
@@ -104,7 +108,7 @@ def search(media_type, query, page):
             "fields": "media_type,start_date,alternative_titles",
             "limit": settings.PER_PAGE,
         }
-        if settings.MAL_NSFW:
+        if include_nsfw:
             params["nsfw"] = "true"
 
         try:
