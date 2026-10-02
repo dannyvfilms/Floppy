@@ -9,6 +9,7 @@ Three shapes exist and none of them change on disk:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from app.library_query.spec import (
@@ -205,23 +206,28 @@ def home_engine_direction(sort_key: str, direction: str) -> str:
 def from_home_row_filters(
     owner,
     normalized_filters: dict,
-    media_type: str,
+    media_types: tuple[str, ...],
     *,
     sort_key: str,
     direction: str,
     seed: int = 0,
+    mixed: bool = False,
 ) -> LibraryQuery:
     """Build the query a Home library shelf shows.
 
     Home rows show an item's current status, the same as the media list their
-    title links to, so status compares against the latest row.
+    title links to, so status compares against the latest row. ``mixed`` marks
+    a shelf that combines media types.
     """
     return LibraryQuery(
-        media_types=(media_type,),
-        filters=filter_values_from_rules(
-            normalized_filters,
-            default_status_match=STATUS_MATCH_LATEST,
-            season_effective_status=True,
+        media_types=media_types,
+        filters=replace(
+            filter_values_from_rules(
+                normalized_filters,
+                default_status_match=STATUS_MATCH_LATEST,
+                season_effective_status=True,
+            ),
+            progress_needs_released=mixed,
         ),
         sort=SortSpec(
             key=sort_key or "title",

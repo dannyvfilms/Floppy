@@ -58,6 +58,13 @@ class PreferencesViewTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.theme, "system")
 
+    def test_preferences_does_not_manage_home_media_type_label_appearance(self):
+        response = self.client.get(reverse("preferences"))
+
+        self.assertNotContains(response, 'name="home_media_type_chips_enabled"')
+        self.assertNotContains(response, 'name="home_media_type_chip_style"')
+        self.assertNotContains(response, "home_media_type_chip_color_")
+
     def test_preferences_display_labels_and_logo(self):
         """The display cards expose the simplified labels and logo choice."""
         response = self.client.get(reverse("preferences"))
@@ -168,4 +175,3 @@ class PreferencesViewTests(TestCase):
         live_region = save_bar.find("div", attrs={"aria-live": "polite"})
         self.assertIsNotNone(live_region, "aria-live region not found in save bar")
         self.assertEqual(live_region.get("aria-atomic"), "true")
-

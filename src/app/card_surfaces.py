@@ -76,6 +76,8 @@ CARD_VALUES = frozenset(
         "use_podcast_show",
         "podcast_show",
         "show_played_chip",
+        "show_media_type_chip",
+        "media_type_chip_type",
         "active",
     },
 )

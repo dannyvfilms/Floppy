@@ -529,7 +529,12 @@ def _progress_predicate(candidate, values: FilterValues, ctx: TypeContext) -> bo
     media = candidate.media
     if media is None:
         return False
-    return helpers.is_caught_up_media(media) == (values.progress == "caught_up")
+    caught_up = helpers.is_caught_up_media(media)
+    if values.progress == "caught_up":
+        return caught_up
+    if values.progress_needs_released and media.item.media_type == MediaTypes.TV.value:
+        return not caught_up and bool(getattr(media, "released_episode_breakdown", None))
+    return not caught_up
 
 
 def _text(key: str):

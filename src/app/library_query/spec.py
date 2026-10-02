@@ -48,6 +48,10 @@ class FilterValues:
     rating_max: str = ""
     collection: str = "all"
     progress: str = "all"
+    # "Not caught up" skips shows with no released regular episode (future-only
+    # or specials-only). Mixed shelves set it so such shows do not read as
+    # unfinished next to movies and games.
+    progress_needs_released: bool = False
     genre: str = ""
     implied_genre: str = ""
     year: str = ""
