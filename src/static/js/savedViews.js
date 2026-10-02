@@ -3,20 +3,15 @@
 if (!window.__floppySavedViewsBound) {
   window.__floppySavedViewsBound = true;
 
-  const SORTABLE_URL = "https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js";
-
-  const loadSortable = () =>
-    new Promise((resolve, reject) => {
-      if (typeof Sortable !== "undefined") {
-        resolve();
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = SORTABLE_URL;
-      script.addEventListener("load", () => resolve(), { once: true });
-      script.addEventListener("error", reject, { once: true });
-      document.head.appendChild(script);
-    });
+  const loadSortable = () => {
+    if (typeof Sortable !== "undefined") {
+      return Promise.resolve();
+    }
+    console.warn(
+      "Saved view drag-and-drop is unavailable because SortableJS could not be loaded.",
+    );
+    return Promise.reject(new Error("SortableJS unavailable"));
+  };
 
   const storageKey = (mediaType) => `floppy:saved-views-open:${mediaType}`;
 

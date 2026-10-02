@@ -69,9 +69,11 @@ class HomeScreenMenuTests(SerialStaticLiveServerTestCase):
             with self.subTest(width=width):
                 self.page.set_viewport_size({"width": width, "height": 900})
                 self.page.reload()
-                self.section.locator("h3").click()
+                with self.page.expect_response(
+                    lambda response: "filter-fields" in response.url
+                ):
+                    self.section.locator("h3").click()
                 row = self.section.locator("article").first
-                row.hover()
                 control = row.locator(".filter-control").nth(2)
                 trigger = control.locator("button").first
                 trigger.focus()
@@ -113,7 +115,6 @@ class HomeScreenMenuTests(SerialStaticLiveServerTestCase):
                 self.page.reload()
                 self.section.locator("h3").click()
                 row = self.section.locator("article").first
-                row.hover()
 
                 filter_control = row.locator(".filter-control").first
                 filter_trigger = filter_control.locator("button").first

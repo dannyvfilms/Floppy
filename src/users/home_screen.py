@@ -1117,7 +1117,18 @@ def serialize_settings_sections(user) -> list[dict]:
                         else "",
                         "sort_by": row.sort_by,
                         "direction": row.direction,
-                        "filters": _normalized_filter_payload(row.filters, media_type),
+                        "filters": _normalized_filter_payload(
+                            {
+                                key: value
+                                for key, value in (row.filters or {}).items()
+                                if key != "recent_show"
+                            },
+                            media_type,
+                        ),
+                        "recent_show": recent_show_mode(row)
+                        if row.media_type == MediaTypes.MUSIC.value
+                        and row.row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED
+                        else "",
                         "title": row_title(row, user),
                         "custom_title": row.title or "",
                         "summary": row_summary(row, user),
@@ -1306,6 +1317,8 @@ def _row_payload_to_model(
         sort_choices = get_allowed_sort_choices(media_type, row_type)
     elif row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED:
         sort_choices = []
+        if media_type == MediaTypes.MUSIC.value:
+            filters = {"recent_show": _clean_recent_show(row_payload.get("recent_show"))}
     else:
         filters = validate_library_row_filters(row_payload.get("filters"), media_type)
         sort_choices = get_allowed_sort_choices(media_type, row_type)
@@ -1644,6 +1657,103 @@ class _ArtistHomeAdapter(_MusicTrackerAdapter):
         self.card_subtitle_date = getattr(tracker, "created_at", None)
 
 
+RECENT_SHOW_ALBUM = "album"
+RECENT_SHOW_ARTIST = "artist"
+RECENT_SHOW_TRACK = "track"
+RECENT_SHOW_ALL = "all"
+RECENT_SHOW_MODES = frozenset(
+    {
+        RECENT_SHOW_ALBUM,
+        RECENT_SHOW_ARTIST,
+        RECENT_SHOW_TRACK,
+        RECENT_SHOW_ALL,
+    }
+)
+
+
+def recent_show_mode(row: HomeScreenRow) -> str:
+    """Return which identities a music Recently Played row should show."""
+    if row.media_type != MediaTypes.MUSIC.value:
+        return RECENT_SHOW_ALBUM
+    raw = str((row.filters or {}).get("recent_show") or RECENT_SHOW_ALBUM)
+    if raw not in RECENT_SHOW_MODES:
+        return RECENT_SHOW_ALBUM
+    return raw
+
+
+def _clean_recent_show(raw) -> str:
+    """Return a stored Recently Played display mode."""
+    value = str(raw or "").strip()
+    if value in RECENT_SHOW_MODES:
+        return value
+    return RECENT_SHOW_ALBUM
+
+
+def _play_artist(play):
+    """Return the artist on a play, or the album's artist."""
+    artist = getattr(play, "artist", None)
+    if artist is not None:
+        return artist
+    album = getattr(play, "album", None)
+    return getattr(album, "artist", None)
+
+
+def _play_track_title(play) -> str:
+    """Return the track title for a play."""
+    track = getattr(play, "track", None)
+    title = getattr(track, "title", None)
+    if title:
+        return title
+    item = getattr(play, "item", None)
+    return getattr(item, "title", None) or getattr(play, "title", None) or ""
+
+
+def _play_track_url(play) -> str:
+    """Return the track page for a play."""
+    track = getattr(play, "track", None)
+    if track is not None:
+        url = app_tags.music_track_url(track)
+        if url:
+            return url
+    item = getattr(play, "item", None)
+    if item is not None:
+        return app_tags.media_url(item)
+    return ""
+
+
+def _recent_link(label, url) -> dict | None:
+    """Return one clickable card label, or nothing when either side is blank."""
+    text = str(label or "").strip()
+    href = str(url or "").strip()
+    if not text or not href:
+        return None
+    return {"label": text, "url": href}
+
+
+def _recent_part_links(play, mode: str) -> list[dict]:
+    """Return the labels a recent-play card should show for this mode."""
+    artist = _play_artist(play)
+    album = getattr(play, "album", None)
+    track_link = _recent_link(_play_track_title(play), _play_track_url(play))
+    artist_link = _recent_link(
+        getattr(artist, "name", ""),
+        app_tags.music_artist_url(artist) if artist is not None else "",
+    )
+    album_link = _recent_link(
+        getattr(album, "title", ""),
+        app_tags.music_album_url(album) if album is not None else "",
+    )
+    if mode == RECENT_SHOW_ARTIST:
+        chosen = (artist_link,)
+    elif mode == RECENT_SHOW_TRACK:
+        chosen = (track_link,)
+    elif mode == RECENT_SHOW_ALL:
+        chosen = (track_link, artist_link, album_link)
+    else:
+        chosen = (album_link,)
+    return [link for link in chosen if link]
+
+
 class _RecentAlbumAdapter:
     """Media-like wrapper around an Album for the recently-played music row."""
 
@@ -1660,6 +1770,35 @@ class _RecentAlbumAdapter:
         self.title = album.title
         self.item = _music_shell_item(f"album_{album.id}", album.title, album.image)
         self.primary_track = primary_track
+        self.card_tile_url = _play_track_url(primary_track) or app_tags.music_album_url(
+            album
+        )
+        self.card_links = _recent_part_links(primary_track, RECENT_SHOW_ALBUM)
+
+
+class _RecentMusicPlayAdapter:
+    """One recent play, with separate links for the parts the row is showing."""
+
+    def __init__(self, play, mode: str, shell: Item | None = None):
+        album = getattr(play, "album", None)
+        self.id = getattr(play, "id", None)
+        self.play_count = getattr(play, "repeats", None) or getattr(play, "progress", None) or 1
+        self.last_played_at = getattr(play, "last_played_at", None) or getattr(
+            play, "created_at", None
+        )
+        self.created_at = self.last_played_at
+        self.status = None
+        self.end_date = self.last_played_at
+        self.next_event = None
+        self.score = None
+        self.card_links = _recent_part_links(play, mode)
+        self.title = self.card_links[0]["label"] if self.card_links else _play_track_title(play)
+        self.card_tile_url = _play_track_url(play) or app_tags.music_album_url(album)
+        image = getattr(album, "image", None) or getattr(
+            getattr(play, "item", None), "image", None
+        )
+        self.card_image_override = image
+        self.item = shell if shell is not None else getattr(play, "item", None)
 
 
 def _apply_music_tracker_rating_filter(trackers, rating_filter: str):
@@ -1920,6 +2059,93 @@ def _build_recent_music_album_entries(media_items: list[object]) -> list[HomeRow
         reverse=True,
     )
     return entries
+
+
+def _sort_recent_entries(entries: list[HomeRowEntry]) -> list[HomeRowEntry]:
+    """Return recent-play cards newest first."""
+    entries.sort(
+        key=lambda entry: (
+            getattr(entry.media, "last_played_at", None)
+            or getattr(entry.media, "created_at", None)
+        ),
+        reverse=True,
+    )
+    return entries
+
+
+def _build_recent_music_artist_entries(media_items: list[object]) -> list[HomeRowEntry]:
+    """Return one card per artist, opening that artist's latest track."""
+    artists = {}
+    play_counts = defaultdict(int)
+    last_played = {}
+    primary_play = {}
+    for play in media_items:
+        artist = _play_artist(play)
+        if artist is None or getattr(artist, "id", None) is None:
+            continue
+        artist_id = artist.id
+        artists[artist_id] = artist
+        play_counts[artist_id] += getattr(play, "repeats", None) or 1
+        played_at = getattr(play, "last_played_at", None) or getattr(
+            play, "created_at", None
+        )
+        if artist_id not in last_played or played_at > last_played[artist_id]:
+            last_played[artist_id] = played_at
+            primary_play[artist_id] = play
+
+    shells = _music_shell_items_bulk(
+        [
+            (
+                f"artist_{artist_id}",
+                artists[artist_id].name,
+                getattr(artists[artist_id], "image", None)
+                or getattr(getattr(primary_play[artist_id], "album", None), "image", None),
+            )
+            for artist_id in artists
+        ]
+    )
+    entries = []
+    for artist_id, artist in artists.items():
+        play = primary_play[artist_id]
+        shell = shells.get(f"artist_{artist_id}")
+        if shell is None:
+            continue
+        adapter = _RecentMusicPlayAdapter(play, RECENT_SHOW_ARTIST, shell)
+        adapter.play_count = play_counts[artist_id]
+        adapter.id = artist.id
+        entries.append(
+            HomeRowEntry(item=shell, media=adapter, show_progress_controls=False)
+        )
+    return _sort_recent_entries(entries)
+
+
+def _build_recent_music_track_entries(
+    media_items: list[object], mode: str
+) -> list[HomeRowEntry]:
+    """Return one card per play, showing the track or the track plus album and artist."""
+    entries = []
+    for play in media_items:
+        item = getattr(play, "item", None)
+        if item is None:
+            continue
+        adapter = _RecentMusicPlayAdapter(play, mode)
+        if not adapter.card_links:
+            continue
+        entries.append(
+            HomeRowEntry(item=item, media=adapter, show_progress_controls=False)
+        )
+    return _sort_recent_entries(entries)
+
+
+def _build_recent_music_entries(
+    media_items: list[object], mode: str
+) -> list[HomeRowEntry]:
+    """Return Recently Played music cards for the row's display mode."""
+    if mode == RECENT_SHOW_ARTIST:
+        return _build_recent_music_artist_entries(media_items)
+    if mode in {RECENT_SHOW_TRACK, RECENT_SHOW_ALL}:
+        return _build_recent_music_track_entries(media_items, mode)
+    return _build_recent_music_album_entries(media_items)
 
 
 def _media_lookup_for_items(
@@ -2759,7 +2985,7 @@ def _recently_unrated_entries(user, row: HomeScreenRow) -> list[HomeRowEntry]:
         if _item_matches_home_media_type(media.item, row.media_type)
     ]
     if row.media_type == MediaTypes.MUSIC.value:
-        return _build_recent_music_album_entries(media_items)
+        return _build_recent_music_entries(media_items, recent_show_mode(row))
     entries = _wrap_media_entries(media_items)
     return sort_home_entries(entries, row.sort_by, row.direction)
 
