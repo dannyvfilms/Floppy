@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("app", "0193_add_gcd_source"),
+        ("app", "0194_add_mangabaka_source"),
     ]
 
     operations = [
