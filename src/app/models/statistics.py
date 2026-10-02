@@ -76,6 +76,10 @@ class StatisticsSyncState(models.Model):
     # cache (Redis flushed, first build). Cleared by the sync that finishes it.
     full_sweep_requested_at = models.DateTimeField(null=True, blank=True)
     lease_expires_at = models.DateTimeField(null=True, blank=True)
+    # Identity of the worker that holds the lease. Claims rotate it; lease
+    # renewals, publications and marker updates are fenced on it so an
+    # expired worker cannot act on a successor's sync (see statistics_sync).
+    lease_token = models.UUIDField(null=True, blank=True)
     last_started_at = models.DateTimeField(null=True, blank=True)
     last_finished_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True, default="")

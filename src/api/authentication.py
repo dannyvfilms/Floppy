@@ -3,6 +3,7 @@
 import hashlib
 from datetime import timedelta
 
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.authentication import BaseAuthentication
 from rest_framework.exceptions import AuthenticationFailed
@@ -18,14 +19,24 @@ LAST_USED_WRITE_INTERVAL = timedelta(minutes=5)
 
 
 def _touch_last_used(token: IntegrationToken) -> None:
-    """Record token use, at most once per :data:`LAST_USED_WRITE_INTERVAL`."""
+    """Record token use, at most once per :data:`LAST_USED_WRITE_INTERVAL`.
+
+    The UPDATE is conditional on the *stored* timestamp, not the (possibly
+    stale) request object's copy, and counts affected rows: two requests
+    holding separately-loaded expired snapshots collapse into at most one
+    stored advance per interval instead of both writing.
+    """
     now = timezone.now()
     if token.last_used_at and now - token.last_used_at < LAST_USED_WRITE_INTERVAL:
         return
-    # Filtered UPDATE rather than save(): concurrent requests collapse into one
-    # write instead of racing, and no other field can be clobbered.
-    IntegrationToken.objects.filter(pk=token.pk).update(last_used_at=now)
-    token.last_used_at = now
+    cutoff = now - LAST_USED_WRITE_INTERVAL
+    updated = (
+        IntegrationToken.objects.filter(pk=token.pk)
+        .filter(Q(last_used_at__isnull=True) | Q(last_used_at__lte=cutoff))
+        .update(last_used_at=now)
+    )
+    if updated:
+        token.last_used_at = now
 
 
 def authenticate_token(raw_token: str):
@@ -42,14 +53,14 @@ def authenticate_token(raw_token: str):
     except IntegrationToken.DoesNotExist:
         pass
     else:
-        if not integration_token.is_valid():
+        if not integration_token.is_valid() or not integration_token.user.is_active:
             msg = "Invalid token"
             raise AuthenticationFailed(msg)
         _touch_last_used(integration_token)
         return (integration_token.user, integration_token)
 
     try:
-        user = User.objects.get(token=raw_token)
+        user = User.objects.get(token=raw_token, is_active=True)
     except User.DoesNotExist:
         msg = "Invalid token"
         raise AuthenticationFailed(msg) from None

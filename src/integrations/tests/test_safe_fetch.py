@@ -1,8 +1,10 @@
 """The outbound boundary for user-configured URLs."""
 
 import ipaddress
+import socket
 from unittest.mock import Mock, patch
 
+import requests
 from django.test import TestCase
 
 from integrations import safe_fetch
@@ -20,6 +22,7 @@ def public(*addresses):
                 return_value=[(0, 0, 0, "", (addr, 0)) for addr in addresses],
             ),
             gaierror=OSError,
+            SHUT_RDWR=socket.SHUT_RDWR,
         ),
     )
 
@@ -88,6 +91,15 @@ class ResolutionTests(TestCase):
         with public("169.254.169.254"):
             self.assert_refused("https://evil.example/", "forbidden_address")
 
+    def test_shared_address_space_is_not_public(self):
+        for address in ("100.64.0.1", "100.100.100.200", "100.127.255.254"):
+            with self.subTest(address=address), public(address):
+                self.assert_refused("https://evil.example/", "forbidden_address")
+
+    def test_public_ipv6_address_is_allowed(self):
+        with public("2606:4700:4700::1111"):
+            self.assertIsNotNone(validate_url("https://example.com/manifest.json"))
+
     def test_the_ipv6_metadata_endpoint_is_refused(self):
         """The IPv6 route to the same place must close too."""
         with public("fd00:ec2::254"):
@@ -135,6 +147,20 @@ class FetchTests(TestCase):
             _, body = fetch("https://example.com/m.json", session=session)
 
         self.assertEqual(body, b'{"ok":1}')
+        session.get.return_value.close.assert_called_once()
+
+    def test_stream_failure_closes_the_response(self):
+        response = self.response()
+        response.iter_content.side_effect = safe_fetch.requests.ConnectionError(
+            "stream failed"
+        )
+        session = Mock(get=Mock(return_value=response))
+        with (
+            public("93.184.216.34"),
+            self.assertRaises(safe_fetch.requests.ConnectionError),
+        ):
+            fetch("https://example.com/m.json", session=session)
+        response.close.assert_called_once()
 
     def test_only_allowlisted_headers_are_sent(self):
         """No cookie or Authorization header may reach a user-typed host."""
@@ -163,6 +189,7 @@ class FetchTests(TestCase):
             fetch("https://example.com/m.json", session=session)
 
         self.assertEqual(caught.exception.reason_code, "response_too_large")
+        session.get.return_value.close.assert_called_once()
 
     def test_an_undeclared_oversize_response_is_refused_while_streaming(self):
         """A server that lies about its size must not exhaust memory."""
@@ -173,6 +200,7 @@ class FetchTests(TestCase):
             fetch("https://example.com/m.json", session=session)
 
         self.assertEqual(caught.exception.reason_code, "response_too_large")
+        session.get.return_value.close.assert_called_once()
 
     def test_a_redirect_to_a_forbidden_host_is_refused(self):
         """A permitted host may redirect, but not to somewhere refused."""
@@ -322,3 +350,386 @@ class SelfHostedPolicyTests(TestCase):
 
         self.assertEqual(caught.exception.reason_code, "cross_host_redirect")
         send.assert_called_once()
+
+
+class _Clock:
+    """A controllable monotonic clock for deadline schedules."""
+
+    def __init__(self):
+        self.now = 1000.0
+
+    def monotonic(self):
+        return self.now
+
+
+class PinnedTransportTests(TestCase):
+    """The connection dials the address validation saw; nothing else."""
+
+    def test_wire_url_uses_the_validated_address_and_keeps_the_host_header(self):
+        """DNS is consulted once, at validation; the dial target is its answer."""
+        session = Mock(get=Mock(return_value=self._response()))
+        with public("93.184.216.34"):
+            fetch("https://example.com/m.json?q=1", session=session)
+
+        args = session.get.call_args
+        self.assertEqual(args.args[0], "https://93.184.216.34/m.json?q=1")
+        self.assertEqual(args.kwargs["headers"]["Host"], "example.com")
+
+    def test_international_hostname_uses_one_ascii_identity(self):
+        hostname = "xn--wgv71a119e.jp"
+        session = Mock(get=Mock(return_value=self._response()))
+        with (
+            patch.object(
+                safe_fetch,
+                "resolve_public_addresses",
+                return_value=[ipaddress.ip_address("93.184.216.34")],
+            ) as resolve,
+            patch.object(safe_fetch, "_pinned_session", return_value=session) as transport,
+        ):
+            fetch("https://日本語.jp/feed")
+        resolve.assert_called_once_with(hostname)
+        self.assertEqual(transport.call_args.args[1], hostname)
+        self.assertEqual(session.get.call_args.kwargs["headers"]["Host"], hostname)
+
+    def test_explicit_port_is_preserved_in_host_header(self):
+        for url, host in (
+            ("http://example.com:443/feed", "example.com:443"),
+            ("https://example.com:80/feed", "example.com:80"),
+            ("https://[2606:4700:4700::1111]:443/feed", "[2606:4700:4700::1111]:443"),
+        ):
+            with self.subTest(url=url), public("93.184.216.34"):
+                session = Mock(get=Mock(return_value=self._response()))
+                fetch(url, session=session)
+                self.assertEqual(session.get.call_args.kwargs["headers"]["Host"], host)
+
+    def test_ipv6_addresses_are_bracketed_on_the_wire_and_in_the_host_header(self):
+        session = Mock(get=Mock(return_value=self._response()))
+        with public("2606:4700:4700::1111"):
+            fetch("https://example.com/m.json", session=session)
+
+        args = session.get.call_args
+        self.assertEqual(args.args[0], "https://[2606:4700:4700::1111]/m.json")
+        self.assertEqual(args.kwargs["headers"]["Host"], "example.com")
+
+    def test_explicit_default_ports_stay_on_the_wire_url(self):
+        session = Mock(get=Mock(return_value=self._response()))
+        with public("93.184.216.34"):
+            fetch("https://example.com:443/m.json", session=session)
+        self.assertEqual(
+            session.get.call_args.args[0], "https://93.184.216.34:443/m.json"
+        )
+
+    def test_each_redirect_hop_dials_that_hop_validated_address(self):
+        redirect = self._response(
+            status=302, headers={"Location": "https://other.example/m.json"}
+        )
+        ok = self._response()
+        session = Mock(get=Mock(side_effect=[redirect, ok]))
+        with patch.object(
+            safe_fetch,
+            "resolve_public_addresses",
+            side_effect=[
+                [ipaddress.ip_address("93.184.216.34")],
+                [ipaddress.ip_address("93.184.216.35")],
+            ],
+        ):
+            fetch("https://example.com/m.json", session=session)
+
+        urls = [call.args[0] for call in session.get.call_args_list]
+        self.assertEqual(
+            urls,
+            ["https://93.184.216.34/m.json", "https://93.184.216.35/m.json"],
+        )
+        hosts = [call.kwargs["headers"]["Host"] for call in session.get.call_args_list]
+        self.assertEqual(hosts, ["example.com", "other.example"])
+
+    def _response(self, *, status=200, headers=None, chunks=(b"{}",)):
+        stub = Mock()
+        stub.status_code = status
+        stub.headers = headers or {}
+        stub.is_redirect = status in (301, 302, 303, 307, 308)
+        stub.is_permanent_redirect = status in (301, 308)
+        stub.iter_content = Mock(return_value=iter(chunks))
+        stub.close = Mock()
+        return stub
+
+    def test_pinned_session_mounts_tls_identity_adapter_and_ignores_the_environment(
+        self,
+    ):
+        session = safe_fetch._pinned_session(
+            ipaddress.ip_address("93.184.216.34"), "example.com", "https"
+        )
+        self.addCleanup(session.close)
+        self.assertFalse(session.trust_env)
+        adapter = session.get_adapter("https://93.184.216.34/m.json")
+        self.assertIsInstance(adapter, safe_fetch.PinnedTLSAdapter)
+        # TLS identity stays on the original hostname: the certificate is
+        # verified against it and it is sent as SNI, while the socket dials
+        # the validated address.
+        pool_kwargs = adapter.poolmanager.connection_pool_kw
+        self.assertEqual(pool_kwargs["assert_hostname"], "example.com")
+        self.assertEqual(pool_kwargs["server_hostname"], "example.com")
+
+    def test_environment_proxies_cannot_route_the_fetch(self):
+        """A proxy would resolve the hostname itself, bypassing validation."""
+        with patch.dict(
+            "os.environ",
+            {"HTTP_PROXY": "http://127.0.0.1:9", "HTTPS_PROXY": "http://127.0.0.1:9"},
+        ):
+            session = safe_fetch._pinned_session(
+                ipaddress.ip_address("93.184.216.34"), "example.com", "https"
+            )
+            self.addCleanup(session.close)
+            settings = session.merge_environment_settings(
+                "https://93.184.216.34/m.json", {}, False, True, None
+            )
+        self.assertEqual(settings["proxies"], {})
+
+    def test_the_socket_dials_the_validated_address(self):
+        """On the real transport stack: the dialed tuple is the validated
+        address and port, and the Host header on the wire is the origin.
+        Driven through ``session.send`` on a socketpair — no network leaves
+        the process, and the test network guard stays in place for every
+        ordinary ``Session.request`` path.
+        """
+        import socket as socket_module
+        import threading
+
+        server, client = socket_module.socketpair()
+        self.addCleanup(server.close)
+        self.addCleanup(client.close)
+        request_bytes = []
+
+        def serve():
+            import contextlib
+
+            data = server.recv(65536)
+            if not data:
+                return
+            request_bytes.append(data)
+            with contextlib.suppress(OSError):
+                server.sendall(
+                    b"HTTP/1.1 200 OK\r\n"
+                    b"Content-Length: 2\r\n"
+                    b"Connection: close\r\n\r\nok"
+                )
+
+        dialed = []
+
+        def fake_create_connection(address, *args, **kwargs):
+            dialed.append(address)
+            return client
+
+        thread = threading.Thread(target=serve)
+        thread.start()
+        try:
+            with (
+                public("93.184.216.34"),
+                patch(
+                    "urllib3.util.connection.create_connection",
+                    side_effect=fake_create_connection,
+                ),
+            ):
+                parsed, addresses = safe_fetch._validate_target(
+                    "http://example.com/m.json"
+                )
+                wire_url = safe_fetch._pinned_url(parsed, addresses[0])
+                session = safe_fetch._pinned_session(
+                    addresses[0],
+                    "example.com",
+                    "http",
+                    deadline=safe_fetch.time.monotonic() + 5,
+                )
+                self.addCleanup(session.close)
+                prepared = session.prepare_request(
+                    requests.Request(
+                        "GET",
+                        wire_url,
+                        headers={"Host": "example.com", "User-Agent": "Floppy"},
+                    )
+                )
+                response = session.send(prepared, timeout=(5, 10), stream=True)
+                body = safe_fetch._read_bounded(response)
+                response.close()
+                adapter = session.get_adapter(wire_url)
+                guards = list(adapter._deadline_sockets)
+                self.assertEqual(len(guards), 1)
+                session.close()
+                for timer, duplicate in guards:
+                    self.assertFalse(timer.is_alive())
+                    self.assertEqual(duplicate.fileno(), -1)
+        finally:
+            thread.join(timeout=5)
+
+        self.assertEqual(dialed, [("93.184.216.34", 80)])
+        self.assertEqual(body, b"ok")
+        self.assertIn(b"Host: example.com\r\n", request_bytes[0])
+
+
+class SocketDeadlineTests(TestCase):
+    def _assert_deadline_interrupts(self, phase):
+        import contextlib
+        import socket
+        import threading
+        import time
+
+        server, client = socket.socketpair()
+        finished = threading.Event()
+
+        def serve():
+            with server, contextlib.suppress(OSError):
+                server.recv(65536)
+                if phase == "body":
+                    server.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
+                elif phase == "headers":
+                    server.sendall(b"HTTP/1.1 200 OK\r\nX-Slow: ")
+                else:
+                    # A TLS handshake record whose contents arrive slowly.
+                    server.sendall(b"\x16\x03\x03\x00\x64")
+                for _ in range(50):
+                    if finished.wait(0.03):
+                        break
+                    server.sendall(b"x")
+
+        def send_direct(session, url, **kwargs):
+            # Bypass only Django's external-network guard, preserving the
+            # real Requests/urllib3/TLS stack over this in-process socket.
+            prepared = session.prepare_request(
+                requests.Request("GET", url, headers=kwargs.pop("headers"))
+            )
+            return session.send(prepared, **kwargs)
+
+        thread = threading.Thread(target=serve)
+        thread.start()
+        started = time.monotonic()
+        try:
+            with (
+                public("93.184.216.34"),
+                patch("urllib3.util.connection.create_connection", return_value=client),
+                patch.object(requests.Session, "get", new=send_direct),
+                self.assertRaises(UnsafeUrlError) as caught,
+            ):
+                scheme = "https" if phase == "tls" else "http"
+                fetch(f"{scheme}://example.com/", total_timeout=0.15)
+            self.assertEqual(caught.exception.reason_code, "deadline_exceeded")
+            self.assertLess(time.monotonic() - started, 1.0)
+        finally:
+            finished.set()
+            client.close()
+            thread.join(timeout=1)
+        self.assertFalse(thread.is_alive())
+
+    def test_deadline_interrupts_a_buffered_body(self):
+        self._assert_deadline_interrupts("body")
+
+    def test_deadline_interrupts_buffered_headers(self):
+        self._assert_deadline_interrupts("headers")
+
+    def test_deadline_interrupts_tls_negotiation(self):
+        self._assert_deadline_interrupts("tls")
+
+
+class DeadlineTests(TestCase):
+    """One wall-clock budget covers validation, hops and the body."""
+
+    def setUp(self):
+        self.clock = _Clock()
+        patcher = patch.object(safe_fetch, "time", Mock(monotonic=self.clock.monotonic))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _response(self, *, status=200, headers=None, chunks=(b"{}",)):
+        stub = Mock()
+        stub.status_code = status
+        stub.headers = headers or {}
+        stub.is_redirect = status in (301, 302, 303, 307, 308)
+        stub.is_permanent_redirect = status in (301, 308)
+        stub.iter_content = Mock(return_value=iter(chunks))
+        stub.close = Mock()
+        return stub
+
+    def test_socket_timeouts_are_clamped_to_the_remaining_budget(self):
+        session = Mock(get=Mock(return_value=self._response()))
+        with public("93.184.216.34"):
+            fetch("https://example.com/m.json", session=session, total_timeout=7)
+        self.assertEqual(session.get.call_args.kwargs["timeout"], (5, 7))
+
+        session2 = Mock(get=Mock(return_value=self._response()))
+        with public("93.184.216.34"):
+            fetch("https://example.com/m.json", session=session2, total_timeout=3)
+        self.assertEqual(session2.get.call_args.kwargs["timeout"], (3, 3))
+
+    def test_budget_exhausted_before_a_hop_is_refused(self):
+        """The redirect hop itself consumed the whole budget; the next hop
+        is refused before any request is made.
+        """
+
+        def redirect_and_burn(*args, **kwargs):
+            self.clock.now += 11
+            return self._response(
+                status=302, headers={"Location": "https://example.com/next"}
+            )
+
+        session = Mock(get=Mock(side_effect=redirect_and_burn))
+        with public("93.184.216.34"), self.assertRaises(UnsafeUrlError) as caught:
+            fetch("https://example.com/m.json", session=session, total_timeout=10)
+
+        self.assertEqual(caught.exception.reason_code, "deadline_exceeded")
+        self.assertEqual(session.get.call_count, 1)
+
+    def test_slow_drip_body_stops_at_the_deadline(self):
+        """A stream that never trips a single read timeout still ends."""
+
+        def chunks():
+            yield b"aaaa"
+            self.clock.now += 6
+            yield b"bbbb"
+            self.clock.now += 6
+            yield b"cccc"
+
+        session = Mock(get=Mock(return_value=self._response(chunks=chunks())))
+        with public("93.184.216.34"), self.assertRaises(UnsafeUrlError) as caught:
+            fetch("https://example.com/m.json", session=session, total_timeout=10)
+
+        self.assertEqual(caught.exception.reason_code, "deadline_exceeded")
+        session.get.return_value.close.assert_called_once()
+
+    def test_compressed_expansion_is_bounded_by_decoded_bytes(self):
+        """iter_content yields decoded data; a gzip bomb is refused by its
+        expanded size even when the declared length is tiny.
+        """
+
+        def chunks():
+            for _ in range(safe_fetch.MAX_BYTES // 8192 + 2):
+                yield b"x" * 8192
+
+        response = self._response(
+            headers={"Content-Encoding": "gzip", "Content-Length": "100"},
+            chunks=chunks(),
+        )
+        session = Mock(get=Mock(return_value=response))
+        with public("93.184.216.34"), self.assertRaises(UnsafeUrlError) as caught:
+            fetch("https://example.com/m.json", session=session)
+
+        self.assertEqual(caught.exception.reason_code, "response_too_large")
+
+    def test_a_garbage_content_length_is_ignored_and_streaming_still_bounds(self):
+        response = self._response(
+            headers={"Content-Length": "later"},
+            chunks=(b"x" * 8192 for _ in range(safe_fetch.MAX_BYTES // 8192 + 2)),
+        )
+        session = Mock(get=Mock(return_value=response))
+        with public("93.184.216.34"), self.assertRaises(UnsafeUrlError) as caught:
+            fetch("https://example.com/m.json", session=session)
+
+        self.assertEqual(caught.exception.reason_code, "response_too_large")
+
+    def test_owned_sessions_are_closed_when_the_fetch_completes(self):
+        owned = Mock(get=Mock(return_value=self._response()))
+        with (
+            public("93.184.216.34"),
+            patch.object(safe_fetch, "_pinned_session", return_value=owned),
+        ):
+            _response, _body = fetch("https://example.com/m.json")
+        owned.get.return_value.close.assert_called_once()
+        owned.close.assert_called_once()

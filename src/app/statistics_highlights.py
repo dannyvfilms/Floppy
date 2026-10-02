@@ -461,10 +461,13 @@ def _get_history_index_days(user):
         if isinstance(days, list):
             return days
 
+    # Capture the era before reading rows (see history_cache_reader) so this
+    # publish cannot embed rows from before a concurrent invalidation.
+    era = history_cache._current_history_era(user.id, logging_style)
     day_keys = history_cache.build_history_index(
         user, logging_style_override=logging_style
     )
-    history_cache.cache_history_index(user.id, logging_style, day_keys)
+    history_cache.cache_history_index(user.id, logging_style, day_keys, era=era)
     return day_keys
 
 

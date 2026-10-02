@@ -39,6 +39,13 @@ class CatalogGrantResolutionTests(TestCase):
 
         self.assertEqual(resolve_addon_credential(self.token), (None, None))
 
+    def test_inactive_user_cannot_use_grant_or_legacy_token(self):
+        self.user.is_active = False
+        self.user.save(update_fields=["is_active"])
+        for token in (self.token, self.user.token):
+            with self.subTest(grant=token == self.token):
+                self.assertEqual(resolve_addon_credential(token), (None, None))
+
     def test_an_unknown_token_resolves_to_nothing(self):
         """A guessed credential is not an account."""
         self.assertEqual(resolve_addon_credential("cat_nope"), (None, None))
@@ -267,6 +274,50 @@ class AddonMetaTests(TestCase):
         meta = response.json()["meta"]
         self.assertEqual(meta["id"], "tt0133093")
         self.assertEqual(meta["name"], "The Matrix")
+
+    def test_restricted_grant_cannot_read_another_catalogs_meta(self):
+        for catalog_id in ("floppy-watchlist-series", "floppy-history-movies"):
+            with self.subTest(catalog=catalog_id):
+                _, token = CatalogGrant.generate(
+                    self.user,
+                    "Restricted",
+                    catalog_ids=[catalog_id],
+                )
+                self.assertEqual(self.get_meta(token).json()["meta"], {})
+
+    def test_restricted_grant_can_read_its_catalogs_meta(self):
+        _, token = CatalogGrant.generate(
+            self.user,
+            "Movies",
+            catalog_ids=["floppy-watchlist-movies"],
+        )
+        self.assertEqual(self.get_meta(token).json()["meta"]["id"], "tt0133093")
+
+    def test_unrestricted_grant_cannot_read_an_unpublished_private_list(self):
+        from lists.models import CustomList, CustomListItem
+
+        private = CustomList.objects.create(owner=self.user, name="Private films")
+        CustomListItem.objects.filter(custom_list=self.own_list).update(
+            custom_list=private
+        )
+        self.assertEqual(self.get_meta(self.token).json()["meta"], {})
+
+    def test_grant_can_read_a_status_catalog_without_list_membership(self):
+        from app.models import Movie, Status
+        from lists.models import CustomListItem
+
+        CustomListItem.objects.filter(custom_list=self.own_list).delete()
+        Movie.objects.bulk_create(
+            [
+                Movie(user=self.user, item=self.item, status=Status.COMPLETED.value),
+            ]
+        )
+        _, token = CatalogGrant.generate(
+            self.user,
+            "History",
+            catalog_ids=["floppy-history-movies"],
+        )
+        self.assertEqual(self.get_meta(token).json()["meta"]["id"], "tt0133093")
 
     def test_another_users_install_sees_nothing(self):
         """This endpoint must not become an open metadata proxy."""

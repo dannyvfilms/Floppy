@@ -364,6 +364,11 @@ class ListsView(drf_views.APIView):
 
     def post(self, request):
         """Create a new custom list for the authenticated user."""
+        if getattr(request.auth, "writable_list_ids", None):
+            return Response(
+                {"detail": "This token may only write to its bound lists."},
+                status=HTTP.FORBIDDEN,
+            )
         user = request.user
         body = request.data
 

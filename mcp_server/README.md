@@ -115,6 +115,11 @@ docs) or run `uvicorn floppy_mcp.server:mcp.streamable_http_app`.
 
 ### Notes on tool contracts
 
+- `manage_settings` accepts `{"action": "get"}` to read preferences. To update
+  them, pass a `fields` object, for example
+  `{"action": "update", "fields": {"rating_scale": "0-10"}}`.
+  Preference names belong inside `fields`, not alongside `action`.
+
 - `track_media` reads the title before writing. When completing an already
   tracked title, it targets the returned `Planning`/`In progress` consumption
   with the exact history PATCH route, so automatic completion does not leave a

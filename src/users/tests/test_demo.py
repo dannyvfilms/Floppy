@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 
@@ -107,3 +108,28 @@ class EnsureDemoUserTests(TestCase):
         self.assertFalse(user.is_superuser)
         self.assertEqual(user.email, DEMO_EMAIL)
         self.assertTrue(user.check_password(DEMO_PASSWORD))
+
+
+class DemoDefaultTests(TestCase):
+    """Provisioning is opt-in; explicit True still provisions."""
+
+    def test_setting_defaults_to_off(self):
+        """Without an explicit DEMO_ACCOUNT_ENABLED, no demo is provisioned."""
+        import os
+
+        if os.environ.get("DEMO_ACCOUNT_ENABLED") is None:
+            self.assertFalse(settings.DEMO_ACCOUNT_ENABLED)
+
+    @override_settings(TESTING=False, DEMO_ACCOUNT_ENABLED=True)
+    def test_signal_provisions_when_explicitly_enabled(self):
+        """Explicit opt-in keeps the shared-demo use case working."""
+        with patch("users.signals.ensure_demo_user") as ensure:
+            ensure_demo_user_after_migrate(sender=SimpleNamespace(label="users"))
+        ensure.assert_called_once()
+
+    @override_settings(TESTING=False)
+    def test_signal_does_not_provision_under_the_default(self):
+        """The default after the opt-in change: no demo account."""
+        with patch("users.signals.ensure_demo_user") as ensure:
+            ensure_demo_user_after_migrate(sender=SimpleNamespace(label="users"))
+        ensure.assert_not_called()

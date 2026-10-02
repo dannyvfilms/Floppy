@@ -1248,8 +1248,10 @@ def update_top_talent_sort(request):
             if statistics_cache.range_needs_top_talent_upgrade(
                 request.user.id, range_name
             ):
-                statistics_cache.refresh_statistics_cache(request.user.id, range_name)
-                requires_reload = True
+                refreshed = statistics_cache.refresh_statistics_cache(
+                    request.user.id, range_name
+                )
+                requires_reload = refreshed is not None
         except Exception as exc:  # pragma: no cover - best effort compatibility upgrade
             logger.debug(
                 "top_talent_sort_upgrade_failed user_id=%s range=%s error=%s",

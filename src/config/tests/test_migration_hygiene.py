@@ -4,7 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.core.management import CommandError, call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from app.management.commands import check_migration_hygiene
 
@@ -20,8 +20,10 @@ class _FakeGraph:
 class MigrationHygieneCommandTests(TestCase):
     """Tests for migration hygiene command helpers and smoke behavior."""
 
+    @override_settings(MIGRATION_MODULES={})
     def test_command_passes_with_head_baseline_for_users(self):
         """The command should pass against HEAD baseline for a stable app graph."""
+        # Inspect real migrations even when fast test DB setup disables them.
         output = StringIO()
 
         call_command(

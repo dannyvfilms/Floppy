@@ -129,6 +129,29 @@ class IntegrationTokenAuthHeaderTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, HTTP.OK)
 
+    def test_inactive_user_cannot_authenticate_with_any_token_header(self):
+        self.token.scopes = ["*"]
+        self.token.save(update_fields=["scopes"])
+        self.user1.is_active = False
+        self.user1.save(update_fields=["is_active"])
+        for raw_token in (self.raw_token, self.user1.token):
+            for headers in (
+                {"HTTP_X_API_KEY": raw_token},
+                {"HTTP_AUTHORIZATION": f"Bearer {raw_token}"},
+                {"HTTP_AUTHORIZATION": f"Token {raw_token}"},
+            ):
+                with self.subTest(
+                    headers=list(headers), scoped=raw_token == self.raw_token
+                ):
+                    response = self.call_api(
+                        "get",
+                        "api_user_preferences",
+                        headers=headers,
+                    )
+                    self.assertEqual(response.status_code, HTTP.FORBIDDEN)
+        self.token.refresh_from_db()
+        self.assertIsNone(self.token.last_used_at)
+
     def test_auth_via_bearer_header(self):
         """Authorization: Bearer header authenticates with IntegrationToken."""
         headers = {"HTTP_AUTHORIZATION": f"Bearer {self.raw_token}"}

@@ -113,6 +113,8 @@ case $OS in
     Darwin) DISTRO="macOS $(sw_vers -productVersion 2>/dev/null || echo '')" ;;
     Linux)
         if [ -r /etc/os-release ]; then
+            # Host metadata is unavailable to static analysis on other OSes.
+            # shellcheck disable=SC1091
             DISTRO=$(. /etc/os-release; printf '%s' "${PRETTY_NAME:-${ID:-Linux}}")
         else
             DISTRO="Linux"
@@ -133,7 +135,11 @@ if have docker; then
 else
     say "  Docker:       not installed"
 fi
-have git && say "  Git:          $(git --version 2>/dev/null)" || say "  Git:          not installed"
+if have git; then
+    say "  Git:          $(git --version 2>/dev/null)"
+else
+    say "  Git:          not installed"
+fi
 
 # ---------------------------------------------------------------------------
 # 2. Where it goes
@@ -146,6 +152,9 @@ note "Everything Floppy stores stays inside it, so it is the only thing to back 
 if [ -z "$INSTALL_ROOT" ]; then
     ask INSTALL_ROOT "Installation directory" "$HOME/floppy"
 fi
+# The tilde patterns are deliberately literal: the user typed "~/code", and
+# this is what expands it.
+# shellcheck disable=SC2088
 case $INSTALL_ROOT in
     "~") INSTALL_ROOT=$HOME ;;
     "~/"*) INSTALL_ROOT="$HOME/${INSTALL_ROOT#\~/}" ;;

@@ -11,6 +11,7 @@ from app.history_cache_utils import (
     HISTORY_COVERAGE_REPAIR_LOCK_TTL,
     HISTORY_COVERAGE_REPAIR_PREFIX,
     HISTORY_REFRESH_LOCK_MAX_AGE,
+    _bump_history_era,
     _cache_key,
     _coverage_repair_key,
     _day_cache_key,
@@ -92,6 +93,11 @@ def classify_missing_history_days(user_id: int, logging_style: str, day_ttl):
 def _delete_history_cache_entries(
     user_id: int, logging_style: str, day_keys=None, reason: str | None = None
 ):
+    # Retire the era BEFORE deleting anything: a builder that captured the
+    # previous token can still write its (possibly stale) index afterwards,
+    # but only into a namespace no reader will select again. The deletes
+    # below are hygiene on top of that guarantee, not the guarantee itself.
+    _bump_history_era(user_id, logging_style)
     if day_keys is None:
         index_entry = cache.get(_cache_key(user_id, logging_style))
         day_keys = index_entry.get("days", []) if index_entry else []
@@ -141,6 +147,11 @@ def invalidate_history_days(
 
     for style in logging_styles:
         logging_style = _normalize_logging_style(style)
+        # Retire the typed-index era first (see _delete_history_cache_entries):
+        # afterwards, stale typed publishes can only land in unreachable
+        # namespaces. Registry deletion below then reclaims them eagerly;
+        # TTL is the backstop for any racer that re-appends after this point.
+        _bump_history_era(user_id, logging_style)
         registry_key = _typed_history_index_registry_key(user_id, logging_style)
         typed_index_keys = cache.get(registry_key) or []
         if typed_index_keys:

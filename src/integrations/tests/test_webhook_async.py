@@ -32,6 +32,53 @@ class WebhookViewEnqueueTests(TestCase):
         )
 
     @patch("integrations.tasks.process_webhook.delay")
+    def test_inactive_user_webhooks_are_not_enqueued(self, mock_delay):
+        self.user.is_active = False
+        self.user.save(update_fields=["is_active"])
+        for provider in ("jellyfin", "plex", "emby", "jellyseerr", "kodi"):
+            with self.subTest(provider=provider):
+                response = self.client.post(
+                    reverse(f"{provider}_webhook", kwargs={"token": self.user.token}),
+                    data="{}",
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 401)
+        mock_delay.assert_not_called()
+
+    @patch("integrations.tasks.process_webhook.delay")
+    def test_malformed_json_does_not_enqueue(self, mock_delay):
+        for provider in ("jellyfin", "emby"):
+            with self.subTest(provider=provider):
+                url = reverse(f"{provider}_webhook", kwargs={"token": self.user.token})
+                response = (
+                    self.client.post(url, data={"data": "{"})
+                    if provider == "emby"
+                    else self.client.post(
+                        url, data="{", content_type="application/json"
+                    )
+                )
+                self.assertEqual(response.status_code, 400)
+        mock_delay.assert_not_called()
+
+    @patch("integrations.tasks.process_webhook.delay")
+    def test_non_object_payloads_do_not_enqueue(self, mock_delay):
+        for provider in ("jellyfin", "emby"):
+            for payload in ("null", "[]", '"text"'):
+                with self.subTest(provider=provider, payload=payload):
+                    url = reverse(
+                        f"{provider}_webhook", kwargs={"token": self.user.token}
+                    )
+                    response = (
+                        self.client.post(url, data={"data": payload})
+                        if provider == "emby"
+                        else self.client.post(
+                            url, data=payload, content_type="application/json"
+                        )
+                    )
+                    self.assertEqual(response.status_code, 400)
+        mock_delay.assert_not_called()
+
+    @patch("integrations.tasks.process_webhook.delay")
     def test_jellyfin_enqueues_task(self, mock_delay):
         """A valid Jellyfin payload is enqueued with the parsed payload."""
         url = reverse("jellyfin_webhook", kwargs={"token": "hook-token"})
@@ -168,6 +215,13 @@ class ProcessWebhookTaskTests(TestCase):
             password="12345",
             token="task-token",
         )
+
+    @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
+    def test_user_deactivated_after_enqueue_is_not_processed(self, mock_process):
+        self.user.is_active = False
+        self.user.save(update_fields=["is_active"])
+        tasks.process_webhook("plex", {"event": "media.scrobble"}, self.user.id)
+        mock_process.assert_not_called()
 
     @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
     def test_plex_success_marks_received(self, mock_process):

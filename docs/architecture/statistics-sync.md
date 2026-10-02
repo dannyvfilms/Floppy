@@ -118,6 +118,49 @@ The highlights ("on this day") read the History day cache and keep any day they
 had to build, so a History cache that keeps losing days (see the coverage repair
 reasons in the log) also makes every Statistics range slower.
 
+## Lease fencing — an expired worker is inert
+
+The lease carries a fencing token (`StatisticsSyncState.lease_token`), rotated
+on every claim. Every state-touching operation is fenced on it:
+
+* **Claim** (`_claim_lease`) is one atomic `UPDATE` that installs a fresh token;
+  only a free-or-expired lease (or an explicit takeover) can win it.
+* **Renew** (`_renew_lease`) and **release** only match the caller's token, so
+  an expired worker can neither extend a successor's lease nor release it and
+  admit a third sync while the successor runs.
+* **Publication** (`publish_snapshot`) runs its ownership renewal and its
+  snapshot write inside one transaction, and the write itself refuses to move a
+  range to an older generation (`generation__lte` update, insert on miss,
+  `IntegrityError` on a lost insert race). Redis publication is not atomic
+  with database commit. `load_snapshot` checks the durable generation,
+  publication time and schema version before accepting a cache entry, so a
+  delayed write or outer transaction rollback cannot expose the wrong
+  revision. A warm read adds one indexed metadata query; the payload column
+  is fetched only on a miss. Equal-generation rebuilds are distinguished by
+  publication time. Status pollers also read only durable metadata; a separate
+  Redis metadata copy could otherwise describe a rolled-back publication.
+* **Day publication** renews ownership inside a transaction after building
+  each slice, holding the state-row write lock through the cache writes and
+  dirty-day clearing. A worker that lost its lease during the expensive
+  build cannot overwrite its successor's days. The full-sweep epoch marker
+  uses the same fence.
+* **Markers** (`hot/heavy_synced_generation`, `synced_day`) advance
+  monotonically (`Greatest`) and only under the caller's token, so a stale pass
+  cannot regress what a successor recorded; the full-sweep clear is likewise
+  fenced and bounded by the pass's start time.
+
+A worker that loses its lease gets `status="lost_lease"` and stops touching the
+user's state; the inline read path treats that like `busy` and leaves durable
+work for the successor. Dirty-day clearing also checks the captured dirty
+token so a newer invalidation remains queued. **Drain all old workers before
+upgrading and restart them together after migration 0195.** Old workers do
+not rotate or honor the fencing token; mixed-version execution does not have
+the new ownership guarantees.
+
+Regression: `app/tests/test_statistics_lease_fencing.py` drives claim/renew/
+release/publication/marker schedules deterministically, including the
+successor-arrives-mid-range case.
+
 ## The reconciler — why a lost message cannot strand a page
 
 `Reconcile statistics sync` runs every 60 s (on the interactive worker, so a
@@ -188,8 +231,9 @@ above has no message whose loss matters, and polling never touches it.
 | Line | Meaning |
 | --- | --- |
 | `stats_mark user_id days reason` | a change was recorded |
-| `stats_sync user_id status ranges elapsed_ms` | a sync pass ended (`done`, `continued`, `busy`) |
+| `stats_sync user_id status ranges elapsed_ms` | a sync pass ended (`done`, `continued`, `busy`, `lost_lease`) |
 | `stats_range_summary user_id range generation elapsed_ms` | one range published |
+| `stats_snapshot_superseded user_id range generation` | a publish was skipped: a newer generation is already out |
 | `stats_reconcile candidates queued` | the reconciler found unfinished work |
 | `stats_sync_enqueue_failed` | the broker refused a sync; the reconciler will retry |
 

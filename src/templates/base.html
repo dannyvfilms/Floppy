@@ -239,7 +239,8 @@
               </h1>
             </div>
             {# hx-boost: swap the body instead of reloading on sidebar navigation #}
-            <nav class="p-4 flex-1 overflow-y-auto"
+            <nav id="sidebar-nav"
+                 class="p-4 flex-1 overflow-y-auto"
                  hx-boost="true"
                  style="-webkit-overflow-scrolling: touch">
               <ul class="space-y-1 mb-6">
@@ -450,7 +451,10 @@
                 {# Mobile: sidebar toggle button #}
                 {% if not public_view|default:False %}
                   <button @click="isMobileMenuOpen = !isMobileMenuOpen"
-                          class="lg:hidden pe-3 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200">
+                          :aria-expanded="isMobileMenuOpen"
+                          aria-controls="sidebar-nav"
+                          aria-label="{% translate 'Toggle navigation menu' %}"
+                          class="lg:hidden pe-3 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-(--color-accent) rounded-sm cursor-pointer">
                     {% include "app/icons/hamburger.svg" with classes="w-6 h-6" %}
 
                   </button>
@@ -476,6 +480,7 @@
                           {# Search input #}
                           <input type="search"
                                  id="global-search"
+                                 aria-label="{% translate 'Search your library or online' %}"
                                  name="q"
                                  x-ref="searchInput"
                                  value="{{ request.GET.q }}"
@@ -490,11 +495,12 @@
                                  hx-target="#search-suggestions"
                                  hx-swap="innerHTML"
                                  hx-include="[name='media_type']"
-                                 class="w-full py-2 pl-10 pr-4 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-l-md focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-inset placeholder-[var(--color-text-muted)]"
+                                 class="w-full py-2 pl-10 pr-4 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-l-md focus:outline-none focus:ring-2 focus:ring-(--color-accent) focus:ring-inset placeholder-[var(--color-text-muted)]"
                                  :class="selectedType.value === 'book' ? 'pr-10' : ''">
                           <button type="submit"
                                   x-ref="searchButton"
-                                  class="absolute left-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none cursor-pointer">
+                                  aria-label="{% translate 'Search' %}"
+                                  class="absolute left-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-(--color-accent) rounded-sm cursor-pointer">
                             {% include "app/icons/magnifying-glass.svg" with classes="w-5 h-5" %}
 
                           </button>
@@ -503,7 +509,7 @@
                                   x-show="selectedType.value === 'book'"
                                   @click="$refs.barcodeInput?.click()"
                                   x-bind:disabled="barcodeScanning"
-                                  class="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  class="absolute right-2 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-(--color-accent) rounded-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                   title="{% translate "Scan barcode" %}"
                                   aria-label="{% translate "Scan book barcode" %}">
                             <span x-show="barcodeScanning" class="block">
@@ -527,7 +533,7 @@
                         <button type="button"
                                 @click="isOpen = !isOpen"
                                 @click.away="isOpen = false"
-                                class="flex items-center justify-between shrink-0 px-3 sm:px-4 py-2 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-r-md focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:ring-inset hover:bg-[var(--color-surface)] transition-colors duration-200 cursor-pointer">
+                                class="flex items-center justify-between shrink-0 px-3 sm:px-4 py-2 text-sm text-[var(--color-text-secondary)] bg-[var(--color-panel)] rounded-r-md focus:outline-none focus:ring-2 focus:ring-(--color-accent) focus:ring-inset hover:bg-[var(--color-surface)] transition-colors duration-200 cursor-pointer">
                           <span class="whitespace-nowrap" x-text="selectedType.display"></span>
                           {% include "app/icons/chevron-down.svg" with classes="w-4 h-4 ml-2" %}
 

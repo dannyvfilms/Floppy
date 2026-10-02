@@ -88,6 +88,32 @@ class StatisticsSyncTestCase(TestCase):
 
 
 class MarkingTests(StatisticsSyncTestCase):
+    @patch("app.statistics_sync._aggregate_range", return_value={})
+    @patch("app.statistics_sync._build_days", return_value=0)
+    def test_inline_range_preserves_pending_full_sweep(self, *_mocks):
+        with self.captureOnCommitCallbacks(execute=False):
+            statistics_sync.mark_aggregate(self.user.id, full_sweep=True)
+        statistics_sync.refresh_range_inline(self.user.id, "Today")
+        self.assertIsNotNone(self.state().full_sweep_requested_at)
+
+    @NON_EAGER
+    @patch(SYNC_TASK)
+    @patch("app.statistics_sync._aggregate_range", return_value={})
+    def test_inline_refresh_defers_to_active_sync(self, aggregate, enqueue):
+        lease = timezone.now() + timedelta(minutes=4)
+        StatisticsSyncState.objects.filter(user=self.user).update(
+            lease_expires_at=lease
+        )
+        before = self.state().generation
+        with self.captureOnCommitCallbacks(execute=True):
+            result = statistics_sync.refresh_range_inline(self.user.id, "Today")
+        self.assertIsNone(result)
+        aggregate.assert_not_called()
+        self.assertEqual(self.state().lease_expires_at, lease)
+        self.assertGreater(self.state().generation, before)
+        self.assertIsNotNone(self.state().full_sweep_requested_at)
+        enqueue.assert_called_once()
+
     def test_repeated_marks_keep_one_row_per_day_and_rotate_its_token(self):
         self.mark([self.day(3)])
         first = StatisticsDirtyDay.objects.get(user_id=self.user.id, day=self.day(3))
@@ -232,11 +258,11 @@ class SyncTests(StatisticsSyncTestCase):
         real_aggregate = statistics_sync._aggregate_range
         marked = []
 
-        def aggregate_then_change(user, range_name, hints, deadline=None):
+        def aggregate_then_change(user, range_name, hints, deadline=None, **kwargs):
             if not marked:
                 marked.append(range_name)
                 self.mark([self.day(3)])
-            return real_aggregate(user, range_name, hints, deadline)
+            return real_aggregate(user, range_name, hints, deadline, **kwargs)
 
         with patch.object(statistics_sync, "_aggregate_range", aggregate_then_change):
             result = statistics_sync.run_sync(self.user.id)
@@ -459,6 +485,24 @@ class ReconcilerTests(StatisticsSyncTestCase):
 
 
 class ReadPathTests(StatisticsSyncTestCase):
+    @patch("app.statistics_cache.range_needs_top_talent_upgrade", return_value=True)
+    @patch("app.statistics_cache.refresh_statistics_cache", return_value=None)
+    @patch("app.statistics_cache.get_top_talent_data", return_value={})
+    @patch(
+        "app.statistics_views.stats_cast_crew.get_featured_repeat_player_with_strip",
+        return_value=(None, []),
+    )
+    @patch("app.statistics_views.stats_cast_crew.get_studio_footprint", return_value={})
+    def test_deferred_upgrade_returns_fragments_instead_of_reloading(self, *_mocks):
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("update_top_talent_sort"),
+            {"sort_by": "plays", "range_name": "Today", "total_library_titles": "4"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["requires_reload"])
+        self.assertIn("role_leaders_html", response.json())
+
     @NON_EAGER
     @patch(SYNC_TASK)
     def test_polling_never_interrupts_a_running_sync(self, enqueue):

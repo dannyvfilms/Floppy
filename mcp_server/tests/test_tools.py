@@ -402,7 +402,24 @@ async def test_manage_settings_get(api_base_url):
 async def test_manage_settings_update(api_base_url):
     with respx.mock:
         route = respx.patch(f"{api_base_url}/user/preferences").mock(return_value=ok())
-        await server.manage_settings("update", rating_scale="0-10")
+        await server.manage_settings("update", fields={"rating_scale": "0-10"})
+        assert json.loads(route.calls.last.request.content) == {"rating_scale": "0-10"}
+
+
+async def test_manage_settings_get_through_mcp(api_base_url):
+    with respx.mock:
+        route = respx.get(f"{api_base_url}/user/preferences").mock(return_value=ok())
+        await server.mcp.call_tool("manage_settings", {"action": "get"})
+        assert route.called
+
+
+async def test_manage_settings_update_through_mcp(api_base_url):
+    with respx.mock:
+        route = respx.patch(f"{api_base_url}/user/preferences").mock(return_value=ok())
+        await server.mcp.call_tool(
+            "manage_settings",
+            {"action": "update", "fields": {"rating_scale": "0-10"}},
+        )
         assert json.loads(route.calls.last.request.content) == {"rating_scale": "0-10"}
 
 
@@ -451,3 +468,42 @@ async def test_domain_context_resource_reports_failure_without_blocking_tools():
 
         # The tool path is unaffected by the resource failure.
         assert await server.search_media("movie", "matrix") == {"results": []}
+
+
+async def test_every_public_tool_is_registered_on_the_dispatcher():
+    """The dispatcher registration is the contract agents see.
+
+    ``@mcp.tool()`` registers as a side effect and returns the plain
+    function, so a tool missing the decorator still passes direct-function
+    tests while being invisible to agents. Pin the dispatched surface
+    exactly: additions and removals both show up here deliberately.
+    """
+    tools = {tool.name for tool in await server.mcp.list_tools()}
+    assert tools == {
+        "search_media",
+        "search_tracked_media",
+        "get_discover",
+        "get_home",
+        "get_media",
+        "get_statistics",
+        "get_history",
+        "manage_settings",
+        "manage_tags",
+        "manage_list",
+        "track_media",
+        "untrack_media",
+        "update_progress",
+        "run_import",
+        "get_task_status",
+        "list_custom_lists",
+        "list_tracked_media",
+        "log_episode_play",
+        "log_podcast_play",
+        "log_song_play",
+    }
+
+    # Each registered tool must describe itself: a schema the dispatcher
+    # cannot build is as unusable as a missing registration.
+    for tool in await server.mcp.list_tools():
+        assert tool.name
+        assert tool.inputSchema, tool.name

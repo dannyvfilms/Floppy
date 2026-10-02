@@ -7,4 +7,5 @@ audit_input="$(mktemp)"
 trap 'rm -f "$audit_input"' EXIT
 
 uv export --locked --no-default-groups --no-emit-local -o "$audit_input" >/dev/null
-uv run --no-sync pip-audit -r "$audit_input"
+# uv exported the complete pinned dependency graph; do not resolve it again.
+uv run --no-sync pip-audit -r "$audit_input" --no-deps --disable-pip

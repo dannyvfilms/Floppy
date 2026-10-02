@@ -25,6 +25,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.db.models import F, Model, Q
+from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
 from app.interactive_requests import interactive_request_active
@@ -283,19 +284,27 @@ def _ensure_state(user_id: int) -> StatisticsSyncState | None:
         return StatisticsSyncState.objects.filter(user_id=user_id).first()
 
 
-def _claim_lease(user_id: int, *, takeover: bool) -> bool:
+def _claim_lease(user_id: int, *, takeover: bool) -> str | None:
+    """Atomically claim the sync lease; returns the new fencing token.
+
+    The token is rotated on every claim. Lease renewals, snapshot
+    publication and synced-generation updates are fenced on it, so a worker
+    whose lease expired (or was taken over) fails its next fenced operation
+    instead of acting on the successor's sync.
+    """
     now = timezone.now()
+    token = uuid.uuid4()
     queryset = StatisticsSyncState.objects.filter(user_id=user_id)
     if not takeover:
         queryset = queryset.filter(
             Q(lease_expires_at__isnull=True) | Q(lease_expires_at__lt=now)
         )
-    return bool(
-        queryset.update(
-            lease_expires_at=now + timedelta(seconds=_lease_seconds()),
-            last_started_at=now,
-        )
+    claimed = queryset.update(
+        lease_expires_at=now + timedelta(seconds=_lease_seconds()),
+        lease_token=token,
+        last_started_at=now,
     )
+    return token if claimed else None
 
 
 def sync_is_running(user_id: int) -> bool:
@@ -305,9 +314,38 @@ def sync_is_running(user_id: int) -> bool:
     ).exists()
 
 
-def _renew_lease(user_id: int) -> None:
-    StatisticsSyncState.objects.filter(user_id=user_id).update(
-        lease_expires_at=timezone.now() + timedelta(seconds=_lease_seconds())
+def _check_lease(user_id: int, lease_token: str | None) -> None:
+    """Raise :class:`_LostLeaseError` when a successor claimed the lease."""
+    if lease_token is not None and not _renew_lease(user_id, lease_token):
+        raise _LostLeaseError
+
+
+def _renew_lease(user_id: int, lease_token: str | None) -> bool:
+    """Extend the lease iff the caller still owns it.
+
+    The UPDATE is the linearization point: a hit means the caller owned the
+    lease at that instant (and just extended it), a miss means a successor
+    claimed it — including the natural-expiry case, where a successor can
+    only have claimed after this lease had already lapsed.
+    """
+    if lease_token is None:
+        return True
+    return bool(
+        StatisticsSyncState.objects.filter(
+            user_id=user_id, lease_token=lease_token
+        ).update(lease_expires_at=timezone.now() + timedelta(seconds=_lease_seconds()))
+    )
+
+
+def _release_lease(user_id: int, lease_token: str | None) -> None:
+    """Release the lease iff the caller still owns it."""
+    if lease_token is None:
+        StatisticsSyncState.objects.filter(user_id=user_id).update(
+            lease_expires_at=None, last_finished_at=timezone.now()
+        )
+        return
+    StatisticsSyncState.objects.filter(user_id=user_id, lease_token=lease_token).update(
+        lease_expires_at=None, last_finished_at=timezone.now()
     )
 
 
@@ -490,18 +528,24 @@ def _snapshot_entry(data, generation, built_day, built_at, schema_version):
 _SNAPSHOT_META_FIELDS = ("built_at", "built_day", "generation", "schema_version")
 
 
-def _meta_cache_key(user_id: int, range_name: str) -> str:
-    from app.statistics_cache import _cache_key
+def publish_snapshot(
+    user_id: int,
+    range_name: str,
+    data: dict,
+    generation: int,
+    lease_token: str | None = None,
+):
+    """Publish durably to the database, with a revision-checked cache copy.
 
-    return f"{_cache_key(user_id, range_name)}_meta"
-
-
-def _snapshot_meta(entry: dict) -> dict:
-    return {field: entry.get(field) for field in _SNAPSHOT_META_FIELDS}
-
-
-def publish_snapshot(user_id: int, range_name: str, data: dict, generation: int):
-    """Publish a range payload to the cache and, durably, the database."""
+    With ``lease_token`` the publication is fenced: the ownership check (a
+    lease renewal) and the snapshot write run inside one transaction, and
+    the snapshot write itself never moves a range to an older generation.
+    A worker failing the ownership check publishes nothing. Redis writes
+    can arrive late or precede an outer transaction's rollback; load_snapshot
+    verifies them against the durable revision before returning them.
+    Callers without a lease may omit the token; their database writes still
+    cannot regress a newer generation.
+    """
     from app.statistics_cache import (
         STATISTICS_RANGE_CACHE_TIMEOUT,
         _cache_key,
@@ -514,15 +558,21 @@ def publish_snapshot(user_id: int, range_name: str, data: dict, generation: int)
     entry = _snapshot_entry(
         data, generation, built_day, built_at, SNAPSHOT_SCHEMA_VERSION
     )
-    cache.set_many(
-        {
-            _cache_key(user_id, range_name): entry,
-            _meta_cache_key(user_id, range_name): _snapshot_meta(entry),
-        },
-        timeout=STATISTICS_RANGE_CACHE_TIMEOUT,
-    )
     try:
-        payload = dehydrate_payload(data)
+        with transaction.atomic():
+            if lease_token is not None and not _renew_lease(user_id, lease_token):
+                raise _LostLeaseError
+            persisted = _persist_snapshot(
+                user_id,
+                range_name,
+                {
+                    "payload": dehydrate_payload(data),
+                    "built_day": built_day,
+                    "built_at": built_at,
+                    "schema_version": SNAPSHOT_SCHEMA_VERSION,
+                },
+                generation,
+            )
     except _UndehydratableError as exc:
         logger.warning(
             "stats_snapshot_not_persisted user_id=%s range=%s error=%s",
@@ -530,40 +580,80 @@ def publish_snapshot(user_id: int, range_name: str, data: dict, generation: int)
             range_name,
             exc,
         )
+        cache.set(
+            _cache_key(user_id, range_name),
+            entry,
+            timeout=STATISTICS_RANGE_CACHE_TIMEOUT,
+        )
         return entry
-    StatisticsSnapshot.objects.bulk_create(
-        [
-            StatisticsSnapshot(
-                user_id=user_id,
-                range_name=range_name,
-                payload=payload,
-                generation=generation,
-                built_day=built_day,
-                built_at=built_at,
-                schema_version=SNAPSHOT_SCHEMA_VERSION,
-            )
-        ],
-        update_conflicts=True,
-        update_fields=[
-            "payload",
-            "generation",
-            "built_day",
-            "built_at",
-            "schema_version",
-        ],
-        unique_fields=["user", "range_name"],
-    )
+    if persisted:
+        # This atomic block won, but an outer transaction may still roll
+        # back and another writer may publish before this cache write.
+        # load_snapshot validates the durable revision on every read.
+        cache.set(
+            _cache_key(user_id, range_name),
+            entry,
+            timeout=STATISTICS_RANGE_CACHE_TIMEOUT,
+        )
+    else:
+        logger.info(
+            "stats_snapshot_superseded user_id=%s range=%s generation=%s",
+            user_id,
+            range_name,
+            generation,
+        )
     return entry
 
 
+def _persist_snapshot(
+    user_id: int, range_name: str, fields: dict, generation: int
+) -> bool:
+    """Write a snapshot unless a newer generation is already published."""
+    updated = StatisticsSnapshot.objects.filter(
+        user_id=user_id, range_name=range_name, generation__lte=generation
+    ).update(generation=generation, **fields)
+    if updated:
+        return True
+    try:
+        StatisticsSnapshot.objects.create(
+            user_id=user_id, range_name=range_name, generation=generation, **fields
+        )
+    except IntegrityError:
+        # A row appeared with a newer generation between the update and the
+        # insert; leave it alone.
+        return False
+    return True
+
+
 def load_snapshot(user_id: int, range_name: str) -> dict | None:
-    """Return the published entry for a range: cache first, then database."""
+    """Return a cache entry only when it matches the durable publication.
+
+    Database commit and Redis publication cannot be atomic. A delayed writer
+    or a rolled-back outer transaction can leave any revision in Redis. Read
+    the small snapshot metadata first; only load its payload on a cache miss.
+    ``built_at`` also distinguishes rebuilds within the same generation.
+    """
     from app.statistics_cache import STATISTICS_RANGE_CACHE_TIMEOUT, _cache_key
 
     key = _cache_key(user_id, range_name)
+    snapshot = (
+        StatisticsSnapshot.objects.filter(user_id=user_id, range_name=range_name)
+        .defer("payload")
+        .first()
+    )
+    if snapshot is None:
+        return None
     entry = cache.get(key)
-    if isinstance(entry, dict) and "generation" in entry:
+    if (
+        isinstance(entry, dict)
+        and entry.get("generation") == snapshot.generation
+        and entry.get("built_at") == snapshot.built_at
+        and entry.get("schema_version") == snapshot.schema_version
+    ):
         return entry
+    # A writer may publish between the metadata read and this cache miss.
+    # Fetch payload and metadata together rather than lazily loading only
+    # payload onto an object that still carries the previous revision.
     snapshot = StatisticsSnapshot.objects.filter(
         user_id=user_id, range_name=range_name
     ).first()
@@ -576,36 +666,22 @@ def load_snapshot(user_id: int, range_name: str) -> dict | None:
         snapshot.built_at,
         snapshot.schema_version,
     )
-    cache.set_many(
-        {key: entry, _meta_cache_key(user_id, range_name): _snapshot_meta(entry)},
-        timeout=STATISTICS_RANGE_CACHE_TIMEOUT,
-    )
+    cache.set(key, entry, timeout=STATISTICS_RANGE_CACHE_TIMEOUT)
     return entry
 
 
 def load_snapshot_meta(user_id: int, range_name: str) -> dict | None:
-    """Return a range's build time, day, generation and schema, not its data.
+    """Read durable metadata without loading or unpickling the range payload.
 
-    Pollers and the page header only need to know when a snapshot was built
-    and whether it is stale. Loading the full entry for that unpickles every
-    chart and list in the range, which on a large library is the cost of the
-    whole page, so the fields are kept under their own small key.
+    A separate Redis metadata key can outlive a rolled-back publication or
+    lag behind a successor. This small indexed query preserves the poller's
+    bounded read while using the same committed revision as load_snapshot.
     """
-    from app.statistics_cache import STATISTICS_RANGE_CACHE_TIMEOUT
-
-    key = _meta_cache_key(user_id, range_name)
-    meta = cache.get(key)
-    if isinstance(meta, dict) and "generation" in meta:
-        return meta
-    meta = (
+    return (
         StatisticsSnapshot.objects.filter(user_id=user_id, range_name=range_name)
         .values(*_SNAPSHOT_META_FIELDS)
         .first()
     )
-    if meta is None:
-        return None
-    cache.set(key, meta, timeout=STATISTICS_RANGE_CACHE_TIMEOUT)
-    return meta
 
 
 def current_generation(user_id: int) -> int:
@@ -638,6 +714,10 @@ def entry_is_stale(entry, generation: int | None = None, user_id=None) -> bool:
 
 class _OutOfTimeError(Exception):
     pass
+
+
+class _LostLeaseError(Exception):
+    """The sync's lease was claimed by a successor; stop touching its state."""
 
 
 def _check_deadline(deadline) -> None:
@@ -716,7 +796,13 @@ def _missing_days(user_id: int, days) -> set:
 
 
 def _build_days(
-    user, days, deadline, dirty_tokens, *, yield_to_interactive=False
+    user,
+    days,
+    deadline,
+    dirty_tokens,
+    *,
+    yield_to_interactive=False,
+    lease_token: str | None = None,
 ) -> int:
     """Build day payloads in slices; clear each slice's dirty rows as it lands."""
     from app.statistics_day_builder import (
@@ -730,6 +816,8 @@ def _build_days(
     for offset in range(0, len(days), size):
         _yield_if_interactive(yield_to_interactive)
         _check_deadline(deadline)
+        if lease_token is not None and not _renew_lease(user.id, lease_token):
+            raise _LostLeaseError
         chunk = days[offset : offset + size]
         prefetch = _build_prefetch_for_range(user, chunk)
         collector = {
@@ -759,18 +847,22 @@ def _build_days(
                     day_stats.get("backfill", {}).get("missing_credits") or 0
                 )
             processed_days.append(day)
-        if pending:
-            failed = set(
-                cache.set_many(pending, timeout=STATISTICS_DAY_CACHE_TIMEOUT) or ()
-            )
-            if failed:
-                cache.set_many(
-                    {key: pending[key] for key in failed},
-                    timeout=STATISTICS_DAY_CACHE_TIMEOUT,
+        # Building a slice can outlive its lease. Renew under a transaction
+        # immediately before publishing; the state-row write lock prevents a
+        # successor from claiming until the day writes and clearing finish.
+        with transaction.atomic():
+            _check_lease(user.id, lease_token)
+            if pending:
+                failed = set(
+                    cache.set_many(pending, timeout=STATISTICS_DAY_CACHE_TIMEOUT) or ()
                 )
+                if failed:
+                    cache.set_many(
+                        {key: pending[key] for key in failed},
+                        timeout=STATISTICS_DAY_CACHE_TIMEOUT,
+                    )
+            _clear_dirty(user.id, processed_days, dirty_tokens)
         _enqueue_collected_backfills(user.id, collector)
-        _clear_dirty(user.id, processed_days, dirty_tokens)
-        _renew_lease(user.id)
         if deferred:
             raise _OutOfTimeError
     return credit_hints
@@ -788,7 +880,13 @@ def _clear_dirty(user_id: int, days, dirty_tokens) -> None:
         StatisticsDirtyDay.objects.filter(query, user_id=user_id).delete()
 
 
-def _aggregate_range(user, range_name: str, credit_hints: int, deadline=None) -> dict:
+def _aggregate_range(
+    user,
+    range_name: str,
+    credit_hints: int,
+    deadline=None,
+    lease_token: str | None = None,
+) -> dict:
     from app.statistics_aggregator import _aggregate_statistics_from_days
     from app.statistics_highlights import normalize_highlight_images
     from app.statistics_refresh import _get_predefined_range_dates, _resolve_day_list
@@ -800,7 +898,9 @@ def _aggregate_range(user, range_name: str, credit_hints: int, deadline=None) ->
     # ~13 queries each. Build them first with one prefetch per slice.
     missing = sorted(_missing_days(user.id, day_list), reverse=True)
     if missing:
-        credit_hints += _build_days(user, missing, deadline, {})
+        credit_hints += _build_days(
+            user, missing, deadline, {}, lease_token=lease_token
+        )
     data = _aggregate_statistics_from_days(
         user,
         day_list,
@@ -825,8 +925,9 @@ def run_sync(
 
     Returns ``{"status": ..., "published": {range: data}}`` where status is
     ``done``, ``busy`` (another sync holds the lease), ``continued`` (the time
-    budget ran out), ``deferred`` (an interactive request is active), or
-    ``missing``.
+    budget ran out), ``deferred`` (an interactive request is active),
+    ``lost_lease`` (a successor claimed the lease mid-run; its fenced
+    operations stopped touching the user's state), or ``missing``.
 
     ``only_ranges`` rebuilds just those ranges, unconditionally; it is the
     inline path the eager/test read and the top-talent upgrade use.
@@ -842,7 +943,8 @@ def run_sync(
         return {"status": "missing", "published": {}}
     if _ensure_state(user_id) is None:
         return {"status": "missing", "published": {}}
-    if not _claim_lease(user_id, takeover=takeover):
+    lease_token = _claim_lease(user_id, takeover=takeover)
+    if lease_token is None:
         return {"status": "busy", "published": {}}
 
     published: dict[str, dict] = {}
@@ -890,11 +992,14 @@ def run_sync(
                 deadline,
                 dirty_tokens,
                 yield_to_interactive=yield_to_interactive,
+                lease_token=lease_token,
             )
         finally:
             days_seconds = time.monotonic() - days_started
         if full:
-            cache.set(_day_epoch_key(user_id), now.isoformat(), timeout=None)
+            with transaction.atomic():
+                _check_lease(user_id, lease_token)
+                cache.set(_day_epoch_key(user_id), now.isoformat(), timeout=None)
 
         heavy_due = _heavy_due(state, now, full=full, today=today)
         snapshots = {
@@ -921,10 +1026,14 @@ def run_sync(
             if not only_ranges:
                 _check_range_fits(user_id, range_name, deadline, bool(published))
             range_started = time.monotonic()
-            data = _aggregate_range(user, range_name, credit_hints, deadline)
-            publish_snapshot(user_id, range_name, data, generation)
+            data = _aggregate_range(
+                user, range_name, credit_hints, deadline, lease_token=lease_token
+            )
+            publish_snapshot(
+                user_id, range_name, data, generation, lease_token=lease_token
+            )
             published[range_name] = data
-            _renew_lease(user_id)
+            _check_lease(user_id, lease_token)
             range_seconds = time.monotonic() - range_started
             range_seconds_by_name[range_name] = range_seconds
             cache.set(
@@ -942,30 +1051,47 @@ def run_sync(
 
         # Cleared only once the pass completes: a continuation must still see
         # the full sweep, or the heavy ranges it made due would be skipped.
-        if full:
+        # Fenced on the lease and bounded by this pass's start so a worker
+        # that lost its lease cannot clear a newer request, and a request
+        # raised after this pass started is left for the successor.
+        if full and not only_ranges:
             StatisticsSyncState.objects.filter(
-                user_id=user_id, full_sweep_requested_at__lte=now
+                user_id=user_id,
+                lease_token=lease_token,
+                full_sweep_requested_at__lte=now,
             ).update(full_sweep_requested_at=None)
         if not only_ranges:
-            updates = {"hot_synced_generation": generation, "last_error": ""}
+            # Monotone: a stale pass (or an equal-generation predecessor)
+            # cannot pull the synced markers back below what a successor
+            # already recorded.
+            updates = {
+                "hot_synced_generation": Greatest(
+                    Coalesce(F("hot_synced_generation"), 0), generation
+                ),
+                "last_error": "",
+            }
             if heavy_due:
                 updates.update(
-                    heavy_synced_generation=generation,
+                    heavy_synced_generation=Greatest(
+                        Coalesce(F("heavy_synced_generation"), 0), generation
+                    ),
                     heavy_synced_at=timezone.now(),
-                    synced_day=today,
+                    synced_day=Greatest(Coalesce(F("synced_day"), today), today),
                 )
-            StatisticsSyncState.objects.filter(user_id=user_id).update(**updates)
+            StatisticsSyncState.objects.filter(
+                user_id=user_id, lease_token=lease_token
+            ).update(**updates)
+    except _LostLeaseError:
+        status = "lost_lease"
     except _OutOfTimeError:
         status = "continued"
     except Exception as exc:
-        StatisticsSyncState.objects.filter(user_id=user_id).update(
-            last_error=f"{type(exc).__name__}: {exc}"[:1000]
-        )
+        StatisticsSyncState.objects.filter(
+            user_id=user_id, lease_token=lease_token
+        ).update(last_error=f"{type(exc).__name__}: {exc}"[:1000])
         raise
     finally:
-        StatisticsSyncState.objects.filter(user_id=user_id).update(
-            lease_expires_at=None, last_finished_at=timezone.now()
-        )
+        _release_lease(user_id, lease_token)
 
     elapsed = time.monotonic() - started
     logger.info(
@@ -1021,7 +1147,11 @@ def sync_task_body(user_id: int) -> dict:
 
 def refresh_range_inline(user_id: int, range_name: str):
     """Rebuild one range in this process and return its payload."""
-    result = run_sync(user_id, only_ranges=[range_name], takeover=True)
+    result = run_sync(user_id, only_ranges=[range_name])
+    if result["status"] in ("busy", "lost_lease"):
+        # Preserve the running worker's lease and leave durable work for its
+        # continuation/reconciler, including same-generation schema upgrades.
+        mark_aggregate(user_id, reason="inline_refresh_deferred", full_sweep=True)
     return result["published"].get(range_name)
 
 

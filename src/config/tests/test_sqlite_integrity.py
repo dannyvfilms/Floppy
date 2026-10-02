@@ -1101,9 +1101,12 @@ class SqliteIntegrityTests(SimpleTestCase):
                     stderr=output,
                     text=True,
                 )
-                deadline = time.monotonic() + 5
+                # Wait for the actual signal target, including under CI load.
+                # The five-second termination bound below still checks shutdown.
+                deadline = time.monotonic() + 30
                 while (
                     "checker waiting" not in output_path.read_text()
+                    and process.poll() is None
                     and time.monotonic() < deadline
                 ):
                     time.sleep(0.02)

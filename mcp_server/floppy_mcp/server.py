@@ -562,16 +562,16 @@ async def get_task_status(task_id: str) -> Any:
 
 
 @mcp.tool()
-async def manage_settings(action: str, **fields: Any) -> Any:
+async def manage_settings(action: str, fields: dict[str, Any] | None = None) -> Any:
     """Read or update the user's preferences.
 
     action: "get" (returns current values and valid choices) or "update"
-    (pass preference fields as kwargs, e.g. rating_scale="0-10").
+    (pass a fields object, e.g. {"rating_scale": "0-10"}).
     """
     if action == "get":
         return await _call("get", "user/preferences")
     if action == "update":
-        return await _call("patch", "user/preferences", json=fields)
+        return await _call("patch", "user/preferences", json=fields or {})
     return {"error": True, "detail": f"Unknown action: {action}"}
 
 

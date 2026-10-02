@@ -88,7 +88,7 @@ networks:
 
 Open `http://localhost:8000`, create your account, then set `REGISTRATION=False` and redeploy so strangers can't sign up.
 
-`DEMO_ACCOUNT_ENABLED=False` is set above on purpose: it otherwise defaults to `True` and provisions a publicly known `demo` / `demodemo` login after migrations. Leave it off unless you actually want a shared demo account.
+The examples above set `DEMO_ACCOUNT_ENABLED=False` for clarity; it is also the default. Set `DEMO_ACCOUNT_ENABLED=True` only if you actually want a shared demo account — it provisions a publicly known `demo` / `demodemo` login after migrations.
 
 That's the whole install. `SECRET` is the only variable you truly must set; `TMDB_API` is what makes movie and TV metadata work, and every other API key is optional until you want that media type. Everything else — Postgres, reverse proxies, the full environment variable list, Docker Run, Portainer specifics — is in [Configuration and deployment](#configuration-and-deployment) further down.
 
@@ -509,7 +509,7 @@ The only universally required variable is `SECRET`. For Docker installs you shou
 - `DEBUG` - leave unset or `False` in production; enabling it slows every request (debug toolbar, no template caching) and is only meant for troubleshooting
 - Anime routing across scrobblers and importers - see the [grouped anime guide](docs/grouped_anime.md)
 - `REGISTRATION` - set to `True` to allow new signups (needed for your first account), then set to `False` afterward
-- `DEMO_ACCOUNT_ENABLED` - defaults to `True`, provisioning the built-in `demo` / `demodemo` account after migrations. The examples above set it to `False`; only turn it on if you want a shared demo login
+- `DEMO_ACCOUNT_ENABLED` - defaults to `False`. Set it to `True` to provision the built-in `demo` / `demodemo` account after migrations (shared-demo installs only). The setting gates provisioning; an account that already exists stays until you deactivate or delete it — `python manage.py floppy_preflight` warns when a known-password demo login is active
 - `ALLOWED_HOSTS` / `PUID` / `PGID` - `ALLOWED_HOSTS` is a comma-separated list of hostnames/IPs Django will accept requests for; `PUID` / `PGID` set the file-ownership user/group inside the container (match your host user, e.g. Unraid's `99`/`100`, if you hit permission errors)
 
 For the complete list, see the [Environment Variables documentation](https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#environment-variables).
@@ -1036,7 +1036,7 @@ PYTHONPATH=src uv run --no-sync celery -A config worker --queues celery --beat -
 npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css --watch
 ```
 
-Visit `http://localhost:8000`. A `demo` / `demodemo` account is provisioned after migrations; set `DEMO_ACCOUNT_ENABLED=False` to disable it. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+Visit `http://localhost:8000`. For a shared demo login, set `DEMO_ACCOUNT_ENABLED=True` before the first start; provisioning is otherwise off by default. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 `pyproject.toml` and `uv.lock` are the dependency source of truth for the app
 and bundled MCP workspace. Use uv 0.12.3 and keep the lockfile in sync; the

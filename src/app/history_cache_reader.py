@@ -41,6 +41,7 @@ from app.history_cache_utils import (
     HISTORY_WARM_DAYS,
     _cache_key,
     _coverage_repair_key,
+    _current_history_era,
     _date_from_day_key,
     _day_cache_key,
     _day_key_from_value,
@@ -95,7 +96,8 @@ def get_month_history(
         if built_at:
             cache_age_s = (timezone.now() - built_at).total_seconds()
         if (
-            built_at and timezone.now() - built_at > HISTORY_STALE_AFTER
+            (built_at and timezone.now() - built_at > HISTORY_STALE_AFTER)
+            or cache_entry.get("era") != _current_history_era(user.id, logging_style)
         ) and refresh_lock is None:
             scheduled = schedule_history_refresh(user.id, logging_style, warm_days=0)
             logger.info(
@@ -113,9 +115,17 @@ def get_month_history(
             year,
             month,
         )
+        # Capture the era before reading rows so an invalidation landing
+        # mid-build retires this publish's namespace.
+        era = _current_history_era(user.id, logging_style)
         index_day_keys = build_history_index(user, logging_style)
-        built_at = cache_history_index(user.id, logging_style, index_day_keys)
-        cache_entry = {"days": index_day_keys, "built_at": built_at}
+        built_at = cache_history_index(
+            user.id,
+            logging_style,
+            index_day_keys,
+            era=era,
+        )
+        cache_entry = {"days": index_day_keys, "built_at": built_at, "era": era}
 
     index_days = cache_entry.get("days", [])
     month_prefix = f"{year}{month:02d}"
@@ -408,19 +418,27 @@ def get_cached_history_window(
     requested_media_types = expand_history_media_types(filters.get("media_type"))
     cache_entry = cache.get(_cache_key(user.id, logging_style))
     if requested_media_types is not None:
+        era = _current_history_era(user.id, logging_style)
         typed_cache_key = _typed_history_index_key(
             user.id,
             logging_style,
             requested_media_types,
+            era,
         )
         typed_cache_entry = cache.get(typed_cache_key)
         if (
             typed_cache_entry
+            and typed_cache_entry.get("era") == era
             and typed_cache_entry.get("built_at")
             and timezone.now() - typed_cache_entry["built_at"] <= HISTORY_STALE_AFTER
         ):
             index_days = typed_cache_entry.get("days", [])
         else:
+            # Capture the era before reading rows: if invalidation retires
+            # it mid-build, this publish lands in an unreachable namespace
+            # and the next reader rebuilds — a stale index can never become
+            # the authoritative current one.
+            era = _current_history_era(user.id, logging_style)
             index_days = build_history_index(
                 user,
                 logging_style_override=logging_style,
@@ -431,22 +449,23 @@ def get_cached_history_window(
                 logging_style,
                 index_days,
                 media_types=requested_media_types,
+                era=era,
             )
     elif cache_entry:
         index_days = cache_entry.get("days", [])
         built_at = cache_entry.get("built_at")
         if (
-            built_at
-            and timezone.now() - built_at > HISTORY_STALE_AFTER
-            and _clean_refresh_lock(_refresh_lock_key(user.id, logging_style)) is None
-        ):
+            (built_at and timezone.now() - built_at > HISTORY_STALE_AFTER)
+            or cache_entry.get("era") != _current_history_era(user.id, logging_style)
+        ) and _clean_refresh_lock(_refresh_lock_key(user.id, logging_style)) is None:
             schedule_history_refresh(user.id, logging_style, warm_days=0)
     else:
+        era = _current_history_era(user.id, logging_style)
         index_days = build_history_index(
             user,
             logging_style_override=logging_style,
         )
-        cache_history_index(user.id, logging_style, index_days)
+        cache_history_index(user.id, logging_style, index_days, era=era)
 
     normalized_day_keys = [
         day_key
@@ -587,7 +606,9 @@ def get_cached_history_page(user, page_number: int = 1, logging_style_override=N
     cache_age_s = None
     if built_at:
         cache_age_s = (timezone.now() - built_at).total_seconds()
-    if built_at and timezone.now() - built_at > HISTORY_STALE_AFTER:
+    if (
+        built_at and timezone.now() - built_at > HISTORY_STALE_AFTER
+    ) or cache_entry.get("era") != _current_history_era(user.id, logging_style):
         refresh_lock = _clean_refresh_lock(lock_key)
         if refresh_lock is None:
             scheduled = schedule_history_refresh(user.id, logging_style, warm_days=0)
@@ -812,8 +833,13 @@ def refresh_history_cache(
             len(requested_day_keys or []),
             "page_days" if use_specific_days else "index",
         )
+        # Capture the era before reading rows: if invalidation retires it
+        # mid-build, this publish embeds a retired token and readers treat
+        # the index as stale (serve it, schedule a rebuild) rather than
+        # accepting pre-invalidation rows as fresh.
+        era = _current_history_era(user_id, logging_style)
         index_day_keys = build_history_index(user, logging_style_override=logging_style)
-        cache_history_index(user_id, logging_style, index_day_keys)
+        cache_history_index(user_id, logging_style, index_day_keys, era=era)
 
         warm_targets = []
         if use_specific_days:
@@ -911,8 +937,13 @@ def repair_history_day_cache_coverage(
     if cache_entry:
         index_day_keys = cache_entry.get("days", [])
     else:
+        # Capture the era before reading rows: if invalidation retires it
+        # mid-build, this publish embeds a retired token and readers treat
+        # the index as stale (serve it, schedule a rebuild) rather than
+        # accepting pre-invalidation rows as fresh.
+        era = _current_history_era(user_id, logging_style)
         index_day_keys = build_history_index(user, logging_style_override=logging_style)
-        cache_history_index(user_id, logging_style, index_day_keys)
+        cache_history_index(user_id, logging_style, index_day_keys, era=era)
 
     if not index_day_keys:
         return {"rebuilt": 0, "remaining": 0, "days": 0}

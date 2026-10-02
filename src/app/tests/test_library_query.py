@@ -287,6 +287,26 @@ class FilterSemanticsTests(LibraryQueryTestCase):
 class CrossProviderAliasTests(LibraryQueryTestCase):
     """A TMDB show whose TVDB alias is also listed is hidden (#639)."""
 
+    def test_single_provider_does_not_materialize_alias_candidates(self):
+        items = [
+            Item.objects.create(
+                media_id=str(9000 + index),
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.TV.value,
+                title=f"Show {index}",
+                provider_external_ids={"tvdb_id": str(index)},
+            )
+            for index in range(25)
+        ]
+        query = LibraryQuery(media_types=(MediaTypes.TV.value,))
+        executor = LibraryQueryExecutor(self.user, query)
+        with mock.patch.object(Item, "from_db", wraps=Item.from_db) as hydrate:
+            hidden = executor._cross_provider_hidden_ids(
+                Item.objects.filter(pk__in=[item.pk for item in items])
+            )
+        self.assertEqual(hidden, set())
+        hydrate.assert_not_called()
+
     def test_tmdb_alias_is_hidden(self):
         """Only the preferred provider's identity is listed."""
         tvdb = Item.objects.create(

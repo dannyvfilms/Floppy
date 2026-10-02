@@ -2057,4 +2057,10 @@ if not REGISTRATION:
 
 REDIRECT_LOGIN_TO_SSO = config("REDIRECT_LOGIN_TO_SSO", default=False, cast=bool)
 
-DEMO_ACCOUNT_ENABLED = config("DEMO_ACCOUNT_ENABLED", default=True, cast=bool)
+# Demo provisioning is opt-in. It creates a publicly known login
+# (demo/demodemo) after migrations, which is what a shared demo install
+# wants and what a private install must set DEMO_ACCOUNT_ENABLED=True to
+# get. Existing installs that already provisioned the account keep it:
+# this setting gates provisioning, not the account itself (see
+# floppy_preflight's demo check for how to notice and retire it).
+DEMO_ACCOUNT_ENABLED = config("DEMO_ACCOUNT_ENABLED", default=False, cast=bool)

@@ -23,6 +23,8 @@ already knew.
     migrations ─ anything pending?   (skipped when the database is unreachable,
       │                               because the query needs a connection)
       │
+    demo ────── an active known-password demo login, or provisioning on?
+      │
     redis ───── ping every distinct endpoint
 
 Statuses are ``ok``, ``warn``, ``fail`` and ``skipped``. Only ``fail`` changes the
@@ -43,6 +45,7 @@ from pathlib import Path
 
 import redis
 from django.conf import settings
+from django.contrib.auth.hashers import check_password
 from django.core import checks as django_checks
 from django.db import DatabaseError, connections
 from django.db.migrations.executor import MigrationExecutor
@@ -57,6 +60,7 @@ from config.sqlite_integrity import (
     read_startup_status,
     startup_progress_diagnostics,
 )
+from users.demo import DEMO_PASSWORD
 
 OK = "ok"
 WARN = "warn"
@@ -654,6 +658,83 @@ def _memory_ceiling(client: redis.Redis) -> int | None:
     return parse_size(reported.get("maxmemory"))
 
 
+def check_demo_account(*, database_ok: bool) -> CheckResult:
+    """Warn when the built-in demo login is (or is about to be) reachable.
+
+    ``DEMO_ACCOUNT_ENABLED`` gates *provisioning*, not the account: an
+    existing install that provisioned the demo user keeps it after the
+    default changed to opt-in. This check makes that visible — a known
+    demo/demodemo login is a real exposure on an internet-facing install.
+    Read-only; the password check is a hash comparison, never a write.
+    """
+    if not database_ok:
+        return CheckResult(
+            name="demo",
+            status=SKIPPED,
+            summary="not checked; the database is unavailable",
+        )
+
+    facts = {"provisioning_enabled": bool(settings.DEMO_ACCOUNT_ENABLED)}
+    try:
+        from django.contrib.auth import get_user_model
+
+        demo_users = list(
+            get_user_model()
+            .objects.filter(is_demo=True, is_active=True)
+            .only("username", "password")
+        )
+    except Exception as error:
+        # An upgrade in flight may not have the is_demo column yet.
+        return CheckResult(
+            name="demo",
+            status=SKIPPED,
+            summary="not checked; the user table is not readable yet",
+            cause=clean(f"{type(error).__name__}: {error}"),
+            facts=facts,
+        )
+
+    known_password = [
+        user.username for user in demo_users if check_password(DEMO_PASSWORD, user.password)
+    ]
+    if known_password:
+        facts["known_password_accounts"] = known_password
+        return CheckResult(
+            name="demo",
+            status=WARN,
+            summary="an active demo account still uses its publicly known password",
+            fix=(
+                "deactivate or delete the demo account, or change its password; "
+                "DEMO_ACCOUNT_ENABLED=False stops provisioning but does not "
+                "disable an existing account"
+            ),
+            facts=facts,
+        )
+    if settings.DEMO_ACCOUNT_ENABLED:
+        return CheckResult(
+            name="demo",
+            status=WARN,
+            summary=(
+                "DEMO_ACCOUNT_ENABLED is on: the next migrate provisions or resets the "
+                "publicly known demo/demodemo login"
+            ),
+            fix="set DEMO_ACCOUNT_ENABLED=False unless a shared demo is intended",
+            facts=facts,
+        )
+    if demo_users:
+        return CheckResult(
+            name="demo",
+            status=OK,
+            summary="demo account present; its password is not the default",
+            facts=facts,
+        )
+    return CheckResult(
+        name="demo",
+        status=OK,
+        summary="no demo account, and provisioning is off",
+        facts=facts,
+    )
+
+
 def check_redis() -> CheckResult:
     """Ping every distinct Redis endpoint and report the first that fails.
 
@@ -909,6 +990,7 @@ def run_checks(
     database = check_database(timeout_seconds=timeout_seconds)
     results.append(database)
     results.append(check_migrations(database_ok=not database.failed))
+    results.append(check_demo_account(database_ok=not database.failed))
     if include_redis:
         results.append(check_redis())
     else:

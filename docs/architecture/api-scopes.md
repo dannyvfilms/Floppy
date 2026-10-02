@@ -31,6 +31,10 @@ them would break working installs. Scoping is what the named tokens are for.
 
 ## Enforcement rules
 
+All token authentication requires an active account. Disabling an account
+also disables its catalog grants and webhook credentials; queued webhooks
+recheck account activity before processing.
+
 1. An endpoint is denied unless `VIEW_SCOPES` names it for that HTTP method.
    Unmapped means denied, not allowed — a new route cannot silently become
    reachable by every scoped token.

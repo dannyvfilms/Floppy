@@ -56,16 +56,13 @@ def _process_webhook(provider, payload, user_id, share_id=None):
 
     if share_id is not None:
         try:
-            share = (
-                PlexWebhookShare.objects.select_related(
-                    "owner__plex_account",
-                    "recipient",
-                )
-                .get(
-                    pk=share_id,
-                    recipient_id=user_id,
-                    recipient_enabled=True,
-                )
+            share = PlexWebhookShare.objects.select_related(
+                "owner__plex_account",
+                "recipient",
+            ).get(
+                pk=share_id,
+                recipient_id=user_id,
+                recipient_enabled=True,
             )
         except PlexWebhookShare.DoesNotExist:
             logger.info("Skipping disabled or missing Plex webhook share id %s", share_id)
@@ -88,6 +85,10 @@ def _process_webhook(provider, payload, user_id, share_id=None):
         except user_model.DoesNotExist:
             logger.warning("Skipping %s webhook for missing user id %s", provider, user_id)
             return
+
+    if not user.is_active:
+        logger.info("Skipping %s webhook for inactive user id %s", provider, user.id)
+        return
 
     processor = import_string(WEBHOOK_PROCESSORS[provider])()
     if user.anime_enabled:

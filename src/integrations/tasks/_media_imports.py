@@ -81,6 +81,12 @@ def import_media(
 ):
     """Handle the import process for different media services."""
     user = get_user_model().objects.get(id=user_id)
+    if not user.is_active:
+        # Deactivated after the task was queued: an import is new provider
+        # work that mutates tracking state, so it must not run. No ImportRun
+        # row either — the skip is not an import.
+        logger.info("import_skipped_inactive_user user_id=%s", user_id)
+        return "Import skipped: the account is deactivated."
     task_id = current_task.request.id if current_task and current_task.request else None
 
     source = getattr(importer_func, "__module__", "").rsplit(".", 1)[-1]
@@ -590,6 +596,11 @@ def push_jellyfin_watched(self, user_id):
     cache_safety.release_lock(_jellyfin_health.instant_push_lock_key(user_id))
 
     user = get_user_model().objects.get(id=user_id)
+    if not user.is_active:
+        # Deactivated after the task was queued: pushing watched state is new
+        # provider work against the user's server, so it must not run.
+        logger.info("jellyfin_push_skipped_inactive_user user_id=%s", user_id)
+        return "Skipped: the account is deactivated."
     account = getattr(user, "jellyfin_account", None)
     if not _jellyfin_health.has_credentials(account):
         msg = "Connect Jellyfin before syncing."
