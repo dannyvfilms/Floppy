@@ -27,8 +27,10 @@ from app.models import (
 from app.providers import musicbrainz
 from app.services.music import (
     get_artist_hero_image,
+    populate_album_implied_genres,
     prefetch_album_covers,
     refresh_album_cover_art,
+    store_matched_genres,
     sync_artist_discography,
     sync_music_item_genres_from_album,
 )
@@ -160,6 +162,11 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
 
     This resolves canonical metadata (MusicBrainz when possible), ensures
     Artist/Album/Track/Item existence, and updates the per-user Music row.
+    An album saved without genres is then filled from its MusicBrainz release
+    group, outside the write transaction.
+    The play then copies the album's genres, or the artist's when the album still
+    has none. After that, any genre list found on the album, item, track, or
+    artist is stored on the others that are still empty.
     """
     played_at = event.played_at or timezone.now()
 
@@ -198,6 +205,11 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
     with transaction.atomic():
         artist, artist_created, artist_mbid_attached = _get_or_create_artist(metadata)
         album, album_created = _get_or_create_album(metadata, artist)
+        # Creating the item copies the artist's genres onto an empty album, so
+        # note now whether the release group still needs to be asked.
+        album_needs_genre_fill = bool(
+            not album.genres and album.musicbrainz_release_group_id
+        )
         track = _get_or_create_track(metadata, album)
         item = _get_or_create_item(metadata, track, album)
         music = _update_music_entry(
@@ -234,6 +246,23 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
         if not getattr(event, "defer_cover_prefetch", False):
             _maybe_refresh_album_cover(album)
             _prefetch_missing_covers(artist, force=force_cover_prefetch)
+
+    if album and not getattr(event, "defer_cover_prefetch", False):
+        if album_needs_genre_fill:
+            try:
+                populate_album_implied_genres(album)
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.debug(
+                    "Failed album genre fill for %s: %s",
+                    album,
+                    exception_summary(exc),
+                )
+        sync_music_item_genres_from_album(item, album)
+
+    for row in (item, album, track, artist):
+        if row is not None and row.pk:
+            row.refresh_from_db(fields=["genres"])
+    store_matched_genres(artist=artist, album=album, track=track, item=item)
 
     return music
 
@@ -1629,8 +1658,9 @@ def _sync_artist_metadata(artist: Artist, musicbrainz_id: str, force: bool = Fal
         updates["country"] = data["country"]
     if data.get("image"):
         updates["image"] = data["image"]
-    if data.get("genres"):
-        updates["genres"] = data["genres"]
+    genre_names = [g.get("name") for g in data.get("genres") or [] if g.get("name")]
+    if genre_names:
+        updates["genres"] = genre_names
 
     changed_fields = []
     for field_name, value in updates.items():
