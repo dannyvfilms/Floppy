@@ -72,6 +72,9 @@ class MusicPlaybackEvent:
     # …). Distinct from ResolvedMusicMetadata.source (the metadata provider,
     # e.g. "musicbrainz") and stored on Music.entry_source.
     entry_source: str = ""
+    # ListenBrainz additional_info.origin_url. Empty when the client
+    # did not send one. Hooks key off this; core code does not.
+    origin_url: str = ""
 
 
 @dataclass
@@ -160,6 +163,7 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
 
     This resolves canonical metadata (MusicBrainz when possible), ensures
     Artist/Album/Track/Item existence, and updates the per-user Music row.
+    A client origin URL is stored on the Music row when the scrobble sent one.
     """
     played_at = event.played_at or timezone.now()
 
@@ -234,6 +238,26 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
         if not getattr(event, "defer_cover_prefetch", False):
             _maybe_refresh_album_cover(album)
             _prefetch_missing_covers(artist, force=force_cover_prefetch)
+
+    origin_url = event.origin_url
+    if (
+        origin_url
+        and len(origin_url) <= Music._meta.get_field("origin_url").max_length
+        and music.origin_url != origin_url
+    ):
+        music.origin_url = origin_url
+        music.save(update_fields=["origin_url"])
+
+    from app.signals_music import music_listen_recorded
+
+    # send_robust: a failing hook is logged, never a failed scrobble.
+    for receiver, result in music_listen_recorded.send_robust(
+        sender=Music, music=music, event=event
+    ):
+        if isinstance(result, Exception):
+            logger.error(
+                "Music listen hook %r failed: %s", receiver, exception_summary(result)
+            )
 
     return music
 

@@ -96,6 +96,7 @@ class ListenBrainzScrobbleProcessor:
             completed=True,
             played_at=played_at,
             entry_source="listenbrainz",
+            origin_url=(additional.get("origin_url") or "").strip(),
         )
 
         try:
