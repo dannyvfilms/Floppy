@@ -253,6 +253,7 @@ class ListenBrainzMetadataTests(ListenBrainzTestCase):
                             "artist_mbids": ["art-1", "art-2"],
                             "duration_ms": 210000,
                             "track_number": 4,
+                            "origin_url": "https://soundcloud.com/duskymusic/dusky-careless",
                         },
                     ),
                 ],
@@ -270,7 +271,46 @@ class ListenBrainzMetadataTests(ListenBrainzTestCase):
         )
         self.assertEqual(event.duration_ms, 210000)
         self.assertEqual(event.track_number, 4)
+        self.assertEqual(
+            event.origin_url,
+            "https://soundcloud.com/duskymusic/dusky-careless",
+        )
         self.assertTrue(event.completed)
+
+    @patch("integrations.webhooks.listenbrainz.music_scrobble.record_music_playback")
+    def test_spotify_track_url_is_the_play_link_when_origin_is_empty(self, mock_record):
+        """Multi-Scrobbler sends the Spotify URL as spotify_id, not origin_url."""
+        mock_record.return_value = None
+        spotify_url = "https://open.spotify.com/track/5xkYA3NvMBHLqefhDTYaCO"
+        self.submit(
+            {
+                "listen_type": "single",
+                "payload": [
+                    _listen(additional_info={"spotify_id": spotify_url}),
+                ],
+            },
+        )
+
+        self.assertEqual(mock_record.call_args.args[0].origin_url, spotify_url)
+
+    @patch("integrations.webhooks.listenbrainz.music_scrobble.record_music_playback")
+    def test_spotify_lookalike_url_is_not_a_play_link(self, mock_record):
+        """A URL that only mentions spotify.com in its query is not a Spotify link."""
+        mock_record.return_value = None
+        self.submit(
+            {
+                "listen_type": "single",
+                "payload": [
+                    _listen(
+                        additional_info={
+                            "spotify_id": "https://evil.example/?q=spotify.com",
+                        },
+                    ),
+                ],
+            },
+        )
+
+        self.assertEqual(mock_record.call_args.args[0].origin_url, "")
 
     @patch("integrations.webhooks.listenbrainz.music_scrobble.record_music_playback")
     def test_duration_in_seconds_is_converted(self, mock_record):
