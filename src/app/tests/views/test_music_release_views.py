@@ -8,7 +8,12 @@ from django.urls import reverse
 from app.models import (
     Album,
     Artist,
+    Item,
+    MediaTypes,
+    Music,
     MusicReleasePreference,
+    Sources,
+    Status,
     Track,
 )
 
@@ -437,3 +442,83 @@ class MusicAlbumSyncViewTests(TestCase):
         self.assertFalse(
             tracks.filter(title="Stale Track From Wrong Release").exists(),
         )
+
+
+class MusicAlbumPlayLinkTests(TestCase):
+    """SoundCloud and Spotify play links on the album page."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="playlinks")
+        self.client.force_login(self.user)
+        self.artist = Artist.objects.create(name="Link Artist")
+        self.album = Album.objects.create(
+            title="Link Album",
+            artist=self.artist,
+            tracks_populated=True,
+        )
+
+    def _listen(self, number, origin_url):
+        track = Track.objects.create(
+            album=self.album,
+            title=f"Track {number}",
+            track_number=number,
+        )
+        item = Item.objects.create(
+            media_id=f"play-link-{number}",
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            title=track.title,
+        )
+        Music.objects.create(
+            user=self.user,
+            item=item,
+            artist=self.artist,
+            album=self.album,
+            track=track,
+            status=Status.COMPLETED.value,
+            origin_url=origin_url,
+        )
+
+    @patch("app.music_views.sync_services.populate_album_implied_genres")
+    @patch("app.music_views.sync_services.album_artist_credits_need_sync")
+    def _get_album(self, mock_credits_need_sync, mock_genres):
+        mock_credits_need_sync.return_value = False
+        mock_genres.return_value = False
+        return self.client.get(
+            reverse(
+                "music_album_details",
+                kwargs={
+                    "artist_id": self.artist.id,
+                    "artist_slug": "link-artist",
+                    "album_id": self.album.id,
+                    "album_slug": "link-album",
+                },
+            ),
+        )
+
+    def test_play_urls_show_as_links_and_other_urls_do_not(self):
+        soundcloud = "https://soundcloud.com/artist/track-one"
+        spotify = "https://open.spotify.com/track/5xkYA3NvMBHLqefhDTYaCO"
+        self._listen(1, soundcloud)
+        self._listen(2, spotify)
+        self._listen(3, "javascript:alert(1)")
+        self._listen(4, "")
+        self._listen(5, "https://example.com/?next=soundcloud.com")
+
+        response = self._get_album()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'href="{soundcloud}"')
+        self.assertContains(response, f'href="{spotify}"')
+        self.assertNotContains(response, "javascript:alert")
+        # A look-alike URL is not a SoundCloud link.
+        self.assertNotContains(response, "example.com")
+
+    def test_album_without_play_urls_has_no_chip(self):
+        self._listen(1, "")
+
+        response = self._get_album()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "soundcloud.com")
+        self.assertNotContains(response, "open.spotify.com")

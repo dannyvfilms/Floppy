@@ -7,6 +7,7 @@ Receive-only: nothing here submits listens anywhere else.
 
 import logging
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 from django.utils import timezone
 
@@ -96,6 +97,7 @@ class ListenBrainzScrobbleProcessor:
             completed=True,
             played_at=played_at,
             entry_source="listenbrainz",
+            origin_url=_play_origin_url(additional),
         )
 
         try:
@@ -151,6 +153,21 @@ class ListenBrainzScrobbleProcessor:
                 stats["errors"] += 1
 
         return stats
+
+
+def _play_origin_url(additional):
+    """Return the client origin URL, or a Spotify track URL when that is all that was sent."""
+    origin = (additional.get("origin_url") or "").strip()
+    if origin:
+        return origin
+    spotify = (additional.get("spotify_id") or "").strip()
+    parsed = urlparse(spotify)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme in ("http", "https") and (
+        host == "spotify.com" or host.endswith(".spotify.com")
+    ):
+        return spotify
+    return ""
 
 
 def _coerce_int(value) -> int | None:
