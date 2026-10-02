@@ -93,20 +93,44 @@ def _album_implied_genres(direct_genres: list[str]) -> list[str]:
     ]
 
 
+def _music_item_direct_genres(album: Album) -> list[str]:
+    """Return album genres, or the album artist's genres when the album has none."""
+    from app.providers import musicbrainz
+
+    if album.genres:
+        return list(album.genres)
+    artist_genres = (
+        Artist.objects.filter(id=album.artist_id)
+        .values_list("genres", flat=True)
+        .first()
+    )
+    return musicbrainz._normalize_musicbrainz_genre_names(artist_genres)
+
+
 def _sync_album_music_item_genres(album: Album) -> int:
-    """Propagate album direct/implied genres to linked music Items."""
+    """Propagate album direct/implied genres to linked music Items.
+
+    Direct genres fall back to the album artist's genres when the album has none.
+    An empty list does not clear genres already stored on the item. A match on any
+    of the item, track, album, or artist is copied onto the rows that have none.
+    """
     update_count = 0
     if not album.id:
         return update_count
 
-    for music in Music.objects.filter(album=album).select_related("item"):
+    direct_genres = _music_item_direct_genres(album)
+    for music in Music.objects.filter(album=album).select_related(
+        "item",
+        "track",
+        "artist",
+    ):
         item = getattr(music, "item", None)
         if not item:
             continue
 
         update_fields = []
-        if item.genres != list(album.genres or []):
-            item.genres = list(album.genres or [])
+        if direct_genres and item.genres != direct_genres:
+            item.genres = list(direct_genres)
             update_fields.append("genres")
         if item.implied_genres != list(album.implied_genres or []):
             item.implied_genres = list(album.implied_genres or [])
@@ -115,20 +139,72 @@ def _sync_album_music_item_genres(album: Album) -> int:
         if update_fields:
             item.save(update_fields=update_fields)
             update_count += 1
+        store_matched_genres(
+            artist=album.artist,
+            album=album,
+            track=music.track,
+            item=item,
+        )
 
     return update_count
 
 
+def _normalized_genre_names(genres) -> list[str]:
+    """Return display genre names, dropping blanks."""
+    from app.providers import musicbrainz
+
+    return musicbrainz._normalize_musicbrainz_genre_names(genres)
+
+
+def store_matched_genres(
+    *,
+    artist: Artist | None = None,
+    album: Album | None = None,
+    track: Track | None = None,
+    item: Item | None = None,
+) -> list[str]:
+    """Copy the first non-empty genre list onto related rows that have none.
+
+    Album, catalog item, track, then artist. A row that already has genres is left
+    as it is.
+    """
+    rows = [album, item, track, artist]
+    chosen = []
+    for row in rows:
+        if row is None:
+            continue
+        names = _normalized_genre_names(getattr(row, "genres", None))
+        if names:
+            chosen = names
+            break
+    if not chosen:
+        return []
+
+    for row in rows:
+        if row is None or not row.pk:
+            continue
+        if _normalized_genre_names(row.genres):
+            continue
+        row.genres = list(chosen)
+        row.save(update_fields=["genres"])
+    return chosen
+
+
 def sync_music_item_genres_from_album(item: Item, album: Album | None) -> list[str]:
-    """Copy album direct/implied genres onto a music Item and save if changed."""
+    """Copy album direct/implied genres onto a music Item and save if changed.
+
+    Direct genres fall back to the album artist's genres when the album has none.
+    An empty album does not clear genres already stored on the item. Whatever list
+    is present is then copied onto the album, track, and artist when those are empty.
+    """
     if not item or not album:
         return []
 
     update_fields = []
-    direct_genres = list(album.genres or [])
+    direct_genres = _music_item_direct_genres(album)
     implied_genres = list(album.implied_genres or [])
 
-    if item.genres != direct_genres:
+    if direct_genres and item.genres != direct_genres:
         item.genres = direct_genres
         update_fields.append("genres")
     if item.implied_genres != implied_genres:
@@ -137,6 +213,17 @@ def sync_music_item_genres_from_album(item: Item, album: Album | None) -> list[s
 
     if update_fields:
         item.save(update_fields=update_fields)
+
+    music = (
+        Music.objects.filter(item=item, album=album).select_related("track").first()
+    )
+    track = music.track if music is not None and music.track_id else None
+    store_matched_genres(
+        artist=album.artist,
+        album=album,
+        track=track,
+        item=item,
+    )
     return update_fields
 
 
