@@ -7,6 +7,7 @@ Receive-only: nothing here submits listens anywhere else.
 
 import logging
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 from django.utils import timezone
 
@@ -160,8 +161,11 @@ def _play_origin_url(additional):
     if origin:
         return origin
     spotify = (additional.get("spotify_id") or "").strip()
-    lowered = spotify.lower()
-    if lowered.startswith(("https://", "http://")) and "spotify.com" in lowered:
+    parsed = urlparse(spotify)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme in ("http", "https") and (
+        host == "spotify.com" or host.endswith(".spotify.com")
+    ):
         return spotify
     return ""
 

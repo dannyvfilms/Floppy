@@ -1,5 +1,6 @@
 import json
 import logging
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from django.conf import settings
@@ -81,6 +82,9 @@ def _music_album_detail_url(album):
     return app_tags.music_album_url(album)
 
 
+_PLAY_LINK_DOMAINS = {"soundcloud.com": "SoundCloud", "spotify.com": "Spotify"}
+
+
 def _safe_origin_url(value):
     """Return an http(s) origin URL, or an empty string."""
     text = (value or "").strip()
@@ -91,11 +95,10 @@ def _safe_origin_url(value):
 
 def _play_link_label(url):
     """Return the play-link label for a SoundCloud or Spotify URL."""
-    host = (url or "").lower()
-    if "soundcloud.com" in host:
-        return "SoundCloud"
-    if "spotify.com" in host:
-        return "Spotify"
+    host = (urlparse(url or "").hostname or "").lower()
+    for domain, label in _PLAY_LINK_DOMAINS.items():
+        if host == domain or host.endswith(f".{domain}"):
+            return label
     return ""
 
 
