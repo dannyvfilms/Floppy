@@ -163,7 +163,8 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
     This resolves canonical metadata (MusicBrainz when possible), ensures
     Artist/Album/Track/Item existence, and updates the per-user Music row.
     An album saved without genres is then filled from its MusicBrainz release
-    group, outside the write transaction.     The play then copies the album's genres, or the artist's when the album still
+    group, outside the write transaction.
+    The play then copies the album's genres, or the artist's when the album still
     has none. After that, any genre list found on the album, item, track, or
     artist is stored on the others that are still empty.
     """
@@ -204,6 +205,11 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
     with transaction.atomic():
         artist, artist_created, artist_mbid_attached = _get_or_create_artist(metadata)
         album, album_created = _get_or_create_album(metadata, artist)
+        # Creating the item copies the artist's genres onto an empty album, so
+        # note now whether the release group still needs to be asked.
+        album_needs_genre_fill = bool(
+            not album.genres and album.musicbrainz_release_group_id
+        )
         track = _get_or_create_track(metadata, album)
         item = _get_or_create_item(metadata, track, album)
         music = _update_music_entry(
@@ -242,7 +248,7 @@ def record_music_playback(event: MusicPlaybackEvent) -> Music | None:
             _prefetch_missing_covers(artist, force=force_cover_prefetch)
 
     if album and not getattr(event, "defer_cover_prefetch", False):
-        if not album.genres and album.musicbrainz_release_group_id:
+        if album_needs_genre_fill:
             try:
                 populate_album_implied_genres(album)
             except Exception as exc:  # pragma: no cover - defensive network guard
