@@ -1935,8 +1935,62 @@ def show_media_score(rating, user):
     except (TypeError, ValueError):
         return True
 
-    hide_zero = getattr(user, "hide_zero_rating", False)
+    from users.tile_metadata import hides_zero_rating
+
+    hide_zero = hides_zero_rating(user, None)
     return not hide_zero or rating_value > 0
+
+
+@register.simple_tag(takes_context=True)
+def score_is_visible(context, rating, media_type=None):
+    """Return whether ``rating`` should show for this tile's media type."""
+    from users.tile_metadata import hides_zero_rating, shows_score
+
+    user = context.get("user")
+    if media_type is None:
+        media_type = context.get("resolved_media_type")
+    item = context.get("item")
+    if media_type is None and item is not None:
+        media_type = getattr(item, "media_type", None)
+    if not shows_score(user, media_type):
+        return False
+    if rating is None:
+        return False
+    try:
+        rating_value = float(rating)
+    except (TypeError, ValueError):
+        return True
+    hide_zero = hides_zero_rating(user, media_type)
+    return not hide_zero or rating_value > 0
+
+
+@register.simple_tag(takes_context=True)
+def tile_field_on(context, media_type, field_id):
+    """Return whether this type's profile includes ``field_id``."""
+    from users.tile_metadata import field_enabled
+
+    user = context.get("user") or getattr(context.get("request"), "user", None)
+    return field_enabled(user, media_type, field_id)
+
+
+@register.simple_tag(takes_context=True)
+def tile_subtitle_class(context, media_type=None):
+    """Return the always-visible subtitle class, or an empty string."""
+    from users.tile_metadata import DISPLAY_ALWAYS, subtitle_display
+
+    user = context.get("user") or getattr(context.get("request"), "user", None)
+    if subtitle_display(user, media_type) == DISPLAY_ALWAYS:
+        return " media-card-subtitle-always"
+    return ""
+
+
+@register.inclusion_tag("app/components/tile_lines.html", takes_context=True)
+def tile_lines(context, media_type, item=None, media=None):
+    """Render the enabled subtitle lines for one tile."""
+    from users.tile_metadata import tile_lines as render_lines
+
+    user = context.get("user") or getattr(context.get("request"), "user", None)
+    return {"lines": render_lines(user, media_type, item, media)}
 
 
 @register.inclusion_tag("app/components/media_card.html", takes_context=True)

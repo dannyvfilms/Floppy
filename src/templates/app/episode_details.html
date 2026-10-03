@@ -384,7 +384,7 @@
            class="detail-media-grid">
         {% for person in episode_metadata.cast|slice:":20" %}
           <div x-show="shouldShowDetailCard({{ forloop.counter0 }})"
-               class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+               class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% tile_subtitle_class 'person' %}">
             <div class="relative">
               {% if person.person_id and person.name %}
                 <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}">
@@ -411,9 +411,7 @@
                   </p>
                 {% endif %}
               </div>
-              <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2">
-                {% if person.role %}{{ person.role }}{% else %}{% translate "Cast" %}{% endif %}
-              </p>
+              {% tile_lines 'person' person %}
             </div>
           </div>
         {% endfor %}
@@ -453,7 +451,7 @@
            class="detail-media-grid">
         {% for person in episode_metadata.crew|slice:":20" %}
           <div x-show="shouldShowDetailCard({{ forloop.counter0 }})"
-               class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+               class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card group{% tile_subtitle_class 'person' %}">
             <div class="relative">
               {% if person.person_id and person.name %}
                 <a href="{% url 'person_detail' source=source person_id=person.person_id name=person.name|slug %}">
@@ -480,9 +478,7 @@
                   </p>
                 {% endif %}
               </div>
-              <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-2">
-                {% if person.role %}{{ person.role }}{% elif person.department %}{{ person.department }}{% else %}{% translate "Crew" %}{% endif %}
-              </p>
+              {% tile_lines 'person' person %}
             </div>
           </div>
         {% endfor %}

@@ -161,7 +161,7 @@
               {% for artist in music_online_artists %}
                 {% if artist.artist_id %}
                   <a href="{% url 'create_artist_from_search' artist.artist_id %}"
-                     class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card hover:ring-2 hover:ring-indigo-500 transition-all group block{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+                     class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card hover:ring-2 hover:ring-indigo-500 transition-all group block{% tile_subtitle_class 'music' %}">
                     <div class="relative">
                       {% if artist.image and artist.image != IMG_NONE %}
                         <img alt="{{ artist.name }}"
@@ -181,20 +181,14 @@
                           {{ artist.name }}
                         </h4>
                       </div>
-                      <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1">
-                        {% if artist.type %}{{ artist.type }}{% endif %}
-                        {% if artist.begin_year %}
-                          {% if artist.type %} • {% endif %}
-                          {{ artist.begin_year }}
-                        {% endif %}
-                      </p>
+                      {% tile_lines 'music' artist %}
                       {% if artist.disambiguation %}
                         <p class="text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1">{{ artist.disambiguation }}</p>
                       {% endif %}
                     </div>
                   </a>
                 {% else %}
-                  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+                  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card{% tile_subtitle_class 'music' %}">
                     <div class="relative">
                       {% if artist.image and artist.image != IMG_NONE %}
                         <img alt="{{ artist.name }}"
@@ -225,7 +219,7 @@
               {% for release in music_online_releases %}
                 {% if release.release_id %}
                   <a href="{% url 'create_album_from_search' release.release_id %}"
-                     class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square hover:ring-2 hover:ring-indigo-500 transition-all group block{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+                     class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square hover:ring-2 hover:ring-indigo-500 transition-all group block{% tile_subtitle_class 'music' %}">
                     <div class="relative">
                       {% if release.image and release.image != IMG_NONE %}
                         <img alt="{{ release.title }}"
@@ -245,14 +239,11 @@
                           {{ release.title }}
                         </h4>
                       </div>
-                      <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1">
-                        {{ release.artist_name }}
-                        {% if release.release_date %} • {{ release.release_date|slice:":4" }}{% endif %}
-                      </p>
+                      {% tile_lines 'music' release %}
                     </div>
                   </a>
                 {% else %}
-                  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+                  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square{% tile_subtitle_class 'music' %}">
                     <div class="relative">
                       <div class="w-full aspect-[1/1] bg-[var(--color-surface-alt)] flex items-center justify-center">
                         {% include "app/icons/speaker.svg" with classes="w-12 h-12 text-gray-600" %}

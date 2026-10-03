@@ -113,7 +113,7 @@ def card_context(page_context, surface, values):
             "app.card_surfaces instead of passing ad-hoc flags."
         )
         raise TypeError(msg)
-    return {
+    rendered_context = {
         **page_context,
         **dict.fromkeys(CARD_VALUES),
         **asdict(SURFACES[surface]),
@@ -122,4 +122,42 @@ def card_context(page_context, surface, values):
         # own item in its related grid) must not share their modal targets.
         "card_uid": uuid4().hex[:8],
         **values,
+    }
+    rendered_context.update(_tile_render_context(rendered_context))
+    return rendered_context
+
+
+def _tile_render_context(rendered_context):
+    """Attach the subtitle profile for this card."""
+    from users.tile_metadata import (
+        DISPLAY_HOVER,
+        progress_bar_display,
+        resolve_profile,
+        show_progress_field,
+        subtitle_display,
+        tile_lines,
+        title_options,
+        uses_line_renderer,
+    )
+
+    user = rendered_context.get("user")
+    item = rendered_context.get("item")
+    media = rendered_context.get("media")
+    media_type = rendered_context.get("card_media_type") or rendered_context.get(
+        "resolved_media_type"
+    )
+    if not media_type and item is not None:
+        media_type = getattr(item, "media_type", None)
+    use_lines = uses_line_renderer(user, media_type)
+    # Per-line dormant classes own visibility once the line renderer is on.
+    # A card-level always class would reveal the hover lines too.
+    display = DISPLAY_HOVER if use_lines else subtitle_display(user, media_type)
+    profile = resolve_profile(user, media_type)
+    return {
+        "tile_display": display,
+        "tile_show_progress": show_progress_field(user, media_type),
+        "tile_progress_display": progress_bar_display(profile) or "",
+        "tile_use_lines": use_lines,
+        "tile_line_list": tile_lines(user, media_type, item, media),
+        "tile_title": title_options(profile),
     }

@@ -2827,11 +2827,18 @@ def media_list(request, media_type):
         context["current_subview"] = music_subview
 
         if music_subview == "albums":
-            album_trackers = (
-                AlbumTracker.objects.filter(user=request.user)
-                .select_related("album", "album__artist")
-                .prefetch_related("album__artist_credits__artist")
-            )
+            from users.tile_metadata import extra_query_enabled
+
+            album_related = ["album"]
+            album_prefetches = []
+            if extra_query_enabled(request.user, MediaTypes.MUSIC.value, "artist"):
+                album_related.append("album__artist")
+                album_prefetches.append("album__artist_credits__artist")
+            album_trackers = AlbumTracker.objects.filter(
+                user=request.user
+            ).select_related(*album_related)
+            if album_prefetches:
+                album_trackers = album_trackers.prefetch_related(*album_prefetches)
 
             if tracked_status_filter:
                 album_trackers = album_trackers.filter(status__in=tracked_status_filter)

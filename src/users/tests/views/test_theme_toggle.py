@@ -18,8 +18,7 @@ class ThemeTogglePartialPostTests(TestCase):
         self.user = User.objects.create_user(username="toggler", password="p12345678")
         self.user.quick_season_update_mobile = QuickSeasonUpdateChoices.values[-1]
         self.user.book_comic_manga_progress_percentage = True
-        self.user.progress_bar = True
-        self.user.hide_zero_rating = True
+        self.user.tile_metadata = {"version": 1, "types": {"movie": {"display": "always", "fields": ["release_year"], "options": {"rating": {"hide_zero": True}}}}}
         self.user.save()
         self.client.force_login(self.user)
 
@@ -35,8 +34,7 @@ class ThemeTogglePartialPostTests(TestCase):
         expected = {
             "quick_season_update_mobile": self.user.quick_season_update_mobile,
             "book_comic_manga_progress_percentage": True,
-            "progress_bar": True,
-            "hide_zero_rating": True,
+            "tile_metadata": self.user.tile_metadata,
         }
 
         self.client.post(reverse("preferences"), {"theme": "light"})

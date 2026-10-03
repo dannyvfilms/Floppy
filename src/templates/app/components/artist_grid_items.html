@@ -5,7 +5,7 @@
 
 {% for tracker in media_list %}
   <div {% if forloop.last and media_list.has_next %} hx-get="{% url 'medialist' media_type %}?page={{ media_list.next_page_number }}" hx-trigger="revealed threshold:200px" hx-swap="afterend" hx-include="#filter-form" hx-indicator="#loading-indicator" class="pagination-trigger" data-page="{{ media_list.next_page_number }}" {% endif %}
-       class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative group hover:ring-2 hover:ring-indigo-500 transition-all search-result-card{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
+       class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative group hover:ring-2 hover:ring-indigo-500 transition-all search-result-card{% tile_subtitle_class 'music' %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
        data-media-type="{{ MediaTypes.MUSIC.value }}"
        x-data="{ trackOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
        @click.capture="tapToReveal($event)"
@@ -91,15 +91,7 @@
         {% url 'update_artist_score' tracker.artist.id as rate_url %}
         {% include "app/components/media_card_rating.html" with rating_value=tracker.score rate_url=rate_url %}
       </div>
-      {% if current_sort == 'release_date' and tracker.first_release_date %}
-        <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">{{ tracker.first_release_date|user_date_format:user }}</p>
-      {% elif current_sort == 'date_added' and tracker.created_at %}
-        <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">{{ tracker.created_at|user_date_format:user }}</p>
-      {% elif tracker.end_date %}
-        <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">{{ tracker.end_date|user_date_format:user }}</p>
-      {% elif tracker.start_date %}
-        <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">{{ tracker.start_date|user_date_format:user }}</p>
-      {% endif %}
+      {% tile_lines 'music' tracker.artist tracker %}
     </div>
 
     {# Track Modal #}

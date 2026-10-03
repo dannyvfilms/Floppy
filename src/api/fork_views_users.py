@@ -91,17 +91,34 @@ _STATS_SENSITIVE_FIELDS = {
 
 
 def _field_choices(user, field_name):
+    if field_name == "media_card_subtitle_display":
+        from users.tile_metadata import DISPLAY_CHOICES
+
+        return list(DISPLAY_CHOICES)
     field = user._meta.get_field(field_name)
     return [choice[0] for choice in (field.choices or [])]
 
 
 def _serialize_preferences(user):
+    from users.tile_metadata import OMIT, absorbed_preference_value
+
     payload = {}
     readable = (
         _CHOICE_PREFERENCE_FIELDS + _BOOLEAN_PREFERENCE_FIELDS + _TEXT_PREFERENCE_FIELDS
     )
+    absorbed = {
+        "media_card_subtitle_display",
+        "progress_bar",
+        "hide_zero_rating",
+    }
     for field in readable:
         if field in _WRITE_ONLY_PREFERENCE_FIELDS:
+            continue
+        if field in absorbed:
+            value = absorbed_preference_value(user, field)
+            if value is OMIT:
+                continue
+            payload[field] = value
             continue
         payload[field] = getattr(user, field)
     return payload
@@ -148,6 +165,14 @@ class UserPreferencesView(drf_views.APIView):
                     {"detail": f"Invalid value for {field}.", "choices": valid},
                     status=HTTP.BAD_REQUEST,
                 )
+            if field == "media_card_subtitle_display":
+                from users.tile_metadata import apply_absorbed_preference
+
+                apply_absorbed_preference(user, field, value)
+                if "tile_metadata" not in fields_to_update:
+                    fields_to_update.append("tile_metadata")
+                changed.add(field)
+                continue
             if getattr(user, field) != value:
                 setattr(user, field, value)
                 fields_to_update.append(field)
@@ -162,6 +187,14 @@ class UserPreferencesView(drf_views.APIView):
                     {"detail": f"{field} must be a boolean."},
                     status=HTTP.BAD_REQUEST,
                 )
+            if field in {"progress_bar", "hide_zero_rating"}:
+                from users.tile_metadata import apply_absorbed_preference
+
+                apply_absorbed_preference(user, field, value)
+                if "tile_metadata" not in fields_to_update:
+                    fields_to_update.append("tile_metadata")
+                changed.add(field)
+                continue
             if getattr(user, field) != value:
                 setattr(user, field, value)
                 fields_to_update.append(field)

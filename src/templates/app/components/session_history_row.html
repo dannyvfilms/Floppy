@@ -23,7 +23,8 @@
         <span class="min-w-0 truncate text-sm font-semibold text-[var(--color-text)]">
           {{ entry.display_title|default:entry.title }}
         </span>
-        {% if entry.score|show_media_score:user %}
+        {% score_is_visible entry.score entry.media_type as show_score %}
+        {% if show_score %}
           <span class="flex shrink-0 items-center gap-1 text-xs text-yellow-300">
             {% include "app/icons/star.svg" with classes="w-3 h-3 text-yellow-400 fill-current" %}
             <span class="font-medium">{{ entry.score|score_display:user }}</span>

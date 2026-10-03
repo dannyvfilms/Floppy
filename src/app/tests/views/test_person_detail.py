@@ -30,6 +30,7 @@ from app.models import (
     Studio,
 )
 from users.models import DateFormatChoices
+from users.tile_metadata import ABSORBED_PREFERENCE_FIELDS, apply_absorbed_preference
 
 
 class PersonDetailViewTests(TestCase):
@@ -199,8 +200,8 @@ class PersonDetailViewTests(TestCase):
 
     @patch("app.providers.tmdb.person")
     def test_person_detail_shows_filmography_and_history_link(self, mock_person):
-        self.user.media_card_subtitle_display = "always"
-        self.user.save(update_fields=["media_card_subtitle_display"])
+        apply_absorbed_preference(self.user, ABSORBED_PREFERENCE_FIELDS[0], "always")
+        self.user.save(update_fields=["tile_metadata"])
 
         item = Item.objects.create(
             media_id="501",

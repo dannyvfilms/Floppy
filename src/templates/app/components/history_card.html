@@ -6,7 +6,7 @@
 {# History card component - used for both 2:3 and 1:1 aspect ratio cards #}
 {# Args: entry, card_class (search-result-card or search-result-card-square), history_mode, user #}
 
-<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
+<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% tile_subtitle_class entry.media_type %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
      data-media-type="{{ entry.media_type }}"
      x-data="{ trackOpen: false, historyOpen: false, listsOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay') || !this.$root.querySelector('.media-card-overlay')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
      @click.capture="tapToReveal($event)"
@@ -187,7 +187,8 @@
           </template>
         </span>
       {% endif %}
-      {% if entry.score|show_media_score:user %}
+      {% score_is_visible entry.score entry.media_type as show_score %}
+      {% if show_score %}
         <span class="flex items-center gap-1 text-xs text-yellow-300 shrink-0">
           {% include "app/icons/star.svg" with classes="w-3 h-3 text-yellow-400 fill-current" %}
           <span class="font-medium">{{ entry.score|score_display:user }}</span>
@@ -196,35 +197,7 @@
     </div>
       {% endwith %}
     {% endwith %}
-    <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
-      {# History-specific info: episode label, play count, or timestamp #}
-      {% if history_mode == "release" %}
-        <span class="text-[var(--color-link)] font-medium">{% translate "Released" %}</span>
-        <span class="ml-1">{{ entry.played_at_local|user_date_format:user }}</span>
-      {% else %}
-        {% if entry.progress_display and entry.media_type == MediaTypes.GAME.value or entry.progress_display and entry.media_type == MediaTypes.BOARDGAME.value %}
-          <span class="text-[var(--color-link)] font-medium">{{ entry.progress_display }}</span>
-          <span class="ml-1">{{ entry.date_range_display }}</span>
-        {% elif entry.media_type == MediaTypes.MOVIE.value %}
-          <span class="text-[var(--color-link)] font-medium">{% blocktranslate trimmed with value_1=entry.play_count|default:1 count count=entry.play_count|default:1 %}{{ value_1 }} play{% plural %}{{ value_1 }} plays{% endblocktranslate %}</span>
-          <span class="ml-1">{{ entry.played_at_local|user_datetime_format:user }}</span>
-        {% elif entry.media_type == MediaTypes.MUSIC.value %}
-          <span class="text-[var(--color-link)] font-medium">{% blocktranslate trimmed with value_1=entry.play_count|default:1 count count=entry.play_count|default:1 %}{{ value_1 }} play{% plural %}{{ value_1 }} plays{% endblocktranslate %}</span>
-          <span class="ml-1">{{ entry.time_range_display }}</span>
-        {% elif entry.media_type == MediaTypes.PODCAST.value %}
-          <span class="text-[var(--color-link)] font-medium">{% blocktranslate trimmed with value_1=entry.play_count|default:1 count count=entry.play_count|default:1 %}{{ value_1 }} play{% plural %}{{ value_1 }} plays{% endblocktranslate %}</span>
-          <span class="ml-1">{{ entry.played_at_local|user_datetime_format:user }}</span>
-        {% elif entry.episode_label %}
-          <span class="text-[var(--color-link)] font-medium">{{ entry.episode_label }}</span>
-          <span class="ml-1">{{ entry.played_at_local|user_datetime_format:user }}</span>
-        {% elif entry.episode_code %}
-          <span class="text-[var(--color-link)] font-medium">{{ entry.episode_code }}</span>
-          <span class="ml-1">{{ entry.played_at_local|user_datetime_format:user }}</span>
-        {% else %}
-          {{ entry.played_at_local|user_datetime_format:user }}
-        {% endif %}
-      {% endif %}
-    </p>
+    {% tile_lines entry.media_type entry.item entry %}
   </div>
 
   {# Modals #}

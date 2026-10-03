@@ -53,6 +53,14 @@
               <span>{% translate "Appearance" %}</span>
             </a>
 
+            {% url 'tiles' as tiles_url %}
+            <a href="{{ tiles_url }}"
+               {% if request.resolver_match.url_name == 'tiles' or request.resolver_match.url_name == 'tiles_type' %}aria-current="page"{% endif %}
+               class="w-full flex items-center space-x-3 px-2 py-2 rounded-md transition-colors text-left border-l-2 cursor-pointer text-sm {% if request.resolver_match.url_name == 'tiles' or request.resolver_match.url_name == 'tiles_type' %}bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]{% else %}text-[var(--color-text-muted)] border-transparent hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]{% endif %}">
+              {% include "app/icons/grid.svg" with classes="w-5 h-5" %}
+              <span>{% translate "Tiles" %}</span>
+            </a>
+
             {% url 'notifications' as notifications_url %}
             <a href="{{ notifications_url }}"
                {% if request.path == notifications_url %}aria-current="page"{% endif %}

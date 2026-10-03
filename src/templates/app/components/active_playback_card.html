@@ -14,7 +14,7 @@
     </div>
   </div>
 
-  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
+  <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square{% tile_subtitle_class active_playback_card.media_type %}"
        style="aspect-ratio: 3/2 !important;">
     <div class="relative">
       <a href="{{ active_playback_card.details_url }}">
@@ -39,6 +39,7 @@
           {% if active_playback_card.episode_code %}<span class="text-[var(--color-link)] font-medium">{{ active_playback_card.episode_code }}</span> {% endif %}{{ active_playback_card.episode_title|default:active_playback_card.title }}
         </a>
       </div>
+      {% tile_lines active_playback_card.media_type active_playback_card active_playback_card %}
       <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">
         {% if active_playback_card.status == "paused" or active_playback_card.status == "stopped" %}
           {% include "app/icons/clock.svg" with classes="w-3 h-3 inline-block align-text-bottom text-amber-400" %}

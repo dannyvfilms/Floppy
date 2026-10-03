@@ -5,7 +5,7 @@
 {# Shared card grid for band members / "also in" related artists. #}
 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
   {% for relation in relations %}
-    <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}"
+    <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card{% tile_subtitle_class 'music' %}"
          data-media-type="{{ MediaTypes.MUSIC.value }}">
       <div class="relative">
         <a href="{{ relation.artist|music_artist_url }}">
@@ -63,6 +63,7 @@
         {% if relation.role %}
           <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 truncate" title="{{ relation.role }}">{{ relation.role }}</p>
         {% endif %}
+        {% tile_lines 'music' relation.artist relation.tracker %}
       </div>
     </div>
   {% endfor %}

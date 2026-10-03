@@ -2,7 +2,7 @@
 {% load i18n %}
 {% load app_tags %}
 
-<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card group{% if user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %}">
+<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card group{% tile_subtitle_class entry.media_type %}">
   <div class="relative">
     {% if show_watched_runtime_chip and entry.watched_person_runtime_display %}
       <span class="absolute top-2 right-2 z-10 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">
@@ -43,12 +43,7 @@
         </a>
       {% endif %}
     </div>
-    <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-1">
-      {% if entry.year %}{{ entry.year }}{% else %}{% translate "Unknown Year" %}{% endif %}
-      {% if entry.media_type %} • {{ entry.media_type|media_type_readable }}{% endif %}
-    </p>
-    <p class="media-card-year text-xs text-[var(--color-link)] mt-0.5 line-clamp-2">
-      {{ entry.role|default:entry.department|default:entry.credit_type|default:"Credit"|title }}
-    </p>
+    {% tile_lines entry.media_type entry entry %}
+    {% tile_lines 'person' entry %}
   </div>
 </div>

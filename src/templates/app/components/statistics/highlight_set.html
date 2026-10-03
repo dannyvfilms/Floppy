@@ -7,11 +7,11 @@
        class="stats-highlight-track grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3">
   {% if highlights.first_play %}
     <a href="{{ highlights.first_play.item|media_url }}"
-       class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %} block"
+       class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% tile_subtitle_class %} block"
        data-carousel-card
        style="aspect-ratio: 3/2 !important;">
   {% else %}
-    <div class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %} block"
+    <div class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% tile_subtitle_class %} block"
          data-carousel-card
          style="aspect-ratio: 3/2 !important;">
   {% endif %}
@@ -33,6 +33,7 @@
             {{ highlights.first_play.title }}
           </p>
         </div>
+        {% tile_lines highlights.first_play.item.media_type highlights.first_play.item highlights.first_play %}
         <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">{% blocktranslate trimmed with value_1=highlights.first_play.played_at|user_date_format:user %}Played {{ value_1 }}{% endblocktranslate %}</p>
       {% else %}
         <p class="text-sm font-semibold text-[var(--color-text-muted)] mt-1">--</p>
@@ -46,11 +47,11 @@
 
   {% if highlights.last_play %}
     <a href="{{ highlights.last_play.item|media_url }}"
-       class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %} block"
+       class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% tile_subtitle_class %} block"
        data-carousel-card
        style="aspect-ratio: 3/2 !important;">
   {% else %}
-    <div class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %} block"
+    <div class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% tile_subtitle_class %} block"
          data-carousel-card
          style="aspect-ratio: 3/2 !important;">
   {% endif %}
@@ -72,6 +73,7 @@
             {{ highlights.last_play.title }}
           </p>
         </div>
+        {% tile_lines highlights.last_play.item.media_type highlights.last_play.item highlights.last_play %}
         <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">{% blocktranslate trimmed with value_1=highlights.last_play.played_at|user_date_format:user %}Played {{ value_1 }}{% endblocktranslate %}</p>
       {% else %}
         <p class="text-sm font-semibold text-[var(--color-text-muted)] mt-1">--</p>
@@ -86,11 +88,11 @@
   {% with tc=highlights.today_card %}
   {% if tc.entry %}
     <a href="{% url 'history' %}{% if tc.use_release_url %}?history_mode=release&month={{ highlights.today_month }}&day={{ highlights.today_day }}{% else %}?month={{ highlights.today_month }}&day={{ highlights.today_day }}{% endif %}"
-       class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %} block"
+       class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% tile_subtitle_class %} block"
        data-carousel-card
        style="aspect-ratio: 3/2 !important;">
   {% else %}
-    <div class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% if request.user.media_card_subtitle_display == 'always' %} media-card-subtitle-always{% endif %} block"
+    <div class="stats-highlight-card media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative hover:ring-2 hover:ring-indigo-500 transition-all search-result-card-square group{% tile_subtitle_class %} block"
          data-carousel-card
          style="aspect-ratio: 3/2 !important;">
   {% endif %}
@@ -112,6 +114,7 @@
             {{ tc.entry.title }}
           </p>
         </div>
+        {% tile_lines tc.entry.media_type tc.entry tc.entry %}
         <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">{{ tc.date_prefix }} {{ tc.year }}</p>
       {% else %}
         <p class="text-sm font-semibold text-[var(--color-text-muted)] mt-1">--</p>

@@ -64,6 +64,7 @@
                   <h4 class="font-medium text-sm line-clamp-1">{{ release.item }}</h4>
                   <div class="flex items-center">
                     <span class="text-xs text-[var(--color-text-muted)] me-2">{{ release.item.media_type|media_type_readable }}</span>
+                    {% tile_lines release.item.media_type release.item %}
                     {% if release.readable_content_number %}
                       <span class="text-xs text-[var(--color-link)]">{{ release.readable_content_number }} {{ release|user_event_time:user }}</span>
                     {% endif %}
@@ -110,6 +111,7 @@
                     {% endwith %}
                     {% if release.release_type %}<span class="shrink-0 text-[var(--color-link)]">{{ release.get_release_type_display }}</span>{% endif %}
                     <span class="truncate" title="{{ release }} {{ release|user_event_time:user }}">{% if release.release_type %}{{ release.item }}{% else %}{{ release }}{% endif %} {{ release|user_event_time:user }}</span>
+                    {% tile_lines release.item.media_type release.item %}
                   </div>
                 </a>
               {% endfor %}

@@ -271,3 +271,87 @@ class MusicGridRatingTest(TestCase):
             f'hx-post="{reverse("update_album_score", args=[self.album.id])}"',
             content,
         )
+
+
+# Hand-rolled tiles that are not the shared card. Each one has to call the
+# profile tag. list_grid is a list index, not a media tile.
+PROFILE_TILES = (
+    "app/components/history_card.html",
+    "app/components/artist_grid_items.html",
+    "app/components/album_list_grid_items.html",
+    "app/components/album_grid.html",
+    "app/components/artist_relation_grid.html",
+    "app/search.html",
+    "app/components/media_card_list.html",
+    "app/components/episode_row.html",
+    "app/components/person_card_inline.html",
+    "app/components/person_filmography_card.html",
+    "app/components/statistics/highlight_set.html",
+    "app/components/active_playback_card.html",
+    "app/episode_details.html",
+    "events/components/calendar_list.html",
+    "events/components/calendar_grid.html",
+)
+
+
+class TileProfileContractTest(TestCase):
+    """A tile that ignores the profile fails here."""
+
+    def test_inventory_templates_read_the_profile(self):
+        """Every listed tile calls the shared line tag."""
+        missing = [
+            name
+            for name in PROFILE_TILES
+            if "tile_lines" not in (TEMPLATES_DIR / name).read_text()
+        ]
+        self.assertEqual(missing, [])
+
+    def test_lists_index_has_no_hover_class(self):
+        """Item count stays visible. The index is not a media tile."""
+        source = (TEMPLATES_DIR / "lists/components/list_grid.html").read_text()
+        self.assertNotIn("media-card-subtitle-always", source)
+        self.assertNotIn("tile_lines", source)
+
+    def test_custom_movie_fields_render_on_the_shared_card(self):
+        """A saved field list replaces the default year line."""
+        self.user = get_user_model().objects.create_user(
+            username="tile-user",
+            password="12345",
+        )
+        item = Item.objects.create(
+            media_id="tile-fields",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Field Movie",
+            genres=["Drama"],
+            runtime="120 min",
+        )
+        movie = Movie.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            score=8,
+        )
+        self.user.tile_metadata = {
+            "version": 1,
+            "types": {
+                "movie": {
+                    "display": "always",
+                    "fields": ["genres", "runtime"],
+                    "options": {"rating": {"hide_zero": False}},
+                }
+            },
+        }
+        self.user.save(update_fields=["tile_metadata"])
+        request = RequestFactory().get("/")
+        request.user = self.user
+        template = engines["django"].from_string(
+            "{% load app_tags %}{% media_card 'library' item=item media=media %}"
+        )
+        content = template.render(
+            {"user": self.user, "item": item, "media": movie},
+            request,
+        )
+        self.assertIn("Drama", content)
+        self.assertIn("120 min", content)

@@ -113,9 +113,7 @@
                 </span>
               {% endif %}
             </h2>
-            <p class="text-sm text-[var(--color-text-muted)]">
-              {% if episode.display_episode_number|default:episode.episode_number %}{% blocktranslate trimmed with value_1=episode.display_episode_number|default:episode.episode_number %}Episode {{ value_1 }} •{% endblocktranslate %} {% endif %}{{ episode.air_date|user_date_format:user|default_if_none:"Unknown date" }}{% if episode.runtime %} • {{ episode.runtime }}{% endif %}
-            </p>
+            {% tile_lines 'episode' episode episode %}
           </div>
           {% if ep_detail_url %}</a>{% endif %}
           {% if not public_view|default:False %}
@@ -160,9 +158,7 @@
         </span>
       {% endif %}
     </p>
-    <p class="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-      {{ episode.air_date|user_date_format:user|default_if_none:"" }}{% if episode.runtime %} · {{ episode.runtime }}{% endif %}{% if not public_view|default:False and episode.all_history %}{% with wc=episode.all_history|watched_count %}{% if wc %} · {% if wc == 1 %}{% translate "Watched once" %}{% else %}{% blocktranslate trimmed with value_1=wc %}Watched {{ value_1 }} times{% endblocktranslate %}{% endif %}{% endif %}{% endwith %}{% endif %}
-    </p>
+    {% tile_lines 'episode' episode episode %}
     {% if ep_detail_url %}</a>{% endif %}
   </div>
 

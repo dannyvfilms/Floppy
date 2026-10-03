@@ -91,3 +91,20 @@ Known remaining duplication:
   loads episodes' seasons and annotates `max_progress`, and serves the owner's data on
   public lists.
 - Moving either onto the shared lookup needs its own change, with query-count checks.
+
+## Tile profiles
+
+Subtitle lines come from `User.tile_metadata`, one profile per media type plus `person`.
+`src/users/tile_metadata.py` is the registry. `card_context` resolves the profile for the
+shared card. Hand-rolled tiles call `{% tile_lines %}`. `display` is `hover` or `always`.
+The poster progress bar follows the `progress` field. A zero score is hidden per type
+via `options.rating.hide_zero`.
+
+Tiles that read the profile: the shared card, history, music grids, search music results,
+`media_card_list`, episode rows, person and cast cards, stats highlights, active playback,
+and calendar rows. `list_grid.html` is a list index. It always shows the item count and
+does not read a profile.
+
+`GET /api/v1/user/preferences/` still accepts the old names `media_card_subtitle_display`,
+`progress_bar`, and `hide_zero_rating`. A name is omitted when types disagree. `PATCH`
+of one name writes every type. The columns are gone.

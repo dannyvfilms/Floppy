@@ -13,7 +13,8 @@
         {% with item|alternative_title:user as resolved_alt_title %}
           {% season_card_title item as resolved_season_card_title %}
           {% with hover_action_mode|default:'standard' as resolved_hover_action_mode %}
-      <div class="media-card {% if secondary_color %}bg-[var(--color-surface-strong)]{% else %}bg-[var(--color-surface)]{% endif %} rounded-lg overflow-hidden shadow-lg relative {% if active %}ring-2 ring-indigo-700{% endif %} {% if from_grid %}media-card-hover-outline transition-all {% if resolved_media_type == 'podcast' or resolved_media_type == 'music' %}search-result-card-square{% else %}search-result-card{% endif %}{% endif %} {% if user.media_card_subtitle_display == 'always' %}media-card-subtitle-always{% elif show_episode_identity|default:False and resolved_media_type == MediaTypes.EPISODE.value %}media-card-subtitle-always{% endif %} {% if recommend_mode %}cursor-pointer{% endif %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %} group"
+      <div class="media-card {% if secondary_color %}bg-[var(--color-surface-strong)]{% else %}bg-[var(--color-surface)]{% endif %} rounded-lg overflow-hidden shadow-lg relative {% if active %}ring-2 ring-indigo-700{% endif %} {% if from_grid %}media-card-hover-outline transition-all {% if resolved_media_type == 'podcast' or resolved_media_type == 'music' %}search-result-card-square{% else %}search-result-card{% endif %}{% endif %} {% if tile_display == 'always' %}media-card-subtitle-always{% elif show_episode_identity|default:False and resolved_media_type == MediaTypes.EPISODE.value %}media-card-subtitle-always{% endif %} {% if recommend_mode %}cursor-pointer{% endif %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %} media-card-title-{{ tile_title.overflow|default:'ellipsis' }} media-card-title-{{ tile_title.hover|default:'bleed' }}{% if tile_title.lines == 'all' or tile_title.lines|default:1 > 1 %} media-card-title-multiline{% endif %}{% if tile_title.lines == 'all' %} media-card-title-lines-all{% endif %}{% if tile_title.hover_lines == 'all' %} media-card-title-hover-all{% endif %} group"
+           style="{% if tile_title.lines != 'all' %}--card-title-rest-lines: {{ tile_title.lines|default:1 }};{% endif %}{% if tile_title.hover_lines != 'all' %}--card-title-hover-lines: {{ tile_title.hover_lines|default:3 }};{% endif %}"
            data-media-type="{{ item.media_type }}"
            {% if recommend_mode %}hx-get="{% if resolved_search_preview_url %}{{ resolved_search_preview_url }}{% else %}{% url 'recommend_search' recommend_list_id %}{% endif %}?show_preview=true&media_id={{ item.media_id }}&media_type={{ item.media_type }}&source={{ item.source }}&title={{ resolved_item_title|default:title|urlencode }}&image={{ item.image|urlencode }}&q={{ query|urlencode }}&search_media_type={{ media_type|urlencode }}&page={{ page }}" hx-target="{{ resolved_search_modal_target }}" hx-swap="innerHTML"{% endif %}
            x-data="{ trackOpen: false, listsOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay') || !this.$root.querySelector('.media-card-overlay'){% if enable_bulk_select %} || this.selectMode{% endif %}) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
@@ -99,14 +100,14 @@
             {% endif %}
           {% endif %}
 
-          {# Inset progress bar at the bottom edge of the poster for in-progress/paused media (gated by the per-user progress_bar preference) #}
-          {% if media and user.progress_bar %}
+          {# Inset progress bar at the bottom edge of the poster for in-progress/paused media (gated by the type profile's progress field) #}
+          {% if media and tile_show_progress %}
             {% with bar_status=media.aggregated_status|default:media.status %}
               {% if bar_status == Status.IN_PROGRESS.value or bar_status == Status.PAUSED.value %}
                 {% if resolved_media_type == MediaTypes.PODCAST.value %}
                   {% with progress_percent=media|safe_attr:"progress_percentage" %}
                     {% if progress_percent is not None %}
-                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
+                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20{% if tile_progress_display == 'dormant' %} media-card-progress-dormant{% endif %}">
                         <div class="h-full {% if bar_status == Status.PAUSED.value %}bg-indigo-500/40{% else %}bg-indigo-500{% endif %} transition-[width] duration-300 ease-out"
                              style="width: {{ progress_percent }}%"></div>
                       </div>
@@ -115,14 +116,14 @@
                 {% elif resolved_media_type != MediaTypes.MOVIE.value and media.max_progress and media.progress %}
                   {% with count_percent=media|safe_attr:"progress_percentage" %}
                     {% if count_percent is not None %}
-                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
+                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20{% if tile_progress_display == 'dormant' %} media-card-progress-dormant{% endif %}">
                         <div class="h-full {% if bar_status == Status.PAUSED.value %}bg-indigo-500/40{% else %}bg-indigo-500{% endif %} transition-[width] duration-300 ease-out"
                              style="width: {{ count_percent }}%"></div>
                       </div>
                     {% else %}
                       {% widthratio media.progress media.max_progress 100 as progress_percent %}
                       {# Any overshoot (progress > max) renders as a full bar — the card's overflow-hidden clips it. #}
-                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20">
+                      <div class="media-card-progress-bar absolute bottom-0 left-0 right-0 h-1 bg-gray-900/60 z-20{% if tile_progress_display == 'dormant' %} media-card-progress-dormant{% endif %}">
                         <div class="h-full {% if bar_status == Status.PAUSED.value %}bg-indigo-500/40{% else %}bg-indigo-500{% endif %} transition-[width] duration-300 ease-out"
                              style="width: {{ progress_percent }}%"></div>
                       </div>
@@ -503,6 +504,10 @@
                     {% endif %}
                   {% endwith %}
                 </p>
+              {% elif tile_use_lines %}
+                {% for line in tile_line_list %}
+                  <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1 line-clamp-1{% if line.dormant %} media-card-line-dormant{% endif %}">{% for part in line.parts %}{% if not forloop.first %} · {% endif %}{% if part.score %}<span class="inline-flex items-center gap-0.5 text-yellow-300 align-middle">{% include "app/icons/star.svg" with classes="w-3 h-3 text-yellow-400 fill-current" %}<span class="font-medium">{{ part.text }}</span></span>{% else %}{{ part.text }}{% endif %}{% endfor %}</p>
+                {% endfor %}
               {% elif release_year %}
                 {% with aggregated_progress=media|safe_attr:"aggregated_progress" %}
                   <p class="media-card-year text-xs text-[var(--color-text-muted)] mt-1">

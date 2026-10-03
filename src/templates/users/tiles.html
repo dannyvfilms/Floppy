@@ -1,0 +1,805 @@
+{% extends "users/base.html" %}
+{% load i18n %}
+
+{% block settings_content %}
+  <style>
+    .tiles-layout {
+      display: grid;
+      gap: 2rem;
+      align-items: start;
+    }
+    @media (min-width: 768px) {
+      .tiles-layout {
+        grid-template-columns: minmax(0, 1fr) 20rem;
+      }
+    }
+    .tiles-preview-slot {
+      width: 18rem;
+      justify-self: end;
+      position: sticky;
+      top: 5rem;
+    }
+    .tiles-pool,
+    .tiles-active {
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+      min-height: 3rem;
+    }
+    .tiles-pool {
+      background: color-mix(in oklab, var(--color-surface-strong) 80%, transparent);
+      border: 1px dashed var(--color-border, #444);
+    }
+    .tiles-active {
+      background: color-mix(in oklab, var(--color-link) 12%, var(--color-surface));
+      border: 1px solid color-mix(in oklab, var(--color-link) 35%, transparent);
+    }
+    .tile-chip {
+      cursor: grab;
+      user-select: none;
+    }
+    .tile-chip:active {
+      cursor: grabbing;
+    }
+    .tiles-line-slot {
+      min-height: 2.25rem;
+      border-radius: 0.375rem;
+      border: 1px dashed transparent;
+    }
+    .tiles-line-slot.is-over {
+      border-color: var(--color-link);
+      background: color-mix(in oklab, var(--color-link) 10%, transparent);
+    }
+  </style>
+  <form method="post"
+        x-data="tilesEditor()"
+        x-init="init()"
+        @submit="writePayload()">
+    {% csrf_token %}
+    <input type="hidden" name="tile_metadata" x-ref="payload">
+    {{ tile_catalog_json|json_script:"tile-catalog" }}
+    {{ tile_saved_json|json_script:"tile-saved" }}
+
+    <div class="preferences-section">
+      <h2 class="text-lg font-semibold text-[var(--color-text)] mb-1">{% translate "Tiles" %}</h2>
+      <p class="text-sm text-[var(--color-text-muted)] mb-4">{% translate "Every property for this type starts in the pool below. Drag onto the tile to show it. Up to three properties share one line. Drag lines to reorder." %}</p>
+
+      <div class="flex flex-wrap gap-2 mb-4">
+        <template x-for="entry in catalog" :key="entry.id">
+          <a :href="entry.href"
+             @click.prevent="switchType(entry.id)"
+             class="px-3 py-1 rounded-md text-sm border"
+             :class="active === entry.id ? 'bg-[var(--color-surface-strong)] text-[var(--color-text)] border-[var(--color-link)]' : 'text-[var(--color-text-muted)] border-transparent'"
+             x-text="entry.label"></a>
+        </template>
+      </div>
+
+      <template x-if="current">
+        <div class="tiles-layout">
+          <div class="space-y-4">
+            <div class="flex flex-wrap gap-2">
+              <button type="button" class="text-sm text-[var(--color-link)]" @click="resetType()">{% translate "Reset type" %}</button>
+              <button type="button" class="text-sm text-[var(--color-link)]" @click="useDefaults()">{% translate "Use defaults" %}</button>
+              <button type="button" class="text-sm text-[var(--color-link)]" @click="setAllLinesMode('hover')">{% translate "All hover" %}</button>
+              <button type="button" class="text-sm text-[var(--color-link)]" @click="setAllLinesMode('dormant')">{% translate "All dormant" %}</button>
+              <div class="inline-flex items-center gap-2">
+                <span class="text-sm text-[var(--color-text-muted)]">{% translate "Copy from" %}</span>
+                <div class="relative" @click.outside="copyOpen = false">
+                <button type="button"
+                        class="inline-flex items-center justify-between gap-2 min-w-40 px-3 py-1 bg-[var(--color-panel)] border border-gray-600 rounded-md text-sm text-[var(--color-text-secondary)] focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent cursor-pointer"
+                        @click="copyOpen = !copyOpen"
+                        :aria-expanded="copyOpen">
+                  <span>{% translate "Choose a type" %}</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 text-[var(--color-text-muted)]" aria-hidden="true">
+                    <path d="m6 9 6 6 6-6"></path>
+                  </svg>
+                </button>
+                <div x-show="copyOpen"
+                     x-cloak
+                     class="absolute left-0 top-full z-20 mt-1 min-w-full py-1 bg-[var(--color-panel)] rounded-md shadow-lg border border-gray-600 max-h-64 overflow-y-auto">
+                  <template x-for="entry in copySources()" :key="'copy-' + entry.id">
+                    <button type="button"
+                            class="block w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
+                            @click="copyFrom(entry.id); copyOpen = false"
+                            x-text="entry.label"></button>
+                  </template>
+                </div>
+                </div>
+              </div>
+            </div>
+            <div class="space-y-2">
+              <p class="text-xs font-medium text-[var(--color-text-muted)]">{% translate "Score" %}</p>
+              <div class="flex flex-wrap gap-1">
+                <button type="button"
+                        class="px-2 py-0.5 rounded text-xs border"
+                        :class="saved[active].options.rating.show !== false ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                        @click="setScoreShow(true)">{% translate "Show" %}</button>
+                <button type="button"
+                        class="px-2 py-0.5 rounded text-xs border"
+                        :class="saved[active].options.rating.show === false ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                        @click="setScoreShow(false)">{% translate "Hide" %}</button>
+              </div>
+              <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]"
+                     x-show="saved[active].options.rating.show !== false">
+                <input type="checkbox" x-model="saved[active].options.rating.hide_zero" @change="refreshPreview()">
+                {% translate "Hide zero ratings" %}
+              </label>
+            </div>
+
+            <div class="space-y-2">
+              <p class="text-xs font-medium text-[var(--color-text-muted)]">{% translate "Title" %}</p>
+              <div class="flex flex-wrap gap-1">
+                <button type="button"
+                        class="px-2 py-0.5 rounded text-xs border"
+                        :class="saved[active].options.title.overflow === 'ellipsis' ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                        @click="setTitleOverflow('ellipsis')">{% translate "Ellipsis" %}</button>
+                <button type="button"
+                        class="px-2 py-0.5 rounded text-xs border"
+                        :class="saved[active].options.title.overflow === 'wrap' ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                        @click="setTitleOverflow('wrap')">{% translate "Wrap" %}</button>
+                <button type="button"
+                        class="px-2 py-0.5 rounded text-xs border"
+                        :class="saved[active].options.title.overflow === 'clip' ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                        @click="setTitleOverflow('clip')">{% translate "Clip" %}</button>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs text-[var(--color-text-muted)]">{% translate "Lines" %}</span>
+                <template x-for="count in [1, 2, 3, 'all']" :key="'title-lines-' + count">
+                  <button type="button"
+                          class="px-2 py-0.5 rounded text-xs border"
+                          :class="saved[active].options.title.lines === count ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                          @click="setTitleLines('lines', count)"
+                          x-text="count === 'all' ? '{% translate "All" %}' : count"></button>
+                </template>
+              </div>
+              <div class="flex flex-wrap gap-1">
+                <button type="button"
+                        class="px-2 py-0.5 rounded text-xs border"
+                        :class="saved[active].options.title.hover === 'bleed' ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                        @click="setTitleHover('bleed')">{% translate "Bleed on hover" %}</button>
+                <button type="button"
+                        class="px-2 py-0.5 rounded text-xs border"
+                        :class="saved[active].options.title.hover === 'stay' ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                        @click="setTitleHover('stay')">{% translate "Stay put" %}</button>
+              </div>
+              <div class="flex flex-wrap items-center gap-2" x-show="saved[active].options.title.hover === 'bleed'">
+                <span class="text-xs text-[var(--color-text-muted)]">{% translate "Hover lines" %}</span>
+                <template x-for="count in [1, 2, 3, 'all']" :key="'title-hover-lines-' + count">
+                  <button type="button"
+                          class="px-2 py-0.5 rounded text-xs border"
+                          x-show="titleLineVisible(count)"
+                          :class="saved[active].options.title.hover_lines === count ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                          @click="setTitleLines('hover_lines', count)"
+                          x-text="count === 'all' ? '{% translate "All" %}' : count"></button>
+                </template>
+              </div>
+            </div>
+
+            <div>
+              <div class="flex flex-wrap items-center gap-2 mb-2">
+                <p class="text-xs font-medium text-[var(--color-text-muted)]">{% translate "Available" %}</p>
+                <button type="button"
+                        class="text-sm text-[var(--color-link)]"
+                        x-show="poolFields().length"
+                        @click="addAllAvailable()">{% translate "Add all available" %}</button>
+              </div>
+              <div class="tiles-pool flex flex-wrap gap-2"
+                   :class="poolOver ? 'is-over' : ''"
+                   @dragover.prevent="poolOver = true"
+                   @dragleave="poolOver = false"
+                   @drop.prevent="dropOnPool()">
+                <template x-for="field in poolFields()" :key="field.id">
+                  <span class="tile-chip inline-flex items-center gap-1 px-2 py-1 rounded text-sm border text-[var(--color-text-secondary)]"
+                        :class="field.unmatched ? 'bg-orange-400/20 border-orange-300/70' : 'bg-[var(--color-surface)] border-[var(--color-border,#444)]'"
+                        draggable="true"
+                        @dragstart="startFieldDrag($event, field.id, null)"
+                        @dragend="clearDrag()">
+                    <span x-text="field.label"></span>
+                    <span x-show="field.extra" class="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "extra" %}</span>
+                  </span>
+                </template>
+                <span x-show="!poolFields().length" class="text-sm text-[var(--color-text-muted)]">{% translate "Everything is on the tile." %}</span>
+              </div>
+            </div>
+
+            <div>
+              <p class="text-xs font-medium text-[var(--color-text-muted)] mb-2">{% translate "On tile" %}</p>
+              <div class="tiles-active space-y-2">
+                <template x-for="(line, lineIndex) in saved[active].lines" :key="lineIndex + ':' + line.fields.join(',')">
+                  <div class="rounded-md p-2 bg-[var(--color-surface)]/60"
+                       x-show="line.fields.length"
+                       :class="lineOverIndex === lineIndex && dragKind === 'line' ? 'ring-1 ring-[var(--color-link)]' : ''"
+                       @dragover.prevent="onRowDragOver($event, lineIndex)"
+                       @dragleave="onRowDragLeave(lineIndex)"
+                       @drop.prevent="dropOnLine(lineIndex, $event)">
+                    <div class="flex items-start gap-2">
+                      <button type="button"
+                              draggable="true"
+                              class="cursor-grab px-1 text-[var(--color-text-muted)] shrink-0"
+                              aria-label="{% translate 'Reorder line' %}"
+                              @dragstart="startLineDrag($event, lineIndex)"
+                              @dragend="clearDrag()">⋮⋮</button>
+                      <div class="flex-1 min-w-0">
+                        <div class="tiles-line-slot flex flex-wrap gap-1 p-1"
+                             :class="lineOverIndex === lineIndex && dragKind === 'field' ? 'is-over' : ''"
+                             @dragover.prevent="onFieldSlotDragOver(lineIndex)"
+                             @dragleave="onFieldSlotDragLeave(lineIndex)"
+                             @drop.prevent="dropOnLine(lineIndex, $event)">
+                          <template x-for="fieldId in line.fields" :key="fieldId">
+                            <span class="tile-chip inline-flex items-center gap-1 px-2 py-0.5 rounded text-sm bg-[var(--color-surface-strong)] text-[var(--color-text)]"
+                                  :class="fieldOver && fieldOver.lineIndex === lineIndex && fieldOver.fieldId === fieldId ? 'ring-2 ring-[var(--color-link)]' : ''"
+                                  draggable="true"
+                                  @dragstart="startFieldDrag($event, fieldId, lineIndex)"
+                                  @dragover.prevent.stop="fieldOver = { lineIndex, fieldId }"
+                                  @dragleave.stop="fieldOver = null"
+                                  @drop.prevent.stop="dropBeforeField(lineIndex, fieldId, $event)"
+                                  @dragend="clearDrag()">
+                              <span x-text="fieldLabel(fieldId)"></span>
+                              <button type="button"
+                                      class="ml-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-xs leading-none text-[var(--color-text)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]"
+                                      aria-label="{% translate 'Remove' %}"
+                                      @mousedown.stop
+                                      @click.stop="returnFieldToPool(lineIndex, fieldId)">×</button>
+                            </span>
+                          </template>
+                          <span x-show="!line.fields.length" class="text-xs text-[var(--color-text-muted)] py-1">{% translate "Drop properties here" %}</span>
+                        </div>
+                        <div class="mt-1 flex flex-wrap gap-1">
+                          <button type="button"
+                                  class="px-2 py-0.5 rounded text-xs border"
+                                  :class="line.display === 'hover' ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                                  @click="setLineMode(lineIndex, 'hover')">{% translate "Hover" %}</button>
+                          <button type="button"
+                                  class="px-2 py-0.5 rounded text-xs border"
+                                  :class="line.display === 'dormant' ? 'border-[var(--color-link)] text-[var(--color-text)]' : 'border-transparent text-[var(--color-text-muted)]'"
+                                  @click="setLineMode(lineIndex, 'dormant')">{% translate "Dormant" %}</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <div class="tiles-line-slot p-3 text-center text-sm text-[var(--color-text-muted)]"
+                     :class="newLineOver ? 'is-over' : ''"
+                     @dragover.prevent="newLineOver = true"
+                     @dragleave="newLineOver = false"
+                     @drop.prevent="dropNewLine($event)"
+                     x-show="poolFields().length">
+                  {% translate "Drop here to start a new line" %}
+                </div>
+                <p x-show="!saved[active].lines.length" class="text-sm text-[var(--color-text-muted)] text-center py-4">
+                  {% translate "Nothing on the tile yet. Drag properties from Available." %}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div class="tiles-preview-slot">
+            <p class="text-xs text-[var(--color-text-muted)] mb-2">{% translate "Preview" %}</p>
+            <div id="tile-preview" x-html="previewHtml"></div>
+          </div>
+        </div>
+      </template>
+
+      <p class="text-sm text-[var(--color-text-muted)] mt-4">
+        <a class="text-[var(--color-link)]" href="{% url 'preferences' %}#display-layout">{% translate "Title language and book progress stay in Preferences." %}</a>
+      </p>
+
+      <div class="mt-4">
+        <button type="submit" class="px-4 py-2 rounded-md bg-indigo-600 text-white text-sm">{% translate "Save" %}</button>
+      </div>
+    </div>
+  </form>
+  <script>
+    function tilesEditor() {
+      return {
+        catalog: [],
+        saved: {},
+        defaults: {},
+        active: "{{ tile_active_type|escapejs }}",
+        previewHtml: "",
+        dragKind: "",
+        dragFieldId: "",
+        dragFromLine: null,
+        dragLineIndex: null,
+        lineOverIndex: null,
+        fieldOver: null,
+        poolOver: false,
+        newLineOver: false,
+        unmatched: {},
+        copyOpen: false,
+        csrfToken: "",
+        init() {
+          this.catalog = JSON.parse(document.getElementById("tile-catalog").textContent);
+          this.saved = JSON.parse(document.getElementById("tile-saved").textContent);
+          this.csrfToken = document.querySelector("[name=csrfmiddlewaretoken]")?.value || "";
+          for (const entry of this.catalog) {
+            this.ensureProfile(entry.id);
+            this.defaults[entry.id] = JSON.parse(JSON.stringify(this.saved[entry.id]));
+          }
+          if (!this.saved[this.active]) {
+            this.active = this.catalog[0] ? this.catalog[0].id : "movie";
+          }
+          history.replaceState({ tileType: this.active }, "", this.typeHref(this.active) || window.location.href);
+          window.addEventListener("popstate", () => {
+            const typeId = this.typeFromLocation();
+            if (typeId && typeId !== this.active) this.switchType(typeId, false);
+          });
+          this.refreshPreview();
+        },
+        get current() {
+          return this.catalog.find((entry) => entry.id === this.active);
+        },
+        ensureProfile(typeId) {
+          const profile = this.saved[typeId];
+          if (!profile) return;
+          if (!Array.isArray(profile.lines)) {
+            const fields = profile.fields || [];
+            profile.lines = fields.map((fieldId) => ({ fields: [fieldId], display: "hover" }));
+          }
+          profile.lines = this.isolateProgress(profile.lines);
+          this.ensureTitle(profile);
+          this.flatten(typeId);
+        },
+        typeHref(typeId) {
+          const entry = this.catalog.find((item) => item.id === typeId);
+          return entry ? entry.href : "";
+        },
+        typeFromLocation() {
+          const name = window.location.pathname.replace(/\/$/, "").split("/").pop();
+          return this.saved[name] ? name : "";
+        },
+        switchType(typeId, updateHistory = true) {
+          if (!this.saved[typeId]) return;
+          this.active = typeId;
+          this.ensureProfile(typeId);
+          this.refreshPreview();
+          const href = this.typeHref(typeId);
+          if (!updateHistory || !href) return;
+          const nextPath = new URL(href, window.location.origin).pathname;
+          if (window.location.pathname !== nextPath) {
+            history.pushState({ tileType: typeId }, "", href);
+          }
+        },
+        fieldLabel(fieldId) {
+          const field = this.current.fields.find((item) => item.id === fieldId);
+          return field ? field.label : fieldId;
+        },
+        poolFields() {
+          const used = new Set();
+          for (const line of this.saved[this.active].lines) {
+            for (const fieldId of line.fields) used.add(fieldId);
+          }
+          const fields = this.current.fields.filter((field) => !used.has(field.id));
+          const extras = (this.unmatched[this.active] || []).filter((field) => !used.has(field.id));
+          return fields.concat(extras.map((field) => ({ ...field, unmatched: true })));
+        },
+        copySources() {
+          const families = [
+            ["tv", "season", "episode"],
+            ["book", "comic", "manga"],
+          ];
+          const family = families.find((group) => group.includes(this.active)) || [];
+          return this.catalog
+            .filter((entry) => entry.id !== this.active)
+            .sort((left, right) => {
+              const leftRank = family.indexOf(left.id);
+              const rightRank = family.indexOf(right.id);
+              const leftOrder = leftRank === -1 ? family.length : leftRank;
+              const rightOrder = rightRank === -1 ? family.length : rightRank;
+              if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+              return left.label.localeCompare(right.label);
+            });
+        },
+        fieldAllowed(fieldId) {
+          return this.current.fields.some((field) => field.id === fieldId);
+        },
+        clearUnmatched(fieldId) {
+          const list = this.unmatched[this.active] || [];
+          this.unmatched[this.active] = list.filter((field) => field.id !== fieldId);
+        },
+        isolateProgress(lines) {
+          const next = [];
+          let progressMode = null;
+          for (const line of lines) {
+            const fields = (line.fields || []).filter((fieldId) => fieldId !== "progress");
+            if ((line.fields || []).includes("progress")) {
+              progressMode = line.display || "hover";
+            }
+            if (fields.length) next.push({ fields, display: line.display || "hover" });
+          }
+          if (progressMode) next.push({ fields: ["progress"], display: progressMode });
+          return next;
+        },
+        copyFrom(sourceId) {
+          if (!sourceId || sourceId === this.active || !this.saved[sourceId]) return;
+          const source = this.saved[sourceId];
+          const allowed = new Set(this.current.fields.map((field) => field.id));
+          const sourceEntry = this.catalog.find((entry) => entry.id === sourceId);
+          const labels = new Map((sourceEntry?.fields || []).map((field) => [field.id, field.label]));
+          const lines = [];
+          const unmatched = [];
+          const seen = new Set();
+          for (const line of source.lines || []) {
+            const fields = [];
+            for (const fieldId of line.fields || []) {
+              if (seen.has(fieldId)) continue;
+              seen.add(fieldId);
+              if (allowed.has(fieldId)) fields.push(fieldId);
+              else unmatched.push({ id: fieldId, label: labels.get(fieldId) || fieldId });
+            }
+            if (fields.length) lines.push({ fields, display: line.display || "hover" });
+          }
+          const profile = this.saved[this.active];
+          profile.lines = this.isolateProgress(lines);
+          if (source.options?.title) {
+            profile.options.title = JSON.parse(JSON.stringify(source.options.title));
+          }
+          if (source.options?.rating) {
+            profile.options.rating = JSON.parse(JSON.stringify(source.options.rating));
+          }
+          this.ensureTitle(profile);
+          this.unmatched[this.active] = unmatched;
+          this.flatten(this.active);
+          this.refreshPreview();
+        },
+        flatten(typeId) {
+          const profile = this.saved[typeId];
+          const ids = [];
+          for (const line of profile.lines) {
+            for (const fieldId of line.fields) ids.push(fieldId);
+          }
+          profile.fields = ids;
+        },
+        pruneEmptyLines() {
+          this.saved[this.active].lines = this.saved[this.active].lines.filter(
+            (entry) => entry.fields.length > 0,
+          );
+        },
+        returnFieldToPool(lineIndex, fieldId) {
+          const lines = this.saved[this.active].lines;
+          const line = lines[lineIndex];
+          if (!line) return;
+          line.fields = line.fields.filter((id) => id !== fieldId);
+          if (line.fields.length === 0) {
+            lines.splice(lineIndex, 1);
+          }
+          this.pruneEmptyLines();
+          this.flatten(this.active);
+          this.refreshPreview();
+        },
+        setLineMode(lineIndex, mode) {
+          this.saved[this.active].lines[lineIndex].display = mode;
+          this.refreshPreview();
+        },
+        setAllLinesMode(mode) {
+          for (const line of this.saved[this.active].lines) line.display = mode;
+          this.refreshPreview();
+        },
+        ensureTitle(profile) {
+          if (!profile.options || typeof profile.options !== "object") profile.options = {};
+          if (!profile.options.rating) profile.options.rating = { hide_zero: false, show: true };
+          if (profile.options.rating.show === undefined) profile.options.rating.show = true;
+          const title = profile.options.title;
+          if (!title || typeof title !== "object") {
+            profile.options.title = { overflow: "ellipsis", lines: 1, hover: "bleed", hover_lines: 3 };
+            return;
+          }
+          if (!["ellipsis", "wrap", "clip"].includes(title.overflow)) title.overflow = "ellipsis";
+          if (!["bleed", "stay"].includes(title.hover)) title.hover = "bleed";
+          title.lines = this.clampTitleLines(title.lines);
+          title.hover_lines = this.raiseHoverLines(
+            this.clampTitleLines(title.hover_lines),
+            title.lines,
+          );
+        },
+        clampTitleLines(value) {
+          if (value === "all") return "all";
+          const count = Number(value);
+          if (!Number.isInteger(count)) return 1;
+          return Math.min(3, Math.max(1, count));
+        },
+        raiseHoverLines(hoverLines, lines) {
+          if (lines === "all") return "all";
+          if (hoverLines === "all") return "all";
+          return hoverLines < lines ? lines : hoverLines;
+        },
+        titleLineVisible(count) {
+          const lines = this.saved[this.active].options.title.lines;
+          if (count === "all") return true;
+          return lines !== "all" && count >= lines;
+        },
+        setScoreShow(visible) {
+          this.saved[this.active].options.rating.show = visible;
+          this.refreshPreview();
+        },
+        setTitleOverflow(mode) {
+          this.saved[this.active].options.title.overflow = mode;
+          this.refreshPreview();
+        },
+        setTitleHover(mode) {
+          const title = this.saved[this.active].options.title;
+          title.hover = mode;
+          title.hover_lines = this.raiseHoverLines(title.hover_lines, title.lines);
+          this.refreshPreview();
+        },
+        setTitleLines(key, count) {
+          const title = this.saved[this.active].options.title;
+          title[key] = count;
+          title.hover_lines = this.raiseHoverLines(title.hover_lines, title.lines);
+          this.refreshPreview();
+        },
+        resetType() {
+          this.saved[this.active].lines = [];
+          this.unmatched[this.active] = [];
+          this.flatten(this.active);
+          this.refreshPreview();
+        },
+        addAllAvailable() {
+          for (const field of this.poolFields()) {
+            if (field.unmatched) continue;
+            this.saved[this.active].lines.push({ fields: [field.id], display: "hover" });
+          }
+          this.saved[this.active].lines = this.isolateProgress(this.saved[this.active].lines);
+          this.flatten(this.active);
+          this.refreshPreview();
+        },
+        useDefaults() {
+          const base = this.defaults[this.active];
+          if (!base) return;
+          this.saved[this.active] = JSON.parse(JSON.stringify(base));
+          this.unmatched[this.active] = [];
+          this.ensureProfile(this.active);
+          this.refreshPreview();
+        },
+        clearDrag() {
+          this.dragKind = "";
+          this.dragFieldId = "";
+          this.dragFromLine = null;
+          this.dragLineIndex = null;
+          this.lineOverIndex = null;
+          this.fieldOver = null;
+          this.poolOver = false;
+          this.newLineOver = false;
+        },
+        placeProgress(fromLineIndex) {
+          const lines = this.saved[this.active].lines;
+          let display = "hover";
+          if (fromLineIndex !== null) {
+            const fromLine = lines[fromLineIndex];
+            if (!fromLine) return false;
+            display = fromLine.display || "hover";
+            fromLine.fields = fromLine.fields.filter((fieldId) => fieldId !== "progress");
+          }
+          this.pruneEmptyLines();
+          const existing = this.saved[this.active].lines.find(
+            (line) => line.fields.length === 1 && line.fields[0] === "progress",
+          );
+          if (!existing) {
+            this.saved[this.active].lines.push({ fields: ["progress"], display });
+          }
+          this.flatten(this.active);
+          return true;
+        },
+        moveField(fieldId, fromLineIndex, toLineIndex, beforeFieldId) {
+          if (!this.fieldAllowed(fieldId)) {
+            this.clearUnmatched(fieldId);
+            return false;
+          }
+          if (fieldId === "progress") {
+            return this.placeProgress(fromLineIndex);
+          }
+          const lines = this.saved[this.active].lines;
+          const fromLine = fromLineIndex === null ? null : lines[fromLineIndex];
+          if (fromLineIndex !== null && !fromLine?.fields.includes(fieldId)) {
+            return false;
+          }
+          const toLine = lines[toLineIndex];
+          if (toLine && toLine.fields.length === 1 && toLine.fields[0] === "progress") {
+            return false;
+          }
+          if (!toLine) {
+            return false;
+          }
+          if (fromLineIndex !== null) {
+            fromLine.fields = fromLine.fields.filter((id) => id !== fieldId);
+          }
+          let target = toLine.fields.filter((id) => id !== fieldId);
+          if (fromLineIndex !== toLineIndex && target.length >= 3) {
+            if (fromLineIndex !== null) {
+              fromLine.fields.push(fieldId);
+            }
+            return false;
+          }
+          let insertAt = beforeFieldId === null ? target.length : target.indexOf(beforeFieldId);
+          if (insertAt < 0) {
+            insertAt = target.length;
+          }
+          target.splice(insertAt, 0, fieldId);
+          toLine.fields = target;
+          this.pruneEmptyLines();
+          this.flatten(this.active);
+          return true;
+        },
+        dragKindFromEvent(event) {
+          const raw = event?.dataTransfer?.getData("text/plain") || "";
+          if (raw.startsWith("line:")) {
+            return "line";
+          }
+          if (raw) {
+            return "field";
+          }
+          return this.dragKind;
+        },
+        lineIndexFromEvent(event) {
+          const raw = event?.dataTransfer?.getData("text/plain") || "";
+          if (raw.startsWith("line:")) {
+            return Number.parseInt(raw.slice(5), 10);
+          }
+          return this.dragLineIndex;
+        },
+        fieldIdFromEvent(event) {
+          const raw = event?.dataTransfer?.getData("text/plain") || "";
+          if (raw.startsWith("line:")) {
+            return "";
+          }
+          return raw || this.dragFieldId;
+        },
+        reorderLine(from, to) {
+          const lines = this.saved[this.active].lines;
+          if (from === null || to === null || Number.isNaN(from) || Number.isNaN(to)) {
+            return;
+          }
+          if (from < 0 || to < 0 || from >= lines.length || to >= lines.length) {
+            return;
+          }
+          if (from === to) {
+            return;
+          }
+          const [moved] = lines.splice(from, 1);
+          lines.splice(to, 0, moved);
+          this.flatten(this.active);
+        },
+        onRowDragOver(event, lineIndex) {
+          if (this.dragKindFromEvent(event) !== "line") {
+            return;
+          }
+          this.lineOverIndex = lineIndex;
+        },
+        onRowDragLeave(lineIndex) {
+          if (this.lineOverIndex === lineIndex) {
+            this.lineOverIndex = null;
+          }
+        },
+        onFieldSlotDragOver(lineIndex) {
+          if (this.dragKind !== "field") {
+            return;
+          }
+          this.lineOverIndex = lineIndex;
+        },
+        onFieldSlotDragLeave(lineIndex) {
+          if (this.dragKind === "field" && this.lineOverIndex === lineIndex) {
+            this.lineOverIndex = null;
+          }
+        },
+        dropBeforeField(lineIndex, beforeFieldId, event) {
+          if (this.dragKindFromEvent(event) === "line") {
+            this.reorderLine(this.lineIndexFromEvent(event), lineIndex);
+            this.clearDrag();
+            this.refreshPreview();
+            return;
+          }
+          const fieldId = this.fieldIdFromEvent(event);
+          if (!fieldId) {
+            this.clearDrag();
+            return;
+          }
+          this.moveField(fieldId, this.dragFromLine, lineIndex, beforeFieldId);
+          this.clearDrag();
+          this.refreshPreview();
+        },
+        startFieldDrag(event, fieldId, fromLineIndex) {
+          this.dragKind = "field";
+          this.dragFieldId = fieldId;
+          this.dragFromLine = fromLineIndex;
+          event.dataTransfer.setData("text/plain", fieldId);
+          event.dataTransfer.effectAllowed = "move";
+        },
+        startLineDrag(event, lineIndex) {
+          this.dragKind = "line";
+          this.dragLineIndex = lineIndex;
+          event.dataTransfer.setData("text/plain", "line:" + lineIndex);
+          event.dataTransfer.effectAllowed = "move";
+        },
+        dropOnPool() {
+          if (this.dragKind !== "field" || this.dragFromLine === null) {
+            this.clearUnmatched(this.dragFieldId);
+            this.clearDrag();
+            return;
+          }
+          const line = this.saved[this.active].lines[this.dragFromLine];
+          line.fields = line.fields.filter((id) => id !== this.dragFieldId);
+          this.pruneEmptyLines();
+          this.flatten(this.active);
+          this.clearDrag();
+          this.refreshPreview();
+        },
+        dropOnLine(lineIndex, event) {
+          if (this.dragKindFromEvent(event) === "line") {
+            this.reorderLine(this.lineIndexFromEvent(event), lineIndex);
+            this.clearDrag();
+            this.refreshPreview();
+            return;
+          }
+          const fieldId = this.fieldIdFromEvent(event);
+          if (!fieldId) {
+            this.clearDrag();
+            return;
+          }
+          const toLine = this.saved[this.active].lines[lineIndex];
+          const progressLine = toLine && toLine.fields.length === 1 && toLine.fields[0] === "progress";
+          if (fieldId !== "progress" && progressLine) {
+            this.dropNewLine(event);
+            return;
+          }
+          this.moveField(fieldId, this.dragFromLine, lineIndex, null);
+          this.clearDrag();
+          this.refreshPreview();
+        },
+        dropNewLine(event) {
+          if (this.dragKindFromEvent(event) === "line") {
+            const from = this.lineIndexFromEvent(event);
+            const lines = this.saved[this.active].lines;
+            this.reorderLine(from, lines.length - 1);
+            this.clearDrag();
+            this.refreshPreview();
+            return;
+          }
+          const fieldId = this.fieldIdFromEvent(event);
+          if (!fieldId) {
+            this.clearDrag();
+            return;
+          }
+          if (!this.fieldAllowed(fieldId)) {
+            this.clearUnmatched(fieldId);
+            this.clearDrag();
+            return;
+          }
+          if (fieldId === "progress") {
+            this.placeProgress(this.dragFromLine);
+            this.clearDrag();
+            this.refreshPreview();
+            return;
+          }
+          if (this.dragFromLine !== null) {
+            const fromLine = this.saved[this.active].lines[this.dragFromLine];
+            fromLine.fields = fromLine.fields.filter((id) => id !== fieldId);
+            this.pruneEmptyLines();
+          }
+          this.saved[this.active].lines.push({ fields: [fieldId], display: "hover" });
+          this.flatten(this.active);
+          this.clearDrag();
+          this.refreshPreview();
+        },
+        writePayload() {
+          for (const entry of this.catalog) this.flatten(entry.id);
+          this.$refs.payload.value = JSON.stringify({ version: 1, types: this.saved });
+        },
+        refreshPreview() {
+          this.flatten(this.active);
+          fetch("{% url 'tiles_preview' %}", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": this.csrfToken,
+            },
+            body: JSON.stringify({
+              type: this.active,
+              draft: { version: 1, types: { [this.active]: this.saved[this.active] } },
+            }),
+          })
+            .then((response) => response.text())
+            .then((html) => { this.previewHtml = html; });
+        },
+      };
+    }
+  </script>
+{% endblock %}
