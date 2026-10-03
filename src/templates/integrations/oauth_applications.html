@@ -1,0 +1,66 @@
+{% extends "users/base.html" %}
+
+{% block title %}
+  Connected Applications - Floppy
+{% endblock title %}
+
+{% block settings_content %}
+  <div class="space-y-6">
+    <div class="bg-[var(--color-surface)] rounded-lg p-6">
+      <h2 class="text-xl font-semibold">Connected Applications</h2>
+      <p class="text-[var(--color-text-muted)] mt-2 text-sm">
+        Review applications authorised through Floppy's OAuth device flow and revoke access when it is no longer needed.
+      </p>
+    </div>
+
+    {% if oauth_applications %}
+      <div class="space-y-4">
+        {% for application in oauth_applications %}
+          <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="text-lg font-semibold">{{ application.client.name }}</h3>
+                  {% if not application.client.is_active %}
+                    <span class="text-xs rounded-full px-2 py-1 bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]">Client revoked</span>
+                  {% endif %}
+                </div>
+                <p class="text-xs text-[var(--color-text-muted)] font-mono mt-1">{{ application.client.client_id }}</p>
+                {% if application.connected_at %}
+                  <p class="text-xs text-[var(--color-text-muted)] mt-2">Connected {{ application.connected_at|date:"j M Y, H:i" }}</p>
+                {% endif %}
+                {% if application.last_used_at %}
+                  <p class="text-xs text-[var(--color-text-muted)] mt-1">Last used {{ application.last_used_at|date:"j M Y, H:i" }}</p>
+                {% endif %}
+              </div>
+
+              <form method="post" action="{% url 'oauth_revoke_application' application.client.client_id %}">
+                {% csrf_token %}
+                <button type="submit"
+                        class="px-3 py-2 text-sm rounded-md border border-red-500/50 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer">
+                  Revoke access
+                </button>
+              </form>
+            </div>
+
+            <div>
+              <p class="text-sm font-medium mb-2">Permissions</p>
+              <div class="flex flex-wrap gap-2">
+                {% for item in application.scope_details %}
+                  <span class="text-xs rounded-full px-2.5 py-1 bg-[var(--color-surface-strong)] border border-[var(--color-border)]"
+                        title="{{ item.description }}">
+                    {{ item.label }}
+                  </span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="bg-[var(--color-surface)] rounded-lg p-6 text-sm text-[var(--color-text-muted)]">
+        No applications currently have OAuth access to your Floppy account.
+      </div>
+    {% endif %}
+  </div>
+{% endblock settings_content %}

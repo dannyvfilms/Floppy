@@ -26,10 +26,75 @@ to request is published rather than guessed.
 
 ## 1. Connect
 
-The user creates a token in **Settings → Integrations → App tokens**, names it
-after the device, and pastes it into the client. The secret is shown once.
+### Preferred: OAuth device flow
 
-Send it any of three ways:
+A registered public client should use Floppy's OAuth device flow instead of
+asking the user to copy a long-lived token.
+
+Discover the endpoints and supported scopes from:
+
+```
+GET /.well-known/oauth-authorization-server
+GET /oauth/scopes
+```
+
+Request a device code:
+
+```http
+POST /oauth/device/authorization
+
+client_id=flp_oauth_...
+scope=scrobble:write progress:read progress:write watchlist:read watchlist:write catalog:read sync:read
+```
+
+Show the returned `verification_uri_complete` (or `verification_uri` plus
+`user_code`) to the user. Poll the token endpoint no faster than the returned
+`interval`:
+
+```http
+POST /oauth/token
+
+client_id=flp_oauth_...
+grant_type=urn:ietf:params:oauth:grant-type:device_code
+device_code=flp_device_...
+```
+
+Before approval, the token endpoint returns `authorization_pending`. Polling
+too quickly returns `slow_down`. After approval it returns a one-hour bearer
+access token and a rotating refresh token.
+
+Refresh with:
+
+```http
+POST /oauth/token
+
+client_id=flp_oauth_...
+grant_type=refresh_token
+refresh_token=flp_refresh_...
+```
+
+A successful refresh returns a new access token **and a new refresh token**.
+Replace the old refresh token atomically; reusing a rotated token is treated as
+possible replay and revokes that rotation family. A refresh request may retain
+or narrow its scopes, but cannot broaden the user's original grant.
+
+The user can review and revoke grants under **Settings → Connected
+Applications**. A client may also call `POST /oauth/revoke` with its
+`client_id` and access or refresh token.
+
+Send the access token as:
+
+```
+Authorization: Bearer flp_xxx
+```
+
+### Manual-token fallback
+
+For clients that do not implement the device flow, the user can still create a
+token in **Settings → Integrations → App tokens**, name it after the device, and
+paste it into the client. The secret is shown once.
+
+Manual tokens may be sent as:
 
 ```
 Authorization: Bearer flp_xxx
@@ -37,8 +102,7 @@ Authorization: Token flp_xxx
 X-API-Key: flp_xxx
 ```
 
-A token minted with the default preset carries exactly what a tracking client
-needs:
+The default tracking preset carries exactly what a tracking client needs:
 
 ```
 scrobble:write  progress:read  progress:write
@@ -46,8 +110,8 @@ watchlist:read  watchlist:write  catalog:read  sync:read
 ```
 
 It cannot reach lists, music, podcasts, imports, exports, user settings, or
-metadata writes. Ask the user to tick extra permissions if you need them; do not
-ask for a broader token "just in case".
+metadata writes. Request only the additional permissions your client actually
+needs.
 
 Then call `GET /api/v1/sync/connections/` and keep each `origin_key`. You need
 it in step 5, and without it your position can never be recorded.
