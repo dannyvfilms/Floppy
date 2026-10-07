@@ -1,10 +1,12 @@
 import json
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase, tag
+from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from app.models import (
@@ -507,6 +509,33 @@ class HelpersTest(TestCase):
 
         self.assertEqual(warnings, [])
         self.assertEqual(Episode.objects.filter(related_season=season).count(), 1)
+
+    def test_backfill_dates_fabricated_episodes_to_the_seasons_watch_date(self):
+        """Fabricated episodes carry the season's date, not the import time.
+
+        A season imported as Completed from old history fans out the episodes
+        the source never itemised. Falling back to the user's preference
+        (default "now") stamps them with the import time, so a show watched
+        years ago reads as watched today — the whole show appears to have been
+        binged the night the import ran.
+        """
+        season = self._make_completed_season()
+        watched_on = timezone.now() - timedelta(days=500)
+        season._pending_end_date = watched_on
+        season_metadata = {
+            "episodes": [{"episode_number": 1, "still_path": None}],
+            "max_progress": 1,
+        }
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=season_metadata,
+        ):
+            warnings = helpers._backfill_completed_season_episodes([season])
+
+        self.assertEqual(warnings, [])
+        episode = Episode.objects.get(related_season=season)
+        self.assertEqual(episode.end_date, watched_on)
 
     def test_backfill_surfaces_warning_after_exhausted_retries(self):
         """A persistently failing fetch should be reported, not silently dropped."""
