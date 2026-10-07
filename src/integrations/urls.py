@@ -334,7 +334,8 @@ urlpatterns = [
     ),
     re_path(
         r"^stremio-addon/(?P<token>[^/]+)/c/(?P<config>[^/]+)/subtitles/"
-        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/[^/]*)?\.json$",
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)"
+        r"(?:/(?P<extra>[^/]*))?\.json$",
         views.stremio_addon_subtitles,
         name="stremio_addon_subtitles_configured",
     ),
@@ -354,8 +355,43 @@ urlpatterns = [
     ),
     re_path(
         r"^stremio-addon/(?P<token>[^/]+)/subtitles/"
-        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)(?:/.*)?\.json$",
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)"
+        # The extra carries the release filename, which routinely contains a
+        # slash, so it must span path segments. Upstream matched this tail with
+        # a wildcard; capturing it must not narrow what the route accepts.
+        r"(?:/(?P<extra>.*))?\.json$",
         views.stremio_addon_subtitles,
         name="stremio_addon_subtitles",
+    ),
+    # `player` and `library` capture the extra: position and duration travel in
+    # it. So does `subtitles`, whose extra carries the selected release's
+    # `videoHash`/`videoSize`/`filename`; it is reported, not yet used.
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/c/(?P<config>[^/]+)/player/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)/"
+        r"(?P<extra>[^/]*)\.json$",
+        views.stremio_addon_player,
+        name="stremio_addon_player_configured",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/player/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)/"
+        r"(?P<extra>[^/]*)\.json$",
+        views.stremio_addon_player,
+        name="stremio_addon_player",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/c/(?P<config>[^/]+)/library/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)/"
+        r"(?P<extra>[^/]*)\.json$",
+        views.stremio_addon_library,
+        name="stremio_addon_library_configured",
+    ),
+    re_path(
+        r"^stremio-addon/(?P<token>[^/]+)/library/"
+        r"(?P<media_type>movie|series)/(?P<media_id>[^/]+?)/"
+        r"(?P<extra>[^/]*)\.json$",
+        views.stremio_addon_library,
+        name="stremio_addon_library",
     ),
 ]
