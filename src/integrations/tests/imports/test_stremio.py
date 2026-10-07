@@ -614,6 +614,191 @@ class ImportStremioTests(TestCase):
             MediaTypes.ANIME.value,
         )
 
+    def test_anime_episode_mapping_uses_canonical_tmdb_season(self):
+        """Stremio anime imports remap source seasons without false completion."""
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["anime_enabled"])
+        video_ids = ["tt0903747:4:1", "tt0903747:4:19"]
+        watched_ids = {"tt0903747:4:19"}
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Re:ZERO",
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, watched_ids),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                },
+            },
+        ]
+
+        def fake_rezero_metadata(media_id, season_numbers):
+            metadata = {
+                "title": "Re:ZERO",
+                "image": "http://example.com/rezero.jpg",
+                "tvdb_id": "305089",
+            }
+            if list(season_numbers) == [1]:
+                metadata["season/1"] = {
+                    "image": "http://example.com/season.jpg",
+                    "max_progress": 85,
+                    "episodes": [
+                        {"episode_number": number}
+                        for number in range(1, 86)
+                    ],
+                }
+            return metadata
+
+        match = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_and_animation_genre",
+            tmdb_id="1396",
+            tvdb_id="305089",
+            mal_ids=("31240",),
+        )
+        mapping_data = {
+            "tvdb_show:305089:s4": {
+                "tmdb_show:1396:s1": {"1-19": "67-85"},
+            },
+        }
+
+        with (
+            patch(
+                "integrations.imports.stremio.anime_mapping.load_mapping_snapshot",
+                return_value=object(),
+            ),
+            patch(
+                "integrations.imports.stremio.anime_mappings.fetch_mapping_data",
+                return_value=mapping_data,
+            ),
+            patch(
+                "app.services.grouped_anime.classify_tv_metadata",
+                return_value=match,
+            ),
+        ):
+            imported_counts, warnings = self._run_import(
+                library_items,
+                cinemeta_videos={"tt0903747": video_ids},
+                tmdb_tv_with_seasons=fake_rezero_metadata,
+            )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 1)
+        episode = Episode.objects.get(item__media_id="1396")
+        self.assertEqual(episode.item.season_number, 1)
+        self.assertEqual(episode.item.episode_number, 85)
+        season = Season.objects.get(item__media_id="1396")
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+
+    def test_remapped_anime_season_completes_when_all_its_episodes_watched(self):
+        """Every episode of the remapped canonical season watched is Completed."""
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["anime_enabled"])
+        video_ids = [f"tt0903747:6:{number}" for number in range(1, 5)]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Split Anime",
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, set(video_ids)),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                },
+            },
+        ]
+
+        def fake_split_anime_metadata(media_id, season_numbers):
+            metadata = {
+                "title": "Split Anime",
+                "image": "http://example.com/anime.jpg",
+                "tvdb_id": "70900",
+            }
+            if list(season_numbers) == [5]:
+                metadata["season/5"] = {
+                    "image": "http://example.com/season.jpg",
+                    "max_progress": 4,
+                    "episodes": [
+                        {"episode_number": number} for number in range(1, 5)
+                    ],
+                }
+            return metadata
+
+        match = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_and_animation_genre",
+            tmdb_id="1396",
+            tvdb_id="70900",
+            mal_ids=("31240",),
+        )
+        mapping_data = {
+            "tvdb_show:70900:s6": {
+                "tmdb_show:1396:s5": {"1-4": "1-4"},
+            },
+        }
+
+        with (
+            patch(
+                "integrations.imports.stremio.anime_mapping.load_mapping_snapshot",
+                return_value=object(),
+            ),
+            patch(
+                "integrations.imports.stremio.anime_mappings.fetch_mapping_data",
+                return_value=mapping_data,
+            ),
+            patch(
+                "app.services.grouped_anime.classify_tv_metadata",
+                return_value=match,
+            ),
+        ):
+            imported_counts, warnings = self._run_import(
+                library_items,
+                cinemeta_videos={"tt0903747": video_ids},
+                tmdb_tv_with_seasons=fake_split_anime_metadata,
+            )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 4)
+        season = Season.objects.get(item__media_id="1396")
+        self.assertEqual(season.item.season_number, 5)
+        self.assertEqual(season.status, Status.COMPLETED.value)
+
+    def test_anibridge_mapping_fetched_only_when_a_grouped_anime_needs_it(self):
+        """A plain TV series never pays for the AniBridge blob."""
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["anime_enabled"])
+        video_ids = ["tt0903747:1:1"]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Not Anime",
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, set(video_ids)),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                },
+            },
+        ]
+
+        with (
+            patch(
+                "integrations.imports.stremio.anime_mapping.load_mapping_snapshot",
+                return_value=object(),
+            ),
+            patch(
+                "app.services.grouped_anime.classify_tv_metadata",
+                return_value=None,
+            ),
+            patch(
+                "integrations.imports.stremio.anime_mappings.fetch_mapping_data",
+            ) as mock_fetch,
+        ):
+            self._run_import(
+                library_items,
+                cinemeta_videos={"tt0903747": video_ids},
+            )
+
+        mock_fetch.assert_not_called()
+
     def test_mal_preferring_user_skips_the_series_rather_than_importing_to_tv(self):
         """A TMDB series cannot populate a flat MAL library, so skip it.
 

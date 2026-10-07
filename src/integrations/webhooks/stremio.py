@@ -13,7 +13,10 @@ import logging
 
 import app.providers.tmdb
 from app import live_playback
+from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
+from integrations import episode_remap
+from integrations.webhooks import anime_mappings
 
 from .base import BaseWebhookProcessor
 
@@ -102,6 +105,31 @@ class StremioWebhookProcessor(BaseWebhookProcessor):
             return
 
         tv_metadata = app.providers.tmdb.tv(show_id)
+        if user.anime_enabled:
+            try:
+                mapping_data = anime_mappings.fetch_mapping_data()
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "AniBridge mapping lookup unavailable for Stremio playback: %s",
+                    exception_summary(exc),
+                )
+            else:
+                remapped = self._remap_playback_episode(
+                    mapping_data,
+                    show_id,
+                    season_number,
+                    episode_number,
+                    tv_metadata,
+                )
+                if remapped is not None:
+                    season_number, episode_number, _ = remapped
+                    logger.info(
+                        "Mapped Stremio live episode for TMDB %s to S%sE%s",
+                        show_id,
+                        season_number,
+                        episode_number,
+                    )
+
         live_playback.apply_playback_event(
             user_id=user.id,
             event_type="media.play",
@@ -111,6 +139,47 @@ class StremioWebhookProcessor(BaseWebhookProcessor):
             series_title=tv_metadata.get("title"),
             season_number=season_number,
             episode_number=episode_number,
+        )
+
+    def _remap_playback_episode(
+        self,
+        mapping_data,
+        show_id,
+        season_number,
+        episode_number,
+        tv_metadata,
+    ):
+        """Resolve canonical TMDB coordinates for a playback-start event.
+
+        Shares ``episode_remap.remap_via_anibridge`` with the import and
+        webhook paths so a target season that does not actually contain the
+        episode is rejected rather than trusted.
+        """
+
+        def load_season(candidate_season):
+            try:
+                candidate_metadata = app.providers.tmdb.tv_with_seasons(
+                    show_id,
+                    [candidate_season],
+                )
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "Season lookup failed during Stremio playback remap of %s "
+                    "season %s: %s",
+                    show_id,
+                    candidate_season,
+                    exception_summary(exc),
+                )
+                return None
+            return candidate_metadata.get(f"season/{candidate_season}")
+
+        return episode_remap.remap_via_anibridge(
+            mapping_data,
+            show_id,
+            season_number,
+            episode_number,
+            tv_metadata,
+            load_season,
         )
 
     def _is_supported_event(self, event_type):

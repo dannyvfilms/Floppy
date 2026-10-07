@@ -1068,6 +1068,94 @@ class StremioWebhookProcessorTests(TestCase):
         self.assertEqual(kwargs["episode_number"], 1)
 
     @patch("integrations.webhooks.stremio.live_playback.apply_playback_event")
+    @patch(
+        "integrations.webhooks.anime_mappings.fetch_mapping_data",
+        return_value={
+            "tvdb_show:305089:s4": {
+                "tmdb_show:65942:s1": {"1-19": "67-85"},
+            },
+        },
+    )
+    @patch(
+        "app.providers.tmdb.tv_with_seasons",
+        return_value={"season/1": {"episodes": [{"episode_number": 78}]}},
+    )
+    @patch(
+        "app.providers.tmdb.tv",
+        return_value={"title": "Re:ZERO", "tvdb_id": "305089"},
+    )
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [{"show_id": 65942}]},
+    )
+    def test_anime_episode_start_uses_canonical_tmdb_numbering(
+        self,
+        _mock_find,
+        _mock_tv,
+        _mock_tv_with_seasons,
+        _mock_mapping,
+        mock_apply_event,
+    ):
+        """Anime live playback uses AniBridge's canonical TMDB coordinates."""
+        self.user.anime_enabled = True
+        processor = StremioWebhookProcessor()
+
+        processor._update_live_playback_episode(
+            {"id": "tt5607616:4:12", "type": "series"},
+            self.user,
+            "tt5607616",
+        )
+
+        _, kwargs = mock_apply_event.call_args
+        self.assertEqual(kwargs["media_id"], "65942")
+        self.assertEqual(kwargs["season_number"], 1)
+        self.assertEqual(kwargs["episode_number"], 78)
+
+    @patch("integrations.webhooks.stremio.live_playback.apply_playback_event")
+    @patch(
+        "integrations.webhooks.anime_mappings.fetch_mapping_data",
+        return_value={
+            "tvdb_show:305089:s4": {
+                "tmdb_show:65942:s1": {"1-19": "67-85"},
+            },
+        },
+    )
+    @patch(
+        "app.providers.tmdb.tv_with_seasons",
+        return_value={"season/1": {"episodes": [{"episode_number": 1}]}},
+    )
+    @patch(
+        "app.providers.tmdb.tv",
+        return_value={"title": "Re:ZERO", "tvdb_id": "305089"},
+    )
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [{"show_id": 65942}]},
+    )
+    def test_anime_episode_start_keeps_source_numbers_when_target_lacks_episode(
+        self,
+        _mock_find,
+        _mock_tv,
+        _mock_tv_with_seasons,
+        _mock_mapping,
+        mock_apply_event,
+    ):
+        """A target season without the episode keeps the source coordinates."""
+        self.user.anime_enabled = True
+        processor = StremioWebhookProcessor()
+
+        processor._update_live_playback_episode(
+            {"id": "tt5607616:4:12", "type": "series"},
+            self.user,
+            "tt5607616",
+        )
+
+        _, kwargs = mock_apply_event.call_args
+        self.assertEqual(kwargs["media_id"], "65942")
+        self.assertEqual(kwargs["season_number"], 4)
+        self.assertEqual(kwargs["episode_number"], 12)
+
+    @patch("integrations.webhooks.stremio.live_playback.apply_playback_event")
     def test_unsupported_id_skips_live_playback(self, mock_apply_event):
         """Non-IMDB ids never reach the live playback update."""
         response = self._get("movie", "yt%3Aabc123")
