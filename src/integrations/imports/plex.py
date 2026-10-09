@@ -225,6 +225,8 @@ class PlexHistoryImporter:
         self._preserved_scores: dict[tuple, float] = {}
         # Cached tmdb.find remaps keyed by episode-level external ID
         self._episode_find_cache: dict[tuple[str, str], tuple | None] = {}
+        self._anibridge_mapping_loaded = False
+        self._anibridge_mapping_data = None
         # Cached (source, media_id, tv_metadata, season_metadata) genesis
         # resolution keyed by (tmdb show id, season number) — avoids repeating
         # a TVDB lookup for every episode record of the same show/season.
@@ -2145,13 +2147,8 @@ class PlexHistoryImporter:
         if not tvdb_id:
             return
 
-        try:
-            mapping_data = anime_mappings.fetch_mapping_data()
-        except Exception as exc:  # pragma: no cover - defensive network guard
-            logger.warning(
-                "Failed to fetch anime mappings during Plex import: %s",
-                exception_summary(exc),
-            )
+        mapping_data = self._get_anibridge_mapping_data()
+        if not mapping_data:
             return
         yield (
             "TVDB",
@@ -2686,7 +2683,9 @@ class PlexHistoryImporter:
         ):
             return season_metadata
 
-        remapped = self._remap_episode_via_tmdb_find(record, tv_metadata)
+        remapped = self._remap_episode_via_anibridge(record, tv_metadata)
+        if remapped is None:
+            remapped = self._remap_episode_via_tmdb_find(record, tv_metadata)
         if remapped is None:
             remapped = self._remap_episode_via_cumulative_numbering(
                 record,
@@ -2745,6 +2744,21 @@ class PlexHistoryImporter:
             find_cache=self._episode_find_cache,
         )
 
+    def _remap_episode_via_anibridge(self, record: dict, tv_metadata: dict):
+        """Resolve anime episode numbering from the cached AniBridge graph."""
+        mapping_data = self._get_anibridge_mapping_data()
+        if not mapping_data:
+            return None
+
+        return episode_remap.remap_via_anibridge(
+            mapping_data,
+            tv_metadata.get("media_id", record["tmdb_id"]),
+            record["season_number"],
+            record["episode_number"],
+            tv_metadata,
+            self._season_loader(record),
+        )
+
     def _remap_episode_via_cumulative_numbering(self, record: dict, tv_metadata: dict):
         """Carry a TVDB-numbered episode into the right TMDB split season."""
         return episode_remap.remap_via_cumulative_numbering(
@@ -2753,6 +2767,24 @@ class PlexHistoryImporter:
             tv_metadata,
             self._season_loader(record),
         )
+
+    def _get_anibridge_mapping_data(self):
+        """Load AniBridge mappings once for this import, failing open."""
+        if self._anibridge_mapping_loaded:
+            return self._anibridge_mapping_data
+
+        self._anibridge_mapping_loaded = True
+        if not getattr(self.user, "anime_enabled", False):
+            return None
+
+        try:
+            self._anibridge_mapping_data = anime_mappings.fetch_mapping_data()
+        except Exception as exc:  # pragma: no cover - defensive network guard
+            logger.warning(
+                "AniBridge mapping lookup unavailable for Plex import: %s",
+                exception_summary(exc),
+            )
+        return self._anibridge_mapping_data
 
     def _ensure_season_payload(
         self,

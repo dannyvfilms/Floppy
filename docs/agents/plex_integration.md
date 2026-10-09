@@ -22,6 +22,7 @@ The system prioritizes **TMDB IDs** as the canonical source of truth. All Plex e
 **TV `tmdb_id` semantics:**
 -   For TV history rows, `tmdb_id` represents the **show** TMDB ID, with season/episode numbers stored separately.
 -   If Plex provides episode-level TMDB IDs or non-standard numbering (anime, specials, absolute order), resolution can fall back to title search during metadata lookup; unresolved episodes are skipped.
+-   **Episode-number remap order:** when the record's season/episode numbers do not exist on the resolved TMDB show, `_validate_or_remap_episode` tries, in order: (1) the AniBridge v3 episode graph for anime split-numbering (TVDB S4E19 → TMDB S1E85), keyed by the show's TVDB id and accepted only for the already-resolved TMDB show and a target season that actually contains the episode; (2) `tmdb.find` on the episode-level TVDB/IMDB Guid; (3) cumulative spilling from a TVDB-numbered season into TMDB's later split seasons. If none matches, the entry is skipped and counted as `skipped_numbering_mismatch`.
 
 **Title search policy:**
 -   Searches use `TMDB_LANG` (default `en`) with no region override and no original-title fallback.

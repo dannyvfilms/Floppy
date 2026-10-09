@@ -319,6 +319,9 @@ class BaseWebhookProcessor:
                     exception_summary(exc),
                 )
                 raise
+            # A missing season is omitted from the payload rather than
+            # returned as a 404, so this failure is never season-shaped and
+            # re-requesting the root TV payload would not help.
             logger.warning(
                 "Failed tmdb.tv_with_seasons for season %s: %s",
                 season_number,
@@ -1701,6 +1704,7 @@ class BaseWebhookProcessor:
         episode_number,
         tv_metadata,
         external_ids,
+        anime_mapping_data=None,
     ):
         """Recover TMDB's real (season, episode) for a Plex/TVDB-numbered event.
 
@@ -1726,6 +1730,18 @@ class BaseWebhookProcessor:
                 )
                 return None
             return candidate_metadata.get(f"season/{candidate_season}")
+
+        if anime_mapping_data:
+            remapped = episode_remap.remap_via_anibridge(
+                anime_mapping_data,
+                media_id,
+                season_number,
+                episode_number,
+                tv_metadata,
+                load_season,
+            )
+            if remapped is not None:
+                return remapped
 
         return episode_remap.remap_via_tmdb_find(
             external_ids,
@@ -1901,12 +1917,22 @@ class BaseWebhookProcessor:
         # is authoritative, while recovery's title search only guesses at a
         # different show that happens to have a season with this number.
         if not season_metadata and int(season_number) != 0:
+            anime_mapping_data = None
+            if user.anime_enabled:
+                try:
+                    anime_mapping_data = anime_mappings.fetch_mapping_data()
+                except Exception as exc:  # pragma: no cover - defensive network guard
+                    logger.warning(
+                        "AniBridge mapping lookup unavailable for webhook episode: %s",
+                        exception_summary(exc),
+                    )
             remapped = self._remap_episode_numbering(
                 media_id,
                 season_number,
                 episode_number,
                 tv_metadata,
                 external_ids,
+                anime_mapping_data,
             )
             if remapped is not None:
                 remapped_season, remapped_episode, season_metadata = remapped
@@ -1915,7 +1941,7 @@ class BaseWebhookProcessor:
                     and isinstance(season_metadata.get("episodes"), list)
                 )
                 logger.info(
-                    "Remapped Plex episode %s S%sE%s to TMDB S%sE%s",
+                    "Remapped TV episode %s S%sE%s to TMDB S%sE%s",
                     media_id,
                     season_number,
                     episode_number,

@@ -1211,6 +1211,52 @@ class TestPlexAnimeImportRouting(TestCase):
             any("not found" in warning for warning in importer.warnings),
         )
 
+    @patch(
+        "integrations.webhooks.anime_mappings.fetch_mapping_data",
+        return_value={
+            "tvdb_show:305089:s4": {
+                "tmdb_show:tmdb-rezero:s1": {"1-19": "67-85"},
+            },
+        },
+    )
+    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
+    def test_anibridge_numbering_remap_for_anime_split_season(
+        self,
+        _mock_tvdb_enabled,
+        _mock_mapping_data,
+    ):
+        """Plex import maps Re:Zero TVDB S4E19 onto TMDB S1E85."""
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["anime_enabled"])
+        importer = self._importer()
+        importer._episode_records = [
+            self._record(
+                "tmdb-rezero",
+                4,
+                19,
+                tvdb_id="305089",
+                series_title="Re:ZERO",
+            ),
+        ]
+        importer._tv_metadata_cache = {
+            "tmdb-rezero": self._metadata(
+                "tmdb-rezero",
+                "Re:ZERO",
+                tvdb_id="305089",
+                seasons={1: range(1, 86)},
+            ),
+        }
+
+        importer._build_bulk_media()
+
+        episodes = importer.bulk_media[MediaTypes.EPISODE.value]
+        self.assertEqual(len(episodes), 1)
+        self.assertEqual(episodes[0].item.season_number, 1)
+        self.assertEqual(episodes[0].item.episode_number, 85)
+        self.assertFalse(
+            any("numbering mismatch" in warning for warning in importer.warnings),
+        )
+
     @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
     @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
     @patch("integrations.imports.plex.app.providers.mal.anime")

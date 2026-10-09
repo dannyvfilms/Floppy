@@ -27,6 +27,7 @@ from simple_history.utils import bulk_update_with_history
 import app
 import app.providers.mal
 import app.providers.trakt
+from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources, Status
 from app.models.tv import PRODUCTION_STATUS_ENDED, classify_production_status
 from app.providers import services
@@ -35,6 +36,7 @@ from integrations import anime_mapping, connection_health, import_progress
 from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 from integrations.models import StremioAccount
+from integrations.webhooks import anime_mappings
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +236,8 @@ class StremioImporter:
         self.to_delete = defaultdict(lambda: defaultdict(set))
         self.bulk_media = defaultdict(list)
         self.bulk_season_by_item_id = {}
+        self._anibridge_mapping_data = None
+        self._anibridge_mapping_loaded = False
 
         logger.info(
             "Initialized Stremio importer for user %s with mode %s",
@@ -647,12 +651,15 @@ class StremioImporter:
         try:
             metadata = app.providers.tmdb.tv_with_seasons(tmdb_id, season_numbers)
         except services.ProviderAPIError as error:
-            if error.status_code == requests.codes.not_found:
-                self.warnings.append(
-                    f"{name}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",
-                )
-                return
-            raise
+            if error.status_code != requests.codes.not_found:
+                raise
+            # A missing season is omitted from the payload rather than
+            # returned as a 404, so a 404 here means the show itself is
+            # missing and a second lookup of the same show cannot help.
+            self.warnings.append(
+                f"{name}: not found in {Sources.TMDB.label} with ID {tmdb_id}.",
+            )
+            return
 
         library_media_type = ""
         grouped_anime_match = None
@@ -732,6 +739,18 @@ class StremioImporter:
             tv_instance._history_date = self._get_history_date(entry)
             self.bulk_media[MediaTypes.TV.value].append(tv_instance)
 
+        if (
+            watched_episodes
+            and library_media_type == MediaTypes.ANIME.value
+            and grouped_anime_match is not None
+            and grouped_anime_match.is_grouped_anime
+        ):
+            watched_episodes, metadata = self._canonicalize_anime_episodes(
+                tmdb_id,
+                metadata,
+                watched_episodes,
+            )
+
         if watched_episodes:
             self._process_seasons_and_episodes(
                 entry,
@@ -741,6 +760,77 @@ class StremioImporter:
                 watched_episodes,
                 name,
             )
+
+    def _get_anibridge_mapping_data(self):
+        """Load the AniBridge episode graph once, on first need, failing open."""
+        if self._anibridge_mapping_loaded:
+            return self._anibridge_mapping_data
+
+        self._anibridge_mapping_loaded = True
+        if not getattr(self.user, "anime_enabled", False):
+            return None
+
+        try:
+            self._anibridge_mapping_data = anime_mappings.fetch_mapping_data()
+        except Exception as error:  # pragma: no cover - defensive network guard
+            logger.warning(
+                "stremio_anibridge_mapping_unavailable user_id=%s error=%s",
+                self.user.id,
+                exception_summary(error),
+            )
+        return self._anibridge_mapping_data
+
+    def _canonicalize_anime_episodes(
+        self,
+        tmdb_id,
+        metadata,
+        watched_episodes,
+    ):
+        """Map grouped-anime episodes to the canonical TMDB season identity."""
+        mapping_data = self._get_anibridge_mapping_data()
+        if not mapping_data:
+            return watched_episodes, metadata
+
+        metadata_ids = metadata.get("provider_external_ids") or {}
+        tvdb_id = metadata.get("tvdb_id") or metadata_ids.get("tvdb_id")
+
+        canonical_episodes = []
+        for season_number, episode_number in watched_episodes:
+            mapped = anime_mappings.get_tmdb_episode_mapping(
+                mapping_data,
+                tmdb_id,
+                season_number,
+                episode_number,
+                tvdb_id=tvdb_id,
+            )
+            canonical_episodes.append(mapped or (season_number, episode_number))
+
+        canonical_episodes = sorted(set(canonical_episodes))
+        if canonical_episodes == watched_episodes:
+            return watched_episodes, metadata
+
+        target_seasons = sorted(
+            {season_number for season_number, _ in canonical_episodes},
+        )
+        try:
+            canonical_metadata = app.providers.tmdb.tv_with_seasons(
+                tmdb_id,
+                target_seasons,
+            )
+        except services.ProviderAPIError as error:
+            logger.warning(
+                "Canonical TMDB season lookup failed for Stremio anime %s: %s",
+                tmdb_id,
+                exception_summary(error),
+            )
+            return watched_episodes, metadata
+
+        logger.info(
+            "Mapped Stremio anime episodes for TMDB %s from source numbering "
+            "onto canonical seasons",
+            tmdb_id,
+        )
+        return canonical_episodes, canonical_metadata
 
     def _watched_videos(self, entry, video_ids, name):
         """Return the set of watched video ids for a series entry."""

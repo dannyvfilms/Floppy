@@ -1113,6 +1113,84 @@ class PlexWebhookTests(TestCase):
             ).exists(),
         )
 
+    @patch(
+        "integrations.webhooks.anime_mappings.fetch_mapping_data",
+        return_value={
+            "tvdb_show:305089:s4": {
+                "tmdb_show:65942:s1": {"1-19": "67-85"},
+            },
+        },
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_anibridge_remaps_anime_webhook_before_fallback(
+        self,
+        mock_tv_with_seasons,
+        _mock_mapping,
+    ):
+        """Shared webhook remapping files Re:Zero under TMDB S1E78."""
+
+        def fake_tv_with_seasons(media_id, season_numbers):
+            if list(season_numbers) == [4]:
+                return {
+                    "title": "Re:ZERO -Starting Life in Another World-",
+                    "image": "",
+                    "tvdb_id": "305089",
+                    "related": {"seasons": [{"season_number": 1}]},
+                }
+            if list(season_numbers) == [1]:
+                return {
+                    "title": "Re:ZERO -Starting Life in Another World-",
+                    "image": "",
+                    "tvdb_id": "305089",
+                    "season/1": {
+                        "image": "",
+                        "episodes": [
+                            {"episode_number": 78, "runtime": 30},
+                        ],
+                    },
+                }
+            raise AssertionError(f"Unexpected seasons: {season_numbers}")
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+        payload = {
+            "event": "media.scrobble",
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Re:ZERO -Starting Life in Another World-",
+                "index": 12,
+                "parentIndex": 4,
+                "Guid": [
+                    {"id": "tvdb://305089"},
+                    {"id": "imdb://tt5607616"},
+                ],
+            },
+        }
+
+        PlexWebhookProcessor()._handle_tv_episode(
+            "65942",
+            4,
+            12,
+            payload,
+            self.user,
+        )
+
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="65942",
+                item__season_number=1,
+                item__episode_number=78,
+                related_season__user=self.user,
+            ).exists(),
+        )
+        self.assertFalse(
+            Episode.objects.filter(
+                item__media_id="65942",
+                item__season_number=4,
+                item__episode_number=12,
+                related_season__user=self.user,
+            ).exists(),
+        )
+
     @patch("app.providers.tmdb.search", return_value={"results": []})
     @patch(
         "app.providers.tmdb.find",
