@@ -25,6 +25,7 @@ from app.history_cache_utils import (
     _resolve_music_genres,
     expand_history_media_types,
     history_deferred_item_fields,
+    history_entry_sort_key,
 )
 from app.history_entry_builders import (
     _attach_entry_score,
@@ -845,14 +846,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
     if not entries:
         return None
 
-    entries.sort(
-        key=lambda entry: (
-            entry["played_at_local"],
-            entry.get("season_number") or 0,
-            entry.get("episode_number") or 0,
-        ),
-        reverse=True,
-    )
+    entries.sort(key=history_entry_sort_key, reverse=True)
     total_minutes = sum(entry["runtime_minutes"] or 0 for entry in entries)
     first_entry_time = entries[0]["played_at_local"]
 

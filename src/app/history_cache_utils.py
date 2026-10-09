@@ -24,6 +24,25 @@ class UnsupportedHistoryMediaTypeError(ValueError):
         super().__init__(f"Unsupported history media type: {token}")
 
 
+def history_entry_sort_key(entry):
+    """Order a history row newest first.
+
+    Callers sort with ``reverse=True``. ``played_at_local`` is the real
+    order. YouTube only has a calendar day, so every play that day shares
+    noon and this key would otherwise tie. ``instance_id`` is the row id.
+    The sync posts a batch oldest-first, so the higher id is the later watch.
+
+    @param entry - History entry dict.
+    @returns Tuple of played-at, season, episode, and row id.
+    """
+    return (
+        entry["played_at_local"],
+        entry.get("season_number") or 0,
+        entry.get("episode_number") or 0,
+        entry.get("instance_id") or 0,
+    )
+
+
 # ── Constants ────────────────────────────────────────────────────────────────
 
 

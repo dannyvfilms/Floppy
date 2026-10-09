@@ -93,6 +93,7 @@ from app.history_cache_utils import (  # noqa: F401
     history_day_key,
     history_day_keys_for_range,
     history_deferred_item_fields,
+    history_entry_sort_key,
 )
 from app.history_entry_builders import (  # noqa: F401
     _attach_entry_score,
@@ -1589,14 +1590,7 @@ def build_history_days(
     undated_entries = [e for e in entries if e["played_at_local"] is None]
     entries = [e for e in entries if e["played_at_local"] is not None]
 
-    entries.sort(
-        key=lambda e: (
-            e["played_at_local"],
-            e.get("season_number") or 0,
-            e.get("episode_number") or 0,
-        ),
-        reverse=True,
-    )
+    entries.sort(key=history_entry_sort_key, reverse=True)
 
     grouped_entries = defaultdict(list)
     for entry in entries:
@@ -1606,14 +1600,7 @@ def build_history_days(
     for _, day_entries in sorted(
         grouped_entries.items(), key=lambda x: x[0], reverse=True
     ):
-        day_entries.sort(
-            key=lambda e: (
-                e["played_at_local"],
-                e.get("season_number") or 0,
-                e.get("episode_number") or 0,
-            ),
-            reverse=True,
-        )
+        day_entries.sort(key=history_entry_sort_key, reverse=True)
         first_entry_time = day_entries[0]["played_at_local"]
         total_minutes = sum(e["runtime_minutes"] or 0 for e in day_entries)
         history_days.append(
