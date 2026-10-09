@@ -730,6 +730,11 @@ class StremioImporter:
                 status=tv_status,
             )
             tv_instance._history_date = self._get_history_date(entry)
+            # A show imported as Completed fans out episodes through
+            # `TV._completed`, which reads `_pending_end_date` off the TV. Without
+            # it those episodes take the user's preference (default "now"), so
+            # history imported from years back reads as watched today.
+            tv_instance._pending_end_date = tv_instance._history_date
             self.bulk_media[MediaTypes.TV.value].append(tv_instance)
 
         if watched_episodes:
@@ -910,6 +915,11 @@ class StremioImporter:
                     ),
                 )
                 season_instance._history_date = history_date
+                # A season imported as Completed may still fan out episodes
+                # the bitfield did not credit. They belong to this entry's
+                # viewing, so they must carry its date rather than the import
+                # time (`_backfill_completed_season_episodes` reads this).
+                season_instance._pending_end_date = history_date
                 self.bulk_media[MediaTypes.SEASON.value].append(season_instance)
                 self.bulk_season_by_item_id[season_item.id] = season_instance
 
