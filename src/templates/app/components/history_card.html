@@ -15,7 +15,7 @@
      :class="revealed ? 'media-card-revealed' : ''">
   <div class="media-card-visual relative">
     {% with entry.item|display_title:user as preferred_entry_title %}
-    <a hx-boost="true"
+    <a {% if entry.media_type == MediaTypes.VIDEO.value %}target="_blank" rel="noopener noreferrer"{% else %}hx-boost="true"{% endif %}
        href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}">
       <img alt="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}"
            class="media-card-poster lazyload w-full {% if card_class == 'search-result-card-square' %}aspect-[1/1]{% else %}aspect-[2/3]{% endif %} {% if entry.poster != IMG_NONE %}object-cover{% endif %}"
@@ -24,8 +24,10 @@
     </a>
     {% endwith %}
 
-    {# Status chip (top-left) #}
-    {% if entry.status or entry.media_type == MediaTypes.EPISODE.value and history_mode != "release" %}
+    {# Status chip (top-left). The type profile gates it, except episode activity
+       history, which always marks a watched episode as Completed. #}
+    {% card_field_on entry.media_type "status" as show_status_field %}
+    {% if show_status_field and entry.status or entry.media_type == MediaTypes.EPISODE.value and history_mode != "release" %}
       {% with status_value=entry.status|default:"Completed" %}
         <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md">
           <span class="sr-only">{% blocktranslate trimmed with value_1=status_value %}Status: {{ value_1 }}{% endblocktranslate %}</span>
@@ -46,8 +48,9 @@
       {% endwith %}
     {% endif %}
 
-    {# Runtime chip (top-right) #}
-    {% if entry.runtime_display %}
+    {# Runtime chip (top-right). Shown only when the type profile includes runtime. #}
+    {% card_field_on entry.media_type "runtime" as show_runtime_field %}
+    {% if show_runtime_field and entry.runtime_display %}
       <div class="absolute top-2 right-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">
         {{ entry.runtime_display }}
       </div>
@@ -60,13 +63,14 @@
         {# Darkening background layer #}
         <div class="absolute inset-0 bg-black/50 z-0"></div>
         
-        <a hx-boost="true"
+        <a {% if entry.media_type == MediaTypes.VIDEO.value %}target="_blank" rel="noopener noreferrer"{% else %}hx-boost="true"{% endif %}
            href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
            class="absolute inset-0 z-0"></a>
 
         <div class="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
           {% if history_mode != "release" %}
-            {# Edit Tracking Button #}
+            {# Edit Tracking Button. Videos have no edit form. #}
+            {% if entry.media_type != MediaTypes.VIDEO.value %}
             <button class="p-2.5 bg-indigo-600 text-white rounded-full hover:bg-indigo-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-200 cursor-pointer"
                     title="{% translate "Edit tracking" %}"
                     hx-get="{% media_view_url 'track_modal' entry.item %}"
@@ -76,6 +80,7 @@
                     @click="trackOpen = true">
               {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
             </button>
+            {% endif %}
 
             {# Lists Button #}
             <button class="p-2.5 bg-emerald-600 text-white rounded-full hover:bg-emerald-500 hover:scale-110 hover:shadow-[0_0_15px_rgba(16,185,129,0.5)] transition-all duration-200 cursor-pointer"
@@ -106,7 +111,7 @@
       {% with entry.item|alternative_title:user as entry_alternative_title %}
     <div class="media-card-title-row flex items-center gap-2 min-w-0">
       <a href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
-         hx-boost="true"
+         {% if entry.media_type == MediaTypes.VIDEO.value %}target="_blank" rel="noopener noreferrer"{% else %}hx-boost="true"{% endif %}
          class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0"
          title="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}">
         {{ preferred_entry_title|default:entry.display_title|default:entry.title }}
