@@ -436,6 +436,8 @@ COLLECTION_FIELD_BY_TYPE = {
     MediaTypes.COMIC_ISSUE.value: COLLECTION_FIELD_CONFIG["books"],
     MediaTypes.GAME.value: COLLECTION_FIELD_CONFIG["games"],
     MediaTypes.BOARDGAME.value: COLLECTION_FIELD_CONFIG["boardgames"],
+    # YouTube plays are not discs. The "video" profile is Blu-ray fields.
+    MediaTypes.VIDEO.value: {"fields": [], "labels": {}, "choices": {}},
 }
 
 # --- Status Configuration ---

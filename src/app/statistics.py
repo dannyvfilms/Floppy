@@ -28,6 +28,7 @@ from app.models import (
     MediaTypes,
     Season,
     Status,
+    Video,
 )
 from app.templatetags import app_tags
 
@@ -316,6 +317,17 @@ def get_user_media(user, start_date, end_date):
                 user_media[anime_key] = _genre_anime_qs
                 media_count[anime_key] = _genre_anime_count
             media_count["total"] += _genre_anime_count
+
+    videos = Video.objects.filter(user=user)
+    if start_date is not None and end_date is not None:
+        videos = videos.filter(
+            plays__end_date__gte=start_date,
+            plays__end_date__lte=end_date,
+        ).distinct()
+    user_media[MediaTypes.VIDEO.value] = videos
+    video_count = videos.count()
+    media_count[MediaTypes.VIDEO.value] = video_count
+    media_count["total"] += video_count
 
     logger.info(
         "%s - Retrieved media %s",

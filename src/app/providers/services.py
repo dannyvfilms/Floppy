@@ -23,6 +23,7 @@ from requests_ratelimiter import LimiterAdapter, LimiterSession
 from urllib3.util.retry import Retry
 
 from app import config, helpers, request_timing
+from app.stats_youtube import youtube_thumbnail_url
 from app.log_safety import exception_summary, mapping_keys
 from app.models import Item, MediaTypes, Sources
 from app.providers import (
@@ -1072,7 +1073,10 @@ def _resolve_video_metadata(media_id, source):
     ).first()
     if item is None:
         raise_not_found_error(source, media_id, "video")
-    return _stored_item_metadata(item)
+    metadata = _stored_item_metadata(item)
+    if not item.image or item.image == settings.IMG_NONE:
+        metadata["image"] = youtube_thumbnail_url(media_id) or metadata["image"]
+    return metadata
 
 
 def get_media_metadata(
@@ -1703,6 +1707,9 @@ def search(
             pocketcasts.search(query, page)
             if source == Sources.POCKETCASTS.value
             else None
+        ),
+        MediaTypes.VIDEO.value: lambda: helpers.format_search_response(
+            page, settings.PER_PAGE, 0, []
         ),
     }
     response = search_handlers[media_type]()
