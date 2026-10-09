@@ -1679,7 +1679,7 @@ def search(
             if source == Sources.TMDB.value
             else tvdb.search(MediaTypes.TV.value, query, page, language)
         ),
-        MediaTypes.GAME.value: lambda: igdb.search(query, page),
+        MediaTypes.GAME.value: lambda: igdb.search(query, page, user=user),
         MediaTypes.BOOK.value: lambda: (
             openlibrary.search(query, page)
             if source == Sources.OPENLIBRARY.value

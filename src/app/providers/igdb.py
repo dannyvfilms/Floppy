@@ -200,7 +200,7 @@ def external_game(external_id, source=ExternalGameSource.STEAM):
     return data
 
 
-def search(query, page):
+def search(query, page, user=None):
     """Search for games on IGDB using MultiQuery."""
     normalized_query = _normalize_search_query(query)
     if not normalized_query:
@@ -213,10 +213,10 @@ def search(query, page):
     data = cache.get(cache_key)
 
     if data is None:
-        access_token = get_access_token()
+        access_token = get_access_token(user=user)
         url = f"{base_url}/multiquery"
         headers = {
-            "Client-ID": credentials.get("igdb", "client_id"),
+            "Client-ID": credentials.get("igdb", "client_id", user=user),
             "Authorization": f"Bearer {access_token}",
         }
 

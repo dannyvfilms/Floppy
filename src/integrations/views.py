@@ -1755,6 +1755,32 @@ def import_hltb(request):
 
 
 @require_POST
+def import_playnite(request):
+    """View for importing a Playnite library CSV backup."""
+    file = request.FILES.get("playnite_csv")
+
+    if not file:
+        messages.error(request, "A Playnite CSV file is required.")
+        return _integration_redirect(request)
+
+    staged_file = _stage_upload_or_message(request, file, "Playnite CSV")
+    if staged_file is None:
+        return _integration_redirect(request)
+
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_playnite,
+        user_id=request.user.id,
+        file=staged_file,
+        mode=request.POST["mode"],
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="playnite")
+    messages.info(request, "The Playnite library import has been queued.")
+    return _integration_redirect(request, connected_slug="playnite")
+
+
+@require_POST
 def import_grouvee(request):
     """View for importing game data from a Grouvee export (JSON or zip)."""
     file = request.FILES.get("grouvee_json")

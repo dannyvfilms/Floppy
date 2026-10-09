@@ -79,6 +79,7 @@ urlpatterns = [
     path("import/yamtrack", views.import_yamtrack, name="import_yamtrack"),
     path("import/clz", views.import_clz, name="import_clz"),
     path("import/hltb", views.import_hltb, name="import_hltb"),
+    path("import/playnite", views.import_playnite, name="import_playnite"),
     path("import/grouvee", views.import_grouvee, name="import_grouvee"),
     path("import/steam", views.import_steam, name="import_steam"),
     path("import/radarr/connect", views.radarr_connect, name="radarr_connect"),

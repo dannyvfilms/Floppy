@@ -683,6 +683,15 @@
         </button>
 
         <button type="button"
+                @click="openModal('playnite')"
+                x-show="sourceSupports(['games'])"
+                x-transition.opacity.duration.150ms
+                class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left cursor-pointer flex flex-col gap-2">
+          <div class="flex items-center justify-between">{% source_display "playnite" %}</div>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Import a Playnite library CSV backup." %}</p>
+        </button>
+
+        <button type="button"
                 @click="openModal('grouvee')"
                 x-show="sourceSupports(['games'])"
                 x-transition.opacity.duration.150ms
@@ -2988,6 +2997,46 @@
                    :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
                    :disabled="standardImportsDisabled()">
               <input name="hltb_csv"
+                     accept=".csv"
+                     class="hidden"
+                     type="file"
+                     :disabled="standardImportsDisabled()"
+                     @change="!standardImportsDisabled() && $el.form.submit()">
+              {% translate "Select CSV File" %}
+            </label>
+          </form>
+        </div>
+          </div>
+        </div>
+
+        {# Playnite #}
+        <div x-show="activeModal === 'playnite'"
+             x-cloak
+             @keydown.escape.window="closeModal()"
+             x-transition.opacity.duration.150ms
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+             @mousedown.self="closeModal()">
+          <div class="modal-max-height overflow-y-auto w-full"
+               style="width: min(96vw, 32rem);">
+            <button type="button"
+                    @click="closeModal()"
+                    class="block w-fit ml-auto mb-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1 rounded-md hover:bg-[var(--color-surface-hover)] bg-[var(--color-surface)]">
+              {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+            </button>
+        <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg">
+          <div class="flex items-center mb-3">{% source_display "playnite" %}{% include "users/components/import_upload_badge.html" %}</div>
+          <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import a Playnite library backup" %}</p>
+          <form method="post"
+                action="{% url 'import_playnite' %}"
+                enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="frequency" x-model="importFrequency">
+            <input type="hidden" name="time" x-model="importTime">
+            <input type="hidden" name="mode" x-model="importMode">
+            <label class="flex items-center justify-center w-full px-4 py-2 text-sm rounded-md transition-colors"
+                   :class="!standardImportsDisabled() ? 'bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer' : 'bg-gray-600 text-gray-400 cursor-not-allowed'"
+                   :disabled="standardImportsDisabled()">
+              <input name="playnite_csv"
                      accept=".csv"
                      class="hidden"
                      type="file"

@@ -160,6 +160,10 @@ SOURCES_CONFIG = {
         "name": "HowLongToBeat",
         "logo": static("img/hltb-logo.png"),
     },
+    "playnite": {
+        "name": "Playnite",
+        "logo": static("img/playnite-logo.svg"),
+    },
     "grouvee": {
         "name": "Grouvee",
         "logo": static("img/grouvee_logo.png"),
