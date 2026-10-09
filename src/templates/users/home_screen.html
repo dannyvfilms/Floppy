@@ -281,7 +281,35 @@
                             </button>
                           </template>
 
-                          <template x-if="row.row_type === 'recently_unrated'">
+                          <template x-if="row.row_type === 'recently_unrated' && section.media_type === 'music'">
+                            <div class="relative filter-control" @click.outside="if (openMenu === 'recent') openMenu = null">
+                              <button type="button"
+                                      class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                                      :aria-expanded="openMenu === 'recent'"
+                                      @click.stop="openMenu = openMenu === 'recent' ? null : 'recent'">
+                                <span x-text="recentShowLabel(row)"></span>
+                                <svg xmlns="http://www.w3.org/2000/svg"
+                                     viewBox="0 0 20 20"
+                                     class="w-4 h-4 ml-2"
+                                     aria-hidden="true">
+                                  <path d="M10 14 L4.5 7 H15.5 Z" fill="currentColor"></path>
+                                </svg>
+                              </button>
+                              <template x-if="openMenu === 'recent'">
+                                <div class="absolute z-40 mt-2 py-1 w-56 bg-[var(--color-surface-strong)] rounded-md shadow-lg overflow-hidden border border-[var(--color-surface-border)]">
+                                  <template x-for="choice in recentShowChoices" :key="choice.value">
+                                    <button type="button"
+                                            class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
+                                            :class="(row.recent_show || 'album') === choice.value ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
+                                            @click.stop="row.recent_show = choice.value; openMenu = null"
+                                            x-text="choice.label"></button>
+                                  </template>
+                                </div>
+                              </template>
+                            </div>
+                          </template>
+
+                          <template x-if="row.row_type === 'recently_unrated' && section.media_type !== 'music'">
                             <div class="px-2 py-2 text-sm text-slate-300">
                               {% translate "Recent unrated plays" %}
                             </div>
@@ -459,6 +487,7 @@
             custom_title: row.custom_title || '',
             editorOpen: row.row_type === 'custom_list' && !row.id,
             filters: { ...(row.filters || {}) },
+            recent_show: row.recent_show || 'album',
             listQuery: row.custom_list_name || '',
             listResults: []
           }))
@@ -466,6 +495,12 @@
         listSearchUrl,
         filterFieldsUrl,
         directionChoices: directionChoices || [],
+        recentShowChoices: [
+          { value: 'album', label: gettext('Album') },
+          { value: 'artist', label: gettext('Artist') },
+          { value: 'track', label: gettext('Track') },
+          { value: 'all', label: gettext('Album, artist, and track') }
+        ],
         sortables: [],
         lastDragAt: 0,
         nextRowId: 0,
@@ -488,6 +523,11 @@
           if (typeof Sortable !== 'undefined') return true;
           console.warn('Home screen drag-and-drop is unavailable because SortableJS could not be loaded.');
           return false;
+        },
+        recentShowLabel(row) {
+          const value = row.recent_show || 'album';
+          const choice = this.recentShowChoices.find(item => item.value === value);
+          return choice ? choice.label : gettext('Album');
         },
         rowTypeLabel(type) {
           if (type === 'library_query') return gettext('Library Row');
@@ -781,6 +821,7 @@
             custom_list_name: '',
             sort_by: rowType === 'recently_unrated' ? 'recent' : defaultSort,
             direction: rowType === 'recently_unrated' ? 'desc' : this.defaultSortDirection(defaultSort),
+            recent_show: 'album',
             filters: this.defaultFilters(section, rowType),
             editorOpen: rowType === 'custom_list',
             listQuery: '',
@@ -873,6 +914,7 @@
               custom_list_id: row.custom_list_id,
               sort_by: row.sort_by,
               direction: row.direction,
+              recent_show: row.recent_show || 'album',
               filters: row.filters || {}
             }))
           }));
