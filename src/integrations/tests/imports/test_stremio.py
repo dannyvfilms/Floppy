@@ -50,16 +50,55 @@ class DecodeWatchedBitfieldTests(TestCase):
         self.assertEqual(watched, watched_ids)
 
     def test_anchor_mismatch_flagged(self):
-        """A shifted video list is reported so callers can fall back."""
+        """A shifted video list is realigned rather than discarded.
+
+        The bitfield is positional, but the anchor pins bit ``length - 1`` to
+        a known video, so the offset is recoverable. Two episodes inserted
+        ahead of the anchor shift every original index by two.
+        """
+        video_ids = [f"tt1:1:{episode}" for episode in range(1, 6)]
+        serialized = encode_watched_bitfield(video_ids, {"tt1:1:1", "tt1:1:3"})
+
+        shifted = ["tt1:0:1", "tt1:0:2", *video_ids]
+        watched, anchored = stremio.decode_watched_bitfield(serialized, shifted)
+
+        self.assertTrue(anchored)
+        self.assertEqual(watched, {"tt1:1:1", "tt1:1:3"})
+
+    def test_absent_anchor_is_reported_unaligned(self):
+        """With no anchor in the list there is no reference point at all.
+
+        ``anchored`` is False so the caller falls back to the last-watched
+        video instead of trusting positions it cannot verify.
+        """
         video_ids = [f"tt1:1:{episode}" for episode in range(1, 6)]
         serialized = encode_watched_bitfield(video_ids, {"tt1:1:1"})
 
-        # Episode inserted before the anchor after the bitfield was written,
-        # shifting every index.
-        shifted = ["tt1:0:1", *video_ids]
-        _, anchor_ok = stremio.decode_watched_bitfield(serialized, shifted)
+        other_show = [f"tt2:1:{episode}" for episode in range(1, 6)]
+        watched, anchored = stremio.decode_watched_bitfield(serialized, other_show)
 
-        self.assertFalse(anchor_ok)
+        self.assertFalse(anchored)
+        self.assertEqual(watched, {"tt2:1:1"})
+
+    def test_bits_aligned_before_the_list_are_dropped(self):
+        """An alignment that pushes a bit past the start drops it.
+
+        The leading episodes can leave the list while the anchor stays, so the
+        offset is negative; those bits describe videos the list no longer
+        has.
+        """
+        video_ids = [f"tt1:1:{episode}" for episode in range(1, 6)]
+        serialized = encode_watched_bitfield(
+            video_ids,
+            {"tt1:1:1", "tt1:1:3", "tt1:1:5"},
+        )
+
+        # The first two episodes are gone; the anchor keeps its place.
+        trimmed = video_ids[2:]
+        watched, anchored = stremio.decode_watched_bitfield(serialized, trimmed)
+
+        self.assertTrue(anchored)
+        self.assertEqual(watched, {"tt1:1:3", "tt1:1:5"})
 
     def test_invalid_serialization_raises(self):
         """Malformed bitfields raise ValueError."""
@@ -461,6 +500,94 @@ class ImportStremioTests(TestCase):
             ),
         )
         self.assertEqual(episode_numbers, {1, 2})
+
+    def test_series_bitfield_realigns_when_cinemeta_inserts_an_episode(self):
+        """Episodes added ahead of the anchor do not shift watched state.
+
+        The bitfield indexes the video list as it stood when it was written.
+        Reading bit *i* as video *i* after an insertion credits the wrong
+        episodes — here the special that Cinemeta now lists first, instead of
+        the two the user watched.
+        """
+        original = [f"tt0903747:1:{episode}" for episode in range(1, 4)]
+        serialized = encode_watched_bitfield(
+            original,
+            {"tt0903747:1:1", "tt0903747:1:2"},
+        )
+        current = ["tt0903747:0:1", *original]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "removed": False,
+                "temp": False,
+                "state": {
+                    "watched": serialized,
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                    "video_id": "tt0903747:1:2",
+                },
+            },
+        ]
+
+        imported_counts, warnings = self._run_import(
+            library_items,
+            cinemeta_videos={"tt0903747": current},
+        )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 2)
+        self.assertEqual(
+            set(
+                Episode.objects.filter(item__media_id="1396").values_list(
+                    "item__episode_number",
+                    flat=True,
+                ),
+            ),
+            {1, 2},
+        )
+
+    def test_series_with_an_empty_bitfield_keeps_the_last_watched_episode(self):
+        """An empty bitfield asserts nothing, so the fallback still applies.
+
+        Stremio writes one for a series whose state carries a `video_id` and
+        `timesWatched` but no per-episode bits — Dexter and Naked Attraction
+        are live examples. The anchor resolves, so a decoder that returned the
+        empty set would silently drop the only episode the state names.
+        """
+        video_ids = [f"tt0903747:1:{episode}" for episode in range(1, 4)]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "removed": False,
+                "temp": False,
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, set()),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                    "video_id": "tt0903747:1:3",
+                    "timesWatched": 1,
+                },
+            },
+        ]
+
+        imported_counts, warnings = self._run_import(
+            library_items,
+            cinemeta_videos={"tt0903747": video_ids},
+        )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 1)
+        self.assertEqual(
+            set(
+                Episode.objects.filter(item__media_id="1396").values_list(
+                    "item__episode_number",
+                    flat=True,
+                ),
+            ),
+            {3},
+        )
 
     def test_series_bitfield_gaps_do_not_complete_season(self):
         """A final watched episode does not hide gaps in the season."""

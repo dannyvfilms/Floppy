@@ -34,6 +34,7 @@ from integrations.imports import helpers
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.stremio import get_library_items
 from integrations.models import StremioAccount
+from integrations.stremio_events import milliseconds_to_seconds, parse_episode_id
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,6 @@ TRANSIENT_BACKOFF_SECONDS = (30, 60, 120, 120, 120)
 INITIAL_OBSERVATION_SECONDS = 60
 PUBLICATION_DELAY_TOLERANCE_SECONDS = 2 * 60
 AUTO_NEXT_THRESHOLD = 85.0
-EPISODE_ID_PARTS = 3
 SERVER_ERROR_MINIMUM = 500
 
 CREATE_SCRIPT = """
@@ -249,6 +249,125 @@ def normalize_state(entry, target_id, media_type):
     }
 
 
+def _watched_assertion(*values):
+    """Return True/False from Stremio's watched fields, or None when absent.
+
+    Stremio records watched-ness in two places — `timesWatched` (a count) and
+    `flaggedWatched` (the manual flag) — and the repo's importer reads them as a
+    union (`integrations/imports/stremio.py`).  A value that cannot be parsed is
+    treated as absent: asserting False would clear a completed session, and only
+    the client can know it did not.
+    """
+    usable = []
+    for value in values:
+        try:
+            usable.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    if not usable:
+        return None
+    return any(number > 0 for number in usable)
+
+def poll_observation_from_state(media_type, entry):
+    """Build one tracker Observation from a cloud-library entry, or None.
+
+    This is the poller's output to the tracker merge point.  It exists because
+    `normalize_state` drops Stremio's `timeOffset`: without it a client that
+    cannot emit player events leaves no resume position behind.
+
+    `observed_at` is stamped with OUR clock, not Stremio's `lastWatched`.
+    Ordering compares observations across sources, and player events are
+    stamped with server receive time, so a Stremio-domain timestamp is not
+    comparable.  `lastWatched` stays data — the poller's own session-evidence
+    and auto-next checks read it — but it is never the ordering stamp.
+
+    `watched` is three-state, read from Stremio's own `timesWatched` and
+    `flaggedWatched` as a union rather than re-derived from
+    `time_watched > duration * 0.7`: a naturally-completed item carries only
+    `timesWatched`, so reading the manual flag alone would assert False and
+    clear the completed session.  When every usable field is zero the client is
+    explicitly asserting not-watched; when no field is usable nothing is
+    asserted and the value stays None.
+
+    `records_play` is False.  The library flag describes the ITEM, not the
+    session in flight: a replay of an already-watched title still reads
+    `timesWatched=1`, so treating it as evidence of a viewing would complete
+    the replay the moment it started — the stale-snapshot case the verifier's
+    post-baseline evidence exists to reject.  Position is what this observation
+    contributes, and the history play stays the verifier's to append.
+
+    Wiring this in does NOT double-append a completed play.  `records_play`
+    keeps the poll from appending at all, and the two paths that can append —
+    the tracker's `_append_play` and the webhook processor — both measure the
+    candidate against `play_dedupe` before writing, so one viewing lands as one
+    history row.
+    """
+    state = entry.get("state") if isinstance(entry, dict) else None
+    if not isinstance(state, dict):
+        logger.info(
+            "stremio_poll status=unusable media_type=%s reason=missing_state",
+            media_type,
+        )
+        return None
+
+    from integrations import stremio_tracker
+
+    return stremio_tracker.Observation(
+        action="observed",
+        # A zero offset means "no resume point", not "resume at 0": storing 0
+        # would overwrite a real position. The same applies to a zero duration,
+        # which is why neither is treated as a value. A missing duration no
+        # longer discards the observation — `persist_merge_result` preserves a
+        # stored duration when the observation carries none.
+        position_seconds=milliseconds_to_seconds(state.get("timeOffset")) or None,
+        duration_seconds=milliseconds_to_seconds(state.get("duration")) or None,
+        watched=_watched_assertion(
+            state.get("timesWatched"), state.get("flaggedWatched")
+        ),
+        observed_at=timezone.now(),
+        video_id=(state.get("video_id") or None) if media_type == "series" else None,
+        records_play=False,
+    )
+
+def _entry_has_live_progress(entry):
+    """Return whether Stremio counts this entry's position as live progress.
+
+    Mirrors `LibraryItem::is_in_continue_watching` in stremio-core:
+    `not removed or temp`. `removed` alone is NOT a reason to skip — Stremio
+    keeps auto-added entries for a year and `temp` marks them, so
+    `removed and temp` is the dominant bucket for real in-flight progress
+    (319 of the 411 entries carrying a `timeOffset` in this account). Only
+    `removed and not temp` — explicitly added, then explicitly removed — has
+    left the user's active library, and its `timeOffset` is a leftover rather
+    than a resume point.
+    """
+    return not entry.get("removed") or bool(entry.get("temp"))
+
+def _record_poll_position(user, session, entry, now):
+    """Fold this poll's resume position into the tracker merge point.
+
+    Auxiliary to the session's purpose, so a failure is logged and swallowed:
+    the completion logic in `observe_session` is what the task exists for, and
+    it must not be abandoned because a position write failed.  This mirrors
+    `app.live_playback._store_playback_progress`, the other auxiliary progress
+    write.
+    """
+    from integrations import stremio_tracker
+
+    try:
+        observation = poll_observation_from_state(session["media_type"], entry)
+        if observation is None:
+            return
+        stremio_tracker.record_poll_observation(
+            user,
+            session["media_type"],
+            session["media_id"],
+            observation,
+            now=now,
+        )
+    except Exception:
+        logger.warning("Stremio poll position update failed", exc_info=True)
+
 def deadline_for_runtime(started, duration_ms):
     """Return the absolute bounded deadline for one known media runtime."""
     runtime = max(1.0, duration_ms / 1000.0)
@@ -263,16 +382,6 @@ def polling_delay(duration_ms, watched_percent):
     target = AUTO_NEXT_THRESHOLD if watched_percent < AUTO_NEXT_THRESHOLD else 90.0
     step = max(1.0, min(10.0, max(0.0, target - watched_percent) / 2.0))
     return round(max(5.0, min(120.0, runtime * step / 100.0)))
-
-
-def _parse_episode(video_id):
-    parts = str(video_id or "").split(":")
-    if len(parts) != EPISODE_ID_PARTS:
-        return None
-    try:
-        return parts[0], int(parts[1]), int(parts[2])
-    except ValueError:
-        return None
 
 
 def _authoritative_final_episode(user_id, series_id, season_number):
@@ -290,8 +399,8 @@ def _authoritative_final_episode(user_id, series_id, season_number):
 
 def is_sequential_next(user_id, target_video, current_video):
     """Return whether current_video safely follows target_video."""
-    target = _parse_episode(target_video)
-    current = _parse_episode(current_video)
+    target = parse_episode_id(target_video)
+    current = parse_episode_id(current_video)
     if not target or not current or target[0] != current[0]:
         return False
     _, target_season, target_episode = target
@@ -357,6 +466,13 @@ def _retryable_provider_error(error):
 
 
 def _load_library(session):
+    """Return `(user, library_items)` for a session's Stremio account.
+
+    Raises `TerminalPlaybackError` for a failure that cannot recover during
+    this playback, and `TransientPlaybackError` for one governed by the
+    consecutive-failure budget.  The user is returned because folding a poll
+    observation into the tracker needs the resolved identity it owns.
+    """
     user_model = get_user_model()
     try:
         user = user_model.objects.get(id=session["user_id"], is_active=True)
@@ -377,7 +493,7 @@ def _load_library(session):
         reason = "credential_configuration"
         raise TerminalPlaybackError(reason) from error
     try:
-        return get_library_items(auth_key)
+        return user, get_library_items(auth_key)
     except ProviderAPIError as error:
         if _retryable_provider_error(error):
             reason = "provider_unavailable"
@@ -414,7 +530,7 @@ def observe_session(session_id, *, now=None):
         return PlaybackDecision("expired", session_id, reason="deadline")
 
     try:
-        items = _load_library(session)
+        user, items = _load_library(session)
     except TerminalPlaybackError as error:
         _close(client, key, old_raw, session_id)
         return PlaybackDecision("terminal", session_id, reason=str(error))
@@ -442,6 +558,15 @@ def observe_session(session_id, *, now=None):
             return PlaybackDecision("duplicate", session_id, reason="stale_observation")
         return PlaybackDecision("schedule", session_id, 30, reason="library_item_missing")
     observation = normalize_state(entry, session["media_id"], session["media_type"])
+
+    # The poll is the only source that reports a resume position for a client
+    # that cannot emit player events.  Gated on `exact`: the library's state is
+    # only about this session's video, and folding a sibling episode's position
+    # would file it under the wrong identity.  Gated on liveness because a
+    # resume point is library-scoped; completion below still runs, so a removed
+    # item's viewing still reaches history.
+    if observation["exact"] and _entry_has_live_progress(entry):
+        _record_poll_position(user, session, entry, now)
 
     if observation["duration"] > 0 and not session["runtime_deadline_set"]:
         session["deadline"] = deadline_for_runtime(

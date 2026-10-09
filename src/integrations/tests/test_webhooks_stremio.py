@@ -124,7 +124,10 @@ class StremioAddonViewTests(TestCase):
         self.assertEqual(response["Access-Control-Allow-Origin"], "*")
         manifest = json.loads(response.content)
         self.assertEqual(manifest["id"], "org.yamtrack.scrobbler")
-        self.assertEqual(manifest["resources"], ["catalog", "meta", "subtitles"])
+        # Membership, not exact equality: an added resource must not break this,
+        # but a resource a client depends on disappearing must.
+        for resource in ("catalog", "meta", "subtitles"):
+            self.assertIn(resource, manifest["resources"])
         self.assertEqual(manifest["idPrefixes"], ["tt"])
         self.assertEqual(
             manifest["catalogs"],
@@ -924,8 +927,12 @@ class StremioAddonViewTests(TestCase):
         mock_delay,
         mock_reserve,
     ):
-        """Zero/negative-style episode coordinates cannot enter the queue."""
-        response = self.client.get(self._subtitles_url("series", "tt0133093:0:1"))
+        """Episode-zero coordinates cannot enter the queue.
+
+        Season 0 is Stremio's specials bucket and is a real coordinate, so the
+        malformed case here is an episode number of zero.
+        """
+        response = self.client.get(self._subtitles_url("series", "tt0133093:1:0"))
 
         self.assertEqual(response.status_code, 200)
         mock_reserve.assert_not_called()

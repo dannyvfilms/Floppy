@@ -46,11 +46,19 @@ and a reason:
 | jellyfin | `STOP_ONLY` | Sends stop; manual marks map to `mark` |
 | emby | `STOP_ONLY` | Sends `playback.stop` |
 | kodi | `STOP_ONLY` | Sends stop and end |
-| stremio | `START_ONLY` | Only sends a start ping; completion comes from the delayed verifier |
+| stremio | `START_ONLY` | The addon's `subtitles` beacon is a start ping; completion comes from the delayed verifier |
 | scrobble | `FINAL_ONLY` | The scrobble API only accepts stop/completion events |
 
 `START_ONLY` and `FINAL_ONLY` are the exceptions. They live in the table so
 there is one place to look, not a special case inside an integration.
+
+Stremio's addon has a second, separate inbound path: the `player` and
+`library` resources it requests, handled by `integrations/stremio_tracker.py`
+rather than by `StremioWebhookProcessor`. They carry real positions and
+watched flags and merge into the same session the verifier reads. They are not
+webhook-processor events, so they get no row here; the tracker's own policy is
+`stremio_tracker.apply_observation`, which appends a history play only when an
+observation carrying watched evidence completes a session.
 
 ## Manual marks and echoes
 

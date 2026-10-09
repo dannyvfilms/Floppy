@@ -309,6 +309,13 @@ call needed a scope the token does not carry.
 The Stremio-compatible add-on covers the first two through a revocable install
 credential. Everything else needs a client that speaks this API.
 
+One direction is the exception. The add-on also declares Stremio's `player` and
+`library` resources, so a Stremio client **reports playback into Floppy** —
+positions, durations, and watched flags — with no client work at all. The table
+above describes the other direction, Floppy's state reaching a client, and that
+is still native-client work. A Stremio client therefore writes history and
+resume positions without speaking this API, but cannot read them back.
+
 ## Compatibility matrices
 
 `server ready` means Floppy's own conformance suite passes. It is not a claim
