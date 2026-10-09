@@ -82,7 +82,9 @@ class VideoPlayApiTests(FloppyApiTestCase):
         self.assertEqual(video.progress, 600)
         self.assertEqual(video.end_date, before.end_date)
         self._post(progressSeconds=50, externalId="youtube:vid1:2026-10-03")
-        self.assertEqual(VideoPlay.objects.get(external_id__endswith="10-03").progress, 600)
+        self.assertEqual(
+            VideoPlay.objects.get(external_id__endswith="10-03").progress, 600
+        )
 
     def test_a_later_post_does_not_rename_the_shared_item(self):
         """The item is shared between users, so only the first post names it."""
@@ -157,3 +159,31 @@ class VideoPlayApiTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("plays", response.data["detail"])
+
+    def test_an_approved_thumbnail_is_stored_as_the_item_image(self):
+        """i.ytimg.com and img.youtube.com are the YouTube artwork hosts."""
+        thumb = "https://i.ytimg.com/vi/vid1/mqdefault.jpg"
+        self._post(thumbnailUrl=thumb)
+        self.assertEqual(Item.objects.get(media_id="vid1").image, thumb)
+
+        other = "https://img.youtube.com/vi/vid2/hqdefault.jpg"
+        self._post(
+            media_id="vid2", externalId="youtube:vid2:2026-10-02", thumbnail_url=other
+        )
+        self.assertEqual(Item.objects.get(media_id="vid2").image, other)
+
+    def test_an_unapproved_thumbnail_is_ignored(self):
+        """A caller-supplied host is not stored and does not fail the play."""
+        response = self._post(thumbnailUrl="https://evil.example/poster.jpg")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Item.objects.get(media_id="vid1").image, "")
+
+    def test_a_later_thumbnail_does_not_replace_the_stored_image(self):
+        """The first approved poster stays. The item is shared across users."""
+        first = "https://i.ytimg.com/vi/vid1/mqdefault.jpg"
+        self._post(thumbnailUrl=first)
+        self._post(
+            thumbnailUrl="https://i.ytimg.com/vi/vid1/hqdefault.jpg",
+            externalId="youtube:vid1:2026-10-03",
+        )
+        self.assertEqual(Item.objects.get(media_id="vid1").image, first)

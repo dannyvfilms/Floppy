@@ -52,6 +52,10 @@ APPROVED_IMAGE_HOSTS = frozenset(
         "static.pocketcasts.com",
         "media.kitsu.app",
         "s4.anilist.co",
+        # YouTube thumbnails. img.youtube.com redirects to i.ytimg.com, and
+        # each redirect hop is checked against this list.
+        "i.ytimg.com",
+        "img.youtube.com",
     },
 )
 APPROVED_IMAGE_HOST_SUFFIXES = (".mzstatic.com", ".comics.org", ".mangabaka.org")
