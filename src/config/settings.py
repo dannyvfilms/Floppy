@@ -11,6 +11,7 @@ import sys
 import tempfile
 import warnings
 import zoneinfo
+from importlib.util import find_spec
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -196,6 +197,13 @@ ENABLE_DEBUG_TOOLBAR = DEBUG and config(
     default=True,
     cast=bool,
 )
+# django_browser_reload is a dev-group dependency the Docker image never
+# installs, so DEBUG alone must not enable it.
+ENABLE_BROWSER_RELOAD = (
+    DEBUG
+    and config("ENABLE_BROWSER_RELOAD", default=True, cast=bool)
+    and find_spec("django_browser_reload") is not None
+)
 DEBUG_TOOLBAR_INCLUDE_TEMPLATES_PANEL = config(
     "DEBUG_TOOLBAR_INCLUDE_TEMPLATES_PANEL",
     default=False,
@@ -333,6 +341,8 @@ SPECTACULAR_SETTINGS = {
 
 if ENABLE_DEBUG_TOOLBAR:
     INSTALLED_APPS.append("debug_toolbar")
+if ENABLE_BROWSER_RELOAD:
+    INSTALLED_APPS.append("django_browser_reload")
 
 # Performance instrumentation: thresholded request and task summaries.
 PERF_LOG_ENABLED = config("PERF_LOG_ENABLED", default=True, cast=bool)
@@ -435,6 +445,8 @@ if not _CELERY_PROCESS:
 
 if ENABLE_DEBUG_TOOLBAR:
     MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
+if ENABLE_BROWSER_RELOAD:
+    MIDDLEWARE.append("django_browser_reload.middleware.BrowserReloadMiddleware")
 
 # YAMTRACK_* env names stay readable as a fallback for pre-rename deployments.
 FLOPPY_AUTO_LOGIN_USERNAME = config(

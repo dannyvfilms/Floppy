@@ -1,6 +1,9 @@
 {
   "name": "release",
   "private": true,
+  "scripts": {
+    "dev": "scripts/dev.sh"
+  },
   "devDependencies": {
     "@tailwindcss/cli": "4.1.11",
     "tailwindcss": "4.1.11"
