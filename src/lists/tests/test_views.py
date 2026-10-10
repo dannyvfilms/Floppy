@@ -3125,6 +3125,36 @@ class EditListViewTest(TestCase):
         self.assertEqual(self.list.visibility, "public")
         self.assertEqual(self.list.public_slug, "favorite-movies")
 
+    def test_edit_list_invalid_form_reports_errors(self):
+        """An invalid edit is not saved silently; the user sees why."""
+        CustomList.objects.create(name="Other", owner=self.user, public_slug="taken")
+        self.client.login(**self.credentials)
+        response = self.client.post(
+            reverse("list_edit") + "?next=/lists",
+            {
+                "list_id": self.list.id,
+                "name": "Updated List",
+                "is_public": "on",
+                "public_slug": "taken",
+            },
+            follow=True,
+        )
+
+        self.list.refresh_from_db()
+        self.assertEqual(self.list.name, "Test List")
+        self.assertIn(
+            "Public Slug: That URL is already in use.",
+            [str(message) for message in response.context["messages"]],
+        )
+
+    def test_edit_form_fragment_returns_to_lists_page(self):
+        """The lazily fetched modal must not redirect back to its own URL."""
+        self.client.login(**self.credentials)
+        response = self.client.get(reverse("list_edit_form", args=[self.list.id]))
+
+        self.assertContains(response, f'{reverse("list_edit")}?next=/lists"')
+        self.assertNotContains(response, "?next=/list/")
+
 
 class DeleteListViewTest(TestCase):
     """Test the delete view."""

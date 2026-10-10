@@ -183,22 +183,22 @@
             {% translate "Activity History" %}
           </a>
           <div class="flex flex-row-reverse gap-2">
-            <button type="submit" formaction="{% url 'list_edit' %}?next={{ request.path }}"
+            <button type="submit" formaction="{% url 'list_edit' %}?next={{ next_url|default:request.path }}"
               class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
               {% translate "Save" %}
             </button>
             {% if request.user == custom_list.owner %}
-              <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
+              <button type="submit" formaction="{% url 'list_delete' %}?next={{ next_url|default:request.path }}"
                 class="px-4 py-2 rounded-md transition duration-300 bg-red-700 text-white hover:bg-red-800 cursor-pointer">{% translate "Delete" %}</button>
             {% else %}
-              <button type="submit" formaction="{% url 'list_delete' %}?next={{ request.path }}"
+              <button type="submit" formaction="{% url 'list_delete' %}?next={{ next_url|default:request.path }}"
                 class="px-4 py-2 rounded-md transition duration-300 bg-[var(--color-surface-strong)] text-[var(--color-text-secondary)] cursor-not-allowed" disabled>{% translate "Delete" %}</button>
             {% endif %}
           </div>
         </div>
       {% else %}
         <div class="flex justify-end pt-4">
-          <button type="submit" formaction="{% url 'list_create' %}?next={{ request.path }}"
+          <button type="submit" formaction="{% url 'list_create' %}?next={{ next_url|default:request.path }}"
             class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors cursor-pointer">
             {% translate "Create List" %}
           </button>
