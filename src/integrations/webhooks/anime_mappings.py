@@ -85,6 +85,38 @@ def get_mal_id_from_tvdb(
     )
 
 
+def get_mal_id_from_series(mapping_data, provider, series_id, season, episode):
+    """Resolve only unique, one-to-one episode mappings for outbound counts."""
+    if provider not in {"tmdb", "tvdb"}:
+        return None, None
+    candidates = set()
+    targets = mapping_data.get(f"{provider}_show:{series_id}:s{season}", {})
+    try:
+        for descriptor, ranges in targets.items():
+            mal_id = _parse_mal_descriptor(descriptor)
+            if mal_id is None:
+                continue
+            # Several MAL ids for one range can't give a single count, but
+            # only for the episodes that range covers.
+            several_ids = "," in descriptor
+            if not ranges:
+                if several_ids:
+                    return None, None
+                candidates.add((mal_id, episode))
+            for source_range, target_range in ranges.items():
+                source_start, source_end = _parse_episode_range(source_range)
+                if episode < source_start or (source_end is not None and episode > source_end):
+                    continue
+                if several_ids or "|" in target_range:
+                    return None, None
+                mapped = _map_target_episode_number(target_range, episode - source_start)
+                if mapped is not None:
+                    candidates.add((mal_id, mapped))
+    except (TypeError, ValueError, AttributeError):
+        return None, None
+    return candidates.pop() if len(candidates) == 1 else (None, None)
+
+
 def get_mal_id_from_tmdb_movie(mapping_data, tmdb_movie_id):
     """Find MAL ID from TMDB movie mapping."""
     return _get_mal_mapping(
@@ -112,6 +144,49 @@ def get_tmdb_movie_id_from_mal_id(mapping_data, mal_id):
             if found_id is not None and str(found_id) == mal_id_str:
                 return source_descriptor.split(":", 1)[1]
     return None
+
+
+def get_series_episode_from_mal(mapping_data, mal_id, mal_episode, provider="tmdb"):
+    """Return (series_id, season, episode) for a MAL episode, or None.
+
+    The reverse of get_mal_id_from_series: only a single one-to-one range
+    that covers the MAL episode counts, so a MAL entry split across seasons
+    lands in the season that actually holds the episode.
+    """
+    candidates = set()
+    prefix = f"{provider}_show:"
+    try:
+        for source_descriptor, targets in mapping_data.items():
+            parts = source_descriptor.split(":")
+            if (
+                not source_descriptor.startswith(prefix)
+                or len(parts) < DESCRIPTOR_SEASON_PART_INDEX
+                or not parts[2].startswith("s")
+            ):
+                continue
+            season = int(parts[2][1:])
+            for target_descriptor, ranges in targets.items():
+                if "," in target_descriptor:
+                    continue
+                if str(_parse_mal_descriptor(target_descriptor)) != str(mal_id):
+                    continue
+                if not ranges:
+                    candidates.add((parts[1], season, mal_episode))
+                for source_range, target_range in ranges.items():
+                    if "|" in target_range or "," in target_range:
+                        continue
+                    target_start, target_end = _parse_episode_range(target_range)
+                    if mal_episode < target_start or (
+                        target_end is not None and mal_episode > target_end
+                    ):
+                        continue
+                    source_start, source_end = _parse_episode_range(source_range)
+                    episode = source_start + mal_episode - target_start
+                    if source_end is None or episode <= source_end:
+                        candidates.add((parts[1], season, episode))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return candidates.pop() if len(candidates) == 1 else None
 
 
 def find_entries_for_mal_id(mapping_data, mal_id):

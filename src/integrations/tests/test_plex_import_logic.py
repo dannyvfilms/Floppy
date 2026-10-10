@@ -416,6 +416,115 @@ class TestPlexHybridImport(TestCase):
         self.assertEqual(episode.item.source, Sources.TVDB.value)
         mock_tvdb_tv_with_seasons.assert_called_with("555002", [1])
 
+    def test_show_tracked_under_a_linked_tvdb_id_is_reused(self):
+        """Regression: a show tracked under a TVDB id that TMDB doesn't report
+        (linked only through ItemProviderLink) was duplicated as a TMDB show,
+        while the webhook matched it through the link.
+        """
+        tv_item = Item.objects.create(
+            title="D.Gray-man Hallow", media_id="312878",
+            media_type=MediaTypes.TV.value, source=Sources.TVDB.value,
+        )
+        ItemProviderLink.objects.create(
+            item=tv_item, provider=Sources.TMDB.value, provider_media_id="67145",
+            provider_media_type=MediaTypes.TV.value,
+        )
+        existing_tv = TV.objects.create(
+            item=tv_item, user=self.user, status=Status.IN_PROGRESS.value,
+        )
+        existing_season = Season.objects.create(
+            item=Item.objects.create(
+                title="D.Gray-man Hallow", media_id="312878",
+                media_type=MediaTypes.SEASON.value, source=Sources.TVDB.value,
+                season_number=1,
+            ),
+            user=self.user, related_tv=existing_tv, status=Status.IN_PROGRESS.value,
+        )
+
+        importer = PlexHistoryImporter(
+            user=self.user, account=self.account, mode="new", library="machine::1",
+        )
+        importer._episode_records = [{
+            "tmdb_id": "67145",
+            "season_number": 1,
+            "episode_number": 1,
+            "watched_at": timezone.now().replace(second=0, microsecond=0),
+            "viewed_at_ts": 1700000000,
+            "plex_rating_key": "rk-hallow",
+            "rating": None,
+            "title": "Innocence",
+            "series_title": "D.Gray-man Hallow",
+        }]
+        importer._tv_metadata_cache = {
+            "67145": {
+                "media_id": "67145",
+                "title": "D.Gray-man Hallow",
+                "image": "",
+                "tvdb_id": "79635",
+                "season/1": {"image": "", "episodes": [{"episode_number": 1}]},
+            },
+        }
+
+        importer._build_bulk_media()
+
+        self.assertEqual(importer.bulk_media[MediaTypes.TV.value], [])
+        self.assertEqual(importer.bulk_media[MediaTypes.SEASON.value], [])
+        [episode] = importer.bulk_media[MediaTypes.EPISODE.value]
+        self.assertEqual(episode.related_season, existing_season)
+
+    def test_tvdb_id_reported_by_tmdb_does_not_match_the_parent_series(self):
+        """Regression: TMDB reports D.Gray-man's TVDB id for Hallow, so matching
+        on it attached Hallow plays to the original series.
+        """
+        parent_item = Item.objects.create(
+            title="D.Gray-man", media_id="34141",
+            media_type=MediaTypes.TV.value, source=Sources.TMDB.value,
+        )
+        ItemProviderLink.objects.create(
+            item=parent_item, provider=Sources.TVDB.value, provider_media_id="79635",
+            provider_media_type=MediaTypes.TV.value,
+        )
+        parent_tv = TV.objects.create(
+            item=parent_item, user=self.user, status=Status.COMPLETED.value,
+        )
+        parent_season = Season.objects.create(
+            item=Item.objects.create(
+                title="D.Gray-man", media_id="34141",
+                media_type=MediaTypes.SEASON.value, source=Sources.TMDB.value,
+                season_number=1,
+            ),
+            user=self.user, related_tv=parent_tv, status=Status.COMPLETED.value,
+        )
+
+        importer = PlexHistoryImporter(
+            user=self.user, account=self.account, mode="new", library="machine::1",
+        )
+        importer._episode_records = [{
+            "tmdb_id": "67145",
+            "season_number": 1,
+            "episode_number": 1,
+            "watched_at": timezone.now().replace(second=0, microsecond=0),
+            "viewed_at_ts": 1700000000,
+            "plex_rating_key": "rk-hallow",
+            "rating": None,
+            "title": "Innocence",
+            "series_title": "D.Gray-man Hallow",
+        }]
+        importer._tv_metadata_cache = {
+            "67145": {
+                "media_id": "67145",
+                "title": "D.Gray-man Hallow",
+                "image": "",
+                "tvdb_id": "79635",
+                "season/1": {"image": "", "episodes": [{"episode_number": 1}]},
+            },
+        }
+
+        importer._build_bulk_media()
+
+        [episode] = importer.bulk_media[MediaTypes.EPISODE.value]
+        self.assertNotEqual(episode.related_season, parent_season)
+
     def test_existing_season_is_reused_when_resolved_tv_id_differs(self):
         """Resolved imports should reuse an existing season instead of inserting a duplicate."""
         tv_item = Item.objects.create(

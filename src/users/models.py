@@ -1113,6 +1113,13 @@ class User(AbstractUser):
         default=False,
         help_text="Process Jellyfin MarkUnplayed webhook events",
     )
+    group_scrobbled_anime = models.BooleanField(
+        default=False,
+        help_text=(
+            "Convert a flat MAL anime entry to per-episode tracking when a "
+            "media server reports one of its episodes"
+        ),
+    )
 
     jellyseerr_enabled = models.BooleanField(
         default=False,

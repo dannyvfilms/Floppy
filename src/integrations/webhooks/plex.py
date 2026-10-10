@@ -922,11 +922,80 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             action,
         )
 
+    def _apply_flat_anime_rating(self, user, tmdb_id, rating, season_number=None):
+        """Rate the flat MAL anime entry instead, when that is how the show is tracked.
+
+        A TV or Season row would sit in the TV library, where the anime details
+        page and MAL sync never look. Returns True when the rating was handled
+        here, including when it had to be skipped as ambiguous.
+        """
+        from django.db.models import Q
+
+        anime_home = self._find_existing_anime_home(user, tmdb_id)
+        if anime_home is None or anime_home[0] != "flat":
+            return False
+        # A show the user really tracks in the TV library keeps its rating
+        # there, even when an OVA or one cour is also a flat MAL entry.
+        tv_row = app.models.TV.objects.filter(
+            user=user,
+            item__source=Sources.TMDB.value,
+            item__media_id=str(tmdb_id),
+        ).select_related("item").first()
+        if tv_row is not None and self._tv_row_has_history(user, tv_row.item):
+            return False
+
+        links = app.models.ItemProviderLink.objects.filter(
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id=str(tmdb_id),
+            item__source=Sources.MAL.value,
+            item__media_type=MediaTypes.ANIME.value,
+        )
+        if season_number is not None:
+            links = links.filter(
+                Q(season_number=season_number) | Q(season_number__isnull=True),
+            )
+        entries = list(
+            app.models.Anime.objects.filter(
+                user=user,
+                item_id__in=links.values("item_id"),
+            ).select_related("item"),
+        )
+        # A rewatch is another row for the same title, not another title.
+        item_ids = {anime.item_id for anime in entries}
+        if not item_ids:
+            # No flat entry covers this season: rate it the normal TV way.
+            return False
+        if len(item_ids) > 1:
+            logger.info(
+                "Skipping Plex rating for TMDB %s season %s: it matches %d tracked "
+                "MAL anime titles",
+                tmdb_id,
+                season_number,
+                len(item_ids),
+            )
+            return True
+
+        # Every row carries the title's rating, so MAL sync and the details
+        # page agree whichever row they read.
+        for anime in entries:
+            if anime.score != rating:
+                anime.score = rating
+                anime.save()
+        logger.info(
+            "%s Plex rating on flat MAL anime %s",
+            "Removed" if rating is None else "Applied",
+            entries[0].item.media_id,
+        )
+        return True
+
     def _apply_tv_rating(self, payload, user, ids, rating):
         """Apply rating to a TV show instance (show-level rating)."""
         tmdb_id = ids.get("tmdb_id")
         if not tmdb_id:
             logger.warning("Cannot apply TV rating: no TMDB ID found")
+            return
+        if self._apply_flat_anime_rating(user, tmdb_id, rating):
             return
 
         try:
@@ -994,6 +1063,8 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             logger.warning(
                 "Cannot apply season rating: missing show TMDB ID or season number"
             )
+            return
+        if self._apply_flat_anime_rating(user, tmdb_id, rating, season_number):
             return
 
         try:
@@ -1109,6 +1180,8 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 logger.debug("No movie instance found for Plex rating removal")
 
         elif media_type == MediaTypes.TV.value:
+            if self._apply_flat_anime_rating(user, tmdb_id, None):
+                return
             try:
                 tv_metadata = app.providers.tmdb.tv(tmdb_id)
             except Exception as exc:
@@ -1159,6 +1232,8 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             season_number = self._resolve_season_number(payload)
             if season_number is None:
                 logger.warning("Cannot remove season rating: no season number found")
+                return
+            if self._apply_flat_anime_rating(user, tmdb_id, None, season_number):
                 return
 
             # Only remove from an existing tracked season; never create one.

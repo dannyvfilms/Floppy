@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import threading
+from contextlib import closing
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -3049,7 +3050,7 @@ class TraktSqliteWriteContentionTests(TransactionTestCase):
         original_connection = connection.connection
         with tempfile.TemporaryDirectory() as directory:
             database_path = str(Path(directory) / "contention.sqlite3")
-            with sqlite3.connect(database_path) as database:
+            with closing(sqlite3.connect(database_path)) as database, database:
                 original_connection.backup(database)
                 database.execute("PRAGMA journal_mode=DELETE")
             connection.connection = None
@@ -3060,7 +3061,7 @@ class TraktSqliteWriteContentionTests(TransactionTestCase):
 
             def competing_writer():
                 try:
-                    with sqlite3.connect(database_path, timeout=1) as database:
+                    with closing(sqlite3.connect(database_path, timeout=1)) as database, database:
                         database.execute("BEGIN IMMEDIATE")
                         database.execute("UPDATE integrations_externalreference SET metadata = metadata")
                         locked.set()

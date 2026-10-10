@@ -39,9 +39,9 @@ class ImportMAL(TestCase):
     @patch("requests.Session.get")
     def test_import_animelist(self, mock_request):
         """Basic test importing anime and manga from MyAnimeList."""
-        with Path(mock_path / "import_mal_anime.json").open() as file:
+        with Path(mock_path / "import_mal_anime.json").open(encoding="utf-8") as file:
             anime_response = json.load(file)
-        with Path(mock_path / "import_mal_manga.json").open() as file:
+        with Path(mock_path / "import_mal_manga.json").open(encoding="utf-8") as file:
             manga_response = json.load(file)
 
         anime_mock = MagicMock()
@@ -106,7 +106,7 @@ class ImportMAL(TestCase):
     @patch("integrations.imports.mal.MyAnimeListImporter._get_whole_response")
     def test_private_manga_list_is_skipped_with_warning(self, mock_get_response):
         """A private manga list is skipped with a warning, anime still imports."""
-        with Path(mock_path / "import_mal_anime.json").open() as file:
+        with Path(mock_path / "import_mal_anime.json").open(encoding="utf-8") as file:
             anime_response = json.load(file)
 
         forbidden_response = MagicMock()
@@ -148,9 +148,9 @@ class ImportMAL(TestCase):
             score=5,  # stale score — should be overwritten
         )
 
-        with Path(mock_path / "import_mal_anime.json").open() as file:
+        with Path(mock_path / "import_mal_anime.json").open(encoding="utf-8") as file:
             anime_response = json.load(file)
-        with Path(mock_path / "import_mal_manga.json").open() as file:
+        with Path(mock_path / "import_mal_manga.json").open(encoding="utf-8") as file:
             manga_response = json.load(file)
 
         anime_mock = MagicMock()

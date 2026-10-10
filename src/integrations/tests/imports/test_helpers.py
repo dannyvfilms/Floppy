@@ -324,6 +324,22 @@ class HelpersTest(TestCase):
             1,
         )
 
+    def test_bulk_create_media_projects_watch_state(self):
+        """Regression: bulk_create fires no save signals, so an imported play
+        left the item's projected watch state unwatched.
+        """
+        from app.models import WatchState
+
+        bulk_media = self._unsaved_tv_season_episode()
+        episode_item = bulk_media[MediaTypes.EPISODE.value][0].item
+        WatchState.objects.create(user=self.user, item=episode_item, watched=False)
+
+        helpers.bulk_create_media(bulk_media, self.user)
+
+        state = WatchState.objects.get(user=self.user, item=episode_item)
+        self.assertTrue(state.watched)
+        self.assertEqual(state.play_count, 1)
+
     @patch("integrations.episode_orders.resolve_incoming", return_value=None)
     def test_bulk_create_media_still_resolves_orders_for_a_show_with_one(
         self,

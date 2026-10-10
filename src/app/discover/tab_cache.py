@@ -261,7 +261,9 @@ def get_activity_version(user_id: int, media_type: str) -> str:
 
 def bump_activity_version(user_id: int, media_type: str) -> str:
     """Advance the activity version for a Discover media type."""
-    version = timezone.now().isoformat()
+    # The suffix makes every bump distinct: a coarse clock can give a bump the
+    # same timestamp as the version it replaces, leaving the tab looking fresh.
+    version = f"{timezone.now().isoformat()}-{uuid4().hex[:8]}"
     _cache_set(
         _activity_version_key(user_id, media_type),
         version,
