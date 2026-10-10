@@ -73,6 +73,10 @@ RATE_LIMIT_MAX_WAIT_SECONDS_INTERACTIVE = 5
 # thread for the full REQUEST_TIMEOUT, longer than nginx waits for the page.
 # An interactive caller has a stored-metadata fallback, so it gives up sooner.
 REQUEST_TIMEOUT_INTERACTIVE = 10
+# Comic Vine's API can accept a connection without returning a response when
+# its edge service is unhealthy. Do not let that hold the single local worker
+# for the global 120-second provider timeout.
+COMICVINE_REQUEST_TIMEOUT = 20
 
 _interactive_request = contextvars.ContextVar("_interactive_request", default=False)
 
@@ -750,13 +754,18 @@ def api_request(
         )
 
     try:
+        request_timeout = (
+            COMICVINE_REQUEST_TIMEOUT
+            if provider == Sources.COMICVINE.value
+            else settings.REQUEST_TIMEOUT
+        )
         request_kwargs = {
             "url": url,
             "headers": headers,
             "timeout": (
-                min(settings.REQUEST_TIMEOUT, REQUEST_TIMEOUT_INTERACTIVE)
+                min(request_timeout, REQUEST_TIMEOUT_INTERACTIVE)
                 if _interactive_request.get()
-                else settings.REQUEST_TIMEOUT
+                else request_timeout
             ),
         }
 
@@ -1679,7 +1688,7 @@ def search(
             if source == Sources.TMDB.value
             else tvdb.search(MediaTypes.TV.value, query, page, language)
         ),
-        MediaTypes.GAME.value: lambda: igdb.search(query, page),
+        MediaTypes.GAME.value: lambda: igdb.search(query, page, user=user),
         MediaTypes.BOOK.value: lambda: (
             openlibrary.search(query, page)
             if source == Sources.OPENLIBRARY.value

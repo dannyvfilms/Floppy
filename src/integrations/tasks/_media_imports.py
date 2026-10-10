@@ -30,6 +30,7 @@ from integrations.imports import (
     mangabaka,
     mdblist,
     mylar,
+    playnite,
     plex,
     pocketcasts,
     psn,
@@ -368,6 +369,12 @@ def import_clz(file, user_id, mode, media_type=None):
 def import_hltb(file, user_id, mode):
     """Celery task for importing media data from HowLongToBeat."""
     return _run_file_import(hltb.importer, file, user_id, mode)
+
+
+@shared_task(name="Import from Playnite")
+def import_playnite(file, user_id, mode):
+    """Import game data from a Playnite library CSV backup."""
+    return _run_file_import(playnite.importer, file, user_id, mode)
 
 
 @shared_task(name="Import from Grouvee")

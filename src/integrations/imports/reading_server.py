@@ -179,6 +179,7 @@ class ReadingServerImporter(KoreaderImporter):
             else None
         )
         counts = defaultdict(int)
+        self._retry_entries = []
         self._library_items = self._build_library_index()
         links = {
             getattr(link, self.link_field): link
@@ -189,6 +190,11 @@ class ReadingServerImporter(KoreaderImporter):
 
         try:
             self.sync(cutoff, counts, links)
+            if self._retry_entries:
+                self._retrying = True
+                for entry in self._retry_entries:
+                    self.import_entry(*entry, force_resolve=True)
+                self._retrying = False
         except MediaImportError as error:
             connection_health.record_failure(
                 self.account,
@@ -210,6 +216,7 @@ class ReadingServerImporter(KoreaderImporter):
         media_type,
         resolve_item,
         write,
+        force_resolve=False,
     ):
         """Match one server entry to an item, write it and count the outcome.
 
@@ -217,7 +224,7 @@ class ReadingServerImporter(KoreaderImporter):
         ``write(item)`` returns what ``write_reading_progress`` returns.
         """
         link = links.get(key)
-        item = link.item if link else resolve_item()
+        item = resolve_item() if force_resolve else (link.item if link else resolve_item())
         if item is None:
             self.warnings.append(f"Could not match {self.service} item {label}")
             counts["skipped"] += 1
@@ -256,4 +263,3 @@ class ReadingServerImporter(KoreaderImporter):
             title=title,
             image="",
         )
-

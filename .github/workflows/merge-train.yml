@@ -44,7 +44,7 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::error::AUTO_MERGE_TOKEN secret is not set."
-            exit 1
+            echo "::notice::AUTO_MERGE_TOKEN secret is not set; merge train is disabled for this repository."
+            exit 0
           fi
           python3 scripts/merge_train.py $([ "$DRY_RUN" = "true" ] && echo --dry-run)

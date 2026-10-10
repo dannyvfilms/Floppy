@@ -248,7 +248,7 @@ jobs:
       # where nothing distinguishes it from a release. Publishing happens on
       # push to latest/release and on v* tags only.
       - name: Log into registry ${{ env.REGISTRY }}
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.repository == 'dannyvfilms/yamtrack'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -263,7 +263,9 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          # Forks can build and smoke-test the image but cannot publish to the
+          # upstream owner's GHCR package.
+          push: ${{ github.event_name != 'pull_request' && github.repository == 'dannyvfilms/yamtrack' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

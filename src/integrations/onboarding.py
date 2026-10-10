@@ -298,6 +298,14 @@ ONBOARDING_SOURCES: tuple[OnboardingSource, ...] = (
         upload_field_name="hltb_csv",
     ),
     OnboardingSource(
+        "playnite",
+        (GAME,),
+        "upload",
+        tags=("games",),
+        connect_url_name="import_playnite",
+        upload_field_name="playnite_csv",
+    ),
+    OnboardingSource(
         "grouvee",
         (GAME,),
         "upload",
