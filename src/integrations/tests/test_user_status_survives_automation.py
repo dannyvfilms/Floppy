@@ -469,8 +469,8 @@ def _trakt_metadata(media_type, *_args, **_kwargs):
     }
 
 
-class ImportModeAndDeletionMarkerTests(TestCase):
-    """The Import Mode menu is shared; deletion markers must mean "you deleted"."""
+class ImportModeAndOverwriteTests(TestCase):
+    """The Import Mode menu is shared by every source; Overwrite must keep plays."""
 
     def setUp(self):
         """Create a user."""
@@ -574,25 +574,6 @@ class ImportModeAndDeletionMarkerTests(TestCase):
 
         self.assertEqual(seen, ["update_collection"])
 
-    def test_overwrite_import_does_not_mark_the_show_as_deleted(self):
-        """Rebuilding a show is not the user deleting it."""
-        self._track(Status.COMPLETED.value)
-
-        self._sync("overwrite")
-
-        self.assertTrue(TV.objects.filter(user=self.user).exists())
-        self.assertFalse(DeletedMedia.objects.filter(user=self.user).exists())
-
-    def test_sync_after_an_overwrite_still_imports_new_plays(self):
-        """A marker left by the overwrite used to silence every later sync."""
-        self._track(Status.COMPLETED.value)
-        self._sync("overwrite")
-        before = Episode.objects.count()
-
-        self._sync("new", new_watch=True)
-
-        self.assertEqual(Episode.objects.count(), before + 1)
-
     def test_a_real_deletion_still_blocks_the_sync(self):
         """Deleting a show by hand keeps it deleted, as before."""
         self._track(Status.COMPLETED.value).delete()
@@ -601,20 +582,6 @@ class ImportModeAndDeletionMarkerTests(TestCase):
         self._sync("new")
 
         self.assertFalse(TV.objects.filter(user=self.user).exists())
-
-    def test_cleanup_for_overwrite_forgets_its_own_deletion_markers(self):
-        """An overwrite that deletes a row and doesn't recreate it leaves no marker."""
-        self._track(Status.COMPLETED.value)
-        to_delete = {
-            MediaTypes.TV.value: {Sources.TMDB.value: {SHOW_ID}},
-            MediaTypes.MOVIE.value: {Sources.TMDB.value: {MOVIE_ID}},
-        }
-
-        helpers.cleanup_existing_media(to_delete, self.user)
-
-        self.assertFalse(TV.objects.filter(user=self.user).exists())
-        self.assertFalse(DeletedMedia.objects.filter(user=self.user).exists())
-
 
     def test_overwrite_import_rebuilds_a_show_with_every_play(self):
         """Overwrite replaces the show; plays it already had must come back too."""

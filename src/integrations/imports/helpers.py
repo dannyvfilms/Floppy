@@ -282,14 +282,6 @@ def cleanup_existing_media(to_delete, user):
 
             deleted_count, _ = retry_on_lock(delete_media)
             total_deleted += deleted_count
-            # An overwrite import deletes to replace, not because the user
-            # removed the item, so the deletion marker that records is stale.
-            app.models.DeletedMedia.objects.filter(
-                user=user,
-                media_type=media_type,
-                source=source,
-                media_id__in=media_ids,
-            ).delete()
 
         if total_deleted > 0:
             logger.info(
@@ -298,36 +290,6 @@ def cleanup_existing_media(to_delete, user):
                 media_type,
                 user,
             )
-
-
-def clear_stale_deletion_markers(user, created_media):
-    """Forget the user's deletion markers for rows an import just created.
-
-    Deleting any tracked row records a marker so syncs don't bring it back.
-    Creating the row again is the same decision reversed, which a manual add
-    signals through ``post_save``; ``bulk_create`` sends no such signal. Left
-    in place, a marker for a row that exists makes every later sync skip it.
-    """
-    if not app.models.DeletedMedia.objects.filter(user=user).exists():
-        return
-
-    item_ids = sorted({media.item_id for media in created_media})
-    identities = defaultdict(set)
-    for start in range(0, len(item_ids), 500):
-        for media_type, source, media_id in app.models.Item.objects.filter(
-            id__in=item_ids[start : start + 500],
-        ).values_list("media_type", "source", "media_id"):
-            identities[(media_type, source)].add(media_id)
-
-    for (media_type, source), found_ids in identities.items():
-        media_ids = sorted(found_ids)
-        for start in range(0, len(media_ids), 500):
-            app.models.DeletedMedia.objects.filter(
-                user=user,
-                media_type=media_type,
-                source=source,
-                media_id__in=media_ids[start : start + 500],
-            ).delete()
 
 
 def update_season_references(seasons, user):
@@ -825,8 +787,6 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
             )
 
         created_media = retry_on_lock(create_media)
-        if media_type not in (MediaTypes.SEASON.value, MediaTypes.EPISODE.value):
-            clear_stale_deletion_markers(user, created_media)
         if normalize:
             normalize_completed_entries(created_media)
 
