@@ -2153,9 +2153,13 @@ def media_track_actions(context, media_type, instance):
     request = context.get("request")
     phase = checkin.phase(request.user, instance) if request and instance else None
     reload_in = phase["reload_in"] if phase else None
+    # Grouped anime (TMDB/TVDB) is stored as a TV show, which holds one tracker,
+    # so the stored type decides the actions, not the route type.
+    item = getattr(instance, "item", None)
+    stored_type = getattr(item, "media_type", None) or media_type
     return {
         "actions": track_actions.track_actions(
-            media_type,
+            stored_type,
             instance.status if instance else None,
             phase,
         ),
