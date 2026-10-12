@@ -4,6 +4,7 @@ from users import metadata_views, onboarding_views, server_port_views, views
 
 urlpatterns = [
     path("setup/", onboarding_views.onboarding_media_types, name="onboarding_media_types"),
+    path("setup/metadata/", onboarding_views.onboarding_metadata, name="onboarding_metadata"),
     path(
         "setup/services/<int:index>/",
         onboarding_views.onboarding_services,

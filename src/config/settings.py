@@ -1313,6 +1313,38 @@ COMICVINE_API = config(
     ),
 )
 
+# Game artwork providers. SteamGridDB and TheGamesDB take a key of the member's
+# own. ScreenScraper identifies Floppy itself with developer credentials that
+# ScreenScraper issues to the project: they are read only from the environment
+# or a Docker secret, are never committed, and leave ScreenScraper inactive
+# until set. SCREENSCRAPER_SSID and SCREENSCRAPER_SSPASSWORD are an optional
+# member login that raises personal limits.
+STEAMGRIDDB_API_KEY = config(
+    "STEAMGRIDDB_API_KEY",
+    default=secret("STEAMGRIDDB_API_KEY_FILE", ""),
+)
+THEGAMESDB_API_KEY = config(
+    "THEGAMESDB_API_KEY",
+    default=secret("THEGAMESDB_API_KEY_FILE", ""),
+)
+SCREENSCRAPER_DEV_ID = config(
+    "SCREENSCRAPER_DEV_ID",
+    default=secret("SCREENSCRAPER_DEV_ID_FILE", ""),
+)
+SCREENSCRAPER_DEV_PASSWORD = config(
+    "SCREENSCRAPER_DEV_PASSWORD",
+    default=secret("SCREENSCRAPER_DEV_PASSWORD_FILE", ""),
+)
+SCREENSCRAPER_SOFTNAME = config("SCREENSCRAPER_SOFTNAME", default="Floppy")
+SCREENSCRAPER_SSID = config(
+    "SCREENSCRAPER_SSID",
+    default=secret("SCREENSCRAPER_SSID_FILE", ""),
+)
+SCREENSCRAPER_SSPASSWORD = config(
+    "SCREENSCRAPER_SSPASSWORD",
+    default=secret("SCREENSCRAPER_SSPASSWORD_FILE", ""),
+)
+
 # Grand Comics Database login. No default: GCD limits anonymous API access to
 # 30 requests an hour, and a login is tied to one person's account.
 GCD_USERNAME = config("GCD_USERNAME", default=secret("GCD_USERNAME_FILE", ""))
@@ -1505,7 +1537,7 @@ CELERY_BROKER_POOL_LIMIT = config(
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Retry forever rather than exit: the container restarts into the same
 # situation, so giving up only turns a slow Redis into a crash loop.
-CELERY_BROKER_CONNECTION_MAX_RETRIES = 0
+CELERY_BROKER_CONNECTION_MAX_RETRIES = None
 
 # ``integrations.tasks`` keeps its historical public re-exports lazy so web
 # workers do not load every importer while resolving URLs. Celery workers still
@@ -1840,6 +1872,15 @@ CALENDAR_RELOAD_CHUNK_SIZE = config(
 CALENDAR_ITEM_STALE_AFTER_HOURS = config(
     "CALENDAR_ITEM_STALE_AFTER_HOURS",
     default=12,
+    cast=int,
+)
+# How often a show whose episodes have all aired is looked at again for a newly
+# announced season. TMDB's change feed covers a few days and TVDB has none, so
+# without this such a show never gains the new season's calendar events and
+# cannot sort by "Next episode air date". 0 disables it.
+CALENDAR_AIRED_SHOW_RECHECK_DAYS = config(
+    "CALENDAR_AIRED_SHOW_RECHECK_DAYS",
+    default=7,
     cast=int,
 )
 # Cap on TMDB /changes pagination. total_pages there can run into the hundreds,

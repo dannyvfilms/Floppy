@@ -1,11 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 from django.contrib.auth import get_user_model
 from django.template.loader import render_to_string
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.test.client import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
@@ -2125,6 +2125,47 @@ class DetailScoreChipsTemplateTests(TestCase):
     def test_numeric_score_count_still_renders(self):
         html = self._render(42)
         self.assertIn("42", html)
+
+    def test_chip_row_fades_the_edge_it_can_scroll_towards(self):
+        html = self._render(42)
+        self.assertIn("'detail-score-card-row--fade-left': hasOverflow && !atStart", html)
+        self.assertIn("'detail-score-card-row--fade-right': hasOverflow && !atEnd", html)
+        # Layout can change after init (carousel arrives, Duo unfolds).
+        self.assertIn("new ResizeObserver(() => updateScroll()).observe($refs.scoreRow)", html)
+
+
+class DetailActivitySubtitleTemplateTests(SimpleTestCase):
+    """The phone subtitle breaks at the bullet on narrow widths instead of wrapping mid-date."""
+
+    def _render(self, **subtitle):
+        return render_to_string(
+            "app/components/detail_activity_subtitle.html",
+            {
+                "activity_subtitle": subtitle,
+                "media": {"media_id": "1", "source": "tmdb"},
+                "media_type": MediaTypes.MOVIE.value,
+                "MediaTypes": MediaTypes,
+                "user": None,
+            },
+        )
+
+    def test_duration_subtitle_stacks_when_its_box_is_narrow(self):
+        html = self._render(
+            duration_text="52h 42min watched",
+            primary_text="Progress: 35/44",
+            date_start=None,
+            date_end=None,
+        )
+        self.assertIn("@container", html)
+        self.assertIn("@max-[26rem]:flex-col", html)
+
+    def test_bullet_is_hidden_while_stacked(self):
+        html = self._render(
+            duration_text="1h watched",
+            date_start=date(2020, 10, 10),
+            date_end=date(2026, 9, 26),
+        )
+        self.assertIn("text-gray-600 @max-[26rem]:hidden", html)
 
 
 class EntrySourceLabelTests(TestCase):

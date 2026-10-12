@@ -1,7 +1,10 @@
+import base64
 import contextlib
+import hashlib
 import json
 import logging
 import random
+import secrets
 import sqlite3
 import time
 from collections import OrderedDict, defaultdict
@@ -20,7 +23,7 @@ import app
 from app import fork_services_play_dedupe as play_dedupe
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
-from app.providers import credentials, services, tvdb
+from app.providers import credentials, services, tmdb, tvdb
 from app.services import grouped_anime, item_merge
 from integrations import external_references, import_progress
 from integrations.imports import helpers
@@ -116,13 +119,46 @@ def _parse_watched_at(watched_at: str):
     return parse_datetime(watched_at)
 
 
+def new_pkce_pair():
+    """Return a fresh PKCE (S256) ``(code_verifier, code_challenge)`` pair.
+
+    Trakt apps made without a client secret authorize with PKCE instead.
+    """
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+        .decode()
+        .rstrip("=")
+    )
+    return code_verifier, code_challenge
+
+
+def default_client_secret():
+    """Return the client secret that belongs to the client ID now in use.
+
+    A PKCE app has none. When the client ID is someone's own but the only
+    secret on hand comes from another source (say the instance's), that secret
+    belongs to a different app and would be rejected, so it is not used.
+    """
+    secret_source = credentials.source_of("trakt", "client_secret")
+    if secret_source != credentials.source_of("trakt", "client_id"):
+        return ""
+    return credentials.get("trakt", "client_secret")
+
+
 def handle_oauth_callback(
     request,
     redirect_uri=None,
     client_id=None,
     client_secret=None,
+    code_verifier=None,
 ):
-    """View for getting the Trakt OAuth2 token."""
+    """View for getting the Trakt OAuth2 token.
+
+    An app without a client secret proves itself with the PKCE ``code_verifier``
+    that matches the challenge sent when authorizing. Pass ``client_secret=""``
+    for such an app so no other secret is substituted.
+    """
     code = request.GET["code"]
 
     url = "https://api.trakt.tv/oauth/token"
@@ -134,16 +170,19 @@ def handle_oauth_callback(
         )
     if not client_id:
         client_id = credentials.get("trakt", "client_id")
-    if not client_secret:
-        client_secret = credentials.get("trakt", "client_secret")
+    if client_secret is None:
+        client_secret = default_client_secret()
 
     params = {
         "client_id": client_id,
-        "client_secret": client_secret,
         "code": code,
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri,
     }
+    if client_secret:
+        params["client_secret"] = client_secret
+    if code_verifier:
+        params["code_verifier"] = code_verifier
 
     try:
         token_response = app.providers.services.api_request(
@@ -237,7 +276,7 @@ def request_device_code(client_id=None):
         logger.warning("Trakt device code request failed: %s", error)
         msg = (
             "Could not start Trakt authorization. "
-            "Check TRAKT_API and TRAKT_API_SECRET."
+            "Check your Trakt client ID (and client secret, if your app has one)."
         )
         raise MediaImportError(msg) from error
 
@@ -262,8 +301,8 @@ def poll_device_token(device_code, client_id=None, client_secret=None):
     """
     if not client_id:
         client_id = credentials.get("trakt", "client_id")
-    if not client_secret:
-        client_secret = credentials.get("trakt", "client_secret")
+    if client_secret is None:
+        client_secret = default_client_secret()
 
     try:
         response = services.resilient_request(
@@ -272,7 +311,7 @@ def poll_device_token(device_code, client_id=None, client_secret=None):
             json={
                 "code": device_code,
                 "client_id": client_id,
-                "client_secret": client_secret,
+                **({"client_secret": client_secret} if client_secret else {}),
             },
             timeout=settings.REQUEST_TIMEOUT,
         )
@@ -329,11 +368,13 @@ def get_access_token(encrypted_refresh_token, redirect_uri=None):
 
     params = {
         "client_id": credentials.get("trakt", "client_id"),
-        "client_secret": credentials.get("trakt", "client_secret"),
         "refresh_token": decrypted_token,
         "grant_type": "refresh_token",
         "redirect_uri": redirect_uri or _refresh_redirect_uri(),
     }
+    # Apps made without a client secret (PKCE) refresh with the client ID alone.
+    if client_secret := default_client_secret():
+        params["client_secret"] = client_secret
 
     try:
         request = app.providers.services.api_request(
@@ -693,6 +734,48 @@ class TraktMetadataResolverMixin:
                 self._item_memo.popitem(last=False)
         return item
 
+    def _adopt_provider_tv(self, tmdb_id, title):
+        """Treat a show the user tracks on its TVDB Item as already existing.
+
+        ``existing_media`` is keyed by each row's own provider, so a
+        TVDB-preferring user's show looked untracked by its TMDB id. It was
+        queued again on the same TVDB Item (see ``_find_preferred_provider_item``)
+        and the save failed on the one-row-per-user-and-item constraint.
+        """
+        shows = self.existing_media[MediaTypes.TV.value][Sources.TMDB.value]
+        if (
+            tmdb_id in shows
+            or tmdb_id in self.provider_tv_checked
+            or getattr(self.user, "tv_metadata_source_default", "")
+            != Sources.TVDB.value
+            or not tvdb.enabled()
+        ):
+            return
+        self.provider_tv_checked.add(tmdb_id)
+
+        # The TVDB id comes from cached TMDB metadata, so load it first.
+        if self._get_metadata(MediaTypes.TV.value, tmdb_id, title) is None:
+            return
+        tvdb_id = tmdb.resolve_tvdb_id_for_tmdb_show(tmdb_id)
+        if not tvdb_id:
+            return
+        tv_obj = (
+            app.models.TV.objects.filter(
+                user=self.user,
+                item__source=Sources.TVDB.value,
+                item__media_id=str(tvdb_id),
+            )
+            .select_related("item")
+            .first()
+        )
+        if tv_obj is None:
+            return
+
+        shows[tmdb_id] = tv_obj
+        if self.mode == "overwrite":
+            self.to_delete[MediaTypes.TV.value][Sources.TMDB.value].add(tmdb_id)
+            self.to_delete[MediaTypes.TV.value][Sources.TVDB.value].add(str(tvdb_id))
+
     def _find_preferred_provider_item(
         self,
         media_type,
@@ -786,6 +869,9 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         # Track media IDs to delete in overwrite mode
         self.to_delete = defaultdict(lambda: defaultdict(set))
+
+        # TMDB ids already checked for a show tracked on a TVDB Item.
+        self.provider_tv_checked = set()
 
         # Track bulk creation lists for each media type
         self.bulk_media = defaultdict(list)
@@ -1234,6 +1320,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         tv_metadata = self._get_metadata(MediaTypes.TV.value, tmdb_id, show["title"])
         if not tv_metadata:
             return
+        self._adopt_provider_tv(tmdb_id, show["title"])
 
         # Get Season metadata
         season_metadata = self._get_metadata(
@@ -1885,6 +1972,11 @@ class TraktImporter(TraktMetadataResolverMixin):
         parent_type = (
             MediaTypes.TV.value if media_type == MediaTypes.SEASON.value else media_type
         )
+        if (
+            parent_type == MediaTypes.TV.value
+            and tmdb_id not in self.deleted_media[parent_type][Sources.TMDB.value]
+        ):
+            self._adopt_provider_tv(tmdb_id, media_data["title"])
         should_process = helpers.should_process_media(
             self.existing_media,
             self.to_delete,

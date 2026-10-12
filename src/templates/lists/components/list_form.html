@@ -5,7 +5,7 @@
 
 {# djlint:off #}
 <div x-show="showModal" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @mousedown.self="showModal = false">
-  <div class="bg-[var(--color-surface)] p-6 rounded-lg w-152 max-h-[90vh] overflow-y-auto"
+  <div class="bg-[var(--color-surface)] p-6 rounded-lg w-152 max-h-[90dvh] overflow-y-auto"
     x-data="{
       isPublic: {{ form.instance.is_public|yesno:'true,false' }},
       includeNotes: {{ form.instance.include_notes|yesno:'true,false' }},

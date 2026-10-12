@@ -163,8 +163,8 @@ class LibraryQueryExecutor:
         )
 
     def _collection_only_q(self, ctx) -> Q:
-        """Return collected items of this type that have no tracker row."""
-        from app.models.discovery import CollectionEntry
+        """Return collected or tagged items of this type that have no tracker row."""
+        from app.models.discovery import CollectionEntry, ItemTag
 
         collected = Q(
             pk__in=CollectionEntry.objects.filter(user=self.user).values("item_id"),
@@ -174,6 +174,13 @@ class LibraryQueryExecutor:
                 media_type__in=(MediaTypes.TV.value, MediaTypes.ANIME.value),
                 pk__in=filter_registry.shows_with_collected_episodes(self.user),
             )
+        values = self.query.filters
+        if values.tags and values.tag_mode != "not":
+            # A tag can sit on an item with no tracker and no collection entry;
+            # asking for the tag must still find it (#1351).
+            collected |= Q(
+                pk__in=ItemTag.objects.filter(tag__user=self.user).values("item_id"),
+            ) & ~Q(media_type=MediaTypes.EPISODE.value)
         untracked = ~filter_registry.any_row(ctx)
         return self._type_q(ctx) & collected & untracked
 

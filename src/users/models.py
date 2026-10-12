@@ -369,6 +369,7 @@ class OnboardingStepChoices(models.TextChoices):
     """Step to resume the first-run setup wizard on."""
 
     MEDIA_TYPES = "media_types", _("Choose Media Types")
+    METADATA = "metadata", _("Add Metadata Keys")
     SERVICES = "services", _("Choose Services")
     SERVICES_SUMMARY = "services_summary", _("Review Services")
     SERVICE_SETUP = "service_setup", _("Connect Services")

@@ -1,11 +1,31 @@
+import importlib
 import json
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from app.models import Item, ItemTag, MediaTypes, Movie, Sources, Status, Tag
+from app.models import (
+    TV,
+    Album,
+    Artist,
+    CollectionEntry,
+    Game,
+    Item,
+    ItemTag,
+    MediaTypes,
+    Movie,
+    Music,
+    PodcastEpisode,
+    PodcastShow,
+    PodcastShowTracker,
+    Sources,
+    Status,
+    Tag,
+    Track,
+)
 
 
 class TagsModalViewTest(TestCase):
@@ -712,3 +732,320 @@ class TagBulkToggleViewTest(TestCase):
             {"tag_name": "Favorite", "action": "add", "item_ids": []},
         )
         self.assertEqual(response.status_code, 400)
+
+
+class TagLinkShowsEveryTaggedEntryTest(TestCase):
+    """The Tags page link must list the entries its count includes (#1351)."""
+
+    def setUp(self):
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        self.tag = Tag.objects.create(user=self.user, name="Will Not Play")
+
+    def _item(self, media_type, title, media_id=None, **extra):
+        item = Item.objects.create(
+            media_id=media_id or title,
+            source=extra.pop("source", Sources.MANUAL.value),
+            media_type=media_type,
+            title=title,
+            image="http://example.com/image.jpg",
+            **extra,
+        )
+        ItemTag.objects.create(tag=self.tag, item=item)
+        return item
+
+    def _followed(self, media_type):
+        """Click the tag's link for ``media_type`` on the Tags page."""
+        response = self.client.get(reverse("tag_index"))
+        tag = next(t for t in response.context["tags"] if t.id == self.tag.id)
+        entry = next(e for e in tag.type_breakdown if e["media_type"] == media_type)
+        return entry, self.client.get(entry["url"])
+
+    def test_link_lists_games_in_every_status(self):
+        for index, status in enumerate(
+            [Status.PLANNING, Status.COMPLETED, Status.DROPPED],
+        ):
+            item = self._item(MediaTypes.GAME.value, f"Game {index}")
+            Game.objects.create(item=item, user=self.user, status=status.value)
+        self.user.update_preference("game_status", Status.IN_PROGRESS.value)
+
+        entry, response = self._followed(MediaTypes.GAME.value)
+
+        self.assertEqual(entry["count"], 3)
+        for index in range(3):
+            self.assertContains(response, f"Game {index}")
+
+    def test_link_lists_rating_only_games(self):
+        """A row with no status (an imported rating) sits outside every status."""
+        item = self._item(MediaTypes.GAME.value, "Rated Only Game")
+        Game.objects.create(item=item, user=self.user, status=None, score=7)
+
+        _entry, response = self._followed(MediaTypes.GAME.value)
+
+        self.assertContains(response, "Rated Only Game")
+
+    def test_link_lists_tagged_games_nobody_tracks(self):
+        self._item(MediaTypes.GAME.value, "Tagged Only Game")
+
+        _entry, response = self._followed(MediaTypes.GAME.value)
+
+        self.assertContains(response, "Tagged Only Game")
+
+    def test_link_lists_collected_games_without_a_tracker(self):
+        item = self._item(MediaTypes.GAME.value, "Collected Game")
+        CollectionEntry.objects.create(user=self.user, item=item)
+
+        _entry, response = self._followed(MediaTypes.GAME.value)
+
+        self.assertContains(response, "Collected Game")
+
+    def test_tagged_but_untracked_items_do_not_leak_into_plain_lists(self):
+        """Only asking for the tag brings in items nobody tracks."""
+        self._item(MediaTypes.GAME.value, "Tagged Only Game")
+
+        response = self.client.get(reverse("medialist", args=["game"]))
+
+        self.assertNotContains(response, "Tagged Only Game")
+
+    def test_untracked_tag_match_ignores_other_users_tags(self):
+        other = get_user_model().objects.create_user(username="o", password="p")
+        theirs = Tag.objects.create(user=other, name="Will Not Play")
+        item = Item.objects.create(
+            media_id="x",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.GAME.value,
+            title="Their Game",
+            image="http://example.com/image.jpg",
+        )
+        ItemTag.objects.create(tag=theirs, item=item)
+
+        response = self.client.get(
+            reverse("medialist", args=["game"]),
+            {"tag": "Will Not Play", "status": ["no_status"]},
+        )
+
+        self.assertNotContains(response, "Their Game")
+
+    def test_tagged_but_untracked_items_obey_not_mode(self):
+        self._item(MediaTypes.GAME.value, "Tagged Only Game")
+
+        response = self.client.get(
+            reverse("medialist", args=["game"]),
+            {"tag": "Will Not Play", "tag_mode": "not", "status": ["no_status"]},
+        )
+
+        self.assertNotContains(response, "Tagged Only Game")
+
+    def test_link_lists_tagged_only_items_in_separate_entries_mode(self):
+        """The Python-built path (one card per entry) finds them too."""
+        self._item(MediaTypes.GAME.value, "Tagged Only Game")
+        self.user.game_show_each_play = True
+        self.user.save(update_fields=["game_show_each_play"])
+
+        _entry, response = self._followed(MediaTypes.GAME.value)
+
+        self.assertContains(response, "Tagged Only Game")
+
+    def test_grouped_anime_links_to_the_anime_list(self):
+        item = self._item(
+            MediaTypes.TV.value,
+            "Grouped Anime",
+            source=Sources.TMDB.value,
+            library_media_type=MediaTypes.ANIME.value,
+        )
+        TV.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+
+        entry, response = self._followed(MediaTypes.ANIME.value)
+
+        self.assertEqual(entry["count"], 1)
+        self.assertContains(response, "Grouped Anime")
+
+    def test_grouped_anime_links_to_the_tv_list_when_that_is_its_library(self):
+        item = self._item(
+            MediaTypes.TV.value,
+            "Grouped Anime",
+            source=Sources.TMDB.value,
+            library_media_type=MediaTypes.ANIME.value,
+        )
+        TV.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+        self.user.anime_library_mode = MediaTypes.TV.value
+        self.user.save(update_fields=["anime_library_mode"])
+
+        _entry, response = self._followed(MediaTypes.TV.value)
+
+        self.assertContains(response, "Grouped Anime")
+
+    def test_music_link_opens_the_tracks_view(self):
+        """Tags sit on tracks; the default artists view never lists them."""
+        artist = Artist.objects.create(name="Band")
+        album = Album.objects.create(title="Record", artist=artist)
+        track = Track.objects.create(album=album, title="Song")
+        item = self._item(
+            MediaTypes.MUSIC.value,
+            "Tagged Song",
+            source=Sources.MUSICBRAINZ.value,
+        )
+        Music.objects.create(
+            item=item,
+            user=self.user,
+            artist=artist,
+            album=album,
+            track=track,
+            status=Status.COMPLETED.value,
+        )
+
+        entry, response = self._followed(MediaTypes.MUSIC.value)
+
+        self.assertIn("subview=tracks", entry["url"])
+        self.assertContains(response, "Tagged Song")
+
+    def test_podcast_list_honours_the_tag_filter(self):
+        tagged = PodcastShow.objects.create(
+            podcast_uuid="tagged-show",
+            source=Sources.POCKETCASTS.value,
+            title="Tagged Show",
+        )
+        other = PodcastShow.objects.create(
+            podcast_uuid="other-show",
+            source=Sources.POCKETCASTS.value,
+            title="Other Show",
+        )
+        for show in (tagged, other):
+            PodcastShowTracker.objects.create(
+                user=self.user,
+                show=show,
+                status=Status.IN_PROGRESS.value,
+            )
+        self._item(
+            MediaTypes.PODCAST.value,
+            "Tagged Show",
+            media_id="tagged-show",
+            source=Sources.POCKETCASTS.value,
+        )
+
+        _entry, response = self._followed(MediaTypes.PODCAST.value)
+        self.assertContains(response, "Tagged Show")
+        self.assertNotContains(response, "Other Show")
+
+        response = self.client.get(
+            reverse("medialist", args=["podcast"]),
+            {"tag": "Will Not Play", "tag_mode": "not"},
+        )
+        self.assertNotContains(response, "Tagged Show")
+        self.assertContains(response, "Other Show")
+
+    def test_podcast_list_finds_shows_by_a_tagged_episode(self):
+        """An episode's tag counts for its show."""
+        tagged = PodcastShow.objects.create(
+            podcast_uuid="tagged-show",
+            source=Sources.POCKETCASTS.value,
+            title="Show With Tagged Episode",
+        )
+        other = PodcastShow.objects.create(
+            podcast_uuid="other-show",
+            source=Sources.POCKETCASTS.value,
+            title="Show Without Tags",
+        )
+        for show in (tagged, other):
+            PodcastShowTracker.objects.create(
+                user=self.user,
+                show=show,
+                status=Status.IN_PROGRESS.value,
+            )
+        PodcastEpisode.objects.create(
+            show=tagged,
+            episode_uuid="tagged-episode",
+            title="Episode",
+        )
+        self._item(
+            MediaTypes.PODCAST.value,
+            "Episode",
+            media_id="tagged-episode",
+            source=Sources.POCKETCASTS.value,
+        )
+
+        _entry, response = self._followed(MediaTypes.PODCAST.value)
+        self.assertContains(response, "Show With Tagged Episode")
+        self.assertNotContains(response, "Show Without Tags")
+
+        response = self.client.get(
+            reverse("medialist", args=["podcast"]),
+            {"tag": "Will Not Play", "tag_mode": "not"},
+        )
+        self.assertNotContains(response, "Show With Tagged Episode")
+        self.assertContains(response, "Show Without Tags")
+
+
+class NormalizeTagNamesMigrationTest(TestCase):
+    """Names stored with stray whitespace never matched the tag filter (#1351)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="test", password="12345"
+        )
+        self.migration = importlib.import_module(
+            "app.migrations.0200_normalize_tag_names",
+        )
+
+    def _tag(self, name):
+        tag = Tag.objects.create(user=self.user, name="placeholder")
+        Tag.objects.filter(pk=tag.pk).update(name=name)
+        return tag
+
+    def _item(self, media_id):
+        return Item.objects.create(
+            media_id=media_id,
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.GAME.value,
+            title=media_id,
+            image="http://example.com/image.jpg",
+        )
+
+    def test_trailing_space_is_removed(self):
+        tag = self._tag("Will Not Play ")
+
+        self.migration.normalize_tag_names(django_apps, None)
+
+        tag.refresh_from_db()
+        self.assertEqual(tag.name, "Will Not Play")
+
+    def test_tags_that_become_equal_are_merged(self):
+        keeper = self._tag("Backlog")
+        stray = self._tag("backlog ")
+        shared, only_stray = self._item("a"), self._item("b")
+        ItemTag.objects.create(tag=keeper, item=shared)
+        ItemTag.objects.create(tag=stray, item=shared)
+        ItemTag.objects.create(tag=stray, item=only_stray)
+
+        self.migration.normalize_tag_names(django_apps, None)
+
+        self.assertFalse(Tag.objects.filter(pk=stray.pk).exists())
+        self.assertCountEqual(
+            ItemTag.objects.filter(tag=keeper).values_list("item_id", flat=True),
+            [shared.id, only_stray.id],
+        )
+
+    def test_two_strays_of_one_name_merge_into_one_tag(self):
+        self._tag(" Later")
+        self._tag("Later ")
+
+        self.migration.normalize_tag_names(django_apps, None)
+
+        self.assertEqual(list(Tag.objects.values_list("name", flat=True)), ["Later"])
+
+    def test_tagged_list_finds_the_entry_after_normalizing(self):
+        tag = self._tag("Will Not Play ")
+        item = self._item("Stray Game")
+        Game.objects.create(item=item, user=self.user, status=Status.PLANNING.value)
+        ItemTag.objects.create(tag=tag, item=item)
+        self.client.login(username="test", password="12345")
+        url = reverse("medialist", args=["game"])
+
+        self.assertNotContains(
+            self.client.get(url, {"tag": "Will Not Play "}),
+            "Stray Game",
+        )
+        self.migration.normalize_tag_names(django_apps, None)
+
+        self.assertContains(self.client.get(url, {"tag": "Will Not Play"}), "Stray Game")

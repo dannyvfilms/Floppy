@@ -93,9 +93,24 @@ def enabled(user=None):
     return credentials.is_configured("igdb", user)
 
 
+def describe_credentials(user=None):
+    """Return where the Twitch ID and secret come from, never their values."""
+    scoped = user or credentials.active_user()
+    return (
+        f"user={getattr(scoped, 'pk', None)} "
+        f"id_from={credentials.source_of('igdb', 'client_id', user)} "
+        f"secret_from={credentials.source_of('igdb', 'client_secret', user)}"
+    )
+
+
 def get_access_token(user=None):
     """Return the access token for the IGDB API."""
     if not enabled(user):
+        logger.warning(
+            "%s is not configured for this request (%s)",
+            Sources.IGDB.label,
+            describe_credentials(user),
+        )
         raise services.ProviderNotConfiguredError(
             Sources.IGDB.value,
             "IGDB is not configured. Add your Twitch application's client "
@@ -121,6 +136,12 @@ def get_access_token(user=None):
                 params=json,
             )
         except requests.exceptions.HTTPError as error:
+            logger.warning(
+                "%s token request rejected (HTTP %s) using %s",
+                Sources.IGDB.label,
+                error.response.status_code,
+                describe_credentials(user),
+            )
             handle_error(error)
 
         access_token = response["access_token"]

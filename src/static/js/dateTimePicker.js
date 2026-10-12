@@ -636,10 +636,17 @@ if (!window.__floppyDateTimePickerBound) {
 
     clear() {
       if (!this.value) {
+        // None on an empty End date still counts: the user wants no date.
+        if (this.fieldName === "end_date") {
+          window.trackModalMarkEndCleared?.(this.$refs.hiddenInput.closest("form"));
+        }
         this.closePicker();
         return;
       }
 
+      if (this.fieldName === "end_date") {
+        window.trackModalMarkEndCleared?.(this.$refs.hiddenInput.closest("form"));
+      }
       this.value = "";
       this.$refs.hiddenInput.value = "";
       this.syncFromValue();

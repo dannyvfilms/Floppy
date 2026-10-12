@@ -5,13 +5,36 @@
 # Plex counterpart survived as two rows depended on which one was imported
 # first. See issue #642.
 import logging
+from bisect import bisect_left, insort
 from datetime import timedelta, timezone
-
-from sortedcontainers import SortedList
 
 import app.models
 
 logger = logging.getLogger(__name__)
+
+
+class _PlainSortedList(list):
+    """Slower stand-in for sortedcontainers.SortedList, with the calls used here."""
+
+    def add(self, value):
+        """Insert value, keeping the list sorted."""
+        insort(self, value)
+
+    def bisect_left(self, value):
+        """Return the leftmost index where value could be inserted."""
+        return bisect_left(self, value)
+
+
+try:
+    from sortedcontainers import SortedList
+except ModuleNotFoundError:
+    # A source install whose environment missed `uv sync` after an update (#1522)
+    # would otherwise fail to boot over a speed-up. Same answers, slower inserts.
+    logger.warning(
+        "sortedcontainers is not installed; using a slower fallback. "
+        "Run `uv sync --locked --no-default-groups` in the environment Floppy runs from.",
+    )
+    SortedList = _PlainSortedList
 
 # Fallback window used when the item's runtime is unknown. Matches the flat
 # window the Plex importer used before this module existed.

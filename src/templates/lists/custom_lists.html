@@ -239,7 +239,7 @@
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0">
-      <div class="bg-[var(--color-surface)] rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+      <div class="bg-[var(--color-surface)] rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90dvh] overflow-y-auto"
            @click.stop
            x-transition:enter="transition ease-out duration-200"
            x-transition:enter-start="opacity-0 transform scale-95"
@@ -319,7 +319,7 @@
 
           <div class="space-y-4" x-show="traktStep === 2" x-cloak>
             <p class="text-[var(--color-text-secondary)]">
-              {% translate "Paste your Trakt client ID and client secret to store them securely for this account." %}
+              {% translate "Paste your Trakt client ID, plus the client secret if your app has one." %}
             </p>
 
             <div>
@@ -361,8 +361,7 @@
                 <input type="password"
                        name="client_secret"
                        class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                       placeholder="{% translate "Trakt Client Secret" %}"
-                       required>
+                       placeholder="{% translate "Trakt Client Secret (optional)" %}">
               </div>
 
               <div class="flex gap-3 pt-2">
@@ -421,7 +420,7 @@
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0">
-      <div class="bg-[var(--color-surface)] rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+      <div class="bg-[var(--color-surface)] rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90dvh] overflow-y-auto"
            @click.stop
            x-transition:enter="transition ease-out duration-200"
            x-transition:enter-start="opacity-0 transform scale-95"

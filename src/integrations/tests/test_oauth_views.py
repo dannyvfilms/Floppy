@@ -250,6 +250,68 @@ class OAuthStateViewTests(TestCase):
         self.assertNotIn(state_token, "\n".join(logs.output))
 
     @override_settings(URLS=["https://floppy.example.com"])
+    def test_trakt_without_a_secret_authorizes_with_pkce(self):
+        """An app with no client secret logs in with a PKCE challenge (#1523)."""
+        with (
+            patch(
+                "integrations.views.credentials.get",
+                side_effect=lambda _slug, field: {"client_id": "client"}.get(field, ""),
+            ),
+            patch("integrations.views.trakt.default_client_secret", return_value=""),
+        ):
+            response = self.client.post(
+                reverse("trakt_oauth"),
+                data={"mode": "new", "frequency": "once", "time": "00:00"},
+            )
+
+        query = parse_qs(urlparse(response["Location"]).query)
+        state_token = query["state"][0]
+        verifier = self.client.session[state_token]["code_verifier"]
+        digest = hashlib.sha256(verifier.encode()).digest()
+        self.assertEqual(query["code_challenge_method"], ["S256"])
+        self.assertEqual(
+            query["code_challenge"],
+            [base64.urlsafe_b64encode(digest).decode().rstrip("=")],
+        )
+
+        callback_url = self._callback_url("import_trakt_private", state_token)
+        with (
+            patch(
+                "integrations.views.trakt.handle_oauth_callback",
+                return_value={
+                    "refresh_token": "trakt-refresh",
+                    "redirect_uri": "https://floppy.example.com/import/trakt/private",
+                    "username": "trakt-user",
+                },
+            ) as handle_callback,
+            patch("integrations.views.tasks.import_trakt.delay"),
+        ):
+            self.client.get(callback_url)
+
+        self.assertEqual(handle_callback.call_args.kwargs["code_verifier"], verifier)
+
+    @override_settings(URLS=["https://floppy.example.com"])
+    def test_trakt_with_a_secret_does_not_use_pkce(self):
+        with (
+            patch(
+                "integrations.views.credentials.get",
+                side_effect=lambda _slug, field: {"client_id": "client"}.get(field, ""),
+            ),
+            patch(
+                "integrations.views.trakt.default_client_secret",
+                return_value="secret",
+            ),
+        ):
+            response = self.client.post(
+                reverse("trakt_oauth"),
+                data={"mode": "new", "frequency": "once", "time": "00:00"},
+            )
+
+        query = parse_qs(urlparse(response["Location"]).query)
+        self.assertNotIn("code_challenge", query)
+        self.assertNotIn("code_verifier", self.client.session[query["state"][0]])
+
+    @override_settings(URLS=["https://floppy.example.com"])
     def test_trakt_reconnect_refreshes_the_existing_schedule(self):
         """A reconnect with the same settings must replace the schedule's dead token (#1404)."""
         callback_uri = "https://floppy.example.com/import/trakt/private"

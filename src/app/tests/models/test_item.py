@@ -1,8 +1,9 @@
 from pathlib import Path
+from unittest.mock import patch
 
 from django.db import connection
 from django.test import TestCase
-from django.test.utils import CaptureQueriesContext
+from django.test.utils import CaptureQueriesContext, override_settings
 
 from app.models import (
     Item,
@@ -80,3 +81,32 @@ class ItemModel(TestCase):
             episode_number=2,
         )
         self.assertEqual(str(item), "Test Show S1E2")
+
+
+class FetchReleasesBucketTests(TestCase):
+    """fetch_releases must cope with a show stored in two library buckets (#1530)."""
+
+    @override_settings(TESTING=False)
+    @patch("events.tasks.reload_calendar")
+    def test_season_reloads_oldest_tv_row_when_show_is_in_two_buckets(self, reload):
+        identity = {
+            "media_id": "1396",
+            "source": Sources.TMDB.value,
+            "media_type": MediaTypes.TV.value,
+            "title": "Breaking Bad",
+            "image": "http://example.com/bb.jpg",
+        }
+        first = Item.objects.create(library_media_type=MediaTypes.TV.value, **identity)
+        Item.objects.create(library_media_type=MediaTypes.SEASON.value, **identity)
+        season = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Breaking Bad",
+            image="http://example.com/s1.jpg",
+            season_number=1,
+        )
+
+        season.fetch_releases(delay=False)
+
+        reload.assert_called_once_with(item_ids=[first.id])

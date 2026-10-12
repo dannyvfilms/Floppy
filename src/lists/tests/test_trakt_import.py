@@ -1,4 +1,7 @@
+import base64
+import hashlib
 from unittest.mock import call, patch
+from urllib.parse import parse_qs, urlparse
 
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -293,3 +296,78 @@ class TraktListImportFailureTests(TestCase):
             )
         )
         self.assertEqual(remaining, {"watchlist"})
+
+
+@override_settings(URLS=["https://floppy.example.com"])
+class TraktListsWithoutClientSecretTests(TestCase):
+    """A Trakt app made without a client secret connects through PKCE (#1523)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="trakt-pkce-user",
+            password="pkce-password",
+        )
+        self.client.force_login(self.user)
+
+    def _save_credentials(self, **fields):
+        return self.client.post(reverse("trakt_lists_credentials"), data=fields)
+
+    def test_credentials_save_without_a_secret(self):
+        response = self._save_credentials(client_id="client-id", client_secret="")
+
+        self.assertRedirects(response, reverse("lists"), fetch_redirect_response=False)
+        account = TraktAccount.objects.get(user=self.user)
+        self.assertEqual(import_helpers.decrypt(account.client_id), "client-id")
+        self.assertIsNone(account.client_secret)
+        self.assertTrue(account.is_configured)
+
+    def test_credentials_still_need_a_client_id(self):
+        self._save_credentials(client_id="", client_secret="secret")
+
+        self.assertFalse(TraktAccount.objects.filter(user=self.user).exists())
+
+    def test_authorize_sends_a_pkce_challenge_and_keeps_the_verifier(self):
+        self._save_credentials(client_id="client-id", client_secret="")
+
+        response = self.client.post(reverse("trakt_lists_oauth"), secure=True)
+
+        query = parse_qs(urlparse(response["Location"]).query)
+        verifier = self.client.session[query["state"][0]]["code_verifier"]
+        digest = hashlib.sha256(verifier.encode()).digest()
+        self.assertEqual(query["code_challenge_method"], ["S256"])
+        self.assertEqual(
+            query["code_challenge"],
+            [base64.urlsafe_b64encode(digest).decode().rstrip("=")],
+        )
+
+    def test_authorize_with_a_secret_skips_pkce(self):
+        self._save_credentials(client_id="client-id", client_secret="secret")
+
+        response = self.client.post(reverse("trakt_lists_oauth"), secure=True)
+
+        query = parse_qs(urlparse(response["Location"]).query)
+        self.assertNotIn("code_challenge", query)
+        self.assertNotIn("code_verifier", self.client.session[query["state"][0]])
+
+    def test_callback_exchanges_the_code_with_the_verifier_and_no_secret(self):
+        self._save_credentials(client_id="client-id", client_secret="")
+        response = self.client.post(reverse("trakt_lists_oauth"), secure=True)
+        state_token = parse_qs(urlparse(response["Location"]).query)["state"][0]
+        verifier = self.client.session[state_token]["code_verifier"]
+
+        with (
+            patch(
+                "lists.views_trakt.trakt_imports.handle_oauth_callback",
+                return_value={"access_token": "access"},
+            ) as handle_callback,
+            patch("lists.views_trakt.list_tasks.import_trakt_lists_task.delay"),
+        ):
+            self.client.get(
+                reverse("trakt_lists_callback"),
+                {"code": "abc", "state": state_token},
+                secure=True,
+            )
+
+        kwargs = handle_callback.call_args.kwargs
+        self.assertEqual(kwargs["code_verifier"], verifier)
+        self.assertEqual(kwargs["client_secret"], "")

@@ -1024,7 +1024,8 @@ def _aggregate_statistics_from_days(
     # bucket, so the day-builder pipeline above never sees them. Pick them up
     # here directly so undated items (e.g. Planning-status items that haven't
     # been started, or imports missing dates) still count towards status,
-    # score and media-count aggregates regardless of the selected date range.
+    # score and media-count aggregates. They belong to All Time only: a date
+    # range holds just the activity that happened inside it (#1521).
     # TV is excluded here: it (and Season) override start_date/end_date as
     # computed properties derived from Episode rows, not real DB columns, so
     # they can't be filtered on directly and raise FieldError if added back.
@@ -1040,7 +1041,7 @@ def _aggregate_statistics_from_days(
         MediaTypes.COMIC.value,
     ]
     for media_type in undated_models:
-        if media_type not in active_types:
+        if not is_all_time_query or media_type not in active_types:
             continue
         model = apps.get_model("app", media_type)
         qs = model.objects.filter(
