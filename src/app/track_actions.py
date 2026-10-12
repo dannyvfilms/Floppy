@@ -7,7 +7,7 @@ needs no template change.
 
 from django.utils.translation import gettext as _
 
-from app import checkin
+from app import checkin, checkin_session
 from app.models import MediaTypes, Status
 
 # Every play is its own entry, so adding one is always the forward action.
@@ -33,6 +33,8 @@ def track_actions(media_type, status, checkin_phase=None):
     """
     edit = {"key": "edit", "label": _("Edit"), "icon": "edit"}
     add_entry = {"key": "create", "label": _("Add new entry"), "icon": "plus"}
+    if checkin_phase is not None and checkin_phase.get("kind") == "session":
+        return _session_actions(media_type, checkin_phase, edit, add_entry)
     if checkin_phase is not None:
         code = checkin_phase.get("code", "")
         start = {
@@ -72,3 +74,21 @@ def track_actions(media_type, status, checkin_phase=None):
     ):
         return [add_entry, edit]
     return [edit]
+
+
+def _session_actions(media_type, checkin_phase, edit, add_entry):
+    """Return the actions for a game or board game, which are checked in as a session."""
+    if checkin_phase["phase"] == checkin_session.PHASE_SESSION:
+        return [
+            {"key": "stop", "label": _("Stop"), "icon": "stop"},
+            {"key": "cancel", "label": _("Cancel check-in"), "icon": "x"},
+            edit,
+        ]
+    start = {"key": "start", "label": _("Check-in"), "icon": "play"}
+    if media_type == MediaTypes.BOARDGAME.value:
+        return [
+            {"key": "log_play", "label": _("Log a play"), "icon": "plus"},
+            start,
+            edit,
+        ]
+    return [add_entry, start, edit]

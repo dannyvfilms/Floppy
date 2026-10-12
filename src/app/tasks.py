@@ -35,6 +35,14 @@ def settle_checkin(user_id):
     checkin.settle(user_id)
 
 
+@shared_task(name="Settle check-in session", ignore_result=True)
+def settle_checkin_session(user_id):
+    """Drop a game or board game session left running past its time limit."""
+    from app import checkin_session
+
+    checkin_session.settle(user_id)
+
+
 @shared_task(name="Cleanup task results", ignore_result=True)
 def cleanup_task_results(batch_size=5000):
     """Remove expired and abandoned durable task-status rows in small batches.

@@ -470,6 +470,10 @@ def phase(user, instance):
     Check-in or Resume would start.
     """
     item = instance.item
+    from app import checkin_session
+
+    if checkin_session.supports(item.media_type):
+        return checkin_session.phase(user, instance)
     if not supports(item.media_type, item.source):
         return None
 
