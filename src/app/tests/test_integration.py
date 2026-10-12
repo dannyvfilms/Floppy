@@ -1239,7 +1239,9 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         )
 
         expect(self.page.get_by_role("main")).to_contain_text("Wordle")
-        self.page.get_by_role("button", name=re.compile("^Edit entry")).click()
+        # A game offers Add new entry, Check-in and Edit, so Edit is in the menu.
+        self.page.get_by_role("button", name="More tracking actions").click()
+        self.page.get_by_role("button", name="Edit", exact=True).click()
 
         modal = self.page.locator("[data-track-modal-root]:visible").first
         expect(modal).to_be_visible()
