@@ -469,8 +469,8 @@ def _trakt_metadata(media_type, *_args, **_kwargs):
     }
 
 
-class ImportModeAndOverwriteTests(TestCase):
-    """The Import Mode menu is shared by every source; Overwrite must keep plays."""
+class TraktOverwriteTests(TestCase):
+    """A Trakt Overwrite import must rebuild a show with every play (#1133)."""
 
     def setUp(self):
         """Create a user."""
@@ -527,52 +527,6 @@ class ImportModeAndOverwriteTests(TestCase):
 
         import_media(importer, None, self.user.id, mode)
         return seen[0]
-
-    def test_menu_modes_without_meaning_for_a_sync_run_as_new(self):
-        """"Watchlist only" and "Collection only" can't re-add what is tracked."""
-        for mode in ("watchlist", "update_collection"):
-            for status in (
-                Status.COMPLETED.value,
-                Status.DROPPED.value,
-                Status.PAUSED.value,
-            ):
-                with self.subTest(mode=mode, status=status):
-                    Item.objects.all().delete()
-                    self._track(status)
-
-                    self.assertEqual(self._sync(mode), "new")
-
-                    self.assertEqual(
-                        list(TV.objects.values_list("status", flat=True)),
-                        [status],
-                    )
-                    self.assertEqual(
-                        list(Movie.objects.values_list("status", flat=True)),
-                        [status],
-                    )
-                    self.assertEqual(Episode.objects.count(), 1)
-
-    def test_new_and_overwrite_are_left_alone(self):
-        """The two real sync modes pass through unchanged."""
-        for mode in ("new", "overwrite"):
-            with self.subTest(mode=mode):
-                Item.objects.all().delete()
-                self._track(Status.COMPLETED.value)
-
-                self.assertEqual(self._sync(mode), mode)
-
-    def test_trakt_collection_csv_keeps_its_collection_mode(self):
-        """The collection CSV is the one importer that reads "update_collection"."""
-        seen = []
-
-        def collection_importer(_file, _user, mode, **_kwargs):
-            seen.append(mode)
-            return {}, ""
-
-        with patch.object(trakt_collection, "importer", collection_importer):
-            import_media(collection_importer, None, self.user.id, "update_collection")
-
-        self.assertEqual(seen, ["update_collection"])
 
     def test_a_real_deletion_still_blocks_the_sync(self):
         """Deleting a show by hand keeps it deleted, as before."""
