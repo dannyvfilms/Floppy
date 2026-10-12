@@ -70,6 +70,12 @@
             {% include "app/components/media_card_status_chip.html" with media=media current_sort_value=current_sort_value recommend_mode=recommend_mode show_next_event_chip=show_next_event_chip Status=Status only %}
           {% endif %}
 
+          {% if credit.watched_person_runtime_display %}
+            <span class="absolute top-2 right-2 z-10 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">
+              {{ credit.watched_person_runtime_display }}
+            </span>
+          {% endif %}
+
           {% if resolved_media_type == MediaTypes.SEASON.value and item.provider_metadata_status == "local_only_missing_season" %}
             <div class="absolute bottom-2 left-2 rounded-md border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-100 shadow-md">
               {% translate "Local only" %}
@@ -637,6 +643,8 @@
               {% endif %}
             {% endif %}
           {% endwith %}
+
+          {% if credit %}{% card_lines 'person' credit %}{% endif %}
 
           {# Aggregated chips already cover repeats; no extra text block. #}
         </div>
