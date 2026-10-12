@@ -1,35 +1,35 @@
 {% load i18n %}
 {% load app_tags %}
 {# Split button for a tracked item: main action, then nothing, one icon-only segment, or a menu. #}
-{% media_track_actions media_type current_instance.status as actions %}
-{% with main=actions.0 rest=actions|slice:"1:" %}
+{% media_track_actions media_type current_instance as track %}
+{% with main=track.actions.0 rest=track.actions|slice:"1:" %}
   {% with status_label=current_instance.status|media_status_readable %}
     <div x-data="{ editTrackOpen: false, createTrackOpen: false, trackMenuOpen: false }"
          class="relative inline-flex w-full md:w-auto"
          @click.outside="trackMenuOpen = false"
-         @keydown.escape.window="trackMenuOpen = false">
+         @keydown.escape.window="trackMenuOpen = false"
+         {% if track.reload_ms %}x-init="setTimeout(() => { if (!editTrackOpen && !createTrackOpen) location.reload() }, {{ track.reload_ms }})"{% endif %}>
       <div class="inline-flex w-full overflow-hidden rounded-xl shadow-sm md:w-auto">
         {% with action=main %}
           <button type="button"
                   class="inline-flex flex-1 items-center justify-center gap-2 whitespace-nowrap bg-indigo-600 px-5 py-3 text-white transition duration-300 hover:bg-indigo-700 cursor-pointer md:flex-none {% if rest %}border-r border-indigo-500{% endif %}"
                   {% include "app/components/detail_track_action_attrs.html" %}>
-            {% if action.icon == "plus" %}
-              {% include "app/icons/plus.svg" with classes="w-5 h-5 shrink-0" %}
-              <span class="font-medium">{{ action.label }}</span>
-            {% else %}
-              {% include "app/icons/edit.svg" with classes="w-5 h-5 shrink-0" %}
-              <span class="font-medium">{{ status_label }}</span>
-            {% endif %}
+            {% with icon_path="app/icons/"|add:action.icon|add:".svg" %}
+              {% include icon_path with classes="w-5 h-5 shrink-0" %}
+            {% endwith %}
+            <span class="font-medium">{% if action.key == "edit" %}{{ status_label }}{% else %}{{ action.label }}{% endif %}</span>
           </button>
         {% endwith %}
         {% if rest|length == 1 %}
           {% with action=rest.0 %}
             <button type="button"
                     class="inline-flex shrink-0 items-center bg-indigo-600 px-3 py-3 text-white transition duration-300 hover:bg-indigo-700 cursor-pointer"
-                    title="{% blocktranslate %}Edit entry, {{ status_label }}{% endblocktranslate %}"
-                    aria-label="{% blocktranslate %}Edit entry, {{ status_label }}{% endblocktranslate %}"
+                    title="{% if action.key == "edit" %}{% blocktranslate %}Edit entry, {{ status_label }}{% endblocktranslate %}{% else %}{{ action.label }}{% endif %}"
+                    aria-label="{% if action.key == "edit" %}{% blocktranslate %}Edit entry, {{ status_label }}{% endblocktranslate %}{% else %}{{ action.label }}{% endif %}"
                     {% include "app/components/detail_track_action_attrs.html" %}>
-              {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
+              {% with icon_path="app/icons/"|add:action.icon|add:".svg" %}
+                {% include icon_path with classes="w-4 h-4" %}
+              {% endwith %}
             </button>
           {% endwith %}
         {% elif rest %}

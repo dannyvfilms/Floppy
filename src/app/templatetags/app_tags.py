@@ -18,7 +18,7 @@ from django.utils.translation import (
 from django.utils.translation import gettext as _
 from unidecode import unidecode
 
-from app import card_surfaces, config, helpers, image_cache, track_actions
+from app import card_surfaces, checkin, config, helpers, image_cache, track_actions
 from app.models import Item, MediaTypes, Sources, Status
 from app.providers import tmdb
 from app.services import metadata_resolution
@@ -2143,7 +2143,18 @@ def media_card(context, surface, **values):
     return card_surfaces.card_context(context.flatten(), surface, values)
 
 
-@register.simple_tag
-def media_track_actions(media_type, status):
-    """Return the detail-page split button actions for this item."""
-    return track_actions.track_actions(media_type, status)
+@register.simple_tag(takes_context=True)
+def media_track_actions(context, media_type, instance):
+    """Return the detail-page split button actions, and when the page should refresh.
+
+    A running check-in changes its own button label (Pause becomes Finish, then
+    the movie completes), so the page reloads at those moments.
+    """
+    phase = checkin.phase(context["request"].user, instance)
+    reload_in = phase["reload_in"] if phase else None
+    return {
+        "actions": track_actions.track_actions(media_type, instance.status, phase),
+        "reload_ms": max(1, reload_in + checkin.SETTLE_DELAY_SECONDS) * 1000
+        if reload_in is not None
+        else None,
+    }

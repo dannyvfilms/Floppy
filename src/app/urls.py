@@ -1,6 +1,6 @@
 from django.urls import path, register_converter
 
-from app import converters, episode_order_views, views
+from app import checkin_views, converters, episode_order_views, views
 from app.discover import feeds as discover_feeds
 
 register_converter(converters.MediaTypeChecker, "media_type")
@@ -207,6 +207,11 @@ urlpatterns = [
         "progress_edit/<media_type:media_type>/<int:instance_id>",
         views.progress_edit,
         name="progress_edit",
+    ),
+    path(
+        "checkin/<source:source>/<media_type:media_type>/<path:media_id>",
+        checkin_views.checkin_action,
+        name="checkin_action",
     ),
     path("media_save", views.media_save, name="media_save"),
     path("media_delete", views.media_delete, name="media_delete"),

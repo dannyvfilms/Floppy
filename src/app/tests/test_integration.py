@@ -917,7 +917,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.assertIsNone(new_movie.start_date)
         self.assertIsNone(new_movie.end_date)
 
-        self.page.get_by_role("button", name=re.compile("^Edit entry")).click()
+        self.page.get_by_role("button", name="More tracking actions").click()
+        self.page.get_by_role("button", name="Edit", exact=True).click()
         edit_modal = self.page.locator("[data-track-modal-root]:visible").first
         expect(edit_modal).to_be_visible()
         edit_modal.locator("button[type='button']").first.click()

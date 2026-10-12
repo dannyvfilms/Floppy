@@ -51,6 +51,10 @@ WEBHOOK_WRITE_POLICIES = {
         WritePolicy.FINAL_ONLY,
         "The scrobble API only accepts stop/completion events.",
     ),
+    "check-in": (
+        WritePolicy.FINAL_ONLY,
+        "Floppy's own Check-in button; every call is a deliberate user action.",
+    ),
 }
 
 

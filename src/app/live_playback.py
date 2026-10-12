@@ -139,6 +139,11 @@ def _queue_playback_webhook(user_id: int) -> None:
     post_playback_webhook.delay(user_id)
 
 
+def peek_user_playback_state(user_id: int) -> dict | None:
+    """Return the cached card state as stored, without expiry side effects."""
+    return cache.get(_cache_key(user_id))
+
+
 def clear_user_playback_state(user_id: int) -> None:
     """Remove playback state from cache."""
     cache.delete(_cache_key(user_id))
@@ -353,6 +358,8 @@ def apply_playback_event(
     store_progress: bool = False,
     provider_completed: bool | None = None,
     image: str | None = None,
+    checkin_token: str | None = None,
+    ends_at_ts: int | None = None,
 ) -> None:
     """Update live playback cache state from a webhook event.
 
@@ -363,6 +370,11 @@ def apply_playback_event(
     ``store_progress`` mirrors webhook positions into the durable store.
     ``provider_completed`` is an explicit completion value when the source
     provides one; ``None`` leaves completion inference source-agnostic.
+
+    ``checkin_token`` marks the card as a manual Check-in's (see
+    ``app.checkin``); any later event for the title rebuilds the state without
+    it, which is how a real scrobble takes the card over. ``ends_at_ts`` closes
+    the card at an assumed end.
     """
     if playback_media_type not in (
         MediaTypes.MOVIE.value,
@@ -501,6 +513,10 @@ def apply_playback_event(
         "pause_expires_at_ts": None,
         "scrobble_expires_at_ts": None,
     }
+
+    if checkin_token:
+        state["checkin_token"] = checkin_token
+        state["scrobble_expires_at_ts"] = ends_at_ts
 
     if event_type == "media.pause":
         state["pause_expires_at_ts"] = now_ts + PLAYBACK_PAUSE_STALE_SECONDS

@@ -27,6 +27,14 @@ from app.services import trakt_popularity as trakt_popularity_service
 logger = logging.getLogger(__name__)
 
 
+@shared_task(name="Settle check-in", ignore_result=True)
+def settle_checkin(user_id):
+    """Complete a manual check-in once its assumed end has passed."""
+    from app import checkin
+
+    checkin.settle(user_id)
+
+
 @shared_task(name="Cleanup task results", ignore_result=True)
 def cleanup_task_results(batch_size=5000):
     """Remove expired and abandoned durable task-status rows in small batches.

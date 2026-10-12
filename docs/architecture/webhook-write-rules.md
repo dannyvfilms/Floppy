@@ -48,6 +48,7 @@ and a reason:
 | kodi | `STOP_ONLY` | Sends stop and end |
 | stremio | `START_ONLY` | Only sends a start ping; completion comes from the delayed verifier |
 | scrobble | `FINAL_ONLY` | The scrobble API only accepts stop/completion events |
+| check-in | `FINAL_ONLY` | Floppy's own Check-in button; every call is a deliberate user action |
 
 `START_ONLY` and `FINAL_ONLY` are the exceptions. They live in the table so
 there is one place to look, not a special case inside an integration.

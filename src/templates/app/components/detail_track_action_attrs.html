@@ -6,10 +6,16 @@
   hx-target="#{% component_id 'track' media %}"
   hx-trigger="click"
   @click.stop="trackMenuOpen = false; createTrackOpen = true"
-{% else %}
+{% elif action.key == "edit" %}
   hx-get="{% media_view_url 'track_modal' media %}"
   hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}", "instance_id": "{{ current_instance.id }}"}'
   hx-target="#{% component_id 'track' media current_instance.id %}"
   hx-trigger="click"
   @click.stop="trackMenuOpen = false; editTrackOpen = true"
+{% else %}
+  hx-post="{% media_view_url 'checkin_action' media %}"
+  hx-vals='{"action": "{{ action.key }}"}'
+  hx-swap="none"
+  hx-trigger="click"
+  @click.stop="trackMenuOpen = false"
 {% endif %}

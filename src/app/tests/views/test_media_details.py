@@ -4406,9 +4406,9 @@ class MediaDetailsViewTests(TestCase):
             'class="relative inline-flex w-full md:w-auto"',
             html=False,
         )
-        self.assertNotContains(response, "More tracking actions")
+        self.assertContains(response, 'aria-label="More tracking actions"', html=False)
         self.assertContains(response, "Add new entry")
-        self.assertContains(response, 'aria-label="Edit entry, Completed"', html=False)
+        self.assertContains(response, "Check-in")
         self.assertContains(response, '"is_create": true', html=False)
         self.assertNotContains(response, "Your History")
         self.assertNotContains(response, "FIRST PLAYED")
