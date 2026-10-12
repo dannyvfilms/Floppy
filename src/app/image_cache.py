@@ -52,9 +52,22 @@ APPROVED_IMAGE_HOSTS = frozenset(
         "static.pocketcasts.com",
         "media.kitsu.app",
         "s4.anilist.co",
+        "cdn.cloudflare.steamstatic.com",
+        "cdn2.steamgriddb.com",
+        "cdn.thegamesdb.net",
+        "thumbnails.libretro.com",
+        # YouTube thumbnails. img.youtube.com redirects to i.ytimg.com, and
+        # each redirect hop is checked against this list.
+        "i.ytimg.com",
+        "img.youtube.com",
     },
 )
-APPROVED_IMAGE_HOST_SUFFIXES = (".mzstatic.com", ".comics.org", ".mangabaka.org")
+APPROVED_IMAGE_HOST_SUFFIXES = (
+    ".mzstatic.com",
+    ".comics.org",
+    ".mangabaka.org",
+    ".screenscraper.fr",
+)
 
 
 def cache_root():
@@ -166,9 +179,20 @@ def _paths(url):
     return root / f"{key}.data", root / f"{key}.json"
 
 
+def _requires_proxy(url):
+    """Return whether an image can only be fetched with credentials Floppy holds.
+
+    ScreenScraper media needs the developer credentials, which must never reach
+    a browser, so these URLs go through the proxy whatever the caching toggle.
+    """
+    from app.game_artwork.screenscraper import is_screenscraper_url
+
+    return is_screenscraper_url(url)
+
+
 def rewrite_image_url(url, request=None):
     """Rewrite an approved image URL to Floppy when caching is enabled."""
-    if not is_enabled() or not is_approved_url(url):
+    if not is_approved_url(url) or not (is_enabled() or _requires_proxy(url)):
         return url
     path = reverse("image_cache", kwargs={"token": _token_for_url(url)})
     if request is not None:
@@ -200,17 +224,27 @@ def _remove_temp(path):
         Path(path).unlink()
 
 
-def _fetch_to_disk(url):
-    """Fetch one approved URL and atomically publish validated image files."""
+def _authenticated(url):
+    """Attach provider credentials to the fetch URL, never to a stored one."""
+    from app.game_artwork.screenscraper import authenticate
+
+    return authenticate(url)
+
+
+def _open_image_response(url):
+    """Open an approved image URL, following approved redirects.
+
+    Returns ``(response, content_type)`` for a usable image, or ``(None, None)``;
+    the caller closes the response.
+    """
     current_url = url
     response = None
-    temporary_data = None
     try:
         for _ in range(MAX_REDIRECTS + 1):
             if not is_approved_url(current_url):
-                return False
+                return None, None
             response = requests.get(
-                current_url,
+                _authenticated(current_url),
                 headers={"Accept": "image/*"},
                 timeout=REQUEST_TIMEOUT,
                 stream=True,
@@ -221,23 +255,38 @@ def _fetch_to_disk(url):
                 response.close()
                 response = None
                 if not location:
-                    return False
+                    return None, None
                 current_url = urljoin(current_url, location)
                 continue
             break
         else:
-            return False
+            return None, None
 
         if response is None or not HTTP_OK <= response.status_code < HTTP_MULTIPLE_CHOICES:
-            return False
+            return None, None
         content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         if not content_type.startswith("image/") or content_type == "image/svg+xml":
-            return False
+            return None, None
         try:
             content_length = int(response.headers.get("Content-Length", "0"))
         except ValueError:
             content_length = 0
         if content_length > MAX_IMAGE_BYTES:
+            return None, None
+    except BaseException:
+        if response is not None:
+            response.close()
+        raise
+    return response, content_type
+
+
+def _fetch_to_disk(url):
+    """Fetch one approved URL and atomically publish validated image files."""
+    response = None
+    temporary_data = None
+    try:
+        response, content_type = _open_image_response(url)
+        if response is None:
             return False
 
         root = cache_root()
@@ -319,6 +368,42 @@ def _touch(paths):
             continue
 
 
+def cover_bytes(url, *, fetch=True):
+    """Return the bytes of an approved provider image, or None.
+
+    Server-side code that needs the pixels (the tier board export) uses this
+    instead of the browser, because covers are not always same-origin. A copy
+    already in the cache is used as is. Otherwise, with ``fetch=True``, the
+    image is downloaded into memory only: nothing is written to the cache, so
+    the instance's image caching setting keeps meaning what it says.
+    """
+    if not is_approved_url(url):
+        return None
+    data_path, metadata_path = _paths(url)
+    if data_path.is_file() and _metadata(data_path, metadata_path) is not None:
+        _touch((data_path, metadata_path))
+        with suppress(OSError):
+            return data_path.read_bytes()
+    if not fetch:
+        return None
+    try:
+        response, _ = _open_image_response(url)
+        if response is None:
+            return None
+        try:
+            body = bytearray()
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                body.extend(chunk)
+                if len(body) > MAX_IMAGE_BYTES:
+                    return None
+        finally:
+            response.close()
+    except (OSError, requests.RequestException, ValueError):
+        logger.debug("Unable to fetch cover image %s", url, exc_info=True)
+        return None
+    return bytes(body)
+
+
 def serve_cached_image(token, request):
     """Return a cached image, fetching it only when the feature is enabled."""
     url = _url_for_token(token)
@@ -327,7 +412,7 @@ def serve_cached_image(token, request):
     data_path, metadata_path = _paths(url)
     metadata = _metadata(data_path, metadata_path)
     if not data_path.is_file() or metadata is None:
-        if not is_enabled() or not _fetch_to_disk(url):
+        if not (is_enabled() or _requires_proxy(url)) or not _fetch_to_disk(url):
             return HttpResponseNotFound()
         metadata = _metadata(data_path, metadata_path)
         if metadata is None:

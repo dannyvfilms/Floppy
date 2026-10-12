@@ -47,6 +47,7 @@ from app.models.episode_runtimes import (
     build_episode_runtime_index,
     prefill_episode_runtime_index,
 )
+from app.models.game_artwork import GameArtwork
 from app.models.item import Item
 from app.models.manager import MediaManager
 from app.models.media import (
@@ -152,6 +153,7 @@ __all__ = [
     "EpisodeOrder",
     "EpisodeOrderChange",
     "Game",
+    "GameArtwork",
     "HardcoverEditionPreference",
     "InstanceProviderCredential",
     "Item",

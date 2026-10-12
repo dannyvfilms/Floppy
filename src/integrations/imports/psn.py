@@ -9,6 +9,12 @@ One game can appear under several title IDs -- the PS4 and PS5 releases, or
 regional variants -- that all resolve to the same IGDB game, so matches are
 aggregated by IGDB ID before anything is written: play durations add up,
 the most recent last-played date wins.
+
+PSN only reports lifetime totals, so each sync remembers the total it saw
+(:class:`PlaytimeSnapshot`) and logs the difference as a new, dated play entry.
+Existing entries are never edited. The first time a game is seen its total is
+only remembered, plus -- when the account's setup choice asks for it -- written
+as one entry spanning its first to last played dates.
 """
 
 import logging
@@ -16,6 +22,8 @@ import re
 from collections import defaultdict
 from datetime import timedelta
 
+from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 import app
@@ -25,12 +33,17 @@ from app.providers import services
 from integrations import connection_health, import_progress, psn_api
 from integrations.imports import helpers, title_matching
 from integrations.imports.helpers import MediaImportError
-from integrations.models import PSNAccount
+from integrations.models import PlaytimeSnapshot, PSNAccount
 
 logger = logging.getLogger(__name__)
 
 IMPORT_NOTE = "Imported from PlayStation Network"
 RECENTLY_PLAYED_DAYS = 14
+SNAPSHOT_SOURCE = "psn"
+# How often a connected account syncs. PSN only reports lifetime totals, so
+# each sync's new entry covers the window since the previous one: a shorter
+# interval gives finer time-of-day data at the cost of more requests.
+SYNC_EVERY_HOURS = 3
 
 # last_error_message is rendered on the import page and kept until the next
 # successful sync, so what lands there is scrubbed and bounded rather than
@@ -39,7 +52,8 @@ MAX_ERROR_MESSAGE_LENGTH = 500
 
 # PSN reports a played library, so only the two library-sync modes mean
 # anything here; "watchlist" and "update_collection" have nothing to act on and
-# would otherwise be silently treated as "new".
+# would otherwise be silently treated as "new". Both modes behave the same: a
+# sync only ever adds entries, so there is nothing for "overwrite" to replace.
 SUPPORTED_MODES = frozenset({"new", "overwrite"})
 
 # The PlayStation store decorates titles in ways IGDB doesn't
@@ -129,8 +143,21 @@ class PSNImporter:
         self.existing_media = helpers.get_existing_media(user)
         # Track media the user explicitly deleted, so it isn't recreated
         self.deleted_media = helpers.get_deleted_media(user)
-        self.to_update = []
         self.to_update_meta = []
+        self.snapshots = {
+            snapshot.media_id: snapshot
+            for snapshot in PlaytimeSnapshot.objects.filter(
+                user=user,
+                source=SNAPSHOT_SOURCE,
+            )
+        }
+        self.sync_time = timezone.now()
+        # Read before this sync stamps the account: it is when the last sync (a
+        # sync from before totals were remembered, for an upgrading account) ran.
+        self.previous_sync_at = self.account.last_sync_at
+        self.created = 0
+        self.unchanged = 0
+        self.baseline = 0
         self.bulk_media = defaultdict(list)
         self.lookup_failures = 0
         # Provider errors point at IGDB; anything else is a bug on our side and
@@ -193,7 +220,7 @@ class PSNImporter:
         for media_id, aggregate in aggregated.items():
             self._store_game(media_id, aggregate)
 
-        matched = len(self.bulk_media[MediaTypes.GAME.value]) + len(self.to_update)
+        matched = len(aggregated)
         logger.info(
             "PSN: %d titles, %d matched, %d lookup failures (%d provider errors)",
             total,
@@ -218,32 +245,11 @@ class PSNImporter:
             self._mark_failed(msg, auth=False)
             raise MediaImportError(msg)
 
-        helpers.bulk_create_media(self.bulk_media, self.user)
-
-        if self.to_update:
-            app.models.Game.objects.bulk_update(
-                self.to_update,
-                fields=["progress"],
-            )
-            # Statuses are written with the Completed/Dropped guard enforced
-            # by the database, not only by the snapshot read at the start of
-            # the run: the IGDB matching phase is long, and a user marking a
-            # game Completed or Dropped mid-sync must not have that clobbered
-            # by a status computed from stale data.
-            protected = {Status.COMPLETED.value, Status.DROPPED.value}
-            pks_by_status = defaultdict(list)
-            for game in self.to_update:
-                if game.status not in protected:
-                    pks_by_status[game.status].append(game.pk)
-            for status_value, pks in pks_by_status.items():
-                app.models.Game.objects.filter(pk__in=pks).exclude(
-                    status__in=protected,
-                ).update(status=status_value)
-            logger.info(
-                "Updated %d existing games for user %s",
-                len(self.to_update),
-                self.user.username,
-            )
+        # One transaction, so a failed snapshot save can't leave logged play
+        # without its remembered total (it would be logged again next sync).
+        with transaction.atomic():
+            helpers.bulk_create_media(self.bulk_media, self.user)
+            self._save_snapshots()
 
         if self.to_update_meta:
             app.models.Item.objects.bulk_update(
@@ -257,6 +263,11 @@ class PSNImporter:
             media_type: len(media_list)
             for media_type, media_list in self.bulk_media.items()
         }
+        # "created"/"skipped" make a sync that only touched snapshots read as
+        # unchanged instead of "No media was imported" with no explanation.
+        imported_counts["created"] = self.created
+        imported_counts["skipped"] = self.unchanged
+        imported_counts["baseline"] = self.baseline
         logger.info(
             "PSN import completed for user %s: %s",
             self.user.username,
@@ -335,10 +346,17 @@ class PSNImporter:
                 "title": igdb_game["title"],
                 "image": igdb_game["image"],
                 "minutes": 0,
+                "first_played": None,
                 "last_played": None,
             },
         )
         aggregate["minutes"] += title["minutes"]
+        first_played = title.get("first_played")
+        if first_played and (
+            aggregate["first_played"] is None
+            or first_played < aggregate["first_played"]
+        ):
+            aggregate["first_played"] = first_played
         last_played = title["last_played"]
         if last_played and (
             aggregate["last_played"] is None
@@ -347,7 +365,16 @@ class PSNImporter:
             aggregate["last_played"] = last_played
 
     def _store_game(self, media_id, aggregate):
-        """Create or update the game a set of PSN titles resolved to."""
+        """Log the playtime a set of PSN titles added since the last sync."""
+        minutes = aggregate["minutes"]
+        snapshot = self.snapshots.get(media_id)
+        previous = snapshot.minutes if snapshot else None
+        previous_sync = snapshot.seen_at if snapshot else None
+        # PSN's lifetime total only ever grows, so a lower figure means
+        # incomplete data (a sibling title ID whose IGDB lookup failed this
+        # run): remember the higher one and log nothing.
+        self._remember(media_id, max(minutes, previous or 0))
+
         if media_id in self.deleted_media[MediaTypes.GAME.value][Sources.IGDB.value]:
             # PSN keeps reporting a title forever once it has been launched,
             # so without this every scheduled sync resurrects a game the user
@@ -359,36 +386,53 @@ class PSNImporter:
             )
             return
 
-        minutes = aggregate["minutes"]
-        last_played = aggregate["last_played"]
         existing = self.existing_media[MediaTypes.GAME.value][Sources.IGDB.value].get(
             media_id,
         )
-
         if existing:
-            if self.mode == "overwrite":
-                # PSN's cumulative play duration only ever grows, so an
-                # aggregate below the stored progress never means the user
-                # played less: it means incomplete data -- a sibling title ID
-                # whose IGDB lookup failed this run, or a title whose
-                # playDuration PSN reports as absent (psnawp collapses that
-                # to zero). Mirror the Xbox importer's invariant that unknown
-                # playtime must never overwrite tracked hours: progress is
-                # only ever raised.
-                minutes = max(existing.progress, minutes)
-                existing.progress = minutes
-                if existing.status not in {
-                    Status.COMPLETED.value,
-                    Status.DROPPED.value,
-                }:
-                    existing.status = self._determine_game_status(minutes, last_played)
-                self.to_update.append(existing)
-
             item = existing.item
             item.title = aggregate["title"]
             item.image = aggregate["image"]
             self.to_update_meta.append(item)
+
+        last_played = self._aware(aggregate["last_played"])
+        if previous is None:
+            # First sighting. A tracked game keeps its own history, and its PSN
+            # total is the starting point, except for play since the account's
+            # last sync (the gap). Otherwise only the setup choice makes an
+            # untracked game an entry.
+            gap = self._gap_since_last_sync(existing, minutes, last_played)
+            if gap:
+                start_date = self.previous_sync_at
+                end_date = (
+                    last_played
+                    if start_date <= last_played <= self.sync_time
+                    else self.sync_time
+                )
+                logged = gap
+            elif existing or not self.account.import_existing_playtime:
+                self.baseline += 1
+                return
+            else:
+                start_date = self._aware(aggregate["first_played"])
+                end_date = last_played
+                logged = minutes
+        elif minutes > previous:
+            # The new time happened somewhere between the previous sync and
+            # the last time PSN says the game was launched.
+            start_date = previous_sync
+            end_date = (
+                last_played
+                if last_played and start_date <= last_played <= self.sync_time
+                else self.sync_time
+            )
+            logged = minutes - previous
+        else:
+            self.unchanged += 1
             return
+
+        if start_date and end_date and start_date > end_date:
+            start_date, end_date = end_date, start_date
 
         item, _ = app.models.Item.objects.get_or_create(
             media_id=media_id,
@@ -396,17 +440,72 @@ class PSNImporter:
             media_type=MediaTypes.GAME.value,
             defaults={"title": aggregate["title"], "image": aggregate["image"]},
         )
+        self.created += 1
         self.bulk_media[MediaTypes.GAME.value].append(
             app.models.Game(
                 item=item,
                 user=self.user,
-                status=self._determine_game_status(minutes, last_played),
+                status=self._determine_game_status(logged, last_played),
                 score=None,
-                progress=minutes,
+                progress=logged,
                 notes=IMPORT_NOTE,
-                start_date=None,
-                end_date=None,
+                start_date=start_date,
+                end_date=end_date,
             ),
+        )
+
+    def _gap_since_last_sync(self, existing, minutes, last_played):
+        """Return the minutes played since the last sync for a tracked game.
+
+        The first sync that remembers totals can't see what was played between
+        the account's previous sync and now, but a tracked game whose hours were
+        close to PSN's at the time shows it as the difference. It counts only
+        when the game was launched since that sync and the difference is no
+        bigger than the hours already tracked; a bigger one is a library that
+        was never in step with PSN, not new play.
+        """
+        if not existing or not self.previous_sync_at or not last_played:
+            return 0
+        if last_played <= self.previous_sync_at:
+            return 0
+        tracked = (
+            app.models.Game.objects.filter(user=self.user, item=existing.item)
+            .aggregate(total=Sum("progress"))["total"]
+            or 0
+        )
+        gap = minutes - tracked
+        return gap if 0 < gap <= tracked else 0
+
+    @staticmethod
+    def _aware(value):
+        """Return a timezone-aware datetime, leaving None alone."""
+        if value is not None and timezone.is_naive(value):
+            return timezone.make_aware(value)
+        return value
+
+    def _remember(self, media_id, minutes):
+        """Record the total PSN reported for a game, as of this sync."""
+        snapshot = self.snapshots.get(media_id)
+        if snapshot:
+            snapshot.minutes = minutes
+            snapshot.seen_at = self.sync_time
+        else:
+            self.snapshots[media_id] = PlaytimeSnapshot(
+                user=self.user,
+                source=SNAPSHOT_SOURCE,
+                media_id=media_id,
+                minutes=minutes,
+                seen_at=self.sync_time,
+            )
+
+    def _save_snapshots(self):
+        """Persist the totals seen this sync, after the entries they explain."""
+        PlaytimeSnapshot.objects.bulk_create(
+            [snapshot for snapshot in self.snapshots.values() if snapshot.pk is None],
+        )
+        PlaytimeSnapshot.objects.bulk_update(
+            [snapshot for snapshot in self.snapshots.values() if snapshot.pk],
+            fields=["minutes", "seen_at"],
         )
 
     def _determine_game_status(self, minutes, last_played):

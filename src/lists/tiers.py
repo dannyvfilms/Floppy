@@ -7,8 +7,12 @@ Unranked.
 """
 
 import re
+from decimal import Decimal
 
 MAX_TIERS = 12
+# A tier board shows every item on one page; past this it says so.
+TIER_BOARD_LIMIT = 300
+MAX_SCORE = 10  # Floppy stores ratings on a 0-10 scale
 MAX_NAME_LENGTH = 16
 TIER_ID_PATTERN = re.compile(r"^[a-z0-9_-]{1,32}$")
 COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -57,3 +61,14 @@ def ink_for(color):
     """Return black or white text, whichever reads better on ``color``."""
     red, green, blue = (int(color[index : index + 2], 16) for index in (1, 3, 5))
     return "#1f2937" if 0.299 * red + 0.587 * green + 0.114 * blue > 153 else "#ffffff"  # noqa: PLR2004
+
+
+def tier_index_for_score(score, tier_count):
+    """Return which tier (0 is the top) a 0-10 score falls in.
+
+    The 0-10 rating range is split evenly across the tiers, best scores first,
+    so a score of 10 is in the first tier and 0 in the last. A score on the
+    line between two tiers goes in the lower one.
+    """
+    steps = (MAX_SCORE - Decimal(str(score))) * tier_count // MAX_SCORE
+    return max(0, min(int(steps), tier_count - 1))

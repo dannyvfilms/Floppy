@@ -160,6 +160,25 @@ class DuplicatePlayWindow(TestCase):
         self.assertFalse(times.is_duplicate("key", anchor + timedelta(minutes=22)))
         self.assertTrue(times.is_duplicate("key", anchor))
 
+    def test_fallback_index_matches_scan_when_sortedcontainers_is_missing(self):
+        """A source install that missed `uv sync` (#1522) still dedupes correctly."""
+        randomizer = random.Random(1522)  # noqa: S311 -- deterministic test history
+        anchor = datetime(2020, 1, 1, tzinfo=UTC)
+        watches = [anchor + timedelta(minutes=n * 17) for n in range(100)]
+        randomizer.shuffle(watches)
+        window = play_dedupe.duplicate_play_window(None)
+        with patch.object(play_dedupe, "SortedList", play_dedupe._PlainSortedList):
+            times = play_dedupe.PlayTimes()
+            for watch in watches:
+                times.add("key", watch)
+            self.assertEqual(times.times_for("key"), watches)
+            for candidate in [anchor - window, watches[-1] + window] + [
+                anchor + timedelta(seconds=randomizer.randrange(-15000, 110000))
+                for _ in range(200)
+            ]:
+                expected = any(abs(candidate - watch) < window for watch in watches)
+                self.assertEqual(times.is_duplicate("key", candidate), expected)
+
     def test_dst_and_mixed_awareness_keep_original_comparison_semantics(self):
         """DST fold ordering and early duplicate matches retain scan behavior."""
         zone = ZoneInfo("America/New_York")

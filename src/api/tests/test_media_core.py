@@ -1,5 +1,5 @@
 import datetime
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -2611,8 +2611,16 @@ class MediaCoreTests(FloppyApiTestCase):
             check_minimized_lists_structure(self, item)
             self.assertEqual(item["list_id"], list_id)
 
-    def test_media_list_detail_put_invalid_media_id_returns_not_found(self):
-        """Media list detail PUT should reject unknown media ids."""
+    @patch("api.fork_helpers.services.get_media_metadata")
+    def test_media_list_detail_put_invalid_media_id_returns_not_found(
+        self,
+        mock_metadata,
+    ):
+        """Media list detail PUT should reject ids the provider does not know."""
+        mock_metadata.side_effect = provider_services.ProviderAPIError(
+            "tmdb",
+            Mock(response=Mock(status_code=404, headers={})),
+        )
         list_id = self.lists_by_name["favorites"].id
         response = self.call_api(
             "put",
@@ -2623,6 +2631,34 @@ class MediaCoreTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+        self.assertFalse(Item.objects.filter(media_id="999999").exists())
+
+    @patch("api.fork_helpers.services.get_media_metadata")
+    def test_media_list_detail_put_creates_unknown_item(self, mock_metadata):
+        """Media list detail PUT should create an item Floppy has not seen."""
+        mock_metadata.return_value = {
+            "media_id": "999999",
+            "source": "tmdb",
+            "media_type": MediaTypes.MOVIE.value,
+            "title": "Fresh Movie",
+            "image": "https://example.com/fresh.jpg",
+        }
+        list_id = self.lists_by_name["favorites"].id
+
+        response = self.call_api(
+            "put",
+            "api_media_list_detail",
+            args=(MediaTypes.MOVIE.value, "tmdb", 999999, list_id),
+            payload={},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        item = Item.objects.get(media_id="999999", source="tmdb")
+        self.assertEqual(item.title, "Fresh Movie")
+        self.assertTrue(
+            self.lists_by_name["favorites"].items.filter(id=item.id).exists(),
+        )
 
     @patch("api.views.run_retryable_db_operation")
     def test_media_list_detail_put_returns_503_on_persistent_lock(self, mock_retry):

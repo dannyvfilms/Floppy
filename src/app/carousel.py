@@ -8,11 +8,15 @@ requested) and only for the media types/sources that actually expose a
 trailer or photo gallery.
 """
 
+import logging
+
 from django.core.cache import cache
 
 from app.image_cache import rewrite_image_url
-from app.models import MediaTypes, Sources
-from app.providers import tmdb
+from app.models import GameArtwork, MediaTypes, Sources
+from app.providers import services, tmdb
+
+logger = logging.getLogger(__name__)
 
 _TMDB_CAROUSEL_TYPES = (MediaTypes.MOVIE.value, MediaTypes.TV.value, MediaTypes.SEASON.value)
 
@@ -49,18 +53,25 @@ def confirmed_empty(media_type, source, media_id, *, season_number=None) -> bool
                 (data.get("backdrop_path") or data["photos"]) and data.get("logos")
             )
     elif source == Sources.IGDB.value and media_type == MediaTypes.GAME.value:
-        data = cache.get(f"igdb_carousel_v3_{media_id}")
+        from app.game_artwork import is_stale
+
+        data = cache.get(f"igdb_carousel_v4_{media_id}")
+        row = GameArtwork.objects.filter(
+            source=Sources.IGDB.value, media_id=str(media_id)
+        ).first()
+        # No row, or one old enough to be looked up again, means the artwork
+        # was never settled (a provider error stores nothing), so the carousel
+        # must still load and retry rather than render as empty.
+        if row is None or is_stale(row):
+            return False
+        has_overview = bool(row.logo_url and row.backdrop_url)
     else:
         return False
     return (
         data is not None
         and not data["video"]
         and not data["photos"]
-        and not (
-            has_overview
-            if source == Sources.TMDB.value
-            else data.get("logo_image_id") and data.get("hero_image_id")
-        )
+        and not has_overview
     )
 
 
@@ -122,34 +133,58 @@ def resolve_carousel_media(media_type, source, media_id, *, season_number=None) 
                 remaining_photos.append(photo)
             photos = remaining_photos
 
+        hero = None
+        if backdrop_path or backdrop_url:
+            hero = {
+                "url": rewrite_image_url(backdrop_url or tmdb.get_carousel_image_url(backdrop_path, size="w1280")),
+                "logo_url": overview["logo_url"] if overview else None,
+            }
+            if not data["video"] and not photos and not overview:
+                # A backdrop with no gallery, trailer or logo still earns a
+                # one-image carousel (and the phone hero) instead of nothing.
+                photos = [
+                    {
+                        "url": hero["url"],
+                        "thumb_url": rewrite_image_url(backdrop_url or tmdb.get_carousel_image_url(backdrop_path, size="w300")),
+                    }
+                ]
+
         if not data["video"] and not photos and not overview:
             return None
-        return {"video": data["video"], "photos": photos, "overview": overview}
+        return {"video": data["video"], "photos": photos, "overview": overview, "hero": hero}
 
     if source == Sources.IGDB.value and media_type == MediaTypes.GAME.value:
         from lists.models import CustomList
 
-        data = CustomList()._get_igdb_carousel_media(media_id)
+        # A visitor is waiting on this fragment: fail fast on a slow or
+        # rate-limited provider instead of holding the web worker.
+        with services.interactive_request_scope():
+            data = CustomList()._get_igdb_carousel_media(media_id)
         photos = [
             {
                 # t_screenshot_big_2x and similar named IGDB transforms crop to a
                 # fixed canvas; t_1080p only caps resolution, so it keeps the
                 # source image's real aspect ratio for the main pane/lightbox.
-                "url": rewrite_image_url(
-                    f"https://images.igdb.com/igdb/image/upload/t_1080p/{image_id}.jpg"
-                ),
+                "url": rewrite_image_url(_igdb_image_url(image_id)),
                 "thumb_url": rewrite_image_url(
                     f"https://images.igdb.com/igdb/image/upload/t_screenshot_big_2x/{image_id}.jpg"
                 ),
             }
             for image_id in data["photos"]
         ]
+        with services.interactive_request_scope():
+            artwork = _game_artwork(media_id, data.get("hero_image_id"))
+        backdrop, logo = artwork["backdrop"], artwork["logo"]
         overview = None
-        if data.get("hero_image_id") and data.get("logo_image_id"):
+        if backdrop and logo:
             overview = {
-                "url": rewrite_image_url(f"https://images.igdb.com/igdb/image/upload/t_1080p/{data['hero_image_id']}.jpg"),
-                "thumb_url": rewrite_image_url(f"https://images.igdb.com/igdb/image/upload/t_screenshot_big_2x/{data['hero_image_id']}.jpg"),
-                "logo_url": rewrite_image_url(f"https://images.igdb.com/igdb/image/upload/t_logo_med/{data['logo_image_id']}.png"),
+                "url": rewrite_image_url(backdrop.url),
+                "thumb_url": rewrite_image_url(
+                    backdrop.url
+                    if backdrop.provider != "igdb"
+                    else f"https://images.igdb.com/igdb/image/upload/t_screenshot_big_2x/{backdrop.provider_id}.jpg"
+                ),
+                "logo_url": rewrite_image_url(logo.url),
             }
             removed_overview = False
             remaining_photos = []
@@ -161,6 +196,34 @@ def resolve_carousel_media(media_type, source, media_id, *, season_number=None) 
             photos = remaining_photos
         if not data["video"] and not photos and not overview:
             return None
-        return {"video": data["video"], "photos": photos, "overview": overview}
+        hero = None
+        if backdrop:
+            hero = {
+                "url": rewrite_image_url(backdrop.url),
+                "logo_url": overview["logo_url"] if overview else None,
+            }
+        return {"video": data["video"], "photos": photos, "overview": overview, "hero": hero}
 
     return None
+
+
+def _igdb_image_url(image_id):
+    return f"https://images.igdb.com/igdb/image/upload/t_1080p/{image_id}.jpg"
+
+
+def _game_artwork(media_id, igdb_hero_image_id):
+    """Return the game's logo and backdrop, IGDB artwork being the backdrop fallback."""
+    from app.game_artwork import query_for, resolve
+    from app.game_artwork.base import Art
+    from app.providers import igdb
+
+    fallback = (
+        Art(_igdb_image_url(igdb_hero_image_id), "igdb", igdb_hero_image_id)
+        if igdb_hero_image_id
+        else None
+    )
+    try:
+        return resolve(query_for(media_id, igdb.game(media_id)), fallback_backdrop=fallback)
+    except Exception:
+        logger.warning("Game artwork lookup failed for game %s", media_id, exc_info=True)
+        return {"logo": None, "backdrop": fallback}

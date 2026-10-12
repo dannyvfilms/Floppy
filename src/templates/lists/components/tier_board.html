@@ -34,15 +34,43 @@
     {% endfor %}
   </div>
 
+  <div class="mt-2 flex flex-wrap items-center gap-2">
   {% if can_edit %}
     <button type="button"
-            class="mt-2 inline-flex h-10 items-center gap-2 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-hover)] cursor-pointer"
+            class="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-hover)] cursor-pointer"
             x-show="tiers.length < maxTiers"
             @click="addTier()">
       {% include "app/icons/plus.svg" with classes="w-4 h-4" %}
       {% translate "Add tier" %}
     </button>
   {% endif %}
+  <button type="button"
+          class="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-hover)] cursor-pointer"
+          x-show="canFill && unrankedCount > 0"
+          x-cloak
+          @click="fillFromRatings()">
+    {% include "app/icons/star.svg" with classes="w-4 h-4" %}
+    {% translate "Fill from ratings" %}
+  </button>
+  {% if user.is_authenticated %}
+    <a href="{% url 'list_tier_export' custom_list.id %}"
+       download
+       class="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] px-4 text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-hover)]">
+      {% include "app/icons/download.svg" with classes="w-4 h-4" %}
+      {% translate "Export image" %}
+    </a>
+  {% endif %}
+  </div>
+
+  <p class="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--color-text-muted)]"
+     x-show="notice"
+     x-cloak>
+    <span x-text="notice"></span>
+    <button type="button"
+            class="font-medium text-[var(--color-link)] hover:underline cursor-pointer"
+            x-show="undoable.length"
+            @click="undoFill()">{% translate "Undo" %}</button>
+  </p>
 
   <div class="tier-unranked">
     <div class="px-3 pt-2.5 text-sm font-semibold">

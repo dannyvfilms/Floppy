@@ -5,7 +5,19 @@ from http import HTTPStatus as HTTP  # noqa: N814
 
 from rest_framework.response import Response
 
-from app.models import ComicIssue, MediaTypes, MoviePlay, Music, Podcast, Sources, Video
+from app.collection_views import _resolve_collection_item
+from app.helpers import extract_release_datetime
+from app.models import (
+    ComicIssue,
+    MediaTypes,
+    MoviePlay,
+    Music,
+    Podcast,
+    Sources,
+    Video,
+)
+from app.providers import services
+from app.services import metadata_resolution
 
 from . import helpers
 
@@ -125,6 +137,87 @@ def resolve_consumption_entry(user_medias, media_type, consumption_id):
         if movie is not None and MoviePlay.objects.filter(movie=movie).exists():
             return MoviePlay.objects.filter(movie=movie, id=consumption_id).first()
     return user_medias.filter(id=consumption_id).first()
+
+
+def get_or_create_provider_item(
+    media_type,
+    source,
+    media_id,
+    *,
+    user=None,
+    season_number=None,
+    episode_number=None,
+    library_media_type=None,
+):
+    """Return ``(item, error_response)`` for a provider id.
+
+    An item Floppy has never seen is created from provider metadata, the same
+    way the web UI creates one, so an external client can address a title by
+    its provider id without tracking it first. Metadata is fetched in the
+    user's preferred language.
+    """
+    item = helpers.resolve_item_queryset(
+        media_id,
+        source,
+        media_type,
+        season_number=season_number,
+        episode_number=episode_number,
+        library_media_type=library_media_type,
+    ).first()
+    if item is not None:
+        return item, None
+
+    not_found = Response({"detail": "Media not found."}, status=HTTP.NOT_FOUND)
+    if source == Sources.MANUAL.value or metadata_resolution.is_grouped_anime_route(
+        media_type,
+        source=source,
+    ):
+        # Grouped anime is stored as TV in the anime bucket, which the
+        # list and collection lookups by "anime" cannot find, so it is not
+        # created on demand.
+        return None, not_found
+
+    try:
+        metadata = services.get_media_metadata(
+            media_type,
+            media_id,
+            source,
+            [season_number] if season_number is not None else None,
+            episode_number=episode_number,
+            language=metadata_resolution.metadata_language_default(user),
+        )
+    except services.ProviderAPIError as error:
+        if error.status_code == HTTP.NOT_FOUND:
+            return None, not_found
+        return None, Response(
+            {"detail": f"Could not reach {error.provider_label}."},
+            status=HTTP.BAD_GATEWAY,
+        )
+    if not metadata:
+        return None, not_found
+
+    item, _ = _resolve_collection_item(
+        source,
+        media_type,
+        media_id,
+        season_number,
+        episode_number,
+        metadata=metadata,
+    )
+    # A client matches titles by year and by cross-provider ids, so store both
+    # now instead of waiting for a later metadata refresh.
+    release_datetime = extract_release_datetime(metadata)
+    if release_datetime and item.release_datetime is None:
+        item.release_datetime = release_datetime
+        item.save(update_fields=["release_datetime"])
+    if season_number is None and episode_number is None:
+        metadata_resolution.upsert_provider_links(
+            item,
+            metadata,
+            provider=source,
+            provider_media_type=media_type,
+        )
+    return item, None
 
 
 def install_fork_media_types():

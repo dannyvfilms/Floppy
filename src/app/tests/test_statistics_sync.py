@@ -88,6 +88,27 @@ class StatisticsSyncTestCase(TestCase):
         ).generation
 
 
+class SchemaUpgradeTests(StatisticsSyncTestCase):
+    def test_a_schema_bump_rebuilds_every_range_of_a_synced_user(self):
+        """Heavy ranges such as All Time must not wait for the next full sync."""
+        self.full_sync()
+        StatisticsSnapshot.objects.filter(user_id=self.user.id).update(
+            schema_version=statistics_sync.SNAPSHOT_SCHEMA_VERSION - 1
+        )
+
+        result = self.full_sync()
+
+        self.assertIn("All Time", result["published"])
+        self.assertEqual(
+            set(
+                StatisticsSnapshot.objects.filter(user_id=self.user.id).values_list(
+                    "schema_version", flat=True
+                )
+            ),
+            {statistics_sync.SNAPSHOT_SCHEMA_VERSION},
+        )
+
+
 class MarkingTests(StatisticsSyncTestCase):
     @patch("app.statistics_sync._aggregate_range", return_value={})
     @patch("app.statistics_sync._build_days", return_value=0)

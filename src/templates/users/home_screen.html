@@ -25,17 +25,17 @@
       <div class="space-y-1" data-home-section-list>
         <template x-for="section in sections" :key="section.media_type">
           <section :data-section-media-type="section.media_type">
-            <div class="flex w-full items-center gap-3 rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-2 text-[var(--color-text-secondary)] text-sm transition-colors hover:bg-[var(--color-surface-muted)]">
+            <div class="section-drag-row flex w-full cursor-grab items-center gap-3 rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-2 text-[var(--color-text-secondary)] text-sm transition-colors hover:bg-[var(--color-surface-muted)] active:cursor-grabbing">
               <button type="button"
-                      class="section-drag-handle hidden shrink-0 items-center justify-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing lg:inline-flex"
+                      class="section-drag-handle inline-flex shrink-0 touch-none items-center justify-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing"
                       aria-label="{% translate "Reorder section" %}"
                       @click.stop>
                 {% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}
               </button>
               <button type="button"
-                      class="flex flex-1 items-center gap-3 text-left cursor-pointer"
+                      class="flex min-w-0 flex-1 items-center gap-3 text-left cursor-pointer"
                       style="min-height: 2.75rem"
-                      @click="section.expanded = !section.expanded; ensureFilterFields(section)">
+                      @click="if (Date.now() - lastDragAt < 400) return; section.expanded = !section.expanded; ensureFilterFields(section); $nextTick(() => initSortables())">
                 <div class="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-text-secondary)]"
                      x-html="section.icon_svg"></div>
                 <div class="min-w-0 flex-1">
@@ -64,7 +64,7 @@
                       style="height: 2.75rem; width: 2.75rem"
                       :aria-expanded="section.expanded"
                       :aria-label="section.expanded ? gettext('Collapse section') : gettext('Expand section')"
-                      @click="section.expanded = !section.expanded; ensureFilterFields(section)">
+                      @click="if (Date.now() - lastDragAt < 400) return; section.expanded = !section.expanded; ensureFilterFields(section); $nextTick(() => initSortables())">
                 <span x-show="!section.expanded">{% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}</span>
                 <span x-show="section.expanded">{% include "app/icons/chevron-up.svg" with classes="w-4 h-4" %}</span>
               </button>
@@ -95,7 +95,7 @@
                     <div class="home-settings-row-body rounded-[inherit] bg-[var(--color-hover-dim)] px-3 transition-colors hover:bg-[var(--color-surface)]">
                       <div class="flex h-full min-w-0 items-center gap-2">
                         <button type="button"
-                                class="row-drag-handle hidden h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-page-bg)] text-slate-400 transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing lg:inline-flex"
+                                class="row-drag-handle inline-flex h-8 w-8 shrink-0 touch-none items-center justify-center rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-page-bg)] text-slate-400 transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing"
                                 aria-label="{% translate "Reorder row" %}"
                                 @click.stop>
                           {% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}
@@ -467,6 +467,7 @@
         filterFieldsUrl,
         directionChoices: directionChoices || [],
         sortables: [],
+        lastDragAt: 0,
         nextRowId: 0,
         subviewDefaults: { music: 'tracks', podcast: 'shows' },
         init() {
@@ -883,21 +884,34 @@
           if (typeof Sortable === 'undefined') return;
           const sectionList = document.querySelector('[data-home-section-list]');
           if (!sectionList) return;
+          const sortableOptions = { animation: 150, delay: 100, delayOnTouchOnly: true };
+          const restoreDraggedNode = event => {
+            if (event.oldIndex === event.newIndex) return;
+            const parent = event.from;
+            const item = event.item;
+            item.remove();
+            const siblings = Array.from(parent.children).filter(node => node.tagName === item.tagName);
+            parent.insertBefore(item, siblings[event.oldIndex] || null);
+          };
 
           sectionList.querySelectorAll('[data-home-row-list]').forEach(container => {
             const mediaType = container.dataset.homeRowList;
             this.sortables.push(
               Sortable.create(container, {
-                animation: 150,
+                ...sortableOptions,
                 draggable: 'article',
-                handle: '.row-drag-handle',
-                onEnd: () => {
+                handle: '.home-settings-row',
+                filter: 'input, textarea, select, a, .home-settings-row-controls',
+                preventOnFilter: true,
+                onEnd: event => {
+                  const orderedIds = Array.from(container.querySelectorAll('[data-row-client-id]')).map(node => node.dataset.rowClientId);
+                  restoreDraggedNode(event);
                   const section = this.sections.find(entry => entry.media_type === mediaType);
                   if (!section) return;
-                  const orderedIds = Array.from(container.querySelectorAll('[data-row-client-id]')).map(node => node.dataset.rowClientId);
                   section.rows = orderedIds
                     .map(clientId => section.rows.find(row => row.client_id === clientId))
                     .filter(Boolean);
+                  this.$nextTick(() => this.initSortables());
                 }
               })
             );
@@ -905,14 +919,17 @@
 
           this.sortables.push(
             Sortable.create(sectionList, {
-              animation: 150,
+              ...sortableOptions,
               draggable: 'section',
-              handle: '.section-drag-handle',
-              onEnd: () => {
+              handle: '.section-drag-row',
+              onEnd: event => {
+                this.lastDragAt = Date.now();
                 const orderedTypes = Array.from(sectionList.querySelectorAll('[data-section-media-type]')).map(node => node.dataset.sectionMediaType);
+                restoreDraggedNode(event);
                 this.sections = orderedTypes
                   .map(mediaType => this.sections.find(section => section.media_type === mediaType))
                   .filter(Boolean);
+                this.$nextTick(() => this.initSortables());
               }
             })
           );

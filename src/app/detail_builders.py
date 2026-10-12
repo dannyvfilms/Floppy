@@ -924,6 +924,12 @@ _DETAIL_LINK_BRANDS = {
         "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
         "fallback_text": "LB",
     },
+    "youtube": {
+        "chip_classes": "border-red-400/18 bg-red-500/[0.07]",
+        "badge_classes": "border-red-400/28 bg-red-500/14",
+        "accent_classes": _DETAIL_LINK_ACCENT_CLASSES,
+        "fallback_text": "YT",
+    },
     "howlongtobeat": {
         "logo_src": static("img/hltb-logo.png"),
         "chip_classes": "border-amber-400/18 bg-amber-500/[0.07]",
@@ -1022,6 +1028,17 @@ def _build_detail_link_sections(
                 f"https://letterboxd.com/tmdb/{media_id}",
                 "letterboxd",
             )
+
+    if item is not None and item.source == Sources.YOUTUBE.value:
+        # Built from the id, not from a reported URL, so it is always a
+        # YouTube link. It does not depend on live metadata, so the chip also
+        # shows when the page uses the stored fallback.
+        append_entry(
+            external_entries,
+            "YouTube",
+            f"https://www.youtube.com/watch?v={item.media_id}",
+            "youtube",
+        )
 
     external_links = media_metadata.get("external_links")
     if isinstance(external_links, dict):

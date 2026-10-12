@@ -275,7 +275,7 @@
                        x-cloak
                        @keydown.escape.window="listsOpen = false"
                        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div class="w-96 max-h-[90vh] px-4 md:px-0 relative z-60">
+                    <div class="w-96 max-h-[90dvh] px-4 md:px-0 relative z-60">
                       <div id="{% if episode.item %}{% component_id 'lists' episode.item %}{% else %}{% component_id 'lists' episode %}{% endif %}"></div>
                     </div>
                   </div>
@@ -297,7 +297,7 @@
                   @mousedown.self="historyOpen = false"
                        @keydown.escape.window="historyOpen = false"
                        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-                    <div class="w-full max-h-[90vh] px-4 md:px-0 relative z-60"
+                    <div class="w-full max-h-[90dvh] px-4 md:px-0 relative z-60"
                          style="width: min(96vw, 72rem);">
                       <div id="{% component_id 'history' episode.item %}"></div>
                     </div>

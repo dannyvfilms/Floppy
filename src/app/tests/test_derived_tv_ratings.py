@@ -211,9 +211,14 @@ class DetailScoreChipStatesTests(SimpleTestCase):
 
     def test_manual_score_only(self):
         html = self._render(score=Decimal(8), derived=self.no_data)
-        self.assertIn(">8</span>", html)
+        self.assertIn(">8.0</span>", html)
         self.assertIn("Edit rating", html)
         self.assertNotIn("episodes", html)
+
+    def test_whole_and_fractional_scores_both_show_one_decimal(self):
+        """9 reads 9.0 so the card matches the provider cards (8.7)."""
+        self.assertIn(">9.0</span>", self._render(score=Decimal(9)))
+        self.assertIn(">8.5</span>", self._render(score=Decimal("8.5")))
 
     def test_derived_only_shows_score_and_coverage(self):
         html = self._render(derived=self.derived)
@@ -228,7 +233,7 @@ class DetailScoreChipStatesTests(SimpleTestCase):
         html = self._render(score=Decimal(8), derived=self.derived)
         self.assertRegex(
             html,
-            r">8</span><span[^>]*>\|</span>"
+            r">8.0</span><span[^>]*>\|</span>"
             r'<span class="sr-only">Derived rating</span><span[^>]*>7\.6<span',
         )
         # Coverage starts collapsed and slides open while hovered.
@@ -244,7 +249,7 @@ class DetailScoreChipStatesTests(SimpleTestCase):
         both = self._render(score=Decimal(8), derived=self.derived)
         self.assertRegex(
             both,
-            r'<span class="sr-only">Your score</span><span[^>]*>8</span>.*'
+            r'<span class="sr-only">Your score</span><span[^>]*>8\.0</span>.*'
             r'<span class="sr-only">Derived rating</span><span[^>]*>7\.6',
         )
         self.assertEqual(both.count('class="sr-only"'), 2)

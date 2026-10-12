@@ -225,6 +225,37 @@ def _validate_tmdb(values):
     )
 
 
+def _validate_steamgriddb(values):
+    """Check a SteamGridDB key with a one-term search."""
+    api_key = values.get("api_key", "")
+    if not api_key:
+        return None
+    return _probe(
+        "GET",
+        "https://www.steamgriddb.com/api/v2/search/autocomplete/test",
+        headers={"Authorization": f"Bearer {api_key}"},
+    )
+
+
+def _validate_thegamesdb(values):
+    """Check a TheGamesDB key against its cheapest lookup."""
+    api_key = values.get("api_key", "")
+    if not api_key:
+        return None
+    return _probe(
+        "GET",
+        "https://api.thegamesdb.net/v1/Genres",
+        params={"apikey": api_key},
+    )
+
+
+def _validate_screenscraper(values):
+    """Require the username and password together; half a login is unusable."""
+    if bool(values.get("ssid")) != bool(values.get("sspassword")):
+        return "enter both the username and the password."
+    return None
+
+
 # TVDB and IGDB swap their key for a bearer token cached under a single global
 # cache key (tvdb.TOKEN_CACHE_KEY, and igdb's token cache), so a personal key
 # there would hand every other user someone else's token. They stay
@@ -308,6 +339,36 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             fields=(
                 CredentialField("client_id", "Client ID", "IGDB_ID"),
                 CredentialField("client_secret", "Client secret", "IGDB_SECRET"),
+            ),
+        ),
+        ProviderCredentialSpec(
+            slug="steamgriddb",
+            user_scope=True,
+            validator=_validate_steamgriddb,
+            label="SteamGridDB",
+            description="Recommended. Logos and backdrops for any game.",
+            docs_url="https://www.steamgriddb.com/profile/preferences/api",
+            fields=(CredentialField("api_key", "API key", "STEAMGRIDDB_API_KEY"),),
+        ),
+        ProviderCredentialSpec(
+            slug="thegamesdb",
+            user_scope=True,
+            validator=_validate_thegamesdb,
+            label="TheGamesDB",
+            description="Extra coverage. Clear logos and fanart.",
+            docs_url="https://forums.thegamesdb.net/viewforum.php?f=10",
+            fields=(CredentialField("api_key", "API key", "THEGAMESDB_API_KEY"),),
+        ),
+        ProviderCredentialSpec(
+            slug="screenscraper",
+            user_scope=True,
+            label="ScreenScraper",
+            description="Retro artwork. An account raises your limits.",
+            docs_url="https://www.screenscraper.fr/membreinscription.php",
+            validator=_validate_screenscraper,
+            fields=(
+                CredentialField("ssid", "Username", "SCREENSCRAPER_SSID", secret=False),
+                CredentialField("sspassword", "Password", "SCREENSCRAPER_SSPASSWORD"),
             ),
         ),
         ProviderCredentialSpec(
@@ -420,6 +481,11 @@ def current_user_scope(user):
 def _resolve_user(user):
     """Return the explicit user, else whichever the current request belongs to."""
     return user if user is not None else _current_user.get()
+
+
+def active_user():
+    """Return the user whose personal keys apply right now, if one is published."""
+    return _current_user.get()
 
 
 def get_spec(slug):

@@ -7,7 +7,7 @@
 {# djlint:off #}
 <div x-data="{ open: true }" x-show="open" x-cloak class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" @keydown.escape.window="open = false; document.getElementById('recommend-modal-container').innerHTML = ''">
   <div @click.outside="open = false; document.getElementById('recommend-modal-container').innerHTML = ''"
-       class="bg-[var(--color-surface)] rounded-lg max-w-md max-h-[90vh] overflow-y-auto"
+       class="bg-[var(--color-surface)] rounded-lg max-w-md max-h-[90dvh] overflow-y-auto"
        x-transition:enter="transition ease-out duration-200"
        x-transition:enter-start="opacity-0 scale-95"
        x-transition:enter-end="opacity-100 scale-100"

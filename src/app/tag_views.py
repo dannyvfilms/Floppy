@@ -16,6 +16,7 @@ from app.models import Item, ItemTag, MediaTypes, Tag
 from app.providers import services
 from app.services import metadata_resolution
 from app.templatetags import app_tags
+from users.models import MediaStatusChoices
 
 
 def _detail_request_url(request, *, fragment: str | None = None) -> str:
@@ -274,32 +275,50 @@ def tag_index(request):
             item_count=Count("item_tags", distinct=True),
         ),
     )
-    tags_by_id = {tag.id: tag for tag in tags}
-
+    include_anime, _include_tv = metadata_resolution.anime_library_visibility(
+        request.user,
+    )
     type_counts = (
         ItemTag.objects.filter(tag__user=request.user)
-        .values("tag_id", "item__media_type")
+        .values("tag_id", "item__media_type", "item__library_media_type")
         .annotate(count=Count("id"))
         .order_by()
     )
-    for tag in tags:
-        tag.type_breakdown = []
+    counts_by_tag = {}
     for row in type_counts:
-        tag = tags_by_id.get(row["tag_id"])
-        if tag is None:
-            continue
         media_type = row["item__media_type"]
+        # Grouped anime is a TV item in the anime bucket; the library that
+        # lists it follows the user's anime library mode.
+        if (
+            media_type == MediaTypes.TV.value
+            and row["item__library_media_type"] == MediaTypes.ANIME.value
+            and include_anime
+        ):
+            media_type = MediaTypes.ANIME.value
         if media_type not in TAG_INDEX_LINKABLE_MEDIA_TYPES:
             continue
-        tag.type_breakdown.append(
-            {
-                "media_type": media_type,
-                "count": row["count"],
-                # Empty status clears the saved status filter, which would
-                # otherwise hide tagged entries this count includes.
-                "url": f"{reverse('medialist', kwargs={'media_type': media_type})}?{urlencode({'tag': tag.name, 'status': ''})}",
-            },
-        )
+        counts = counts_by_tag.setdefault(row["tag_id"], {})
+        counts[media_type] = counts.get(media_type, 0) + row["count"]
+
+    # Every status plus "no status", so the list shows what the count counts:
+    # rating-only and tagged-only items sit outside any status view.
+    all_statuses = [
+        value for value in MediaStatusChoices.values if value != MediaStatusChoices.ALL
+    ]
+    for tag in tags:
+        tag.type_breakdown = []
+        for media_type, count in counts_by_tag.get(tag.id, {}).items():
+            query = {"tag": tag.name, "status": [*all_statuses, "no_status"]}
+            if media_type == MediaTypes.MUSIC.value:
+                # Tags sit on tracks, not the default artists view.
+                query["subview"] = "tracks"
+            tag.type_breakdown.append(
+                {
+                    "media_type": media_type,
+                    "count": count,
+                    "url": f"{reverse('medialist', kwargs={'media_type': media_type})}?{urlencode(query, doseq=True)}",
+                },
+            )
 
     if sort == "count":
         tags.sort(key=lambda tag: (-tag.item_count, tag.name.lower()))
