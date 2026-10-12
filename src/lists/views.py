@@ -33,7 +33,7 @@ from lists import smart_rules
 from lists import tasks as list_tasks
 from lists.forms import CustomListForm
 from lists.models import CustomList
-from lists.tiers import MAX_TIERS
+from lists.tiers import MAX_TIERS, TIER_BOARD_LIMIT
 from lists.views_helpers import (
     _adapt_list_items_for_table,
     _attach_kometa_episode_urls,
@@ -55,9 +55,6 @@ from users.models import (
 )
 
 logger = logging.getLogger(__name__)
-
-# A tier board shows every item on one page; past this it says so.
-TIER_BOARD_LIMIT = 300
 
 
 @login_not_required
@@ -408,6 +405,9 @@ def list_detail(request, list_reference):
                     "maxTiers": MAX_TIERS,
                     "moveUrl": reverse("list_tier_move", args=[custom_list.id]),
                     "saveUrl": reverse("list_tier_save", args=[custom_list.id]),
+                    "canFill": can_edit and request.user.ratings_enabled,
+                    "fillUrl": reverse("list_tier_fill", args=[custom_list.id]),
+                    "undoUrl": reverse("list_tier_fill_undo", args=[custom_list.id]),
                 },
                 "tier_board_truncated": filtered_items_count
                 > len(items_page.object_list),

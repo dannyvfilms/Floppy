@@ -59,6 +59,7 @@
            x-cloak
            role="group"
            aria-label="{% blocktranslate trimmed with value_1=translated_field_label %}{{ value_1 }} quick actions{% endblocktranslate %}">
+        <span class="date-picker-empty-label">{% translate "Not set" %}</span>
         {% if quick_action_mode != "end" %}
           <button type="button"
                   @click="applyQuickAction('start-now')"
@@ -76,10 +77,10 @@
           </button>
         {% endif %}
         {% if quick_action_mode != "end" %}
-          {% translate "Release date unavailable" as media_i18n_76 %}<button type="button"
+          <button type="button"
                   @click="applyQuickAction('release-date')"
-                  :disabled="!resolvedSuggestionDate()"
-                  :title="resolvedSuggestionDate() ? '' : '{{ media_i18n_76|escapejs }}'"
+                  x-show="resolvedSuggestionDate()"
+                  x-cloak
                   class="date-picker-quick-action">
             <span class="sm:hidden">{% translate "Release" context "date picker shortcut" %}</span>
             <span class="hidden sm:inline">{% translate "Release Date" context "date picker shortcut" %}</span>

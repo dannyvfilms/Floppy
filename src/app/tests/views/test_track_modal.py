@@ -277,7 +277,7 @@ class TrackModalViewTests(TestCase):
         self.assertEqual(content.count("Start Now"), 1)
         self.assertEqual(content.count("Just Finished"), 1)
         self.assertEqual(content.count("Release Date"), 3)
-        self.assertEqual(content.count(':disabled="!resolvedSuggestionDate()"'), 1)
+        self.assertEqual(content.count('x-show="resolvedSuggestionDate()"'), 1)
         general_field_names = [
             field.name for field in response.context["general_fields"]
         ]

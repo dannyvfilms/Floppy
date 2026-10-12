@@ -1377,6 +1377,12 @@ paths:
       operationId: retrieveMediaItem
       description: Retrieve details of a specific media for the authenticated user.
       parameters:
+      - in: query
+        name: library_media_type
+        schema:
+          type: string
+        description: Library the tv show, season or episode is stored in. Set to `anime`
+          for titles in the Anime library; omitted means the regular TV library.
       - in: path
         name: media_id
         schema:
@@ -1454,6 +1460,12 @@ paths:
         Use the history endpoint when the caller needs to target one exact
         consumption entry.
       parameters:
+      - in: query
+        name: library_media_type
+        schema:
+          type: string
+        description: Library the tv show, season or episode is stored in. Set to `anime`
+          for titles in the Anime library; omitted means the regular TV library.
       - in: path
         name: media_id
         schema:
@@ -1538,6 +1550,12 @@ paths:
       operationId: deleteMedia
       description: Delete a tracked media item and all its consumptions.
       parameters:
+      - in: query
+        name: library_media_type
+        schema:
+          type: string
+        description: Library the tv show, season or episode is stored in. Set to `anime`
+          for titles in the Anime library; omitted means the regular TV library.
       - in: path
         name: media_id
         schema:
@@ -1583,6 +1601,12 @@ paths:
       operationId: retrieveMediaSeason
       description: Retrieve details of a specific season for the authenticated user.
       parameters:
+      - in: query
+        name: library_media_type
+        schema:
+          type: string
+        description: Library the tv show, season or episode is stored in. Set to `anime`
+          for titles in the Anime library; omitted means the regular TV library.
       - in: path
         name: media_id
         schema:
@@ -1662,6 +1686,12 @@ paths:
       operationId: deleteMediaSeason
       description: Delete a tracked season item for the authenticated user.
       parameters:
+      - in: query
+        name: library_media_type
+        schema:
+          type: string
+        description: Library the tv show, season or episode is stored in. Set to `anime`
+          for titles in the Anime library; omitted means the regular TV library.
       - in: path
         name: media_id
         schema:
@@ -1719,6 +1749,12 @@ paths:
           type: string
           pattern: ^\d+$
         required: true
+      - in: query
+        name: library_media_type
+        schema:
+          type: string
+        description: Library the tv show, season or episode is stored in. Set to `anime`
+          for titles in the Anime library; omitted means the regular TV library.
       - in: path
         name: media_id
         schema:
@@ -1804,6 +1840,12 @@ paths:
           type: string
           pattern: ^\d+$
         required: true
+      - in: query
+        name: library_media_type
+        schema:
+          type: string
+        description: Library the tv show, season or episode is stored in. Set to `anime`
+          for titles in the Anime library; omitted means the regular TV library.
       - in: path
         name: media_id
         schema:
@@ -1980,6 +2022,12 @@ paths:
           type: string
           pattern: ^\d+$
         required: true
+      - in: query
+        name: library_media_type
+        schema:
+          type: string
+        description: Library the tv show, season or episode is stored in. Set to `anime`
+          for titles in the Anime library; omitted means the regular TV library.
       - in: path
         name: media_id
         schema:
@@ -2065,6 +2113,12 @@ paths:
       operationId: api_v1_media_lists_update
       description: Add a specific media to a specific list.
       parameters:
+      - in: query
+        name: library_media_type
+        schema:
+          type: string
+        description: Library the tv show, season or episode is stored in. Set to `anime`
+          for titles in the Anime library; omitted means the regular TV library.
       - in: path
         name: list_id
         schema:

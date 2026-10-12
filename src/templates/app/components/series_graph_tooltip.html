@@ -15,7 +15,7 @@ Variables:
 <div x-show="graphOpen" x-cloak @click.self="graphOpen = false" x-transition.opacity
      class="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4">
   <div role="dialog" aria-modal="true" aria-labelledby="series-graph-title-{{ provider_label|slugify }}"
-       class="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)] p-4 shadow-2xl sm:p-6">
+       class="max-h-[90dvh] w-full max-w-4xl overflow-auto rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)] p-4 shadow-2xl sm:p-6">
     <div class="mb-4 flex items-center justify-between gap-3">
       <h2 id="series-graph-title-{{ provider_label|slugify }}" class="text-lg font-semibold text-[var(--color-text)]">{% translate "Series Graph" %}</h2>
       <div class="flex items-center gap-2">

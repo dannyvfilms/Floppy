@@ -1,8 +1,13 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.contrib.messages import get_messages
+from django.core.cache import cache
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from app.models import MediaTypes
+from app.providers import credentials
 from integrations.models import PlexAccount
 
 
@@ -42,19 +47,19 @@ class OnboardingWizardTests(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.season_enabled)
 
-    def test_media_types_post_advances_to_services(self):
-        """Choosing media types moves to the services step and marks in_progress."""
+    def test_media_types_post_advances_to_metadata(self):
+        """Choosing media types moves to the metadata step and marks in_progress."""
         response = self.client.post(
             reverse("onboarding_media_types"),
             {"media_types_checkboxes": [MediaTypes.MOVIE.value, MediaTypes.TV.value]},
         )
 
-        self.assertRedirects(response, reverse("onboarding_services", args=[0]))
+        self.assertRedirects(response, reverse("onboarding_metadata"))
         self.user.refresh_from_db()
         self.assertTrue(self.user.movie_enabled)
         self.assertTrue(self.user.tv_enabled)
         self.assertEqual(self.user.onboarding_status, "in_progress")
-        self.assertEqual(self.user.onboarding_step, "services")
+        self.assertEqual(self.user.onboarding_step, "metadata")
 
     def test_media_types_post_requires_at_least_one(self):
         """Submitting with nothing selected doesn't silently disable everything."""
@@ -289,3 +294,186 @@ class SignupOnboardingRedirectTests(TestCase):
         )
 
         self.assertRedirects(response, reverse("onboarding_media_types"))
+
+
+class OnboardingMetadataStepTests(TestCase):
+    """The optional step that offers provider keys, with an example of each."""
+
+    def setUp(self):
+        """Create a user who has chosen media types, so the step is reachable."""
+        cache.clear()  # credentials are cached by user id, and ids repeat across tests
+        self.credentials = {"username": "metauser", "password": "testpass123"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        self.url = reverse("onboarding_metadata")
+
+    def enable(self, *media_types):
+        """Enable exactly the given media types for the user."""
+        for field in ("game", "movie", "tv", "anime", "music"):
+            setattr(self.user, f"{field}_enabled", field in media_types)
+        self.user.save()
+
+    def offered(self, response):
+        """Return the provider slugs the page offers."""
+        return [s["slug"] for s in response.context["suggestions"]]
+
+    def test_games_are_offered_steamgriddb_first_with_a_reason(self):
+        self.enable("game")
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "users/onboarding/metadata.html")
+        self.assertEqual(self.offered(response), ["steamgriddb", "thegamesdb"])
+        self.assertContains(response, "Hollow Knight")
+        self.assertContains(response, "Recommended")
+
+    def test_movies_and_tv_are_offered_their_own_tmdb_key(self):
+        self.enable("movie")
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(self.offered(response), ["tmdb"])
+        self.assertContains(response, "shared by every Floppy install")
+
+    def test_a_provider_is_only_offered_for_media_types_that_use_it(self):
+        self.enable("game", "movie")
+
+        self.assertEqual(
+            self.offered(self.client.get(self.url)),
+            ["steamgriddb", "thegamesdb", "tmdb"],
+        )
+
+    def test_screenscraper_is_offered_only_when_the_install_can_use_it(self):
+        self.enable("game")
+        dev = {"SCREENSCRAPER_DEV_ID": "dev", "SCREENSCRAPER_DEV_PASSWORD": "pass"}
+
+        with override_settings(**dev):
+            response = self.client.get(self.url)
+
+        self.assertIn("screenscraper", self.offered(response))
+        self.assertContains(response, 'name="screenscraper-ssid"')
+        self.assertContains(response, 'name="screenscraper-sspassword"')
+
+    def test_a_key_that_is_already_set_is_not_offered_again(self):
+        self.enable("game", "movie")
+        credentials.set_user("steamgriddb", self.user, {"api_key": "mine"})
+
+        with override_settings(TMDB_API="an-operator-key"):
+            response = self.client.get(self.url)
+
+        self.assertEqual(self.offered(response), ["thegamesdb"])
+
+    def test_the_step_is_skipped_when_nothing_applies(self):
+        self.enable("music")
+
+        response = self.client.get(self.url)
+
+        self.assertRedirects(response, reverse("onboarding_services", args=[0]))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.onboarding_step, "services")
+
+    @patch("app.providers.credentials._probe", return_value=None)
+    def test_a_valid_key_is_saved_as_a_personal_key_and_setup_continues(self, _probe):
+        self.enable("game")
+
+        response = self.client.post(self.url, {"steamgriddb-api_key": "  good-key  "})
+
+        self.assertRedirects(response, reverse("onboarding_services", args=[0]))
+        self.assertEqual(credentials.get("steamgriddb", "api_key", self.user), "good-key")
+        self.assertTrue(credentials.has_user_value("steamgriddb", self.user))
+        self.assertFalse(credentials.has_user_value("thegamesdb", self.user))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.onboarding_step, "services")
+
+    @patch(
+        "app.providers.credentials._probe",
+        return_value="the provider rejected that credential",
+    )
+    def test_a_rejected_key_is_not_saved_and_the_step_stays(self, _probe):
+        self.enable("game")
+
+        response = self.client.post(self.url, {"steamgriddb-api_key": "bad"})
+
+        self.assertRedirects(response, self.url)
+        self.assertFalse(credentials.has_user_value("steamgriddb", self.user))
+        text = [str(m) for m in get_messages(response.wsgi_request)]
+        self.assertIn("SteamGridDB: the provider rejected that credential", text)
+
+    @patch("app.providers.credentials._probe")
+    def test_one_bad_key_does_not_lose_the_good_one(self, mock_probe):
+        self.enable("game")
+        mock_probe.side_effect = [None, "the provider rejected that credential"]
+
+        response = self.client.post(
+            self.url,
+            {"steamgriddb-api_key": "good", "thegamesdb-api_key": "bad"},
+        )
+
+        self.assertRedirects(response, self.url)
+        self.assertTrue(credentials.has_user_value("steamgriddb", self.user))
+        self.assertFalse(credentials.has_user_value("thegamesdb", self.user))
+        self.assertEqual(self.offered(self.client.get(self.url)), ["thegamesdb"])
+
+    def test_continuing_with_nothing_typed_saves_nothing_and_moves_on(self):
+        self.enable("game")
+
+        response = self.client.post(self.url, {"steamgriddb-api_key": "   "})
+
+        self.assertRedirects(response, reverse("onboarding_services", args=[0]))
+        self.assertFalse(credentials.has_user_value("steamgriddb", self.user))
+
+    def test_skip_ignores_anything_typed(self):
+        self.enable("game")
+
+        response = self.client.post(
+            self.url, {"action": "skip", "steamgriddb-api_key": "typed"}
+        )
+
+        self.assertRedirects(response, reverse("onboarding_services", args=[0]))
+        self.assertFalse(credentials.has_user_value("steamgriddb", self.user))
+
+    def test_half_a_screenscraper_login_is_rejected(self):
+        self.enable("game")
+        dev = {"SCREENSCRAPER_DEV_ID": "dev", "SCREENSCRAPER_DEV_PASSWORD": "pass"}
+
+        with override_settings(**dev):
+            response = self.client.post(self.url, {"screenscraper-ssid": "me"})
+
+        self.assertRedirects(response, self.url)
+        self.assertFalse(credentials.has_user_value("screenscraper", self.user))
+
+    def test_a_full_screenscraper_login_is_saved(self):
+        self.enable("game")
+        dev = {"SCREENSCRAPER_DEV_ID": "dev", "SCREENSCRAPER_DEV_PASSWORD": "pass"}
+
+        with override_settings(**dev):
+            self.client.post(
+                self.url,
+                {"screenscraper-ssid": "me", "screenscraper-sspassword": "pw"},
+            )
+
+        self.assertEqual(credentials.get("screenscraper", "ssid", self.user), "me")
+        self.assertEqual(credentials.get("screenscraper", "sspassword", self.user), "pw")
+
+    def test_resume_returns_to_the_metadata_step(self):
+        self.enable("game")
+        self.user.onboarding_step = "metadata"
+        self.user.save()
+
+        response = self.client.get(reverse("onboarding_resume"))
+
+        self.assertRedirects(response, self.url)
+
+    def test_the_progress_header_lists_the_step_after_media_types(self):
+        self.enable("game")
+
+        labels = [label for _, label in self.client.get(self.url).context["onboarding_steps"]]
+
+        self.assertEqual(labels[:3], ["Media Types", "Metadata", "Services"])
+
+    def test_demo_accounts_are_sent_home(self):
+        self.user.is_demo = True
+        self.user.save()
+
+        self.assertRedirects(self.client.get(self.url), reverse("home"))

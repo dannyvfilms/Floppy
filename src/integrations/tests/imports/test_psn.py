@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -16,7 +17,7 @@ from app.models import DeletedMedia, Game, Item, MediaTypes, Sources, Status
 from app.providers import services
 from integrations import psn_api
 from integrations.imports import helpers, psn
-from integrations.models import PSNAccount
+from integrations.models import PlaytimeSnapshot, PSNAccount
 
 PSN_RECURRING_TASK_NAME = "Import from PSN (Recurring)"
 
@@ -28,6 +29,7 @@ def stats(
     minutes=600,
     last_played=None,
     play_count=5,
+    first_played=None,
 ):
     """Build a psnawp TitleStats lookalike the way title_stats reports them."""
     return SimpleNamespace(
@@ -36,7 +38,7 @@ def stats(
         image_url=f"http://example.com/{title_id}.png",
         category=category,
         play_count=play_count,
-        first_played_date_time=None,
+        first_played_date_time=first_played,
         last_played_date_time=last_played,
         play_duration=timedelta(minutes=minutes),
     )
@@ -101,6 +103,7 @@ class ImportPSN(TestCase):
 
     def setUp(self):
         """Create a user with a connected PSN account."""
+        cache.clear()
         self.user = get_user_model().objects.create_user(
             username="test",
             password="12345",
@@ -211,88 +214,6 @@ class ImportPSN(TestCase):
 
     @patch("integrations.imports.psn.services.search")
     @patch("integrations.psn_api.PSNAWP")
-    def test_overwrite_updates_progress(self, mock_psnawp, mock_search):
-        """PSN's cumulative duration replaces existing progress on overwrite."""
-        item = self.existing_game(progress=10)
-        mock_psnawp.side_effect = FakePSNAWP(
-            [stats("PPSA00001_00", "Halo Infinite", PlatformCategory.PS5, 1250)],
-        )
-        mock_search.side_effect = self.search_stub(media_id="1")
-
-        psn.importer(None, self.user, "overwrite")
-
-        game = Game.objects.get(user=self.user, item=item)
-        self.assertEqual(game.progress, 1250)
-
-    @patch("integrations.imports.psn.services.search")
-    @patch("integrations.psn_api.PSNAWP")
-    def test_overwrite_preserves_completed_status(self, mock_psnawp, mock_search):
-        """A manually completed game keeps its status on re-sync."""
-        item = self.existing_game(progress=10, status=Status.COMPLETED.value)
-        recent = timezone.now() - timedelta(days=1)
-        mock_psnawp.side_effect = FakePSNAWP(
-            [
-                stats(
-                    "PPSA00001_00",
-                    "Halo Infinite",
-                    PlatformCategory.PS5,
-                    1250,
-                    recent,
-                ),
-            ],
-        )
-        mock_search.side_effect = self.search_stub(media_id="1")
-
-        psn.importer(None, self.user, "overwrite")
-
-        game = Game.objects.get(user=self.user, item=item)
-        self.assertEqual(game.status, Status.COMPLETED.value)
-        self.assertEqual(game.progress, 1250)
-
-    @patch("integrations.imports.psn.services.search")
-    @patch("integrations.psn_api.PSNAWP")
-    def test_status_set_completed_mid_sync_is_not_clobbered(
-        self,
-        mock_psnawp,
-        mock_search,
-    ):
-        """A user marking a game Completed while the sync runs keeps that
-        status: the guard must hold against the database state at write
-        time, not the snapshot read before the long matching phase.
-        """
-        item = self.existing_game(progress=10)
-        recent = timezone.now() - timedelta(days=1)
-        mock_psnawp.side_effect = FakePSNAWP(
-            [
-                stats(
-                    "PPSA00001_00",
-                    "Halo Infinite",
-                    PlatformCategory.PS5,
-                    1250,
-                    recent,
-                ),
-            ],
-        )
-        good = self.search_stub(media_id="1")
-
-        def search_and_complete_concurrently(media_type, query, page, source=None):
-            # Simulates the user's edit landing between the importer's
-            # snapshot and its final write.
-            Game.objects.filter(user=self.user, item__media_id="1").update(
-                status=Status.COMPLETED.value,
-            )
-            return good(media_type, query, page, source=source)
-
-        mock_search.side_effect = search_and_complete_concurrently
-
-        psn.importer(None, self.user, "overwrite")
-
-        game = Game.objects.get(user=self.user, item=item)
-        self.assertEqual(game.status, Status.COMPLETED.value)
-        self.assertEqual(game.progress, 1250)
-
-    @patch("integrations.imports.psn.services.search")
-    @patch("integrations.psn_api.PSNAWP")
     def test_new_mode_leaves_existing_progress_and_status_alone(
         self,
         mock_psnawp,
@@ -323,30 +244,311 @@ class ImportPSN(TestCase):
         self.assertEqual(game.progress, 10)
         self.assertEqual(game.status, Status.PAUSED.value)
 
-    @patch("integrations.imports.psn.services.search")
-    @patch("integrations.psn_api.PSNAWP")
-    def test_overwrite_preserves_dropped_status(self, mock_psnawp, mock_search):
-        """A manually dropped game keeps its status but gets fresh hours."""
-        item = self.existing_game(progress=10, status=Status.DROPPED.value)
-        recent = timezone.now() - timedelta(days=1)
-        mock_psnawp.side_effect = FakePSNAWP(
-            [
-                stats(
-                    "PPSA00001_00",
-                    "Halo Infinite",
-                    PlatformCategory.PS5,
-                    1250,
-                    recent,
-                ),
-            ],
+
+    def sync(self, titles, mode="new", media_id="1"):
+        """Run one importer pass against canned PSN titles."""
+        with (
+            patch("integrations.psn_api.PSNAWP") as mock_psnawp,
+            patch("integrations.imports.psn.services.search") as mock_search,
+        ):
+            mock_psnawp.side_effect = FakePSNAWP(titles)
+            mock_search.side_effect = self.search_stub(media_id=media_id)
+            return psn.importer(None, self.user, mode)
+
+    def halo(self, minutes, last_played=None, first_played=None):
+        """One PSN title for the game the sync tests track."""
+        return [
+            stats(
+                "PPSA00001_00",
+                "Halo Infinite",
+                PlatformCategory.PS5,
+                minutes,
+                last_played,
+                first_played=first_played,
+            ),
+        ]
+
+    def test_first_sync_of_a_tracked_game_only_remembers_the_total(self):
+        """A game already in the library keeps its history; PSN's lifetime
+        total becomes the starting point for later syncs.
+        """
+        item = self.existing_game(progress=10)
+
+        counts, _ = self.sync(self.halo(1250, timezone.now()), mode="overwrite")
+
+        self.assertEqual(Game.objects.filter(user=self.user, item=item).count(), 1)
+        self.assertEqual(Game.objects.get(user=self.user, item=item).progress, 10)
+        self.assertEqual(counts["created"], 0)
+        self.assertEqual(counts["baseline"], 1)
+        snapshot = PlaytimeSnapshot.objects.get(user=self.user, media_id="1")
+        self.assertEqual((snapshot.source, snapshot.minutes), ("psn", 1250))
+
+    def upgrading_account(self, days_ago=2):
+        """An account that synced before totals were remembered."""
+        self.account.last_sync_at = timezone.now() - timedelta(days=days_ago)
+        self.account.save()
+
+    def test_first_sync_logs_play_since_the_last_sync_for_a_tracked_game(self):
+        """Hours that were close to PSN's at the last sync make the difference
+        the play since then, logged as its own dated entry.
+        """
+        item = self.existing_game(progress=600)
+        self.upgrading_account(days_ago=2)
+        previous_sync = self.account.last_sync_at
+        last_played = timezone.now() - timedelta(hours=10)
+
+        counts, _ = self.sync(self.halo(780, last_played))
+
+        self.assertEqual(counts["created"], 1)
+        self.assertEqual(counts["baseline"], 0)
+        entries = Game.objects.filter(user=self.user, item=item).order_by("progress")
+        self.assertEqual([entry.progress for entry in entries], [180, 600])
+        new = entries[0]
+        self.assertEqual(new.end_date, last_played)
+        self.assertEqual(new.start_date, previous_sync)
+        self.assertEqual(PlaytimeSnapshot.objects.get(user=self.user).minutes, 780)
+
+    def test_first_sync_ignores_a_gap_bigger_than_the_tracked_hours(self):
+        """A library never in step with PSN isn't new play."""
+        item = self.existing_game(progress=10)
+        self.upgrading_account()
+
+        counts, _ = self.sync(self.halo(600, timezone.now() - timedelta(hours=5)))
+
+        self.assertEqual(counts["created"], 0)
+        self.assertEqual(counts["baseline"], 1)
+        self.assertEqual(Game.objects.filter(user=self.user, item=item).count(), 1)
+
+    def test_first_sync_ignores_a_game_not_played_since_the_last_sync(self):
+        """A difference in a game PSN hasn't launched lately is old history."""
+        self.existing_game(progress=600)
+        self.upgrading_account(days_ago=2)
+
+        counts, _ = self.sync(self.halo(780, timezone.now() - timedelta(days=9)))
+
+        self.assertEqual(counts["created"], 0)
+        self.assertEqual(counts["baseline"], 1)
+
+    def test_first_sync_of_a_new_account_logs_no_gap(self):
+        """With no earlier sync there is no window to put the difference in."""
+        self.existing_game(progress=600)
+
+        counts, _ = self.sync(self.halo(780, timezone.now() - timedelta(hours=5)))
+
+        self.assertEqual(counts["created"], 0)
+        self.assertEqual(counts["baseline"], 1)
+
+    def test_first_sync_with_hours_above_psn_logs_nothing(self):
+        """Hours tracked beyond PSN's total leave no gap."""
+        self.existing_game(progress=900)
+        self.upgrading_account()
+
+        counts, _ = self.sync(self.halo(780, timezone.now() - timedelta(hours=5)))
+
+        self.assertEqual(counts["created"], 0)
+
+    def test_message_says_when_a_sync_only_remembered_totals(self):
+        """The first sync after updating must not read as "nothing happened"."""
+        from integrations.tasks._import_helpers import format_import_message
+
+        message = format_import_message({"created": 0, "skipped": 0, "baseline": 3})
+
+        self.assertEqual(
+            message,
+            "No media was imported. 3 starting playtimes remembered.",
         )
-        mock_search.side_effect = self.search_stub(media_id="1")
 
-        psn.importer(None, self.user, "overwrite")
+    def test_later_sync_logs_the_new_time_as_a_dated_entry(self):
+        """Time played since the previous sync becomes its own entry between
+        that sync and PSN's last played time; existing entries are untouched.
+        """
+        item = self.existing_game(progress=10, status=Status.COMPLETED.value)
+        self.sync(self.halo(0))
+        previous = PlaytimeSnapshot.objects.get(user=self.user, media_id="1")
+        previous.seen_at = timezone.now() - timedelta(days=3)
+        previous.save()
+        last_played = timezone.now() - timedelta(days=1)
 
-        game = Game.objects.get(user=self.user, item=item)
-        self.assertEqual(game.status, Status.DROPPED.value)
-        self.assertEqual(game.progress, 1250)
+        counts, _ = self.sync(self.halo(180, last_played))
+
+        self.assertEqual(counts[MediaTypes.GAME.value], 1)
+        self.assertEqual(counts["created"], 1)
+        entries = Game.objects.filter(user=self.user, item=item).order_by("id")
+        self.assertEqual(entries.count(), 2)
+        old, new = entries
+        self.assertEqual((old.progress, old.status), (10, Status.COMPLETED.value))
+        self.assertEqual(new.progress, 180)
+        self.assertEqual(new.start_date, previous.seen_at)
+        self.assertEqual(new.end_date, last_played)
+        self.assertEqual(new.status, Status.IN_PROGRESS.value)
+        previous.refresh_from_db()
+        self.assertEqual(previous.minutes, 180)
+
+    def test_overwrite_mode_also_only_adds_entries(self):
+        """There is nothing to overwrite: both modes log the same new time."""
+        item = self.existing_game(progress=10)
+        self.sync(self.halo(60))
+        counts, _ = self.sync(self.halo(90, timezone.now()), mode="overwrite")
+
+        self.assertEqual(counts["created"], 1)
+        progress = sorted(
+            Game.objects.filter(user=self.user, item=item).values_list(
+                "progress",
+                flat=True,
+            ),
+        )
+        self.assertEqual(progress, [10, 30])
+
+    def test_unchanged_sync_adds_nothing_and_moves_the_window(self):
+        """With no new play nothing is logged, but the next entry starts at
+        this sync rather than at the last time anything changed.
+        """
+        self.existing_game(progress=10)
+        self.sync(self.halo(60))
+        PlaytimeSnapshot.objects.update(seen_at=timezone.now() - timedelta(days=5))
+
+        counts, _ = self.sync(self.halo(60))
+
+        self.assertEqual(counts["created"], 0)
+        self.assertEqual(Game.objects.filter(user=self.user).count(), 1)
+        snapshot = PlaytimeSnapshot.objects.get(user=self.user)
+        self.assertGreater(snapshot.seen_at, timezone.now() - timedelta(minutes=1))
+
+    def test_lower_reported_total_is_ignored(self):
+        """A partial PSN answer neither logs time nor lowers the total."""
+        self.existing_game(progress=10)
+        self.sync(self.halo(600))
+
+        counts, _ = self.sync(self.halo(0))
+
+        self.assertEqual(counts["created"], 0)
+        self.assertEqual(PlaytimeSnapshot.objects.get(user=self.user).minutes, 600)
+
+    def test_new_game_is_imported_with_its_first_to_last_played_dates(self):
+        """The setup import of an untracked game is one entry across its
+        lifetime, which Repeats spreads and Sessions shows as a range.
+        """
+        first = timezone.now() - timedelta(days=300)
+        last = timezone.now() - timedelta(days=20)
+
+        counts, _ = self.sync(self.halo(1250, last, first_played=first))
+
+        self.assertEqual(counts["created"], 1)
+        game = Game.objects.get(user=self.user)
+        self.assertEqual(
+            (game.progress, game.start_date, game.end_date),
+            (1250, first, last),
+        )
+
+    def test_new_game_without_dates_stays_dateless(self):
+        """No dates from PSN means no dates here, so statistics aren't skewed."""
+        self.sync(self.halo(1250))
+
+        game = Game.objects.get(user=self.user)
+        self.assertIsNone(game.start_date)
+        self.assertIsNone(game.end_date)
+
+    def test_track_new_play_only_skips_the_existing_playtime(self):
+        """The setup choice to only track new play records totals but writes
+        no entries for games that aren't in the library yet.
+        """
+        self.account.import_existing_playtime = False
+        self.account.save()
+
+        counts, _ = self.sync(self.halo(1250, timezone.now()))
+
+        self.assertEqual(counts["created"], 0)
+        self.assertFalse(Game.objects.filter(user=self.user).exists())
+
+        PlaytimeSnapshot.objects.update(seen_at=timezone.now() - timedelta(days=2))
+        counts, _ = self.sync(self.halo(1310, timezone.now()))
+
+        self.assertEqual(counts["created"], 1)
+        self.assertEqual(Game.objects.get(user=self.user).progress, 60)
+
+    def test_deleted_game_still_advances_the_remembered_total(self):
+        """A game deleted here stays gone and its old time isn't logged later."""
+        self.tombstone("1")
+
+        self.sync(self.halo(600))
+
+        self.assertFalse(Game.objects.filter(user=self.user).exists())
+        self.assertEqual(PlaytimeSnapshot.objects.get(user=self.user).minutes, 600)
+
+    def test_failed_snapshot_save_does_not_leave_logged_play_behind(self):
+        """Play logged without its remembered total would be logged again."""
+        with (
+            patch.object(
+                psn.PSNImporter,
+                "_save_snapshots",
+                side_effect=RuntimeError("disk full"),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            self.sync(self.halo(1250, timezone.now()))
+
+        self.assertFalse(Game.objects.filter(user=self.user).exists())
+
+    def test_overlapping_syncs_do_not_run_twice(self):
+        """A second sync started while one runs is skipped, not double-logged."""
+        from integrations import tasks
+
+        cache.set(f"psn_import_lock_{self.user.id}", "other-task", 60)
+
+        with patch("integrations.tasks._media_imports.import_media") as run:
+            message = tasks.import_psn_recurring(user_id=self.user.id)
+
+        run.assert_not_called()
+        self.assertIn("already in progress", message)
+
+    def test_scheduled_sync_skips_when_the_cache_is_down(self):
+        """Without the lock an overlap could log the same play twice."""
+        from integrations import tasks
+
+        with (
+            patch("app.cache_safety.cache_add", return_value=None),
+            patch(
+                "integrations.tasks._media_imports.import_media",
+                return_value="ok",
+            ) as run,
+        ):
+            tasks.import_psn_recurring(user_id=self.user.id)
+
+        run.assert_not_called()
+
+    def test_sync_releases_its_lock_when_done(self):
+        """The lock doesn't outlive the sync it guards."""
+        from integrations import tasks
+
+        with patch("integrations.tasks._media_imports.import_media", return_value="ok"):
+            tasks.import_psn(user_id=self.user.id)
+
+        self.assertIsNone(cache.get(f"psn_import_lock_{self.user.id}"))
+
+    def test_task_reports_what_a_sync_did(self):
+        """A sync that only logs new time doesn't read as "No media imported"."""
+        from integrations import tasks
+
+        self.existing_game(progress=10)
+        self.sync(self.halo(60))
+        PlaytimeSnapshot.objects.update(seen_at=timezone.now() - timedelta(days=1))
+
+        with (
+            patch("integrations.psn_api.PSNAWP") as mock_psnawp,
+            patch("integrations.imports.psn.services.search") as mock_search,
+            patch("integrations.tasks._media_imports.events.tasks.reload_calendar"),
+            patch(
+                "integrations.tasks._media_imports.history_cache"
+                ".invalidate_history_cache",
+            ) as invalidate_history,
+        ):
+            mock_psnawp.side_effect = FakePSNAWP(self.halo(120, timezone.now()))
+            mock_search.side_effect = self.search_stub(media_id="1")
+            message = tasks.import_psn(user_id=self.user.id, mode="new")
+
+        self.assertIn("1 created", message)
+        self.assertNotIn("No media was imported", message)
+        invalidate_history.assert_called_once()
 
     @patch("integrations.imports.psn.services.search")
     @patch("integrations.psn_api.PSNAWP")
@@ -856,6 +1058,10 @@ class ImportPSN(TestCase):
 class PSNAPITests(TestCase):
     """Test the psn_api client helpers directly."""
 
+    def setUp(self):
+        """Start each test without remembered game lookups."""
+        cache.clear()
+
     @patch("integrations.psn_api.PSNAWP")
     def test_get_account_returns_ids(self, mock_psnawp):
         """The connect-time validation returns account and online IDs."""
@@ -897,6 +1103,19 @@ class PSNAPITests(TestCase):
         )
 
     @patch("integrations.psn_api.PSNAWP")
+    def test_concept_lookup_is_remembered_between_syncs(self, mock_psnawp):
+        """A title already classified is not looked up again on the next sync."""
+        fake = FakePSNAWP(
+            titles=[stats("CUSA1", "Some Game", category=PlatformCategory.UNKNOWN)],
+        )
+        mock_psnawp.side_effect = fake
+
+        psn_api.get_played_games("npsso")
+        psn_api.get_played_games("npsso")
+
+        self.assertEqual(fake.detail_calls, ["CUSA1"])
+
+    @patch("integrations.psn_api.PSNAWP")
     def test_unknown_psnawp_error_names_the_type_only(self, mock_psnawp):
         """An unmodelled psnawp error is reported by type, not by message."""
         mock_psnawp.side_effect = psnawp_exceptions.PSNAWPServerError(
@@ -929,10 +1148,10 @@ class PSNViewTests(TestCase):
         mock_get_account,
         mock_delay,
     ):
-        """A one time connect validates the token, stores it and imports now."""
+        """Connecting validates the token, stores it, syncs now and schedules."""
         response = self.client.post(
             reverse("psn_connect"),
-            {"npsso": "npsso-token", "frequency": "once", "mode": "new"},
+            {"npsso": "npsso-token"},
         )
 
         self.assertRedirects(response, reverse("import_data"))
@@ -945,36 +1164,9 @@ class PSNViewTests(TestCase):
         self.assertEqual(account.online_id, "TestPlayer")
         self.assertTrue(account.is_connected)
 
-        self.assertFalse(
-            PeriodicTask.objects.filter(task=PSN_RECURRING_TASK_NAME).exists(),
-        )
-
-    @patch("integrations.views.tasks.import_psn.delay")
-    @patch(
-        "integrations.views.psn_api.get_account",
-        return_value=("1234567890", "TestPlayer"),
-    )
-    def test_connect_with_frequency_only_schedules(
-        self,
-        _mock_get_account,
-        mock_delay,
-    ):
-        """A recurring connect schedules the import instead of running it."""
-        self.client.post(
-            reverse("psn_connect"),
-            {
-                "npsso": "npsso-token",
-                "frequency": "daily",
-                "time": "05:30",
-                "mode": "new",
-            },
-        )
-
-        mock_delay.assert_not_called()
         task = PeriodicTask.objects.get(task=PSN_RECURRING_TASK_NAME)
-        self.assertEqual(task.crontab.hour, "5")
-        self.assertEqual(task.crontab.minute, "30")
-        self.assertEqual(task.crontab.day_of_week, "*")
+        self.assertEqual(task.crontab.hour, f"*/{psn.SYNC_EVERY_HOURS}")
+        self.assertEqual(task.crontab.minute, str(self.user.id % 60))
         self.assertIn("Import from PSN for test", task.name)
 
     @patch("integrations.views.psn_api.get_account")
@@ -1027,7 +1219,7 @@ class PSNViewTests(TestCase):
         """Disconnecting deletes both the account row and its periodic task."""
         self.client.post(
             reverse("psn_connect"),
-            {"npsso": "npsso-token", "frequency": "daily", "time": "04:00"},
+            {"npsso": "npsso-token"},
         )
         self.assertTrue(
             PeriodicTask.objects.filter(task=PSN_RECURRING_TASK_NAME).exists(),
@@ -1043,6 +1235,50 @@ class PSNViewTests(TestCase):
                 kwargs__contains=f'"user_id": {self.user.id}',
             ).exists(),
         )
+
+    @patch("integrations.views.tasks.import_psn.delay")
+    @patch("integrations.views.psn_api.get_account")
+    def test_remembered_totals_follow_the_connected_account(
+        self,
+        mock_account,
+        _mock_delay,
+    ):
+        """Another PSN account's totals would read as fabricated or hidden play."""
+        mock_account.return_value = ("1234567890", "TestPlayer")
+        self.client.post(reverse("psn_connect"), {"npsso": "npsso-token"})
+        PlaytimeSnapshot.objects.create(
+            user=self.user,
+            source="psn",
+            media_id="1",
+            minutes=600,
+            seen_at=timezone.now(),
+        )
+
+        # Reconnecting the same account keeps what was remembered.
+        self.client.post(reverse("psn_connect"), {"npsso": "new-token"})
+        self.assertEqual(PlaytimeSnapshot.objects.filter(user=self.user).count(), 1)
+
+        # A different account starts fresh, including the last sync time.
+        PSNAccount.objects.filter(user=self.user).update(last_sync_at=timezone.now())
+        mock_account.return_value = ("999", "OtherPlayer")
+        self.client.post(reverse("psn_connect"), {"npsso": "other-token"})
+        self.assertFalse(PlaytimeSnapshot.objects.filter(user=self.user).exists())
+        self.assertIsNone(PSNAccount.objects.get(user=self.user).last_sync_at)
+
+    def test_disconnect_forgets_the_remembered_totals(self):
+        """Disconnecting clears them, so a later account never inherits them."""
+        self._connect_account()
+        PlaytimeSnapshot.objects.create(
+            user=self.user,
+            source="psn",
+            media_id="1",
+            minutes=600,
+            seen_at=timezone.now(),
+        )
+
+        self.client.post(reverse("psn_disconnect"))
+
+        self.assertFalse(PlaytimeSnapshot.objects.filter(user=self.user).exists())
 
     @patch("integrations.views.tasks.import_psn.delay")
     def test_sync_now_requires_connected_account(self, mock_delay):
@@ -1062,39 +1298,112 @@ class PSNViewTests(TestCase):
         )
 
     @patch("integrations.views.tasks.import_psn.delay")
-    def test_one_time_import_runs_now_without_scheduling(self, mock_delay):
-        """A one time import runs straight away and schedules nothing."""
-        self._connect_account()
-
+    @patch(
+        "integrations.views.psn_api.get_account",
+        return_value=("1234567890", "TestPlayer"),
+    )
+    def test_connect_stores_the_existing_playtime_choice(self, _account, _delay):
+        """The setup choice posted with the token is kept on the account."""
         self.client.post(
-            reverse("import_psn"),
-            {"frequency": "once", "mode": "overwrite", "time": "04:00"},
+            reverse("psn_connect"),
+            {"npsso": "npsso-token", "existing_playtime": "new_only"},
         )
 
-        mock_delay.assert_called_once_with(user_id=self.user.id, mode="overwrite")
         self.assertFalse(
-            PeriodicTask.objects.filter(task=PSN_RECURRING_TASK_NAME).exists(),
+            PSNAccount.objects.get(user=self.user).import_existing_playtime,
         )
 
     @patch("integrations.views.tasks.import_psn.delay")
-    def test_scheduled_import_does_not_run_immediately(self, mock_delay):
-        """A scheduled import only runs on schedule, never on creation."""
-        self._connect_account()
+    def test_sync_updates_the_choice_only_when_posted(self, _delay):
+        """A sync form without the field leaves the saved choice alone."""
+        account = self._connect_account()
 
         self.client.post(
             reverse("import_psn"),
-            {"frequency": "2days", "mode": "new", "time": "23:15"},
+            {"existing_playtime": "new_only"},
+        )
+        account.refresh_from_db()
+        self.assertFalse(account.import_existing_playtime)
+
+        self.client.post(reverse("import_psn"))
+        account.refresh_from_db()
+        self.assertFalse(account.import_existing_playtime)
+
+    def test_card_shows_cadence_playtime_choice_and_logging_style(self):
+        """The connected card states its fixed cadence, the playtime choice
+        and the game logging style, each with its own short tooltip.
+        """
+        account = self._connect_account()
+        account.import_existing_playtime = False
+        account.save()
+
+        html = self.client.get(reverse("import_data")).content.decode()
+
+        self.assertIn("Import Backlog and Scrobble New Data", html)
+        self.assertRegex(
+            html,
+            r'<option value="new_only"\s+selected>Scrobble New Data Only',
+        )
+        self.assertIn('id="psn-existing-playtime-sync"', html)
+        self.assertIn("Game Logging:", html)
+        self.assertIn(
+            f"Syncs automatically every {psn.SYNC_EVERY_HOURS} hours.",
+            html,
+        )
+        self.assertIn("Each sync adds one entry", html)
+        self.assertIn("track yet get one entry", html)
+        self.assertIn("Repeats spreads each entry", html)
+        form = html.split('id="psn-sync-form"')[1].split("</form>")[0]
+        self.assertNotIn('name="frequency"', form)
+        self.assertNotIn('name="time"', form)
+
+        self.user.game_logging_style = "sessions"
+        self.user.save()
+        html = self.client.get(reverse("import_data")).content.decode()
+        self.assertIn("Sessions shows each entry", html)
+
+    @patch("integrations.views.tasks.import_psn.delay")
+    def test_sync_now_runs_now_and_keeps_one_fixed_schedule(self, mock_delay):
+        """Every sync runs at once; pressing it again never doubles the schedule."""
+        self._connect_account()
+
+        for _ in range(2):
+            self.client.post(reverse("import_psn"), {"mode": "watchlist"})
+
+        self.assertEqual(mock_delay.call_count, 2)
+        mock_delay.assert_called_with(user_id=self.user.id, mode="new")
+        task = PeriodicTask.objects.get(task=PSN_RECURRING_TASK_NAME)
+        self.assertEqual(task.crontab.hour, f"*/{psn.SYNC_EVERY_HOURS}")
+        self.assertTrue(task.enabled)
+
+    @patch("integrations.views.tasks.import_psn.delay")
+    def test_sync_now_replaces_an_older_daily_schedule(self, _mock_delay):
+        """A schedule left from the old user-chosen frequency is swapped out."""
+        from django_celery_beat.models import CrontabSchedule
+
+        self._connect_account()
+        daily = CrontabSchedule.objects.create(
+            minute="30",
+            hour="5",
+            day_of_week="*",
+            day_of_month="*",
+            month_of_year="*",
+        )
+        PeriodicTask.objects.create(
+            name="Import from PSN for test at 05:30 daily",
+            task=PSN_RECURRING_TASK_NAME,
+            crontab=daily,
+            kwargs=f'{{"user_id": {self.user.id}, "mode": "new"}}',
         )
 
-        mock_delay.assert_not_called()
+        self.client.post(reverse("import_psn"))
+
         task = PeriodicTask.objects.get(task=PSN_RECURRING_TASK_NAME)
-        self.assertEqual(task.crontab.hour, "23")
-        self.assertEqual(task.crontab.minute, "15")
-        self.assertEqual(task.crontab.day_of_week, "*/2")
+        self.assertEqual(task.crontab.hour, f"*/{psn.SYNC_EVERY_HOURS}")
 
     @patch("integrations.views.tasks.import_psn.delay")
     def test_psn_schedule_does_not_collide_with_xbox(self, mock_delay):
-        """PSN and Xbox schedules for the same user and time coexist."""
+        """PSN and Xbox schedules for the same user coexist."""
         from integrations.models import XboxAccount
 
         self._connect_account()
@@ -1108,12 +1417,8 @@ class PSNViewTests(TestCase):
             reverse("import_xbox"),
             {"frequency": "daily", "mode": "new", "time": "04:00"},
         )
-        self.client.post(
-            reverse("import_psn"),
-            {"frequency": "daily", "mode": "new", "time": "04:00"},
-        )
+        self.client.post(reverse("import_psn"))
 
-        mock_delay.assert_not_called()
         self.assertEqual(
             PeriodicTask.objects.filter(task=PSN_RECURRING_TASK_NAME).count(),
             1,

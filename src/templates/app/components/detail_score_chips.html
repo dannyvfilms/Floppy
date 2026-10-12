@@ -8,11 +8,12 @@
 {% if media.score_count is not None or trakt_score or imdb_score or mal_score or opencritic_score or user_medias and current_instance and not public_view|default:False and user.ratings_enabled %}
   <div class="detail-score-card-shell order-2 mt-0 mb-5 w-full sm:order-1 sm:mt-4"
        x-data="{ hasOverflow: false, atStart: true, atEnd: true, updateScroll() { const row = this.$refs.scoreRow; this.hasOverflow = row.scrollWidth > row.clientWidth + 2; this.atStart = row.scrollLeft < 2; this.atEnd = row.scrollLeft + row.clientWidth >= row.scrollWidth - 2 } }"
-       x-init="$nextTick(() => updateScroll())"
+       x-init="$nextTick(() => { updateScroll(); new ResizeObserver(() => updateScroll()).observe($refs.scoreRow) })"
        @resize.window.debounce.100ms="updateScroll()"
        @htmx:afterSwap.window="$nextTick(() => updateScroll())">
   <div class="detail-score-card-row flex w-full items-center justify-start gap-2 sm:flex-wrap"
        x-ref="scoreRow"
+       :class="{ 'detail-score-card-row--fade-left': hasOverflow && !atStart, 'detail-score-card-row--fade-right': hasOverflow && !atEnd }"
        @scroll.passive="updateScroll(); $dispatch('detail-score-row-scroll')">
     {% if media_type == MediaTypes.TV.value or media_type == MediaTypes.SEASON.value %}
       {% include "app/components/detail_progress_card_slot.html" with media=media media_type=media_type current_instance=current_instance public_view=public_view only %}
@@ -99,7 +100,7 @@
                x-cloak
                x-transition.opacity
                class="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4">
-            <div role="dialog" aria-modal="true" aria-labelledby="trakt-series-graph-title-{{ media.media_id }}" class="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)] p-4 shadow-2xl sm:p-6">
+            <div role="dialog" aria-modal="true" aria-labelledby="trakt-series-graph-title-{{ media.media_id }}" class="max-h-[90dvh] w-full max-w-4xl overflow-auto rounded-2xl border border-[var(--color-surface-border)] bg-[var(--color-page-bg)] p-4 shadow-2xl sm:p-6">
               <div class="mb-2 flex items-center justify-between gap-3">
                 <h2 id="trakt-series-graph-title-{{ media.media_id }}" class="text-lg font-semibold text-[var(--color-text)]">{% translate "Series Graph" %}</h2>
                 {% if trakt_url %}<a href="{{ trakt_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-[var(--color-text)] hover:bg-rose-500/20"><img src="{% static 'img/trakt-logo.svg' %}" alt="" aria-hidden="true" class="h-4 w-4 object-contain">{% translate "Trakt" %}</a>{% endif %}

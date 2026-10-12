@@ -23,7 +23,7 @@
       <span class="inline-flex items-center gap-1 whitespace-nowrap sm:gap-2">
         {% if current_instance.score is not None %}
           <span class="sr-only">{% translate "Your score" %}</span>
-          <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{% if user|rating_scale_max == 5 %}{{ current_instance.score|score_display:user }}/5{% else %}{{ current_instance.score|score_display:user }}{% endif %}</span>
+          <span class="text-[12px] font-semibold text-[var(--color-text)] sm:text-sm">{% if user|rating_scale_max == 5 %}{{ current_instance.score|score_display:user }}/5{% else %}{{ current_instance.score|score_display:user|floatformat:1 }}{% endif %}</span>
           <span class="text-[12px] text-[var(--color-text-muted)] sm:text-sm">|</span>
           <span class="sr-only">{% translate "Derived rating" %}</span>
           <span class="inline-flex items-center text-[12px] font-medium text-[var(--color-text-secondary)] sm:text-sm">{{ derived_tv_score.score|floatformat:"-1" }}<span data-derived-coverage
@@ -79,7 +79,7 @@
               x-ref="desktopRatingTrigger"
               @click="showRatingPopup = !showRatingPopup">
         <span class="detail-personal-score-card__icon">{% include "app/icons/star.svg" with classes="w-5 h-5 text-yellow-400 fill-yellow-400" %}</span>
-        <span class="detail-personal-score-card__value">{% if user|rating_scale_max == 5 %}{{ current_instance.score|score_display:user }}/5{% else %}{{ current_instance.score|score_display:user }}{% endif %}</span>
+        <span class="detail-personal-score-card__value">{% if user|rating_scale_max == 5 %}{{ current_instance.score|score_display:user }}/5{% else %}{{ current_instance.score|score_display:user|floatformat:1 }}{% endif %}</span>
         <span class="detail-personal-score-card__meta">
           {% if derived_tv_score.score is not None %}{% translate "Derived" %} {{ derived_tv_score.score|floatformat:"-1" }} · {% include "app/components/derived_tv_rating_coverage.html" with derived_tv_score=derived_tv_score only %}{% else %}{% translate "Your rating" %}{% endif %}
         </span>

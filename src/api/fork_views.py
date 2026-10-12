@@ -4,16 +4,33 @@
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
+from django.db import IntegrityError, transaction
 from django.db.models import prefetch_related_objects
 from django_celery_results.models import TaskResult
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
 from app.forms import CollectionEntryForm
-from app.models import BasicMedia, CollectionEntry, Item, MediaTypes
+from app.models import (
+    BasicMedia,
+    CollectionEntry,
+    CollectionEntrySource,
+    Item,
+    MediaTypes,
+)
 
+from .contract_serializers import DetailErrorSerializer
+from .fork_helpers import get_or_create_provider_item
 from .fork_serializers import CollectionEntrySerializer
-from .helpers import paginate_data, parse_limit_offset
+from .helpers import (
+    check_source_type,
+    check_valid_type,
+    paginate_data,
+    parse_limit_offset,
+    resolve_item_queryset,
+)
 from .serializers import serialize_data
 
 logger = logging.getLogger(__name__)
@@ -225,6 +242,244 @@ class CollectionEntryView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
         entry.delete()
+        return Response(status=HTTP.NO_CONTENT)
+
+
+# /api/v1/media/[media_type]/[source]/[media_id]/collection/
+# /api/v1/media/tv/[source]/[media_id]/[season_number]/episodes/[episode_number]/collection/
+class MediaCollectionView(drf_views.APIView):
+    """Mark a title as owned, addressed by provider id instead of item id.
+
+    Mirrors the web UI's collection_quick_add for clients (a downloader, a
+    media server script) that know a TMDB/TVDB id but not Floppy's item id.
+    Shows are collected per episode, so `tv` is accepted on the episode route
+    only.
+
+    Entries created here carry a ``CollectionEntrySource`` link (the same
+    provenance record the importers use), so ``DELETE`` removes only what the
+    API created and leaves copies added by hand. The link's uniqueness also
+    settles two simultaneous first calls: the loser rolls back and reuses the
+    winner's entry.
+    """
+
+    _SOURCE = "api"
+    _RESOLUTION_MAX_LENGTH = CollectionEntry._meta.get_field("resolution").max_length
+
+    def _identity(self, media_type, source, season_number, episode_number):
+        """Return ``(lookup_media_type, error_response)`` for the route."""
+        if episode_number is not None:
+            if media_type != MediaTypes.TV.value:
+                return None, Response(
+                    {"detail": "Episodes are supported only for 'tv' media type."},
+                    status=HTTP.BAD_REQUEST,
+                )
+            lookup_media_type = MediaTypes.EPISODE.value
+        elif not check_valid_type(media_type):
+            return None, Response(
+                {"detail": "Unsupported media type."},
+                status=HTTP.BAD_REQUEST,
+            )
+        elif media_type in (MediaTypes.TV.value, MediaTypes.ANIME.value):
+            return None, Response(
+                {"detail": "Shows are collected per episode. Use the episode route."},
+                status=HTTP.BAD_REQUEST,
+            )
+        else:
+            lookup_media_type = media_type
+
+        if not check_source_type(media_type, source):
+            return None, Response(
+                {"detail": f"Cannot query `{source}` for `{media_type}` media type"},
+                status=HTTP.BAD_REQUEST,
+            )
+        return lookup_media_type, None
+
+    def _api_entries(self, user, item):
+        """Return the user's copies of the item that this API created."""
+        return CollectionEntry.objects.filter(
+            user=user,
+            item=item,
+            source_records__source=self._SOURCE,
+        )
+
+    def _create_entry(self, user, item, resolution):
+        """Return ``(entry, created)``, creating the API-owned copy at most once."""
+        record_id = ":".join(
+            str(part)
+            for part in (
+                item.source,
+                item.media_type,
+                item.media_id,
+                item.season_number,
+                item.episode_number,
+            )
+        )
+        try:
+            with transaction.atomic():
+                entry = CollectionEntry.objects.create(
+                    user=user,
+                    item=item,
+                    resolution=resolution,
+                )
+                CollectionEntrySource.objects.create(
+                    user=user,
+                    source=self._SOURCE,
+                    source_record_id=record_id,
+                    entry=entry,
+                )
+        except IntegrityError:
+            # A simultaneous call won the unique link; use its entry.
+            link = (
+                CollectionEntrySource.objects.select_related("entry")
+                .filter(user=user, source=self._SOURCE, source_record_id=record_id)
+                .first()
+            )
+            if link is None:
+                raise
+            return link.entry, False
+        return entry, True
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT,
+        responses={
+            200: OpenApiTypes.OBJECT,
+            201: OpenApiTypes.OBJECT,
+            400: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+            502: DetailErrorSerializer,
+        },
+    )
+    def put(
+        self,
+        request,
+        media_type,
+        source,
+        media_id,
+        season_number=None,
+        episode_number=None,
+    ):
+        """Add the title to the collection, creating the item when unknown.
+
+        Idempotent: an existing entry is returned, not duplicated. Optional
+        body field `resolution` (e.g. "1080p") is stored on the entry and
+        replaces the stored value on a repeat call, so a quality upgrade
+        updates the same entry.
+        """
+        season_number = int(season_number) if season_number is not None else None
+        episode_number = int(episode_number) if episode_number is not None else None
+        lookup_media_type, error = self._identity(
+            media_type,
+            source,
+            season_number,
+            episode_number,
+        )
+        if error:
+            return error
+
+        if not isinstance(request.data, dict):
+            return Response(
+                {"detail": "Request body must be a JSON object."},
+                status=HTTP.BAD_REQUEST,
+            )
+        resolution = request.data.get("resolution") or ""
+        if (
+            not isinstance(resolution, str)
+            or len(resolution) > self._RESOLUTION_MAX_LENGTH
+        ):
+            return Response(
+                {"detail": "Invalid 'resolution'."},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        item, error = get_or_create_provider_item(
+            lookup_media_type,
+            source,
+            media_id,
+            user=request.user,
+            season_number=season_number,
+            episode_number=episode_number,
+        )
+        if error:
+            return error
+
+        entry = (
+            self._api_entries(request.user, item).first()
+            or CollectionEntry.objects.filter(user=request.user, item=item).first()
+        )
+        created = False
+        if entry is None:
+            entry, created = self._create_entry(request.user, item, resolution)
+        if not created and resolution and entry.resolution != resolution:
+            entry.resolution = resolution
+            entry.save(update_fields=["resolution", "updated_at"])
+        status = HTTP.CREATED if created else HTTP.OK
+
+        return Response(
+            serialize_data(entry, serializer_class=CollectionEntrySerializer),
+            status=status,
+        )
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "all",
+                OpenApiTypes.BOOL,
+                description="Also remove copies that were not created through the API.",
+            ),
+        ],
+        responses={
+            204: None,
+            400: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+        },
+    )
+    def delete(
+        self,
+        request,
+        media_type,
+        source,
+        media_id,
+        season_number=None,
+        episode_number=None,
+    ):
+        """Remove the copy this API created (``all=true`` removes every copy)."""
+        season_number = int(season_number) if season_number is not None else None
+        episode_number = int(episode_number) if episode_number is not None else None
+        lookup_media_type, error = self._identity(
+            media_type,
+            source,
+            season_number,
+            episode_number,
+        )
+        if error:
+            return error
+
+        item = resolve_item_queryset(
+            media_id,
+            source,
+            lookup_media_type,
+            season_number=season_number,
+            episode_number=episode_number,
+        ).first()
+        if item is None:
+            return Response(
+                {"detail": "Collection entry not found."},
+                status=HTTP.NOT_FOUND,
+            )
+        copies = CollectionEntry.objects.filter(user=request.user, item=item)
+        entries = copies
+        if request.query_params.get("all", "").lower() not in {"1", "true"}:
+            entries = self._api_entries(request.user, item)
+        entry_ids = list(entries.values_list("id", flat=True))
+        if not entry_ids:
+            detail = "Collection entry not found."
+            if copies.exists():
+                detail = (
+                    "No copy was created through the API. "
+                    "Use all=true to remove copies added elsewhere."
+                )
+            return Response({"detail": detail}, status=HTTP.NOT_FOUND)
+        CollectionEntry.objects.filter(id__in=entry_ids).delete()
         return Response(status=HTTP.NO_CONTENT)
 
 

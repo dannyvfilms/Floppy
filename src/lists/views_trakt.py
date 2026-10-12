@@ -37,8 +37,8 @@ def trakt_lists_credentials(request):
     client_id = request.POST.get("client_id", "").strip()
     client_secret = request.POST.get("client_secret", "").strip()
 
-    if not client_id or not client_secret:
-        messages.error(request, "Trakt client ID and secret are required.")
+    if not client_id:
+        messages.error(request, "Trakt client ID is required.")
         return redirect("lists")
 
     try:
@@ -46,7 +46,9 @@ def trakt_lists_credentials(request):
             user=request.user,
             defaults={
                 "client_id": import_helpers.encrypt(client_id),
-                "client_secret": import_helpers.encrypt(client_secret),
+                "client_secret": (
+                    import_helpers.encrypt(client_secret) if client_secret else None
+                ),
             },
         )
     except Exception:
@@ -68,11 +70,11 @@ def trakt_lists_oauth(request):
     credentials = _get_trakt_credentials(request.user)
     if not credentials:
         messages.error(
-            request, "Add your Trakt client ID and secret before authorizing."
+            request, "Add your Trakt client ID before authorizing."
         )
         return redirect("lists")
 
-    client_id, _client_secret = credentials
+    client_id, client_secret = credentials
 
     if not app_helpers.supports_oauth_redirect(redirect_uri):
         # Trakt refuses non-HTTPS callbacks, so fall back to the device code
@@ -80,17 +82,24 @@ def trakt_lists_oauth(request):
         return _start_trakt_lists_device_flow(request, client_id)
 
     state_token = secrets.token_urlsafe(32)
-    request.session[state_token] = {"source": "trakt_lists"}
-    request.session.modified = True
+    state = {"source": "trakt_lists"}
 
     # Build query string manually to match the working trakt_oauth pattern
     # This ensures the redirect_uri is sent exactly as registered
     url = "https://trakt.tv/oauth/authorize"
     logger.debug("Trakt OAuth redirect URI: %s", redirect_uri)
-
-    return redirect(
-        f"{url}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
+    query = (
+        f"client_id={client_id}&redirect_uri={redirect_uri}"
+        f"&response_type=code&state={state_token}"
     )
+    if not client_secret:
+        # An app without a client secret authorizes with PKCE instead.
+        state["code_verifier"], code_challenge = trakt_imports.new_pkce_pair()
+        query += f"&code_challenge={code_challenge}&code_challenge_method=S256"
+
+    request.session[state_token] = state
+    request.session.modified = True
+    return redirect(f"{url}?{query}")
 
 
 def _start_trakt_lists_device_flow(request, client_id):
@@ -243,6 +252,7 @@ def trakt_lists_callback(request):
             redirect_uri=request.build_absolute_uri(reverse("trakt_lists_callback")),
             client_id=client_id,
             client_secret=client_secret,
+            code_verifier=state_data.get("code_verifier"),
         )
         # Queue the import task asynchronously so we can redirect immediately
         list_tasks.import_trakt_lists_task.delay(

@@ -2,8 +2,8 @@
 {% load allauth account static %}
 
 {% block body %}
-  <div class="flex min-h-screen bg-[var(--color-page-bg)] text-[var(--color-text)]">
-    <div class="flex-1 flex flex-col justify-center lg:pb-40 items-center p-4">
+  <div class="flex min-h-dvh bg-[var(--color-page-bg)] text-[var(--color-text)]">
+    <div class="flex-1 flex flex-col justify-center lg:pb-40 items-center pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
       <div class="w-full max-w-md">
         <div class="text-center mb-8">
           <h1 class="flex justify-center mb-2">

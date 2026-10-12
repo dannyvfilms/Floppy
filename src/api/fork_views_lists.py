@@ -17,6 +17,7 @@ from lists.models import (
     ListRecommendation,
 )
 from lists.views_add_reorder import apply_full_order, apply_reorder_action
+from lists.views_helpers import list_has_item_identity
 from lists.views_recommendations import get_or_create_recommendation_item
 
 logger = logging.getLogger(__name__)
@@ -292,6 +293,7 @@ class ListRecommendationsView(drf_views.APIView):
                 source,
                 season_number,
                 episode_number,
+                user=request.user,
             )
         except Exception as e:
             return Response(
@@ -299,7 +301,7 @@ class ListRecommendationsView(drf_views.APIView):
                 status=HTTP.BAD_GATEWAY,
             )
 
-        if custom_list.items.filter(id=item.id).exists():
+        if list_has_item_identity(custom_list, item):
             return Response(
                 {"detail": f'"{item.title}" is already in this list.'},
                 status=HTTP.CONFLICT,

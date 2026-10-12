@@ -89,6 +89,21 @@ urlpatterns = [
         name="list_tier_save",
     ),
     path(
+        "list/<int:list_id>/tiers/fill",
+        views_tiers.fill_from_ratings,
+        name="list_tier_fill",
+    ),
+    path(
+        "list/<int:list_id>/tiers/fill/undo",
+        views_tiers.undo_fill,
+        name="list_tier_fill_undo",
+    ),
+    path(
+        "list/<int:list_id>/tiers/export.png",
+        views_tiers.export_tiers,
+        name="list_tier_export",
+    ),
+    path(
         "list/<int:list_id>/add",
         views_add_reorder.add_list_item_page,
         name="list_add_item",

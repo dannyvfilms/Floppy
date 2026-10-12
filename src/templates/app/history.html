@@ -93,7 +93,7 @@
       <div class="flex items-center gap-1 sm:gap-2">
         {# Last button - go back 1 year from current view #}
         <a href="?year={{ view_year|add:'-1' }}&m={{ view_month }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
-           class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
+           class="max-[24rem]:hidden flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
            aria-label="{% translate "Go back one year" %}"
            title="{% translate "Go back one year" %}">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m11 17-5-5 5-5"></path><path d="m18 17-5-5 5-5"></path></svg>
@@ -132,14 +132,14 @@
         {# First button - go to current month #}
         {% if not is_current_month %}
           <a href="?year={{ current_year }}&m={{ current_month_num }}{% if month_nav_query %}&{{ month_nav_query }}{% endif %}"
-             class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
+             class="max-[24rem]:hidden flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-strong)] transition-colors cursor-pointer text-sm"
              aria-label="{% translate "Go to current month" %}"
              title="{% translate "Go to current month" %}">
             <span>{{ current_year }}</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m13 17 5-5-5-5"></path><path d="m6 17 5-5-5-5"></path></svg>
           </a>
         {% else %}
-          <span class="flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed text-sm">
+          <span class="max-[24rem]:hidden flex items-center gap-1 px-1.5 sm:px-2.5 py-1.5 rounded-md bg-[var(--color-surface-muted)] text-[var(--color-text-muted)] cursor-not-allowed text-sm">
             <span>{{ current_year }}</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m13 17 5-5-5-5"></path><path d="m6 17 5-5-5-5"></path></svg>
           </span>
@@ -585,7 +585,7 @@
 }">
   {# FAB button #}
   <button @click="open = true"
-          class="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
+          class="fixed bottom-6 right-[max(1.5rem,var(--safe-right))] z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
           title="{% translate "Filter history" %}"
           aria-label="{% translate "Filter history" %}">
     {% include "app/icons/funnel.svg" with classes="w-5 h-5" %}

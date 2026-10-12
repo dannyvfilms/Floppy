@@ -300,7 +300,11 @@ class PersonDetailViewTests(TestCase):
         self.assertContains(response, "Tracked Movie")
         self.assertContains(response, "Other Show")
         self.assertContains(response, "?person_source=tmdb&amp;person_id=123")
-        self.assertContains(response, "media-card-subtitle-always")
+        self.assertContains(response, "media-card-line-dormant")
+        # Tracked and untracked credits both get the shared card's hover actions;
+        # only the tracked one has the viewer's status chip (#1534).
+        self.assertContains(response, 'class="media-card-overlay', count=3)
+        self.assertContains(response, 'class="media-status-chip', count=2)
         self.assertNotContains(response, "Tracked Titles")
 
     @patch("app.providers.tmdb.person")

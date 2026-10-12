@@ -1,6 +1,21 @@
 
 {% load i18n %}
+<div id="detail-carousel-logo-slot" hx-swap-oob="innerHTML">
+  {% if carousel.overview %}
+    <img class="detail-carousel-overview-logo"
+         src="{{ carousel.overview.logo_url }}"
+         alt="{% translate 'Media title logo' %}">
+  {% endif %}
+</div>
 {% if carousel %}
+  {% if carousel.hero %}
+    {# Phone-only hero (see .detail-mobile-hero in input.css): the backdrop, blurred below the logo line. Hidden from md up, where the carousel below takes over. #}
+    <div class="detail-mobile-hero md:hidden" aria-hidden="true">
+      <img class="detail-mobile-hero__blur" src="{{ carousel.hero.url }}" alt="">
+      <img class="detail-mobile-hero__sharp" src="{{ carousel.hero.url }}" alt="">
+      {% if carousel.hero.logo_url %}<img class="detail-mobile-hero__logo" src="{{ carousel.hero.logo_url }}" alt="">{% endif %}
+    </div>
+  {% endif %}
   <div class="detail-carousel-content w-full h-full flex flex-col gap-2" x-data="{ selected: 0, mode: 'image', videoPlaying: false, items: [], blurUrl: '', previousBlurUrl: '', blurTransitioning: true, lightboxOpen: false, fit: localStorage.getItem('gallery-fit') || 'contain', stripHasOverflow: false, stripAtStart: true, stripAtEnd: true, updateStripScroll() { const strip = this.$refs.thumbnailStrip; if (!strip) return; this.stripHasOverflow = strip.scrollWidth > strip.clientWidth + 2; this.stripAtStart = strip.scrollLeft < 2; this.stripAtEnd = strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 2 }, blurSrc(item) { return item.kind === 'video' ? 'https://img.youtube.com/vi/' + item.key + '/maxresdefault.jpg' : item.url }, select(i) { if (i === this.selected) return; this.previousBlurUrl = this.blurUrl; this.blurUrl = this.blurSrc(this.items[i]); this.blurTransitioning = false; this.selected = i; this.mode = this.items[i].kind; this.videoPlaying = false; this.$nextTick(() => { const el = this.$refs['thumb_' + i]; if (el) el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); requestAnimationFrame(() => requestAnimationFrame(() => { this.blurTransitioning = true })) }) }, next() { this.select((this.selected + 1) % this.items.length) }, prev() { this.select((this.selected - 1 + this.items.length) % this.items.length) }, toggleFit() { this.fit = this.fit === 'cover' ? 'contain' : 'cover'; localStorage.setItem('gallery-fit', this.fit) }, }" x-init="items = [ {% if carousel.overview %}{ kind: 'overview', url: '{{ carousel.overview.url|escapejs }}' },{% endif %}{% if carousel.video %}{ kind: 'video', key: '{{ carousel.video.key|escapejs }}' },{% endif %}
 
   {% for photo in carousel.photos %}{ kind: 'image', url: '{{ photo.url|escapejs }}' },{% endfor %}
@@ -18,11 +33,6 @@
            :src="blurUrl"
            onload="if (this.naturalWidth === 120) { this.src = this.src.replace('maxresdefault', 'hqdefault') }"
            alt="">
-      <img class="detail-carousel-overview-logo"
-           src="{{ carousel.overview.logo_url }}"
-           x-show="mode === 'overview'"
-           x-cloak
-           alt="{% translate 'Media title logo' %}">
     {% endif %}
     <template x-if="mode === 'video' && !videoPlaying">
       <button type="button"
@@ -221,7 +231,7 @@
       </button>
     </template>
     <template x-if="lightboxOpen && mode === 'video' && videoPlaying">
-      <iframe class="w-full h-full max-w-5xl max-h-[80vh]"
+      <iframe class="w-full h-full max-w-5xl max-h-[80dvh]"
               :src="'https://www.youtube.com/embed/' + items[selected].key + '?autoplay=1'"
               title="{% translate "Trailer" %}"
               frameborder="0"
