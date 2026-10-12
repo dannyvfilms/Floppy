@@ -866,6 +866,12 @@ class TraktImporter(TraktMetadataResolverMixin):
             user,
             source=Sources.TMDB.value,
         )
+        if mode == "overwrite":
+            # Overwrite deletes a show or movie and rebuilds it from Trakt, so
+            # a stored play is about to go with its row. Skipping the Trakt
+            # entry as a duplicate would lose that play for good.
+            self.existing_episode_play_times = play_dedupe.PlayTimes()
+            self.existing_movie_play_times = play_dedupe.PlayTimes()
 
         # Track media IDs to delete in overwrite mode
         self.to_delete = defaultdict(lambda: defaultdict(set))

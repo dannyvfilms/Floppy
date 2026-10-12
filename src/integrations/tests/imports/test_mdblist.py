@@ -608,6 +608,47 @@ class ImportMDBList(TestCase):
         self.assertEqual(tv.status, Status.IN_PROGRESS.value)
         self.assertEqual(Episode.objects.filter(item__media_id="12345").count(), 2)
 
+    def test_new_season_of_a_dropped_or_paused_show_does_not_reopen_it(self):
+        """History for a season the user hasn't tracked keeps the show's status (#1133)."""
+        for status in (Status.DROPPED.value, Status.PAUSED.value):
+            with self.subTest(status=status):
+                TV.objects.filter(user=self.user).delete()
+                tv_item, _ = Item.objects.get_or_create(
+                    media_id="12345",
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.TV.value,
+                    defaults={"title": "Test Show", "image": "image.jpg"},
+                )
+                tv = TV.objects.create(item=tv_item, user=self.user, status=status)
+
+                self._run_import(
+                    {
+                        "/sync/watched": {
+                            "episodes": [
+                                {
+                                    "watched_at": "2023-01-01T00:00:00Z",
+                                    "episode": {
+                                        "season": 1,
+                                        "number": 1,
+                                        "show": {
+                                            "title": "Test Show",
+                                            "ids": {"tmdb": 12345},
+                                        },
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                )
+
+                tv.refresh_from_db()
+                self.assertEqual(tv.status, status)
+                self.assertEqual(
+                    list(tv.seasons.values_list("status", flat=True)),
+                    [status],
+                )
+                self.assertEqual(Episode.objects.filter(related_season__related_tv=tv).count(), 1)
+
     def test_completion_rollup_preserves_dropped_status(self):
         """Completing an episode set does not replace dropped state."""
         first_episode = {

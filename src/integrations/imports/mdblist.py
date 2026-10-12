@@ -643,7 +643,13 @@ class MDBListImporter(TraktMetadataResolverMixin):
                     item=season_item,
                     user=self.user,
                     related_tv=tv_obj,
-                    status=Status.IN_PROGRESS.value,
+                    # History for a new season of a show the user dropped or
+                    # paused is recorded without reopening the show.
+                    status=(
+                        tv_obj.status
+                        if tv_obj.status in app.models.USER_HELD_STATUSES
+                        else Status.IN_PROGRESS.value
+                    ),
                 )
                 if watched_at_dt is not None:
                     season_obj._history_date = watched_at_dt

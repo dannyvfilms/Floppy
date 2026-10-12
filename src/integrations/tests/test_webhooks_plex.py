@@ -2617,6 +2617,65 @@ class PlexWebhookTests(TestCase):
     @patch("app.providers.tmdb.search")
     @patch("app.providers.tmdb.find")
     @patch("app.providers.tmdb.tv_with_seasons")
+    def test_season_rating_keeps_a_dropped_or_paused_show_off_the_shelf(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        _mock_search,
+    ):
+        """Rating a season the user hasn't tracked must not start it (#1133)."""
+        mock_find.return_value = {
+            "tv_season_results": [{"show_id": 1396, "season_number": 4}],
+            "tv_results": [],
+        }
+        mock_tv_with_seasons.return_value = {
+            "title": "Breaking Bad",
+            "image": "",
+            "season/4": {"image": "http://example.com/s4.jpg"},
+        }
+        payload = {
+            "event": "media.rate",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "type": "season",
+                "title": "Season 4",
+                "parentTitle": "Breaking Bad",
+                "userRating": 7,
+                "Guid": [{"id": "tmdb://525713"}, {"id": "tvdb://2191495"}],
+            },
+        }
+        tv_item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            image="",
+        )
+        for status in (Status.DROPPED.value, Status.PAUSED.value):
+            with self.subTest(status=status):
+                TV.objects.filter(user=self.user).delete()
+                tv_instance = TV.objects.create(
+                    item=tv_item,
+                    user=self.user,
+                    status=status,
+                )
+
+                response = self._post_payload(payload)
+
+                self.assertEqual(response.status_code, 200)
+                tv_instance.refresh_from_db()
+                self.assertEqual(tv_instance.status, status)
+                season = Season.objects.get(
+                    item__media_id="1396",
+                    item__season_number=4,
+                    user=self.user,
+                )
+                self.assertEqual(season.status, status)
+                self.assertEqual(season.score, 7)
+
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tmdb.find")
+    @patch("app.providers.tmdb.tv_with_seasons")
     def test_season_rating_falls_back_to_parent_title(
         self,
         mock_tv_with_seasons,

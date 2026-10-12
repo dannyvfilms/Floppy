@@ -869,6 +869,9 @@ class StremioImporter:
                     old_rank is not None
                     and new_rank is not None
                     and new_rank > old_rank
+                    # A planned season of a dropped or paused show stays off
+                    # the In progress shelf; the plays are still recorded.
+                    and tv_instance.status not in app.models.USER_HELD_STATUSES
                 ):
                     # Season.save() treats completion as a manual action and
                     # creates every episode after the latest watched one.

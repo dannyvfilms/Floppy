@@ -1035,7 +1035,13 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 item=season_item,
                 user=user,
                 related_tv=tv_instance,
-                status=Status.IN_PROGRESS.value,
+                # Rating a season of a show the user dropped or paused must not
+                # put it back on the In progress shelf.
+                status=(
+                    tv_instance.status
+                    if tv_instance.status in app.models.USER_HELD_STATUSES
+                    else Status.IN_PROGRESS.value
+                ),
             )
 
         # Update rating (Plex is master, overwrites existing)

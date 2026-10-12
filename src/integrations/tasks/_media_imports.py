@@ -75,6 +75,12 @@ logger = logging.getLogger(__name__)
 # A sync that dies leaves its lock behind; it expires on its own after this.
 PSN_IMPORT_LOCK_SECONDS = 15 * 60
 
+# The Import Mode menu is shared by every source, but only New and Overwrite
+# mean something to a sync. "Watchlist only" and "Collection only" are Plex's
+# (its view handles them) and the Trakt collection CSV's. Any other importer
+# handed one skips nothing and re-adds every play and watchlist row each run.
+SYNC_IMPORT_MODES = frozenset({"new", "overwrite"})
+
 
 
 def import_media(
@@ -87,6 +93,13 @@ def import_media(
 ):
     """Handle the import process for different media services."""
     user = get_user_model().objects.get(id=user_id)
+    if mode not in SYNC_IMPORT_MODES and importer_func is not trakt_collection.importer:
+        logger.info(
+            "import_mode_treated_as_new mode=%s importer=%s",
+            mode,
+            getattr(importer_func, "__module__", ""),
+        )
+        mode = "new"
     if not user.is_active:
         # Deactivated after the task was queued: an import is new provider
         # work that mutates tracking state, so it must not run. No ImportRun
