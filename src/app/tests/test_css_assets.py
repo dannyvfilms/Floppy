@@ -139,6 +139,10 @@ class PhoneLayoutCssContractTests(SimpleTestCase):
         "unfolded portrait keeps the poster beside the info": (
             r"@media \(min-width: 600px\) and \(max-width: 767\.98px\)"
         ),
+        "phone hero actions stack above the chips so the links popup is not see-through": (
+            r"\.detail-carousel-grid:has\(\.detail-mobile-hero\) "
+            r"\.detail-carousel-grid__actions \{\s+z-index: 3;"
+        ),
     }
 
     def test_rules_are_in_source_and_build(self):

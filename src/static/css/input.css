@@ -1616,6 +1616,13 @@ html.light .theme-toggle-icon-moon {
     z-index: 1;
   }
 
+  /* The links and tags popups open downward from the actions row, so the row
+     must stack above the chips and synopsis that follow it (and the title
+     above it) or their content shows through the popup. */
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions {
+    z-index: 3;
+  }
+
   /* Hero metadata uses one wrapping line at every phone width. */
   .detail-carousel-grid:has(.detail-mobile-hero) [id^="detail-activity-subtitle-slot"] button {
     flex-direction: row;

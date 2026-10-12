@@ -1842,6 +1842,15 @@ CALENDAR_ITEM_STALE_AFTER_HOURS = config(
     default=12,
     cast=int,
 )
+# How often a show whose episodes have all aired is looked at again for a newly
+# announced season. TMDB's change feed covers a few days and TVDB has none, so
+# without this such a show never gains the new season's calendar events and
+# cannot sort by "Next episode air date". 0 disables it.
+CALENDAR_AIRED_SHOW_RECHECK_DAYS = config(
+    "CALENDAR_AIRED_SHOW_RECHECK_DAYS",
+    default=7,
+    cast=int,
+)
 # Cap on TMDB /changes pagination. total_pages there can run into the hundreds,
 # and the loop had no limit at all.
 TMDB_CHANGES_MAX_PAGES = config(

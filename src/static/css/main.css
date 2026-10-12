@@ -7294,6 +7294,9 @@ html.light .theme-toggle-icon-moon {
     position: relative;
     z-index: 1;
   }
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-carousel-grid__actions {
+    z-index: 3;
+  }
   .detail-carousel-grid:has(.detail-mobile-hero) [id^="detail-activity-subtitle-slot"] button {
     flex-direction: row;
     flex-wrap: wrap;

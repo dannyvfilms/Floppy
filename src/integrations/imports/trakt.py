@@ -20,7 +20,7 @@ import app
 from app import fork_services_play_dedupe as play_dedupe
 from app import helpers as app_helpers
 from app.models import MediaTypes, Sources, Status
-from app.providers import credentials, services, tvdb
+from app.providers import credentials, services, tmdb, tvdb
 from app.services import grouped_anime, item_merge
 from integrations import external_references, import_progress
 from integrations.imports import helpers
@@ -693,6 +693,48 @@ class TraktMetadataResolverMixin:
                 self._item_memo.popitem(last=False)
         return item
 
+    def _adopt_provider_tv(self, tmdb_id, title):
+        """Treat a show the user tracks on its TVDB Item as already existing.
+
+        ``existing_media`` is keyed by each row's own provider, so a
+        TVDB-preferring user's show looked untracked by its TMDB id. It was
+        queued again on the same TVDB Item (see ``_find_preferred_provider_item``)
+        and the save failed on the one-row-per-user-and-item constraint.
+        """
+        shows = self.existing_media[MediaTypes.TV.value][Sources.TMDB.value]
+        if (
+            tmdb_id in shows
+            or tmdb_id in self.provider_tv_checked
+            or getattr(self.user, "tv_metadata_source_default", "")
+            != Sources.TVDB.value
+            or not tvdb.enabled()
+        ):
+            return
+        self.provider_tv_checked.add(tmdb_id)
+
+        # The TVDB id comes from cached TMDB metadata, so load it first.
+        if self._get_metadata(MediaTypes.TV.value, tmdb_id, title) is None:
+            return
+        tvdb_id = tmdb.resolve_tvdb_id_for_tmdb_show(tmdb_id)
+        if not tvdb_id:
+            return
+        tv_obj = (
+            app.models.TV.objects.filter(
+                user=self.user,
+                item__source=Sources.TVDB.value,
+                item__media_id=str(tvdb_id),
+            )
+            .select_related("item")
+            .first()
+        )
+        if tv_obj is None:
+            return
+
+        shows[tmdb_id] = tv_obj
+        if self.mode == "overwrite":
+            self.to_delete[MediaTypes.TV.value][Sources.TMDB.value].add(tmdb_id)
+            self.to_delete[MediaTypes.TV.value][Sources.TVDB.value].add(str(tvdb_id))
+
     def _find_preferred_provider_item(
         self,
         media_type,
@@ -786,6 +828,9 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         # Track media IDs to delete in overwrite mode
         self.to_delete = defaultdict(lambda: defaultdict(set))
+
+        # TMDB ids already checked for a show tracked on a TVDB Item.
+        self.provider_tv_checked = set()
 
         # Track bulk creation lists for each media type
         self.bulk_media = defaultdict(list)
@@ -1234,6 +1279,7 @@ class TraktImporter(TraktMetadataResolverMixin):
         tv_metadata = self._get_metadata(MediaTypes.TV.value, tmdb_id, show["title"])
         if not tv_metadata:
             return
+        self._adopt_provider_tv(tmdb_id, show["title"])
 
         # Get Season metadata
         season_metadata = self._get_metadata(
@@ -1885,6 +1931,11 @@ class TraktImporter(TraktMetadataResolverMixin):
         parent_type = (
             MediaTypes.TV.value if media_type == MediaTypes.SEASON.value else media_type
         )
+        if (
+            parent_type == MediaTypes.TV.value
+            and tmdb_id not in self.deleted_media[parent_type][Sources.TMDB.value]
+        ):
+            self._adopt_provider_tv(tmdb_id, media_data["title"])
         should_process = helpers.should_process_media(
             self.existing_media,
             self.to_delete,
