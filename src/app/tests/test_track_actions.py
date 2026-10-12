@@ -238,3 +238,25 @@ class TrackSplitTemplateTests(SimpleTestCase):
         self.assertIn('@keydown.escape.window="trackMenuOpen = false"', html)
         self.assertIn("Another action", html)
         self.assertNotIn("Edit entry,", html)
+
+
+    def test_grouped_anime_is_decided_by_its_stored_type(self):
+        """A TMDB anime is one TV tracker, so a new entry would collide with it."""
+        request = RequestFactory().get("/details/")
+        media = {"source": "tmdb", "media_type": "anime", "media_id": "1"}
+        for stored, expected in (("tv", False), ("anime", True)):
+            with self.subTest(stored=stored):
+                html = render_to_string(
+                    "app/components/detail_track_split.html",
+                    {
+                        "request": request,
+                        "media": media,
+                        "media_type": "anime",
+                        "current_instance": SimpleNamespace(
+                            id=7,
+                            status=Status.COMPLETED.value,
+                            item=SimpleNamespace(media_type=stored),
+                        ),
+                    },
+                )
+                self.assertEqual("Add new entry" in html, expected)
