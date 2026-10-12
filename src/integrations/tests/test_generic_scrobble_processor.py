@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, tag
+from django.utils import timezone
 
 from app.models import (
     TV,
@@ -612,3 +613,86 @@ class GenericScrobbleProcessPayloadTests(TestCase):
                 media_type=MediaTypes.MOVIE.value,
             ).exists(),
         )
+
+    @patch("app.providers.tmdb.get_tvdb_episode_image_map", return_value={})
+    @patch("app.providers.tmdb.tv_with_seasons")
+    @patch("app.providers.tmdb.find")
+    def test_episode_play_completes_a_check_in_instead_of_adding_a_row(
+        self,
+        mock_find,
+        mock_tv_with_seasons,
+        _mock_images,
+    ):
+        """A real play of the episode a manual check-in left open finishes that row."""
+        mock_find.return_value = {"tv_episode_results": [], "tv_results": []}
+        mock_tv_with_seasons.return_value = {
+            "media_id": "12345",
+            "title": "Check-in Show",
+            "image": "https://example.com/show.jpg",
+            "tvdb_id": "402474",
+            "season/1": {
+                "season_number": 1,
+                "episodes": [{"episode_number": 1}, {"episode_number": 2}],
+            },
+        }
+        tv_item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Check-in Show",
+            image="https://example.com/show.jpg",
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        season_item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Check-in Show",
+            image="",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+        episode_item = Item.objects.create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Check-in Show",
+            image="",
+            season_number=1,
+            episode_number=1,
+        )
+        open_play = Episode.objects.create(
+            item=episode_item,
+            related_season=season,
+            status=Status.IN_PROGRESS.value,
+            start_date=timezone.now(),
+            entry_source="check-in",
+        )
+
+        with patch("app.services.metadata_resolution.upsert_provider_links"):
+            self.processor.process_payload(
+                {
+                    "media_type": "episode",
+                    "ids": {"tmdb": "12345", "tvdb": "402474"},
+                    "series_title": "Check-in Show",
+                    "season_number": 1,
+                    "episode_number": 1,
+                    "completed": True,
+                },
+                self.user,
+            )
+
+        plays = Episode.objects.filter(item=episode_item, related_season=season)
+        self.assertEqual(plays.count(), 1)
+        open_play.refresh_from_db()
+        self.assertEqual(open_play.status, Status.COMPLETED.value)
+        self.assertIsNotNone(open_play.end_date)

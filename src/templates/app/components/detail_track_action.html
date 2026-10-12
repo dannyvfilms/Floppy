@@ -7,15 +7,65 @@
      {% if polled %}data-polled{% endif %}
      @htmx:oob-before-swap="if (trackOpen && $event.detail.fragment.querySelector('[data-polled]')) $event.preventDefault()"
      {% if swap_oob %}hx-swap-oob="outerHTML"{% endif %}
-     x-data="{ trackOpen: {% if track_open %}true{% else %}false{% endif %} }"
+     x-data="{ trackOpen: {% if track_open %}true{% else %}false{% endif %}, trackMenuOpen: false }"
      class="w-full sm:w-auto sm:shrink-0">
+  {% if current_instance and media.media_type == "tv" %}
+    {% media_track_actions "tv" current_instance as track %}
+  {% endif %}
+  {% if track.actions.0.key and track.actions.0.key != "edit" %}
+    {% with main=track.actions.0 rest=track.actions|slice:"1:" %}
+      <div class="relative inline-flex w-full sm:w-auto"
+           @click.outside="trackMenuOpen = false"
+           @keydown.escape.window="trackMenuOpen = false"
+           {% if track.reload_ms %}x-init="setTimeout(() => { if (!trackOpen) location.reload() }, {{ track.reload_ms }})"{% endif %}>
+        <div class="inline-flex w-full overflow-hidden rounded-xl shadow-sm sm:w-auto">
+          {% with action=main %}
+            <button type="button"
+                    class="inline-flex flex-1 items-center justify-center gap-2 whitespace-nowrap bg-indigo-600 px-5 py-3 text-white transition duration-300 hover:bg-indigo-700 cursor-pointer sm:flex-none border-r border-indigo-500"
+                    {% include "app/components/detail_track_action_attrs.html" %}>
+              {% with icon_path="app/icons/"|add:action.icon|add:".svg" %}
+                {% include icon_path with classes="w-5 h-5 shrink-0" %}
+              {% endwith %}
+              <span class="font-medium">{{ action.label }}</span>
+            </button>
+          {% endwith %}
+          {% if rest|length == 1 %}
+            {% with status_label=current_instance.status|media_status_readable %}
+              <button type="button"
+                      class="inline-flex shrink-0 items-center bg-indigo-600 px-3 py-3 text-white transition duration-300 hover:bg-indigo-700 cursor-pointer"
+                      title="{% blocktranslate %}Edit entry, {{ status_label }}{% endblocktranslate %}"
+                      aria-label="{% blocktranslate %}Edit entry, {{ status_label }}{% endblocktranslate %}"
+                      {% include "app/components/detail_track_open_attrs.html" %}>
+                {% include "app/icons/edit.svg" with classes="w-4 h-4" %}
+              </button>
+            {% endwith %}
+          {% else %}
+            <button @click="trackMenuOpen = !trackMenuOpen"
+                    class="inline-flex shrink-0 items-center bg-indigo-600 px-3 py-3 text-white transition duration-300 hover:bg-indigo-700 cursor-pointer"
+                    aria-label="{% translate "More tracking actions" %}"
+                    :aria-expanded="trackMenuOpen"
+                    type="button">{% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}</button>
+          {% endif %}
+        </div>
+        {% if rest|length > 1 %}
+          <div class="absolute left-0 top-full mt-2 w-52 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] py-1 shadow-lg overflow-hidden z-50"
+               x-cloak
+               x-show="trackMenuOpen">
+            {% for action in rest %}
+              <button class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                      type="button"
+                      {% if action.key == "edit" %}{% include "app/components/detail_track_open_attrs.html" %}{% else %}{% include "app/components/detail_track_action_attrs.html" %}{% endif %}>
+                {{ action.label }}
+              </button>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endwith %}
+  {% else %}
   <button type="button"
           class="inline-flex w-full items-center justify-center gap-3 rounded-xl px-5 py-3 text-white shadow-sm transition duration-300 cursor-pointer sm:w-auto {% if current_instance %}bg-indigo-600 hover:bg-indigo-700{% else %}bg-gray-600 hover:bg-gray-700{% endif %}"
-          hx-get="{% media_view_url 'track_modal' media %}"
-          hx-vals='{"return_url": "{{ return_url }}"{% if current_instance %}, "instance_id": "{{ current_instance.id }}"{% endif %}{% if track_action_update %}, "track_action_update": "1"{% endif %}{% if edition_id %}, "edition_id": "{{ edition_id }}"{% endif %}}'
-          hx-target="#{% component_id 'track' media %}"
-          hx-trigger="click"
-          @click="trackOpen = true">
+          {% include "app/components/detail_track_open_attrs.html" %}>
     {% include "app/icons/edit.svg" with classes="w-5 h-5 shrink-0" %}
     <span class="font-medium">
       {% if current_instance %}
@@ -25,6 +75,7 @@
       {% endif %}
     </span>
   </button>
+  {% endif %}
 
   <template x-teleport="body">
   <div x-show="trackOpen"

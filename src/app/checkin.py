@@ -1,33 +1,45 @@
-"""Manual Check-in for movies: Floppy's own button acting as a scrobbling client.
+"""Manual Check-in for movies and shows: Floppy's own button acting as a scrobbler.
 
 A check-in does what a media server's scrobbles do, in the same order. The tap
-puts a card on Home (Now Playing) and saves the movie as In Progress. The end
-is assumed from the runtime, and when it passes the movie is completed with
-that end time. Pause keeps the saved position and leaves the movie In Progress.
-Finish completes it early.
+puts a card on Home (Now Playing) and saves the movie, or the next episode of
+the show, as In Progress. The end is assumed from the runtime, and when it
+passes the row is completed with that end time. Pause keeps the saved position
+and leaves the row In Progress. Finish completes it early.
 
 A real scrobble for the same title takes the card over: its state is rebuilt
 without our token, so the end-of-runtime step sees a card it does not own and
-leaves the movie to the scrobbler, which finds our In Progress row and
-completes it instead of adding a second one.
+leaves the row to the scrobbler, which finds our In Progress row and completes
+it instead of adding a second one.
 
 The check-in itself lives in a cache record (one per user, like Now Playing).
-Losing it leaves a visible In Progress movie, never a missing watch.
+Losing it leaves a visible In Progress row, never a missing watch.
 """
 
 import logging
 import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from django.core.cache import cache
 from django.utils import timezone
 
 from app import live_playback
-from app.models import Item, MediaTypes, Movie, PlaybackProgress, Sources, Status
+from app.models import (
+    TV,
+    Episode,
+    Item,
+    MediaTypes,
+    Movie,
+    PlaybackProgress,
+    Sources,
+    Status,
+)
 from app.services.completion import select_preferred_activity_entry
+from app.services.episode_coordinates import InvalidEpisodeCoordinateError
 
 logger = logging.getLogger(__name__)
 
+SOURCE_LABEL = "check-in"
 RECORD_TIMEOUT_SECONDS = live_playback.PLAYBACK_CACHE_TIMEOUT_SECONDS
 # Finish replaces Pause at the same point a media server counts a title watched.
 FINISH_RATIO = live_playback.PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO
@@ -45,9 +57,34 @@ class CheckInError(Exception):
     """A check-in action that cannot be carried out; the message is shown."""
 
 
+@dataclass
+class _Subject:
+    """What a check-in is of: a movie, or the next episode of a tracked show."""
+
+    media_type: str
+    media_id: str
+    item: Item  # the item whose position is saved
+    duration: int | None
+    code: str = ""  # "S02E05" for an episode
+    season: object = None
+    card: dict = field(default_factory=dict)
+
+    @property
+    def is_episode(self):
+        return self.media_type == MediaTypes.TV.value
+
+
 def supports(media_type, source):
-    """Return whether a title can be checked in (TMDB movies for now)."""
-    return media_type == MediaTypes.MOVIE.value and source == Sources.TMDB.value
+    """Return whether a title can be checked in (TMDB movies and shows)."""
+    return source == Sources.TMDB.value and media_type in (
+        MediaTypes.MOVIE.value,
+        MediaTypes.TV.value,
+    )
+
+
+def episode_code(season_number, episode_number):
+    """Return the standard S02E05 form the Now Playing card already uses."""
+    return f"S{int(season_number):02d}E{int(episode_number):02d}"
 
 
 def _key(user_id):
@@ -74,7 +111,71 @@ def _movie_item(media_id):
     ).first()
 
 
-def _scrobble(user, item, *, position, duration, completed, played_at=None):
+def _tracked_show(user, media_id):
+    return (
+        TV.objects.filter(
+            user=user,
+            item__media_id=str(media_id),
+            item__source=Sources.TMDB.value,
+            item__media_type=MediaTypes.TV.value,
+        )
+        .select_related("item")
+        .first()
+    )
+
+
+def _seconds(runtime_minutes):
+    return runtime_minutes * 60 if runtime_minutes else None
+
+
+def _subject(user, media_type, media_id):
+    """Resolve what a check-in would be of, raising when there is nothing to start."""
+    if media_type == MediaTypes.MOVIE.value:
+        item = _movie_item(media_id)
+        if item is None:
+            msg = "Track this movie before checking in."
+            raise CheckInError(msg)
+        return _Subject(
+            media_type=media_type,
+            media_id=str(media_id),
+            item=item,
+            duration=_seconds(item.runtime_minutes),
+            card={"title": item.title, "image": item.image},
+        )
+
+    show = _tracked_show(user, media_id)
+    if show is None:
+        msg = "Track this show before checking in."
+        raise CheckInError(msg)
+    target = show.next_episode_target()
+    if target is None:
+        msg = "There is no next episode to check in to."
+        raise CheckInError(msg)
+    season, episode_number = target
+    try:
+        episode_item = season.get_episode_item(episode_number)
+    except InvalidEpisodeCoordinateError as error:
+        msg = "That episode is not listed yet."
+        raise CheckInError(msg) from error
+    season_number = season.item.season_number
+    return _Subject(
+        media_type=media_type,
+        media_id=str(media_id),
+        item=episode_item,
+        duration=_seconds(episode_item.runtime_minutes),
+        code=episode_code(season_number, episode_number),
+        season=season,
+        card={
+            "title": show.item.title,
+            "series_title": show.item.title,
+            "season_number": season_number,
+            "episode_number": episode_number,
+            "image": episode_item.image or show.item.image,
+        },
+    )
+
+
+def _scrobble_movie(user, item, *, position, duration):
     from integrations.webhooks.checkin import CheckInProcessor
 
     CheckInProcessor().process_payload(
@@ -84,11 +185,62 @@ def _scrobble(user, item, *, position, duration, completed, played_at=None):
             "title": item.title,
             "position_seconds": position,
             "duration_seconds": duration,
-            "completed": completed,
-            "played_at": played_at,
+            "completed": False,
         },
         user,
     )
+
+
+def _begin_movie(user, subject, offset):
+    """Save the movie In Progress through the shared scrobble code."""
+    movies = Movie.objects.filter(item=subject.item, user=user)
+    before_ids = set(movies.values_list("id", flat=True))
+    current = select_preferred_activity_entry(movies)
+    previous = (
+        {"status": current.status, "start_date": current.start_date}
+        if current
+        else None
+    )
+
+    _scrobble_movie(user, subject.item, position=offset, duration=subject.duration)
+
+    created = movies.exclude(id__in=before_ids).first()
+    row = created or current
+    if row is None:
+        msg = "Could not start the check-in."
+        raise CheckInError(msg)
+    return {
+        "row_id": row.id,
+        "created": created is not None,
+        "previous": None if created else previous,
+    }
+
+
+def _open_episode(subject):
+    return Episode.objects.filter(
+        item=subject.item,
+        related_season=subject.season,
+        status=Status.IN_PROGRESS.value,
+    ).first()
+
+
+def _begin_episode(user, subject):
+    """Save the episode as an open play, reusing one the user already left open."""
+    existing = _open_episode(subject)
+    if existing is not None:
+        return {
+            "row_id": existing.id,
+            "created": False,
+            "previous": {"status": existing.status, "start_date": existing.start_date},
+        }
+    row = Episode.objects.create(
+        item=subject.item,
+        related_season=subject.season,
+        status=Status.IN_PROGRESS.value,
+        start_date=timezone.now().replace(second=0, microsecond=0),
+        entry_source=SOURCE_LABEL,
+    )
+    return {"row_id": row.id, "created": True, "previous": None}
 
 
 def _saved_position(user, item):
@@ -99,7 +251,7 @@ def _saved_position(user, item):
 
 
 def _position(record, now_ts):
-    """Seconds into the movie right now, never past the runtime."""
+    """Seconds into the title right now, never past the runtime."""
     position = record["offset"] + max(0, now_ts - record["started_at_ts"])
     if record["duration"]:
         position = min(position, record["duration"])
@@ -112,62 +264,48 @@ def _owns_card(user_id, record):
     return card is None or card.get("checkin_token") == record["token"]
 
 
-def start(user, media_id):
-    """Check in to a tracked movie, resuming from a saved Pause if there is one."""
-    item = _movie_item(media_id)
-    if item is None:
-        msg = "Track this movie before checking in."
-        raise CheckInError(msg)
-
-    movies = Movie.objects.filter(item=item, user=user)
-    before_ids = set(movies.values_list("id", flat=True))
-    current = select_preferred_activity_entry(movies)
-    previous = (
-        {"status": current.status, "start_date": current.start_date}
-        if current
-        else None
-    )
-
-    duration = item.runtime_minutes * 60 if item.runtime_minutes else None
-    offset = _saved_position(user, item)
-    if duration and offset >= duration:
+def start(user, media_type, media_id):
+    """Check in, resuming from a saved Pause if there is one."""
+    subject = _subject(user, media_type, media_id)
+    offset = _saved_position(user, subject.item)
+    if subject.duration and offset >= subject.duration:
         offset = 0
 
-    _scrobble(user, item, position=offset, duration=duration, completed=False)
-
-    created = movies.exclude(id__in=before_ids).first()
-    row = created or current
-    if row is None:
-        msg = "Could not start the check-in."
-        raise CheckInError(msg)
+    if subject.is_episode:
+        row = _begin_episode(user, subject)
+    else:
+        row = _begin_movie(user, subject, offset)
 
     now_ts = _now_ts()
-    end_ts = now_ts + (duration - offset if duration else UNKNOWN_RUNTIME_SECONDS)
+    remaining = subject.duration - offset if subject.duration else None
+    end_ts = now_ts + (remaining or UNKNOWN_RUNTIME_SECONDS)
     token = uuid.uuid4().hex
     record = {
         "token": token,
-        "media_id": str(item.media_id),
+        "media_type": media_type,
+        "media_id": subject.media_id,
+        "item_id": subject.item.id,
+        "code": subject.code,
         "started_at_ts": now_ts,
         "offset": offset,
-        "duration": duration,
-        # Only a known runtime gives an end that completes the movie.
-        "end_ts": end_ts if duration else None,
-        "row_id": row.id,
-        "created": created is not None,
-        "previous": None if created else previous,
+        "duration": subject.duration,
+        # Only a known runtime gives an end that completes the row.
+        "end_ts": end_ts if subject.duration else None,
+        **row,
     }
     live_playback.apply_playback_event(
         user_id=user.id,
         event_type="media.play",
-        playback_media_type=MediaTypes.MOVIE.value,
-        media_id=item.media_id,
+        playback_media_type=(
+            MediaTypes.EPISODE.value if subject.is_episode else MediaTypes.MOVIE.value
+        ),
+        media_id=subject.media_id,
         source=Sources.TMDB.value,
-        title=item.title,
         view_offset_seconds=offset,
-        duration_seconds=duration,
-        image=item.image,
+        duration_seconds=subject.duration,
         checkin_token=token,
         ends_at_ts=end_ts,
+        **subject.card,
     )
     cache.set(_key(user.id), record, timeout=RECORD_TIMEOUT_SECONDS)
 
@@ -179,10 +317,14 @@ def start(user, media_id):
     )
 
 
-def _active_record(user, media_id):
+def _active_record(user, media_type, media_id):
     record = _record(user.id)
-    if record is None or record["media_id"] != str(media_id):
-        msg = "No check-in is running for this movie."
+    if (
+        record is None
+        or record["media_type"] != media_type
+        or record["media_id"] != str(media_id)
+    ):
+        msg = "No check-in is running here."
         raise CheckInError(msg)
     return record
 
@@ -193,49 +335,66 @@ def _close_card(user_id, record):
     _drop_record(user_id)
 
 
-def pause(user, media_id):
-    """Stop the check-in and keep where it got to; the movie stays In Progress."""
-    record = _active_record(user, media_id)
-    item = _movie_item(media_id)
+def _row(user, record):
+    if record["media_type"] == MediaTypes.TV.value:
+        return Episode.objects.filter(
+            id=record["row_id"],
+            related_season__user=user,
+        ).first()
+    return Movie.objects.filter(id=record["row_id"], user=user).first()
+
+
+def pause(user, media_type, media_id):
+    """Stop the check-in and keep where it got to; the row stays In Progress."""
+    record = _active_record(user, media_type, media_id)
     position = _position(record, _now_ts())
 
     from api.fork_views_playback import upsert_playback_progress
 
-    upsert_playback_progress(user, item, position, record["duration"], completed=False)
+    upsert_playback_progress(
+        user,
+        Item.objects.get(id=record["item_id"]),
+        position,
+        record["duration"],
+        completed=False,
+    )
     _close_card(user.id, record)
 
 
 def _complete(user, record, at):
-    """Complete the movie this check-in saved, unless something else already did."""
-    row = Movie.objects.filter(
-        id=record["row_id"],
-        user=user,
-        status=Status.IN_PROGRESS.value,
-    ).first()
-    if row is None:
+    """Complete the row this check-in saved, unless something else already did."""
+    row = _row(user, record)
+    if row is None or row.status != Status.IN_PROGRESS.value:
         return
     row.status = Status.COMPLETED.value
-    row.progress = 1
     row.end_date = at
+    if isinstance(row, Movie):
+        row.progress = 1
     row.save()
 
     from api.fork_views_playback import upsert_playback_progress
 
     duration = record["duration"] or 0
-    upsert_playback_progress(user, row.item, duration, duration or None, completed=True)
+    upsert_playback_progress(
+        user,
+        Item.objects.get(id=record["item_id"]),
+        duration,
+        duration or None,
+        completed=True,
+    )
 
 
-def finish(user, media_id):
-    """Complete the movie now."""
-    record = _active_record(user, media_id)
+def finish(user, media_type, media_id):
+    """Complete the row now."""
+    record = _active_record(user, media_type, media_id)
     _close_card(user.id, record)
     _complete(user, record, timezone.now().replace(second=0, microsecond=0))
 
 
-def cancel(user, media_id):
-    """Undo the check-in: remove the movie it added, or restore what it changed."""
-    record = _active_record(user, media_id)
-    row = Movie.objects.filter(id=record["row_id"], user=user).first()
+def cancel(user, media_type, media_id):
+    """Undo the check-in: remove the row it added, or restore what it changed."""
+    record = _active_record(user, media_type, media_id)
+    row = _row(user, record)
     if row is not None and row.status == Status.IN_PROGRESS.value:
         if record["created"]:
             row.delete()
@@ -247,7 +406,7 @@ def cancel(user, media_id):
 
 
 def settle(user_id):
-    """Complete the movie once the assumed end has passed, if the card is still ours.
+    """Complete the row once the assumed end has passed, if the card is still ours.
 
     Run by a delayed task, and by the detail page as a catch-up, so a lost task
     cannot leave a finished check-in running.
@@ -267,11 +426,48 @@ def settle(user_id):
         _complete(user, record, end.replace(second=0, microsecond=0))
 
 
-def phase(user, instance):
-    """Return the check-in phase for a movie's detail page, with a reload hint.
+def _running_phase(record, now_ts):
+    """Return the phase of a running check-in, and when its label next changes."""
+    duration = record["duration"]
+    if duration is None:
+        return {"phase": PHASE_FINISHABLE, "reload_in": None}
+    finish_at = record["started_at_ts"] + max(
+        0,
+        int(duration * FINISH_RATIO) - record["offset"],
+    )
+    if now_ts >= finish_at:
+        return {"phase": PHASE_FINISHABLE, "reload_in": record["end_ts"] - now_ts}
+    return {"phase": PHASE_ACTIVE, "reload_in": finish_at - now_ts}
 
-    ``reload_in`` is the seconds until the button label changes by itself, so the
-    page can refresh at that moment.
+
+def _idle_target(user, instance):
+    """Return (code, paused item) for a tracked show that has an episode to start.
+
+    Reads only the database, so the detail page never waits on a provider.
+    """
+    target = instance.next_episode_target()
+    if target is None:
+        return None
+    season, episode_number = target
+    code = episode_code(season.item.season_number, episode_number)
+    open_play = (
+        Episode.objects.filter(
+            related_season=season,
+            item__episode_number=episode_number,
+            status=Status.IN_PROGRESS.value,
+        )
+        .select_related("item")
+        .first()
+    )
+    return code, open_play.item if open_play else None
+
+
+def phase(user, instance):
+    """Return the check-in phase for a movie or show detail page, or None.
+
+    ``reload_in`` is the seconds until the button label changes by itself, so
+    the page can refresh at that moment. ``code`` is the episode a show's
+    Check-in or Resume would start.
     """
     item = instance.item
     if not supports(item.media_type, item.source):
@@ -280,18 +476,32 @@ def phase(user, instance):
     settle(user.id)
     record = _record(user.id)
     now_ts = _now_ts()
-    if record is not None and record["media_id"] == str(item.media_id):
-        duration = record["duration"]
-        if duration is None:
-            return {"phase": PHASE_FINISHABLE, "reload_in": None}
-        finish_at = record["started_at_ts"] + max(
-            0,
-            int(duration * FINISH_RATIO) - record["offset"],
-        )
-        if now_ts >= finish_at:
-            return {"phase": PHASE_FINISHABLE, "reload_in": record["end_ts"] - now_ts}
-        return {"phase": PHASE_ACTIVE, "reload_in": finish_at - now_ts}
+    media_type = item.media_type
+    if (
+        record is not None
+        and record["media_type"] == media_type
+        and record["media_id"] == str(item.media_id)
+    ):
+        return {**_running_phase(record, now_ts), "code": record["code"]}
 
-    if instance.status == Status.IN_PROGRESS.value and _saved_position(user, item):
-        return {"phase": PHASE_PAUSED, "reload_in": None}
-    return {"phase": PHASE_IDLE, "reload_in": None}
+    if media_type == MediaTypes.MOVIE.value:
+        paused = instance.status == Status.IN_PROGRESS.value and _saved_position(
+            user,
+            item,
+        )
+        return {
+            "phase": PHASE_PAUSED if paused else PHASE_IDLE,
+            "reload_in": None,
+            "code": "",
+        }
+
+    target = _idle_target(user, instance)
+    if target is None:
+        return None
+    code, open_item = target
+    paused = open_item is not None and _saved_position(user, open_item)
+    return {
+        "phase": PHASE_PAUSED if paused else PHASE_IDLE,
+        "reload_in": None,
+        "code": code,
+    }

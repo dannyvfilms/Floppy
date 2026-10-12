@@ -26,7 +26,7 @@ def checkin_action(request, source, media_type, media_id):
         return HttpResponseBadRequest("Unsupported check-in")
 
     try:
-        action(request.user, media_id)
+        action(request.user, media_type, media_id)
     except checkin.CheckInError as error:
         return HttpResponseBadRequest(str(error))
     except Exception:

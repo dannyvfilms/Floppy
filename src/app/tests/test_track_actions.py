@@ -99,6 +99,93 @@ class CheckInActionsTests(SimpleTestCase):
         )
 
 
+class ShowCheckInActionsTests(SimpleTestCase):
+    """A show's Check-in names the episode it would start."""
+
+    def labels(self, phase, status=Status.IN_PROGRESS.value):
+        return [
+            action["label"]
+            for action in track_actions(
+                MediaTypes.TV.value,
+                status,
+                {"phase": phase, "reload_in": None, "code": "S02E05"},
+            )
+        ]
+
+    def test_idle_show_checks_in_to_the_next_episode(self):
+        self.assertEqual(
+            self.labels(checkin.PHASE_IDLE),
+            ["Check-in S02E05", "Edit"],
+        )
+
+    def test_a_completed_show_with_a_new_episode_never_offers_add_entry(self):
+        self.assertEqual(
+            self.labels(checkin.PHASE_IDLE, Status.COMPLETED.value),
+            ["Check-in S02E05", "Edit"],
+        )
+
+    def test_paused_show_resumes_its_episode(self):
+        self.assertEqual(
+            self.labels(checkin.PHASE_PAUSED),
+            ["Resume S02E05", "Edit"],
+        )
+
+    def test_a_caught_up_show_keeps_the_plain_edit_button(self):
+        self.assertEqual(
+            [
+                a["key"]
+                for a in track_actions(MediaTypes.TV.value, Status.COMPLETED.value)
+            ],
+            [EDIT],
+        )
+
+
+class ShowTrackActionTemplateTests(SimpleTestCase):
+    """The TV status pill gains a Check-in split only when there is an episode to start."""
+
+    def render(self, phase):
+        request = RequestFactory().get("/details/")
+        request.user = SimpleNamespace(id=1)
+        media = {"source": "tmdb", "media_type": "tv", "media_id": "1668"}
+        with patch("app.checkin.phase", return_value=phase):
+            return render_to_string(
+                "app/components/detail_track_action.html",
+                {
+                    "request": request,
+                    "media": media,
+                    "return_url": "%2Fdetails%2F",
+                    "current_instance": SimpleNamespace(
+                        id=7,
+                        status=Status.IN_PROGRESS.value,
+                    ),
+                },
+            )
+
+    def test_check_in_leads_with_a_pencil_for_edit(self):
+        html = self.render(
+            {"phase": checkin.PHASE_IDLE, "reload_in": None, "code": "S02E05"},
+        )
+        self.assertIn("Check-in S02E05", html)
+        self.assertIn('hx-vals=\'{"action": "start"}\'', html)
+        self.assertIn('aria-label="Edit entry, In Progress"', html)
+        self.assertNotIn("More tracking actions", html)
+
+    def test_running_check_in_puts_edit_in_a_menu(self):
+        html = self.render(
+            {"phase": checkin.PHASE_ACTIVE, "reload_in": 60, "code": "S02E05"},
+        )
+        self.assertIn("Pause", html)
+        self.assertIn("Cancel check-in", html)
+        self.assertIn('aria-label="More tracking actions"', html)
+        self.assertIn("location.reload()", html)
+
+    def test_no_episode_left_keeps_the_status_pill(self):
+        html = self.render(None)
+        self.assertNotIn("Check-in", html)
+        self.assertNotIn("Edit entry,", html)
+        self.assertIn("In Progress", html)
+
+
 class TrackSplitTemplateTests(SimpleTestCase):
     """One action is a plain button, two a pencil segment, three or more a menu."""
 

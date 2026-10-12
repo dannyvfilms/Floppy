@@ -2338,12 +2338,25 @@ class BaseWebhookProcessor:
                 )
 
             if should_create:
-                app.models.Episode.objects.create(
+                # A manual check-in leaves an open play for this episode; the
+                # real play completes it rather than adding a second row.
+                open_play = app.models.Episode.objects.filter(
                     item=episode_item,
                     related_season=season_instance,
-                    end_date=now,
-                    entry_source=self.SOURCE_LABEL,
-                )
+                    status=Status.IN_PROGRESS.value,
+                    end_date__isnull=True,
+                ).first()
+                if open_play is not None:
+                    open_play.status = Status.COMPLETED.value
+                    open_play.end_date = now
+                    open_play.save()
+                else:
+                    app.models.Episode.objects.create(
+                        item=episode_item,
+                        related_season=season_instance,
+                        end_date=now,
+                        entry_source=self.SOURCE_LABEL,
+                    )
                 if self.SOURCE_LABEL and not season_instance.entry_source:
                     season_instance.entry_source = self.SOURCE_LABEL
                     season_instance.save(update_fields=["entry_source"])

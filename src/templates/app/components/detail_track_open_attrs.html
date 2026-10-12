@@ -1,0 +1,7 @@
+{% load app_tags %}
+{# htmx + Alpine attributes that open the track modal from the status pill (detail_track_action.html). #}
+hx-get="{% media_view_url 'track_modal' media %}"
+hx-vals='{"return_url": "{{ return_url }}"{% if current_instance %}, "instance_id": "{{ current_instance.id }}"{% endif %}{% if track_action_update %}, "track_action_update": "1"{% endif %}{% if edition_id %}, "edition_id": "{{ edition_id }}"{% endif %}}'
+hx-target="#{% component_id 'track' media %}"
+hx-trigger="click"
+@click="trackMenuOpen = false; trackOpen = true"

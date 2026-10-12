@@ -34,7 +34,12 @@ def track_actions(media_type, status, checkin_phase=None):
     edit = {"key": "edit", "label": _("Edit"), "icon": "edit"}
     add_entry = {"key": "create", "label": _("Add new entry"), "icon": "plus"}
     if checkin_phase is not None:
-        start = {"key": "start", "label": _("Check-in"), "icon": "play"}
+        code = checkin_phase.get("code", "")
+        start = {
+            "key": "start",
+            "label": _("Check-in %(code)s") % {"code": code} if code else _("Check-in"),
+            "icon": "play",
+        }
         phase = checkin_phase["phase"]
         if phase == checkin.PHASE_ACTIVE:
             return [
@@ -50,10 +55,16 @@ def track_actions(media_type, status, checkin_phase=None):
             ]
         if phase == checkin.PHASE_PAUSED:
             return [
-                {"key": "resume", "label": _("Resume"), "icon": "play"},
+                {
+                    "key": "resume",
+                    "label": _("Resume %(code)s") % {"code": code}
+                    if code
+                    else _("Resume"),
+                    "icon": "play",
+                },
                 edit,
             ]
-        if status == Status.COMPLETED.value:
+        if status == Status.COMPLETED.value and media_type == MediaTypes.MOVIE.value:
             return [add_entry, start, edit]
         return [start, edit]
     if media_type in ALWAYS_ADD_ENTRY or (
