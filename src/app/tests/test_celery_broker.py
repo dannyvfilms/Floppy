@@ -6,6 +6,7 @@ from celery import Celery
 from celery.beat import ScheduleEntry, Scheduler
 from django.conf import settings
 from django.test import SimpleTestCase, override_settings
+from kombu.utils.functional import retry_over_time
 
 from app import celery_broker
 from app.tasks import repair_celery_broker_bindings
@@ -54,6 +55,34 @@ class _FakeRedisClient:
 
     def pipeline(self):
         return _FakeRedisPipeline(self)
+
+
+class CeleryBrokerRetryTests(SimpleTestCase):
+    def test_broker_retries_until_connection_recovers(self):
+        from config.celery import app
+
+        self.assertTrue(app.conf.broker_connection_retry_on_startup)
+        self.assertIsNone(app.conf.broker_connection_max_retries)
+
+        with patch(
+            "kombu.connection.Connection.connect",
+            side_effect=[
+                ConnectionError("Broker unavailable"),
+                ConnectionError("Broker unavailable"),
+                "connected",
+            ],
+        ) as connect:
+            result = retry_over_time(
+                connect,
+                (ConnectionError,),
+                max_retries=app.conf.broker_connection_max_retries,
+                interval_start=0,
+                interval_step=0,
+                interval_max=0,
+            )
+
+        self.assertEqual(result, "connected")
+        self.assertEqual(connect.call_count, 3)
 
 
 class CeleryTaskPriorityTests(SimpleTestCase):

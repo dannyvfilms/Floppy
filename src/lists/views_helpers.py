@@ -926,3 +926,18 @@ def _extract_display_platform(item, collection_platforms_by_item_id=None):
         normalized = [str(p).strip() for p in platforms if str(p).strip()]
         return normalized[0] if len(normalized) == 1 else ""
     return ""
+
+
+def list_has_item_identity(custom_list, item):
+    """Return True if the list holds this title in any library bucket.
+
+    The same title can be stored as several Item rows (one per library bucket),
+    so checking only ``item.id`` would let a second bucket's row in twice.
+    """
+    return custom_list.items.filter(
+        media_id=item.media_id,
+        source=item.source,
+        media_type=item.media_type,
+        season_number=item.season_number,
+        episode_number=item.episode_number,
+    ).exists()

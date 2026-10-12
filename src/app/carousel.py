@@ -122,9 +122,25 @@ def resolve_carousel_media(media_type, source, media_id, *, season_number=None) 
                 remaining_photos.append(photo)
             photos = remaining_photos
 
+        hero = None
+        if backdrop_path or backdrop_url:
+            hero = {
+                "url": rewrite_image_url(backdrop_url or tmdb.get_carousel_image_url(backdrop_path, size="w1280")),
+                "logo_url": overview["logo_url"] if overview else None,
+            }
+            if not data["video"] and not photos and not overview:
+                # A backdrop with no gallery, trailer or logo still earns a
+                # one-image carousel (and the phone hero) instead of nothing.
+                photos = [
+                    {
+                        "url": hero["url"],
+                        "thumb_url": rewrite_image_url(backdrop_url or tmdb.get_carousel_image_url(backdrop_path, size="w300")),
+                    }
+                ]
+
         if not data["video"] and not photos and not overview:
             return None
-        return {"video": data["video"], "photos": photos, "overview": overview}
+        return {"video": data["video"], "photos": photos, "overview": overview, "hero": hero}
 
     if source == Sources.IGDB.value and media_type == MediaTypes.GAME.value:
         from lists.models import CustomList
@@ -161,6 +177,12 @@ def resolve_carousel_media(media_type, source, media_id, *, season_number=None) 
             photos = remaining_photos
         if not data["video"] and not photos and not overview:
             return None
-        return {"video": data["video"], "photos": photos, "overview": overview}
+        hero = None
+        if data.get("hero_image_id"):
+            hero = {
+                "url": rewrite_image_url(f"https://images.igdb.com/igdb/image/upload/t_1080p/{data['hero_image_id']}.jpg"),
+                "logo_url": overview["logo_url"] if overview else None,
+            }
+        return {"video": data["video"], "photos": photos, "overview": overview, "hero": hero}
 
     return None

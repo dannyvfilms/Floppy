@@ -101,6 +101,103 @@ class CarouselOverviewTests(SimpleTestCase):
         self.assertEqual(result["overview"]["url"], "w1280/season-backdrop.jpg")
         self.assertEqual(result["overview"]["logo_url"], "w500/show-logo.png")
 
+    @patch("app.providers.tmdb.get_carousel_image_url")
+    @patch("app.providers.tmdb.carousel_media")
+    def test_phone_hero_carries_backdrop_and_logo(self, mock_media, mock_image_url):
+        mock_media.return_value = {
+            "video": None,
+            "photos": [{"file_path": "/backdrop.jpg"}],
+            "logos": ["/logo.png"],
+            "backdrop_path": "/backdrop.jpg",
+        }
+        mock_image_url.side_effect = lambda path, size: f"{size}{path}"
+
+        result = carousel.resolve_carousel_media(
+            MediaTypes.MOVIE.value, Sources.TMDB.value, "42"
+        )
+
+        self.assertEqual(
+            result["hero"], {"url": "w1280/backdrop.jpg", "logo_url": "w500/logo.png"}
+        )
+
+    @patch("app.providers.tmdb.get_carousel_image_url")
+    @patch("app.providers.tmdb.carousel_media")
+    def test_phone_hero_without_a_logo_keeps_the_backdrop_for_a_text_title(
+        self, mock_media, mock_image_url
+    ):
+        mock_media.return_value = {
+            "video": None,
+            "photos": [{"file_path": "/backdrop.jpg"}],
+            "logos": [],
+            "backdrop_path": "/backdrop.jpg",
+        }
+        mock_image_url.side_effect = lambda path, size: f"{size}{path}"
+
+        result = carousel.resolve_carousel_media(
+            MediaTypes.MOVIE.value, Sources.TMDB.value, "42"
+        )
+
+        # No logo means no desktop overview, but the phone hero still gets the art.
+        self.assertIsNone(result["overview"])
+        self.assertEqual(result["hero"], {"url": "w1280/backdrop.jpg", "logo_url": None})
+
+    @patch("app.providers.tmdb.get_carousel_image_url")
+    @patch("app.providers.tmdb.carousel_media")
+    def test_a_lone_backdrop_still_builds_the_hero_and_a_one_image_carousel(
+        self, mock_media, mock_image_url
+    ):
+        # TMDB can return a top-level backdrop with no gallery, trailer or logo.
+        mock_media.return_value = {
+            "video": None,
+            "photos": [],
+            "logos": [],
+            "backdrop_path": "/backdrop.jpg",
+        }
+        mock_image_url.side_effect = lambda path, size: f"{size}{path}"
+
+        result = carousel.resolve_carousel_media(
+            MediaTypes.MOVIE.value, Sources.TMDB.value, "42"
+        )
+
+        self.assertEqual(result["hero"], {"url": "w1280/backdrop.jpg", "logo_url": None})
+        self.assertEqual(
+            result["photos"],
+            [{"url": "w1280/backdrop.jpg", "thumb_url": "w300/backdrop.jpg"}],
+        )
+
+    @patch("app.providers.tmdb.carousel_media")
+    def test_no_backdrop_means_no_phone_hero(self, mock_media):
+        mock_media.return_value = {
+            "video": {"key": "trailer"},
+            "photos": [],
+            "logos": [],
+            "backdrop_path": None,
+        }
+
+        with patch("app.backdrops.resolve_backdrop", return_value=None):
+            result = carousel.resolve_carousel_media(
+                MediaTypes.MOVIE.value, Sources.TMDB.value, "42"
+            )
+
+        self.assertIsNone(result["hero"])
+
+    @patch("lists.models.CustomList._get_igdb_carousel_media")
+    def test_igdb_phone_hero_without_a_logo_keeps_the_hero_image(self, mock_media):
+        mock_media.return_value = {
+            "video": None,
+            "photos": ["art1", "shot2"],
+            "hero_image_id": "art1",
+            "logo_image_id": None,
+        }
+
+        result = carousel.resolve_carousel_media(
+            MediaTypes.GAME.value, Sources.IGDB.value, "123"
+        )
+
+        self.assertIsNone(result["overview"])
+        self.assertIn("art1", result["hero"]["url"])
+        self.assertIsNone(result["hero"]["logo_url"])
+
     @patch("lists.models.CustomList._get_igdb_carousel_media")
     def test_igdb_game_adds_game_logo_and_omits_duplicate_hero_photo(self, mock_media):
         mock_media.return_value = {
@@ -151,6 +248,28 @@ class CarouselOverviewTests(SimpleTestCase):
 
         self.assertLess(html.index("Overview"), html.index("mqdefault.jpg"))
         self.assertIn("detail-carousel-overview-logo", html)
+
+
+    def test_fragment_renders_the_phone_hero_only_when_there_is_one(self):
+        base = {"video": {"key": "trailer"}, "photos": [], "overview": None}
+
+        with_logo = render_to_string(
+            "app/components/detail_carousel_fragment.html",
+            {"carousel": {**base, "hero": {"url": "https://x.test/b.jpg", "logo_url": "https://x.test/l.png"}}},
+        )
+        text_only = render_to_string(
+            "app/components/detail_carousel_fragment.html",
+            {"carousel": {**base, "hero": {"url": "https://x.test/b.jpg", "logo_url": None}}},
+        )
+        without = render_to_string(
+            "app/components/detail_carousel_fragment.html",
+            {"carousel": {**base, "hero": None}},
+        )
+
+        self.assertIn("detail-mobile-hero__logo", with_logo)
+        self.assertIn("detail-mobile-hero__sharp", text_only)
+        self.assertNotIn("detail-mobile-hero__logo", text_only)
+        self.assertNotIn("detail-mobile-hero", without)
 
 
 class IgdbCarouselOverviewTests(TestCase):

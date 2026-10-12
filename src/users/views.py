@@ -55,6 +55,7 @@ from app.templatetags import app_tags
 from config import run_state
 from integrations import exports, plex, seerr_api, stremio_catalog, tasks
 from integrations.imports import plex as plex_import
+from integrations.imports import psn as psn_import
 from integrations.imports import trakt as trakt_imports
 from integrations.imports.helpers import periodic_task_user_kwargs
 from integrations.models import (
@@ -2062,6 +2063,7 @@ def import_data(request):
         "stremio_account": stremio_account,
         "xbox_account": xbox_account,
         "psn_account": psn_account,
+        "psn_sync_hours": psn_import.SYNC_EVERY_HOURS,
         "lastfm_periodic_task": lastfm_periodic_task,
         "lastfm_poll_interval": lastfm_poll_interval,
         "lastfm_history_status_label": lastfm_history_status_label,

@@ -422,6 +422,11 @@ def _resolve_user(user):
     return user if user is not None else _current_user.get()
 
 
+def active_user():
+    """Return the user whose personal keys apply right now, if one is published."""
+    return _current_user.get()
+
+
 def get_spec(slug):
     """Return the registry entry for a slug, or None."""
     return REGISTRY.get(slug)

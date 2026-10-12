@@ -76,7 +76,7 @@ def periodic_task_user_kwargs(user_id):
     return {"kwargs__regex": rf"[\"']user_id[\"']: {int(user_id)}[,}}]"}
 
 
-def find_item_across_buckets(preferred_bucket=None, **identity):
+def find_item_across_buckets(preferred_bucket=None, user=None, **identity):
     """Return an existing Item for an identity, preferring one library bucket.
 
     Every Item uniqueness constraint includes ``library_media_type``, and the
@@ -86,16 +86,57 @@ def find_item_across_buckets(preferred_bucket=None, **identity):
     ``get``/``get_or_create`` keyed only on the identity fields therefore raises
     ``MultipleObjectsReturned`` as soon as two buckets exist. Reuse an existing
     row instead of failing or creating a third, divergent one - preferring the
-    caller's bucket, then the oldest row so repeat runs stay stable.
+    row ``user`` already tracks (so another user's bucket never pulls them onto
+    a second row), then the caller's bucket, then the oldest row so repeat runs
+    stay stable.
     """
     candidates = list(app.models.Item.objects.filter(**identity).order_by("id"))
     if not candidates:
         return None
+    if user is not None and len(candidates) > 1:
+        tracked_ids = _item_ids_tracked_by(user, identity.get("media_type"), candidates)
+        for item in candidates:
+            if item.id in tracked_ids:
+                return item
     if preferred_bucket:
         for item in candidates:
             if item.library_media_type == preferred_bucket:
                 return item
     return candidates[0]
+
+
+def _item_ids_tracked_by(user, media_type, items):
+    """Return the ids among ``items`` that ``user`` has a tracking row for."""
+    try:
+        model = apps.get_model(app_label="app", model_name=media_type)
+    except (LookupError, ValueError):
+        return set()
+    if not any(field.name == "user" for field in model._meta.fields):
+        return set()
+    return set(
+        model.objects.filter(user=user, item__in=items).values_list(
+            "item_id",
+            flat=True,
+        ),
+    )
+
+
+def get_or_create_item_across_buckets(
+    preferred_bucket=None,
+    user=None,
+    defaults=None,
+    **identity,
+):
+    """``get_or_create`` for an Item identity that tolerates several buckets.
+
+    Returns ``(item, created)`` like ``get_or_create``, but reuses a row from
+    any library bucket (see ``find_item_across_buckets``) instead of raising
+    ``MultipleObjectsReturned`` when the identity exists in more than one.
+    """
+    item = find_item_across_buckets(preferred_bucket, user, **identity)
+    if item is not None:
+        return item, False
+    return app.models.Item.objects.get_or_create(defaults=defaults, **identity)
 
 
 # Importers read identity fields off the preloaded items, never these. Loading

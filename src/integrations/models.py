@@ -1364,6 +1364,9 @@ class PSNAccount(models.Model):
     account_id = models.CharField(max_length=32, blank=True, default="")
     online_id = models.CharField(max_length=64, blank=True, default="")
     last_sync_at = models.DateTimeField(null=True, blank=True)
+    # Setup choice, read the first time a played game is seen: record the
+    # lifetime playtime PSN already holds, or only track play from now on.
+    import_existing_playtime = models.BooleanField(default=True)
     connection_broken = models.BooleanField(default=False)
     last_error_message = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -1383,6 +1386,38 @@ class PSNAccount(models.Model):
     def is_connected(self):
         """Return True when the account appears connected."""
         return bool(self.npsso) and not self.connection_broken
+
+
+class PlaytimeSnapshot(models.Model):
+    """The lifetime playtime a console service last reported for one game.
+
+    Console services only report cumulative minutes, so the time played since
+    the previous sync is the difference from this row.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="playtime_snapshots",
+    )
+    source = models.CharField(max_length=16)
+    media_id = models.CharField(max_length=64)
+    minutes = models.PositiveIntegerField(default=0)
+    seen_at = models.DateTimeField()
+
+    class Meta:
+        """Model options."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "source", "media_id"],
+                name="unique_playtime_snapshot",
+            ),
+        ]
+
+    def __str__(self):
+        """Readable representation."""
+        return f"PlaytimeSnapshot({self.source}, {self.media_id}, {self.minutes})"
 
 
 class TraktAccount(models.Model):

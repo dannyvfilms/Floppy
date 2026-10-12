@@ -20,6 +20,7 @@ import logging
 from contextlib import contextmanager
 
 import requests
+from django.core.cache import cache
 from psnawp_api import PSNAWP
 from psnawp_api.core import psnawp_exceptions
 from psnawp_api.models.title_stats import PlatformCategory
@@ -37,6 +38,11 @@ PROVIDER = "PSN"
 # timeout is injected there right after construction -- authentication
 # included, since the token exchange is lazy.
 REQUEST_TIMEOUT_SECONDS = 30
+
+# Whether a title is a game or an app never changes, and every sync asks about
+# each uncategorised title, so a frequent sync would repeat dozens of lookups
+# that all give the same answer.
+GAME_LOOKUP_CACHE_SECONDS = 30 * 24 * 60 * 60
 
 
 def _client(npsso):
@@ -148,6 +154,7 @@ def get_played_games(npsso):
                         if play_duration
                         else 0
                     ),
+                    "first_played": stats.first_played_date_time,
                     "last_played": stats.last_played_date_time,
                     "play_count": stats.play_count,
                 },
@@ -173,6 +180,11 @@ def _is_game(psn, stats):
     degrade to the old behaviour, not silently drop a game or abort the
     whole sync over one of dozens of per-title lookups.
     """
+    cache_key = f"psn:is_game:{stats.title_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         details = psn.game_title(
             title_id=stats.title_id,
@@ -191,4 +203,6 @@ def _is_game(psn, stats):
         return True
 
     payload = details[0] if details else {}
-    return bool(payload.get("genres"))
+    is_game = bool(payload.get("genres"))
+    cache.set(cache_key, is_game, GAME_LOOKUP_CACHE_SECONDS)
+    return is_game

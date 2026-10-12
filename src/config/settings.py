@@ -1505,7 +1505,7 @@ CELERY_BROKER_POOL_LIMIT = config(
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Retry forever rather than exit: the container restarts into the same
 # situation, so giving up only turns a slow Redis into a crash loop.
-CELERY_BROKER_CONNECTION_MAX_RETRIES = 0
+CELERY_BROKER_CONNECTION_MAX_RETRIES = None
 
 # ``integrations.tasks`` keeps its historical public re-exports lazy so web
 # workers do not load every importer while resolving URLs. Celery workers still

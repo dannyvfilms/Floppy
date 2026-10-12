@@ -674,6 +674,69 @@ class MediaDetailsViewTests(TestCase):
         self.assertNotContains(response, "detail-sidebar-genres--in-tooltip")
 
     @patch("app.providers.services.get_media_metadata")
+    def test_phone_header_hooks_and_year_runtime_line(self, mock_get_metadata):
+        """The phone header (compact or backdrop hero) hangs off these classes."""
+        mock_get_metadata.return_value = {
+            "media_id": "238",
+            "title": "Test Movie",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "synopsis": "Test overview",
+            "genres": [],
+            "details": {"release_date": "2020-03-05", "runtime": "2h 6min"},
+            "related": {},
+        }
+        detail_url = reverse(
+            "media_details",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "238",
+                "title": "test-movie",
+            },
+        )
+
+        content = self.client.get(detail_url).content.decode()
+
+        # Movies and TV reserve the hero up front so the page does not jump
+        # when the carousel fragment brings the backdrop.
+        self.assertIn('class="detail-carousel-grid detail-hero-pending"', content)
+        self.assertIn("detail-carousel-grid__title", content)
+        self.assertIn("detail-carousel-grid__actions", content)
+        self.assertIn('<p class="detail-mobile-meta md:hidden">2020 · 2h 6min</p>', content)
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_game_header_starts_compact_without_a_reserved_hero(self, mock_get_metadata):
+        mock_get_metadata.return_value = {
+            "media_id": "123",
+            "title": "Test Game",
+            "media_type": MediaTypes.GAME.value,
+            "source": Sources.IGDB.value,
+            "image": "http://example.com/game.jpg",
+            "synopsis": "Test overview",
+            "genres": [],
+            "details": {},
+            "related": {},
+        }
+        detail_url = reverse(
+            "media_details",
+            kwargs={
+                "source": Sources.IGDB.value,
+                "media_type": MediaTypes.GAME.value,
+                "media_id": "123",
+                "title": "test-game",
+            },
+        )
+
+        content = self.client.get(detail_url).content.decode()
+
+        self.assertIn("detail-carousel-grid", content)
+        self.assertIn('class="detail-carousel-grid"', content)
+        self.assertNotIn("detail-carousel-grid detail-hero-pending", content)
+        self.assertNotIn("detail-mobile-meta", content)
+
+    @patch("app.providers.services.get_media_metadata")
     def test_comic_volume_issue_rows_render_shared_action_buttons(
         self, mock_get_metadata
     ):
@@ -4317,7 +4380,7 @@ class MediaDetailsViewTests(TestCase):
         self.assertContains(response, "1h 30min watched")
         self.assertIn('<div class="mb-3 md:mb-1 text-center md:text-start">', content)
         self.assertIn(
-            'class="flex w-full items-center justify-center gap-0.5 whitespace-nowrap text-[13px] tracking-[-0.01em] md:hidden cursor-pointer"',
+            'class="flex w-full items-center justify-center gap-0.5 whitespace-nowrap text-[13px] tracking-[-0.01em] @max-[26rem]:flex-col md:hidden cursor-pointer"',
             content,
         )
         self.assertIn("1h 30min (1/8)", content)

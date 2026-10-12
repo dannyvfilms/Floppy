@@ -200,15 +200,18 @@ def _remove_temp(path):
         Path(path).unlink()
 
 
-def _fetch_to_disk(url):
-    """Fetch one approved URL and atomically publish validated image files."""
+def _open_image_response(url):
+    """Open an approved image URL, following approved redirects.
+
+    Returns ``(response, content_type)`` for a usable image, or ``(None, None)``;
+    the caller closes the response.
+    """
     current_url = url
     response = None
-    temporary_data = None
     try:
         for _ in range(MAX_REDIRECTS + 1):
             if not is_approved_url(current_url):
-                return False
+                return None, None
             response = requests.get(
                 current_url,
                 headers={"Accept": "image/*"},
@@ -221,23 +224,38 @@ def _fetch_to_disk(url):
                 response.close()
                 response = None
                 if not location:
-                    return False
+                    return None, None
                 current_url = urljoin(current_url, location)
                 continue
             break
         else:
-            return False
+            return None, None
 
         if response is None or not HTTP_OK <= response.status_code < HTTP_MULTIPLE_CHOICES:
-            return False
+            return None, None
         content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         if not content_type.startswith("image/") or content_type == "image/svg+xml":
-            return False
+            return None, None
         try:
             content_length = int(response.headers.get("Content-Length", "0"))
         except ValueError:
             content_length = 0
         if content_length > MAX_IMAGE_BYTES:
+            return None, None
+    except BaseException:
+        if response is not None:
+            response.close()
+        raise
+    return response, content_type
+
+
+def _fetch_to_disk(url):
+    """Fetch one approved URL and atomically publish validated image files."""
+    response = None
+    temporary_data = None
+    try:
+        response, content_type = _open_image_response(url)
+        if response is None:
             return False
 
         root = cache_root()
@@ -317,6 +335,42 @@ def _touch(paths):
             path.touch()
         except OSError:
             continue
+
+
+def cover_bytes(url, *, fetch=True):
+    """Return the bytes of an approved provider image, or None.
+
+    Server-side code that needs the pixels (the tier board export) uses this
+    instead of the browser, because covers are not always same-origin. A copy
+    already in the cache is used as is. Otherwise, with ``fetch=True``, the
+    image is downloaded into memory only: nothing is written to the cache, so
+    the instance's image caching setting keeps meaning what it says.
+    """
+    if not is_approved_url(url):
+        return None
+    data_path, metadata_path = _paths(url)
+    if data_path.is_file() and _metadata(data_path, metadata_path) is not None:
+        _touch((data_path, metadata_path))
+        with suppress(OSError):
+            return data_path.read_bytes()
+    if not fetch:
+        return None
+    try:
+        response, _ = _open_image_response(url)
+        if response is None:
+            return None
+        try:
+            body = bytearray()
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                body.extend(chunk)
+                if len(body) > MAX_IMAGE_BYTES:
+                    return None
+        finally:
+            response.close()
+    except (OSError, requests.RequestException, ValueError):
+        logger.debug("Unable to fetch cover image %s", url, exc_info=True)
+        return None
+    return bytes(body)
 
 
 def serve_cached_image(token, request):

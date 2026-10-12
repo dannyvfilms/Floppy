@@ -1976,19 +1976,18 @@ class MediaListDetailView(drf_views.APIView):
             )
 
         # FORK: bucket-aware, deterministic item resolution (get() can raise
-        # MultipleObjectsReturned when grouped-anime bucket rows coexist).
-        item = resolve_item_queryset(
-            media_id,
-            source,
+        # MultipleObjectsReturned when grouped-anime bucket rows coexist). An
+        # item Floppy has not seen yet is created from provider metadata.
+        item, error = fork_helpers.get_or_create_provider_item(
             media_type,
+            source,
+            media_id,
+            user=request.user,
             library_media_type=request.data.get("library_media_type")
             or request.query_params.get("library_media_type"),
-        ).first()
-        if item is None:
-            return Response(
-                {"detail": "Media not found."},
-                status=HTTP.NOT_FOUND,
-            )
+        )
+        if error:
+            return error
 
         if user_list.items.filter(id=item.id).exists():
             return Response(

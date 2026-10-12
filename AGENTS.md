@@ -300,6 +300,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/agents/domain_model.md`: generated vocabulary guide; regenerate and check it with the commands under Local Commands.
 - `docs/agents/media_type_integration.md`: playbook for adding new media types safely.
 - `docs/agents/music_integration.md`: music-specific data model and UI integration notes.
+- `docs/agents/psn_integration.md`: how a PSN sync turns lifetime playtime into dated game entries (remembered totals, Sessions vs Repeats, the setup choice).
 - `docs/agents/pocketcasts_workflow.md`: Pocket Casts import/schedule workflow details.
 - `docs/agents/clz_import.md`: the CLZ importer's header-mapped contract and the shared custom-field resolution layer it sits on.
 - `docs/agents/migration_sync_playbook.md`: hard-gate flow for adapting accepted upstream migration outcomes to Floppy's current graph.
@@ -316,6 +317,7 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - `docs/architecture/media-card.md`: the one media card and its surfaces — what may differ between pages and why, how a page loads the viewer's rating and status, and the test that catches a grid that drifts.
 - `docs/architecture/history-memory.md`: what a History request costs a web worker — the item columns history must not load, which paths are bounded by the response and which are still bounded by the history.
 - `docs/integrations/nuvio-client-guide.md`: what a third-party tracking client implements, with `api.tests.test_nuvio_conformance` as its runnable half.
+- `docs/integrations/flexget.md`: how a download tool (FlexGet's `floppy_list`, or `curl`) reads lists and reports owned media by provider id, with `api.tests.test_fork_media_collection` as its runnable half.
 - `docs/integrations/recommendations-api.md`: the recommendations endpoint for media-server plugins, with `api.tests.test_fork_discover.RecommendationsTests` as its runnable half.
 
 

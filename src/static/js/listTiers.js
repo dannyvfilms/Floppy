@@ -26,6 +26,8 @@ if (!window.__floppyListTiersBound) {
       moving: null,
       editing: null,
       unrankedCount: 0,
+      notice: "",
+      undoable: [],
 
       init() {
         this.refreshCount();
@@ -100,6 +102,51 @@ if (!window.__floppyListTiersBound) {
         if (!tile || !zone) return;
         zone.appendChild(tile);
         this.save(itemId, zone);
+      },
+
+      // Put each tier's tiles in the order the server sends, so a fill or an
+      // undo looks the same as the page does after a reload.
+      applyOrder(order) {
+        Object.entries(order).forEach(([tierId, itemIds]) => {
+          const zone = this.$root.querySelector(`.tier-drop[data-tier="${tierId}"]`);
+          if (!zone) return;
+          itemIds.forEach((itemId) => {
+            const tile = this.$root.querySelector(`.tier-tile[data-item-id="${itemId}"]`);
+            if (tile) zone.appendChild(tile);
+          });
+        });
+        this.refreshCount();
+      },
+
+      async fillFromRatings() {
+        this.undoable = [];
+        try {
+          const response = await this.post(this.fillUrl, "");
+          const { placements, order } = await response.json();
+          this.undoable = placements;
+          this.applyOrder(order);
+          this.notice = placements.length
+            ? `Placed ${placements.length} rated ${placements.length === 1 ? "item" : "items"}.`
+            : "None of the unranked items have a rating.";
+        } catch {
+          this.notice = "Could not fill from ratings.";
+        }
+      },
+
+      async undoFill() {
+        try {
+          const response = await this.post(
+            this.undoUrl,
+            JSON.stringify({ placements: this.undoable }),
+            { "Content-Type": "application/json" },
+          );
+          const { order } = await response.json();
+          this.applyOrder(order);
+          this.undoable = [];
+          this.notice = "Undone.";
+        } catch {
+          this.notice = "Could not undo.";
+        }
       },
 
       editTier(tierId) {

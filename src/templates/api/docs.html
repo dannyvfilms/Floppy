@@ -332,9 +332,19 @@
                 <td>Custom smart lists and curated collections</td>
               </tr>
               <tr>
+                <td>List membership</td>
+                <td><code>PUT, DELETE /api/v1/media/{type}/{source}/{id}/lists/{list_id}/</code></td>
+                <td>Add or remove a title by provider id; unknown titles are created</td>
+              </tr>
+              <tr>
                 <td>Collection</td>
                 <td><code>GET, POST /api/v1/collection/</code></td>
                 <td>Physical & digital media inventory tracking</td>
+              </tr>
+              <tr>
+                <td>Collection by provider id</td>
+                <td><code>PUT, DELETE /api/v1/media/{type}/{source}/{id}/collection/</code></td>
+                <td>Mark a movie as owned; episodes use <code>/media/tv/{source}/{id}/{season}/episodes/{episode}/collection/</code></td>
               </tr>
               <tr>
                 <td>Music Plays</td>

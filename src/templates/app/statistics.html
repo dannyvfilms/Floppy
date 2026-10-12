@@ -1783,7 +1783,7 @@
   }">
     {# FAB button #}
     <button @click="open = true"
-            class="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
+            class="fixed bottom-6 right-[max(1.5rem,var(--safe-right))] z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg flex items-center justify-center cursor-pointer transition-colors"
             title="{% translate "Statistics preferences" %}"
             aria-label="{% translate "Statistics preferences" %}">
       {% include "app/icons/vertical-sliders.svg" with classes="w-5 h-5" %}

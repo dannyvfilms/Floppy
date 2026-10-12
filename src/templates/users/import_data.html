@@ -3209,15 +3209,7 @@
             {% endif %}
           </div>
           {% if psn_account %}
-            {# Server-rendered text matches the initial importFrequency so the copy is right before Alpine binds, and survives if it never does. #}
-            <p class="text-sm text-[var(--color-text-muted)]"
-               x-text="importFrequency === 'once' ? gettext('Sync played games and hours played from your PlayStation account now.') : gettext('Sync played games and hours played from your PlayStation account on a schedule.')">
-              {% if user.import_frequency == "once" %}
-                {% translate "Sync played games and hours played from your PlayStation account now." %}
-              {% else %}
-                {% translate "Sync played games and hours played from your PlayStation account on a schedule." %}
-              {% endif %}
-            </p>
+            <p class="text-sm text-[var(--color-text-muted)]">{% translate "Sync played games and hours played from your PlayStation account." %}</p>
             {% if psn_account.online_id %}
               <div class="text-sm text-[var(--color-text-muted)]">{% blocktranslate with value1=psn_account.online_id %}Online ID: {{ value1 }}{% endblocktranslate %}</div>
             {% endif %}
@@ -3229,26 +3221,24 @@
                 <strong>{% translate "Error:" %}</strong> {{ psn_account.last_error_message }}
               </div>
             {% endif %}
-            <div class="flex gap-2">
-              <form method="post" action="{% url 'import_psn' %}">
-                {% csrf_token %}
-                <input type="hidden" name="frequency" x-model="importFrequency">
-                <input type="hidden" name="time" x-model="importTime">
-                <input type="hidden" name="mode" x-model="importMode">
+            <form id="psn-sync-form"
+                  method="post"
+                  action="{% url 'import_psn' %}"
+                  class="space-y-3">
+              {% csrf_token %}
+              {% include "users/components/game_sync_fields.html" with field_id="psn-existing-playtime-sync" sync_hours=psn_sync_hours new_only=psn_account.import_existing_playtime|yesno:",true" %}
+              <div class="flex gap-2">
                 <button type="submit"
-                        class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-                        x-text="importFrequency === 'once' ? gettext('Sync Now') : gettext('Schedule Sync')">
-                  {% if user.import_frequency == "once" %}{% translate "Sync Now" %}{% else %}{% translate "Schedule Sync" %}{% endif %}
+                        class="px-4 py-2 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer">
+                  {% translate "Sync Now" %}
                 </button>
-              </form>
-              <form method="post" action="{% url 'psn_disconnect' %}">
-                {% csrf_token %}
                 <button type="submit"
+                        formaction="{% url 'psn_disconnect' %}"
                         class="px-4 py-2 text-sm rounded-md bg-slate-500/10 text-slate-200 border border-slate-400/30 hover:bg-slate-500/20 transition-colors cursor-pointer">
                   {% translate "Disconnect" %}
                 </button>
-              </form>
-            </div>
+              </div>
+            </form>
           {% else %}
             <p class="text-sm text-[var(--color-text-muted)]">
               {% translate "PSN has no public API, so Floppy signs in with your NPSSO token. Log in at" %}
@@ -3262,11 +3252,11 @@
                  class="text-indigo-300 hover:text-indigo-200">{% translate "this page" %}</a>
               {% translate "and paste the npsso value it shows. Don't log out of that browser afterwards, or the token stops working." %}
             </p>
-            <form method="post" action="{% url 'psn_connect' %}" class="space-y-3">
+            <form method="post"
+                  action="{% url 'psn_connect' %}"
+                  class="space-y-3">
               {% csrf_token %}
-              <input type="hidden" name="frequency" x-model="importFrequency">
-              <input type="hidden" name="time" x-model="importTime">
-              <input type="hidden" name="mode" x-model="importMode">
+              {% include "users/components/game_sync_fields.html" with field_id="psn-existing-playtime-connect" sync_hours=psn_sync_hours %}
               <input name="npsso"
                      placeholder="{% translate "PSN NPSSO token" %}"
                      class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"

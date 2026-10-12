@@ -23,8 +23,8 @@
     {% if not render_secondary_only %}
       {# Top section #}
       {% if carousel_supported %}
-        {# Carousel temporarily disabled below md while the mobile layout gets polished; mobile keeps today's stacked order, md+ gets the new two-row layout. See .detail-carousel-grid in input.css. #}
-        <div class="detail-carousel-grid">
+        {# Phones get the compact header, or the backdrop hero once the carousel fragment brings one (reserved up front for movies and TV so the page does not jump); md+ gets the two-row carousel layout. See .detail-carousel-grid in input.css. #}
+        <div class="detail-carousel-grid{% if media_type != MediaTypes.GAME.value %} detail-hero-pending{% endif %}">
           <div class="detail-carousel-grid__poster w-full max-w-[250px] mx-auto md:mx-0">
             <img alt="{{ media|display_title:user }}"
                  class="w-full aspect-[2/3] rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
@@ -43,27 +43,28 @@
             <div id="detail-carousel-wrap"
                  hx-get="{{ detail_carousel_fragment_url }}"
                  hx-trigger="load delay:100ms"
-                 hx-swap="innerHTML"></div>
+                 hx-swap="innerHTML"
+                 hx-on::after-request="this.closest('.detail-carousel-grid').classList.remove('detail-hero-pending')"></div>
           </div>
 
           <div class="detail-carousel-grid__header flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div class="min-w-0">{% include "app/components/detail_title_block.html" %}</div>
-            <div class="shrink-0">{% include "app/components/detail_action_buttons.html" %}</div>
+            <div class="detail-carousel-grid__title min-w-0 flex-1"><div id="detail-carousel-logo-slot"></div>{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
+            <div class="detail-carousel-grid__actions shrink-0">{% include "app/components/detail_action_buttons.html" %}</div>
           </div>
           <div class="detail-carousel-grid__chips">{% include "app/components/detail_score_chips.html" %}</div>
           <div class="detail-carousel-grid__synopsis">{% include "app/components/detail_synopsis.html" %}</div>
         </div>
       {% else %}
-        <div class="flex flex-col md:flex-row gap-8 md:gap-10 mb-2 md:mb-8">
-          <div class="w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
+        <div class="detail-flat-top flex flex-col md:flex-row gap-8 md:gap-10 mb-2 md:mb-8">
+          <div class="detail-flat-top__poster w-full md:w-1/4 max-w-[250px] mx-auto md:mx-0">
             <img alt="{{ media|display_title:user }}"
                  class="w-full rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
                  src="{{ media.image|image_url }}">
           </div>
 
           {# Media details #}
-          <div class="md:w-3/4">
-            {% include "app/components/detail_title_block.html" %}
+          <div class="detail-flat-top__info md:w-3/4">
+            <div class="detail-flat-top__title">{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
             {% include "app/components/detail_score_and_actions.html" %}
             {% include "app/components/detail_synopsis.html" %}
           </div>
