@@ -70,8 +70,9 @@
             {% include "app/components/media_card_status_chip.html" with media=media current_sort_value=current_sort_value recommend_mode=recommend_mode show_next_event_chip=show_next_event_chip Status=Status only %}
           {% endif %}
 
+          {# Bottom corner, so it never sits under the next-episode link at the top right. #}
           {% if credit.watched_person_runtime_display %}
-            <span class="absolute top-2 right-2 z-10 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">
+            <span class="absolute bottom-3 right-2 z-10 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md shadow-md">
               {{ credit.watched_person_runtime_display }}
             </span>
           {% endif %}
