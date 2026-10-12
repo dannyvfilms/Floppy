@@ -43,6 +43,18 @@ PLAYBACK_PROGRESS_EVENTS = (
 )
 PLAYBACK_COMPLETION_TAIL_RATIO = 0.1
 
+# Types a manual Check-in can put on the card. Media servers only report movies
+# and episodes; these have no runtime to play against, so the card shows elapsed
+# time instead of progress.
+SESSION_MEDIA_TYPES = (
+    MediaTypes.GAME.value,
+    MediaTypes.BOARDGAME.value,
+    MediaTypes.BOOK.value,
+    MediaTypes.COMIC.value,
+    MediaTypes.MANGA.value,
+    MediaTypes.VIDEO.value,
+)
+
 IMAGE_RESOLVE_GUARD_PREFIX = "playback_img_fill"
 IMAGE_RESOLVE_GUARD_SECONDS = 60
 EPISODE_STILL_CACHE_PREFIX = "playback_ep_still"
@@ -379,6 +391,7 @@ def apply_playback_event(
     if playback_media_type not in (
         MediaTypes.MOVIE.value,
         MediaTypes.EPISODE.value,
+        *SESSION_MEDIA_TYPES,
     ):
         return
 
@@ -726,6 +739,13 @@ def _resolve_state_item(state: dict):
             episode_number=episode_number,
         ).first()
 
+    if playback_media_type in SESSION_MEDIA_TYPES:
+        return Item.objects.filter(
+            media_id=media_id,
+            source=source,
+            media_type=playback_media_type,
+        ).first()
+
     return None
 
 
@@ -837,7 +857,12 @@ def _resolve_card_subtitle(state, title):
 def _resolve_progress(state, state_item):
     """Compute duration, progress, display string, and percent."""
     duration = max(0, _coerce_int(state.get("duration_seconds"), 0))
-    if not duration and state_item and state_item.runtime_minutes:
+    if (
+        not duration
+        and state_item
+        and state_item.runtime_minutes
+        and state.get("media_type") not in SESSION_MEDIA_TYPES
+    ):
         duration = max(0, int(state_item.runtime_minutes) * 60)
     progress = max(
         0,

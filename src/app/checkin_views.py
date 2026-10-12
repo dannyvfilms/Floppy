@@ -51,4 +51,7 @@ def checkin_action(request, source, media_type, media_id):
         logger.exception("Check-in action failed")
         return HttpResponse("Check-in failed. Try again.", status=502)
 
+    if request.POST.get("then") == "edit":
+        # The page opens the edit dialog itself, and refreshes when that is saved.
+        return HttpResponse(status=204)
     return HttpResponse(status=204, headers={"HX-Refresh": "true"})

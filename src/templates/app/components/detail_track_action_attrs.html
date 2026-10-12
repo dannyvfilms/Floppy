@@ -11,11 +11,13 @@
   hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}", "instance_id": "{{ current_instance.id }}"}'
   hx-target="#{% component_id 'track' media current_instance.id %}"
   hx-trigger="click"
+  x-ref="editButton"
   @click.stop="trackMenuOpen = false; editTrackOpen = true"
 {% else %}
   hx-post="{% media_view_url 'checkin_action' media %}"
-  hx-vals='{"action": "{{ action.key }}"}'
+  hx-vals='{"action": "{{ action.key }}"{% if action.then %}, "then": "{{ action.then }}"{% endif %}}'
   hx-swap="none"
   hx-trigger="click"
+  {% if action.then == "edit" %}@htmx:after-request="if ($event.detail.successful) { $refs.editButton.click(); $watch('editTrackOpen', open => { if (!open) location.reload() }) }"{% endif %}
   @click.stop="trackMenuOpen = false"
 {% endif %}

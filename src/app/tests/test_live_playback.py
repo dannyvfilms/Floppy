@@ -720,3 +720,62 @@ class PlaybackProgressConcurrencyTests(TransactionTestCase):
         progress = PlaybackProgress.objects.get(user=self.user, item=self.item)
         self.assertEqual(progress.position_seconds, 8160)
         self.assertTrue(progress.completed)
+
+
+class SessionCardTests(TestCase):
+    """A manual Check-in of a game, book or video shows an elapsed-time card."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="sessioncard")
+
+    def tearDown(self):
+        live_playback.clear_user_playback_state(self.user.id)
+        cache.clear()
+        super().tearDown()
+
+    def _start(self, media_type):
+        item = Item.objects.create(
+            media_id="9",
+            source=Sources.MANUAL.value,
+            media_type=media_type,
+            title="Checked In",
+            image="https://example.com/cover.jpg",
+            runtime_minutes=120,
+        )
+        with patch("app.live_playback._attach_resolved_image"):
+            live_playback.apply_playback_event(
+                user_id=self.user.id,
+                event_type="media.play",
+                playback_media_type=media_type,
+                media_id="9",
+                source=Sources.MANUAL.value,
+                title=item.title,
+                image=item.image,
+                view_offset_seconds=0,
+                checkin_token="token",
+                ends_at_ts=live_playback._now_ts() + 4 * 3600,
+            )
+
+    def test_every_session_type_gets_a_card_without_a_made_up_duration(self):
+        for media_type in live_playback.SESSION_MEDIA_TYPES:
+            with self.subTest(media_type=media_type):
+                self._start(media_type)
+
+                card = live_playback.build_home_playback_card(self.user)
+
+                self.assertEqual(card["title"], "Checked In")
+                self.assertIn(f"/{media_type}/9/", card["details_url"])
+                # A runtime on the item must not turn a read into a 2-hour film.
+                self.assertEqual(card["duration_seconds"], 0)
+                self.assertEqual(card["progress_percent"], 0)
+                live_playback.clear_user_playback_state(self.user.id)
+
+    def test_the_now_playing_api_reports_the_type(self):
+        from api.fork_views_playback import build_now_playing_payload
+
+        self._start(MediaTypes.BOOK.value)
+
+        payload = build_now_playing_payload(self.user)
+
+        self.assertEqual(payload["media_type"], MediaTypes.BOOK.value)
+        self.assertEqual(payload["title"], "Checked In")

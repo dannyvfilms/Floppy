@@ -34,7 +34,7 @@ def track_actions(media_type, status, checkin_phase=None):
     edit = {"key": "edit", "label": _("Edit"), "icon": "edit"}
     add_entry = {"key": "create", "label": _("Add new entry"), "icon": "plus"}
     if checkin_phase is not None and checkin_phase.get("kind") == "session":
-        return _session_actions(media_type, checkin_phase, edit, add_entry)
+        return _session_actions(media_type, status, checkin_phase, edit, add_entry)
     if checkin_phase is not None:
         code = checkin_phase.get("code", "")
         start = {
@@ -76,11 +76,15 @@ def track_actions(media_type, status, checkin_phase=None):
     return [edit]
 
 
-def _session_actions(media_type, checkin_phase, edit, add_entry):
-    """Return the actions for a game or board game, which are checked in as a session."""
+def _session_actions(media_type, status, checkin_phase, edit, add_entry):
+    """Return the actions for a type that is checked in as a session."""
     if checkin_phase["phase"] == checkin_session.PHASE_SESSION:
+        stop = {"key": "stop", "label": _("Stop"), "icon": "stop"}
+        if media_type in checkin_session.READING:
+            # Only the reader knows the pages, so Stop hands over to the edit dialog.
+            stop["then"] = "edit"
         return [
-            {"key": "stop", "label": _("Stop"), "icon": "stop"},
+            stop,
             {"key": "cancel", "label": _("Cancel check-in"), "icon": "x"},
             edit,
         ]
@@ -91,4 +95,8 @@ def _session_actions(media_type, checkin_phase, edit, add_entry):
             start,
             edit,
         ]
-    return [add_entry, start, edit]
+    if media_type in ALWAYS_ADD_ENTRY or (
+        media_type in ADD_ENTRY_WHEN_COMPLETED and status == Status.COMPLETED.value
+    ):
+        return [add_entry, start, edit]
+    return [start, edit]
