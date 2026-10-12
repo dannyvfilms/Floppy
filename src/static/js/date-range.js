@@ -287,6 +287,13 @@ function dateRangePicker(options = {}) {
           this.updateFilteredCharts();
         }
       });
+      const refitMenus = () => {
+        if (this.isRangeOpen || this.isMediaTypeOpen || this.isCompareOpen) {
+          this.fitOpenMenus();
+        }
+      };
+      window.addEventListener("resize", refitMenus);
+      window.addEventListener("scroll", refitMenus, { passive: true });
     },
 
     toggleRangeDropdown() {
@@ -294,7 +301,24 @@ function dateRangePicker(options = {}) {
       if (this.isRangeOpen) {
         this.isCompareOpen = false;
         this.isMediaTypeOpen = false;
+        this.fitOpenMenus();
       }
+    },
+
+    // The menus are positioned under their buttons, and where that is depends on
+    // how the toolbar wraps and how far the page is scrolled. Cap each open menu
+    // to the room left below it so it scrolls instead of leaving the window.
+    fitOpenMenus() {
+      this.$nextTick(() => {
+        this.$root.querySelectorAll(".stats-dropdown-panel").forEach((panel) => {
+          if (!panel.offsetParent) {
+            return;
+          }
+          // offsetTop ignores the open/close scale animation, unlike getBoundingClientRect.
+          const top = panel.offsetParent.getBoundingClientRect().top + panel.offsetTop;
+          panel.style.maxHeight = `${Math.max(160, window.innerHeight - top - 16)}px`;
+        });
+      });
     },
 
     toggleCompareDropdown() {
@@ -306,6 +330,7 @@ function dateRangePicker(options = {}) {
       if (this.isCompareOpen) {
         this.isRangeOpen = false;
         this.isMediaTypeOpen = false;
+        this.fitOpenMenus();
       }
     },
 
@@ -314,6 +339,7 @@ function dateRangePicker(options = {}) {
       if (this.isMediaTypeOpen) {
         this.isRangeOpen = false;
         this.isCompareOpen = false;
+        this.fitOpenMenus();
       }
     },
 

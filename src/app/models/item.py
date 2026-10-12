@@ -828,6 +828,17 @@ class Item(CalendarTriggerMixin, models.Model):
                     source=self.source,
                     media_type=MediaTypes.TV.value,
                 )
+            except Item.MultipleObjectsReturned:
+                # The show also exists in another library bucket (e.g. "season").
+                tv_item = (
+                    Item.objects.filter(
+                        media_id=self.media_id,
+                        source=self.source,
+                        media_type=MediaTypes.TV.value,
+                    )
+                    .order_by("id")
+                    .first()
+                )
             except Item.DoesNotExist:
                 # Get metadata for the TV show
                 tv_metadata = providers.services.get_media_metadata(

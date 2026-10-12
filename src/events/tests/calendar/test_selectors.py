@@ -119,13 +119,16 @@ class CalendarSelectorTests(CalendarFixturesMixin, TestCase):
         mock_tv_changes,
         mock_movie_changes,
     ):
-        """Tracked TV with existing season events should be skipped when unchanged."""
+        """Recently checked TV with existing season events is skipped when unchanged."""
         mock_tv_changes.return_value = set()
         mock_movie_changes.return_value = set()
         Event.objects.create(
             item=self.season_item,
             content_number=1,
             datetime=timezone.now() - timezone.timedelta(days=30),
+        )
+        Item.objects.filter(id=self.tv_item.id).update(
+            calendar_checked_at=timezone.now() - timezone.timedelta(days=1),
         )
 
         items = get_items_to_process(self.user)
@@ -235,7 +238,7 @@ class CalendarSelectorTests(CalendarFixturesMixin, TestCase):
         mock_tv_changes,
         mock_movie_changes,
     ):
-        """Fully aired TVDB TV should not be refetched every run."""
+        """Recently checked, fully aired TVDB TV should not be refetched every run."""
         mock_tv_changes.return_value = set()
         mock_movie_changes.return_value = set()
         tvdb_tv_item, tvdb_season_item = self._create_tvdb_tv()
@@ -243,6 +246,9 @@ class CalendarSelectorTests(CalendarFixturesMixin, TestCase):
             item=tvdb_season_item,
             content_number=1,
             datetime=timezone.now() - timezone.timedelta(days=30),
+        )
+        Item.objects.filter(id=tvdb_tv_item.id).update(
+            calendar_checked_at=timezone.now() - timezone.timedelta(days=1),
         )
 
         items = get_items_to_process(self.user)
@@ -445,3 +451,102 @@ class CalendarStalenessGateTests(CalendarFixturesMixin, TestCase):
         )
 
         self.assertIn(self.book_item, get_items_to_process(self.user))
+
+
+@override_settings(
+    CALENDAR_ITEM_STALE_AFTER_HOURS=12, CALENDAR_AIRED_SHOW_RECHECK_DAYS=7
+)
+class CalendarAiredShowRecheckTests(CalendarFixturesMixin, TestCase):
+    """A fully aired show is looked at again so a new season can be found (#1531)."""
+
+    def _checked(self, item, days_ago):
+        Item.objects.filter(id=item.id).update(
+            calendar_checked_at=timezone.now() - timezone.timedelta(days=days_ago),
+        )
+
+    def _aired_event(self, season_item):
+        Event.objects.create(
+            item=season_item,
+            content_number=1,
+            datetime=timezone.now() - timezone.timedelta(days=30),
+        )
+
+    def _tvdb_show(self):
+        tv_item = Item.objects.create(
+            media_id="361753",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Sheriff Country",
+            image="http://example.com/sheriff.jpg",
+        )
+        TV.objects.create(item=tv_item, user=self.user, status=Status.COMPLETED.value)
+        season_item = Item.objects.create(
+            media_id="361753",
+            source=Sources.TVDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Sheriff Country",
+            image="http://example.com/sheriff.jpg",
+            season_number=2,
+        )
+        self._aired_event(season_item)
+        return tv_item
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    def test_tmdb_aired_show_is_rechecked_once_a_week(self, _tv, _movie):
+        """With no change-feed hit, a finished-looking show is still revisited."""
+        self._aired_event(self.season_item)
+
+        self._checked(self.tv_item, days_ago=1)
+        self.assertNotIn(self.tv_item, get_items_to_process(self.user))
+
+        self._checked(self.tv_item, days_ago=8)
+        self.assertIn(self.tv_item, get_items_to_process(self.user))
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    def test_tmdb_aired_show_never_checked_is_included(self, _tv, _movie):
+        """A show that was never stamped as checked is due."""
+        self._aired_event(self.season_item)
+        Item.objects.filter(id=self.tv_item.id).update(calendar_checked_at=None)
+
+        self.assertIn(self.tv_item, get_items_to_process(self.user))
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    def test_tmdb_show_with_future_episode_is_not_rechecked(self, _tv, _movie):
+        """A show still airing is left to the change feed, as before."""
+        Event.objects.create(
+            item=self.season_item,
+            content_number=1,
+            datetime=timezone.now() + timezone.timedelta(days=7),
+        )
+        self._checked(self.tv_item, days_ago=8)
+
+        self.assertNotIn(self.tv_item, get_items_to_process(self.user))
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    def test_tvdb_aired_show_is_rechecked_once_a_week(self, _tv, _movie):
+        """TVDB has no change feed, so this is the only way it finds a new season."""
+        tv_item = self._tvdb_show()
+
+        self._checked(tv_item, days_ago=1)
+        self.assertNotIn(tv_item, get_items_to_process(self.user))
+
+        self._checked(tv_item, days_ago=8)
+        self.assertIn(tv_item, get_items_to_process(self.user))
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    @override_settings(CALENDAR_AIRED_SHOW_RECHECK_DAYS=0)
+    def test_zero_disables_the_recheck(self, _tv, _movie):
+        """0 restores the previous behaviour for both providers."""
+        self._aired_event(self.season_item)
+        tvdb_item = self._tvdb_show()
+        self._checked(self.tv_item, days_ago=30)
+        self._checked(tvdb_item, days_ago=30)
+
+        selected = get_items_to_process(self.user)
+        self.assertNotIn(self.tv_item, selected)
+        self.assertNotIn(tvdb_item, selected)

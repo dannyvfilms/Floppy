@@ -150,6 +150,7 @@ SpecialModels = [
     "StatisticsDirtyDay",
     "StatisticsSnapshot",
     "StatisticsSyncState",
+    "GameArtwork",
 ]
 for model in app_models:
     if (

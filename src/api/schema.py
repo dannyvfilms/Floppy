@@ -54,6 +54,15 @@ MEDIA_TYPE_PARAM = OpenApiParameter(
     "addressed via separate path segments under `tv`.",
 )
 
+LIBRARY_MEDIA_TYPE_PARAM = OpenApiParameter(
+    name="library_media_type",
+    type=str,
+    location=OpenApiParameter.QUERY,
+    required=False,
+    description="Library the tv show, season or episode is stored in. Set to "
+    "`anime` for titles in the Anime library; omitted means the regular TV library.",
+)
+
 MEDIA_TYPE_COMPLETE_PARAM = OpenApiParameter(
     name="media_type",
     type=str,

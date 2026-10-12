@@ -78,6 +78,17 @@ class MediaCardSurfaceContractTest(TestCase):
             with self.subTest(surface=surface):
                 self.assertIn(">8.5</span>", self.render_card(surface))
 
+    def test_credit_runtime_chip_stays_clear_of_the_next_episode_link(self):
+        """The watched-runtime chip sits at the bottom, not under the top-right link."""
+        content = self.render(
+            "{% media_card 'credit' item=item media=media credit=credit %}",
+            item=self.item,
+            media=self.movie,
+            credit={"watched_person_runtime_display": "2:30"},
+        )
+        self.assertRegex(content, r'class="absolute bottom-3 right-2[^"]*">\s*2:30')
+        self.assertNotRegex(content, r'top-2 right-2[^"]*">\s*2:30')
+
     def test_rating_is_a_button_that_rates_the_tracked_item(self):
         """A tracked card's rating opens the shared picker, posting to this item."""
         rate_url = reverse(

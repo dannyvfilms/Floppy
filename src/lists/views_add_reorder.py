@@ -23,6 +23,7 @@ from app import helpers
 from app.discover import tab_cache as discover_tab_cache
 from app.models import Item, MediaTypes
 from app.providers import services
+from integrations.imports.helpers import find_item_across_buckets
 from lists.models import (
     CustomList,
     CustomListItem,
@@ -33,6 +34,7 @@ from lists.views_helpers import (
     _extract_list_search_results,
     _list_item_title_fields_from_metadata,
     _maybe_backfill_episode_title,
+    list_has_item_identity,
 )
 
 logger = logging.getLogger(__name__)
@@ -284,16 +286,17 @@ def add_list_item_submit(request, list_id):
     season_number = int(season_number) if season_number else None
     episode_number = int(episode_number) if episode_number else None
 
-    try:
-        item = Item.objects.get(
-            media_id=media_id,
-            source=source,
-            media_type=media_type,
-            season_number=season_number,
-            episode_number=episode_number,
-        )
+    item = find_item_across_buckets(
+        user=request.user,
+        media_id=media_id,
+        source=source,
+        media_type=media_type,
+        season_number=season_number,
+        episode_number=episode_number,
+    )
+    if item is not None:
         _maybe_backfill_episode_title(item, force=True)
-    except Item.DoesNotExist:
+    else:
         metadata = services.get_media_metadata(
             media_type,
             media_id,
@@ -318,7 +321,7 @@ def add_list_item_submit(request, list_id):
         fallback_media_type=item.media_type,
     )
 
-    if custom_list.items.filter(id=item.id).exists():
+    if list_has_item_identity(custom_list, item):
         messages.info(
             request,
             gettext('"%(value_1)s" is already in this list.') % {"value_1": item.title},

@@ -72,6 +72,7 @@ from integrations import plex_cover as plex_cover_proxy
 from integrations.gpodder_api import GPodderAuthError, GPodderClientError
 from integrations.imports import anilist, helpers, mdblist, simkl, stremio, trakt
 from integrations.imports import plex as plex_import
+from integrations.imports import psn as psn_import
 from integrations.imports.audiobookshelf import (
     AudiobookshelfAuthError,
     AudiobookshelfClient,
@@ -130,6 +131,7 @@ from integrations.models import (
     LastFMAccount,
     MDBListAccount,
     MylarInstance,
+    PlaytimeSnapshot,
     PlexAccount,
     PlexWebhookShare,
     PocketCastsAccount,
@@ -745,11 +747,17 @@ def trakt_oauth(request):
         "return_to": request.POST.get("next"),
     }
     state_token = secrets.token_urlsafe(32)
-    request.session[state_token] = state
     client_id = credentials.get("trakt", "client_id")
-    return redirect(
-        f"{url}?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&state={state_token}",
+    query = (
+        f"client_id={client_id}&redirect_uri={redirect_uri}"
+        f"&response_type=code&state={state_token}"
     )
+    if not trakt.default_client_secret():
+        # An app without a client secret authorizes with PKCE instead.
+        state["code_verifier"], code_challenge = trakt.new_pkce_pair()
+        query += f"&code_challenge={code_challenge}&code_challenge_method=S256"
+    request.session[state_token] = state
+    return redirect(f"{url}?{query}")
 
 
 def _finish_trakt_connection(request, oauth_result, state_data):
@@ -884,7 +892,11 @@ def import_trakt_private(request):
         return _integration_redirect(request)
 
     redirect_uri = state_data.get("redirect_uri")
-    oauth_callback = trakt.handle_oauth_callback(request, redirect_uri=redirect_uri)
+    oauth_callback = trakt.handle_oauth_callback(
+        request,
+        redirect_uri=redirect_uri,
+        code_verifier=state_data.get("code_verifier"),
+    )
     _finish_trakt_connection(request, oauth_callback, state_data)
     return _integration_redirect(
         request,
@@ -3807,6 +3819,58 @@ def import_xbox(request):
     return redirect("import_data")
 
 
+def _psn_import_existing_playtime(request, default=True):
+    """Read the setup choice posted with the PSN forms."""
+    value = request.POST.get("existing_playtime")
+    return default if value is None else value != "new_only"
+
+
+def _ensure_psn_schedule(user):
+    """Keep exactly one recurring PSN sync for the user, at the fixed cadence.
+
+    PSN has no per-user frequency setting: a sync is cheap, and the sooner the
+    next one runs the narrower the window its new entry is slotted into. A
+    schedule left from the earlier daily/2-day choice is replaced.
+    """
+    from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+    crontab, _ = CrontabSchedule.objects.get_or_create(
+        # Spread users across the hour instead of syncing them all at once.
+        minute=str(user.id % 60),
+        hour=f"*/{psn_import.SYNC_EVERY_HOURS}",
+        day_of_week="*",
+        day_of_month="*",
+        month_of_year="*",
+        timezone=timezone.get_default_timezone(),
+    )
+    own_tasks = PeriodicTask.objects.filter(
+        _periodic_task_filter_for_user(user.id),
+        task=PSN_RECURRING_TASK_NAME,
+    )
+    own_tasks.exclude(crontab=crontab).delete()
+
+    kwargs = json.dumps({"user_id": user.id, "mode": "new"})
+    task = own_tasks.first()
+    if task:
+        task.kwargs = kwargs
+        task.enabled = True
+        task.save(update_fields=["kwargs", "enabled"])
+        return
+
+    # The id keeps the name unique when a username is changed and reused.
+    PeriodicTask.objects.create(
+        name=(
+            f"Import from PSN for {user.username} (#{user.id}) "
+            f"every {psn_import.SYNC_EVERY_HOURS} hours"
+        ),
+        task=PSN_RECURRING_TASK_NAME,
+        crontab=crontab,
+        kwargs=kwargs,
+        start_time=_next_crontab_run(crontab),
+        enabled=True,
+    )
+
+
 @require_POST
 def psn_connect(request):
     """Connect a PlayStation Network account using an NPSSO token."""
@@ -3832,30 +3896,53 @@ def psn_connect(request):
         )
         return redirect("import_data")
 
-    _run_with_lock_retry(
-        "connect PSN",
-        lambda: PSNAccount.objects.update_or_create(
+    def _connect():
+        # Remembered totals belong to one PSN account: another account's totals
+        # would read as fabricated (or hidden) play against the old ones.
+        previous = PSNAccount.objects.filter(user=request.user).first()
+        new_account = previous is None or previous.account_id != account_id
+        if new_account:
+            PlaytimeSnapshot.objects.filter(user=request.user, source="psn").delete()
+        PSNAccount.objects.update_or_create(
             user=request.user,
             defaults={
+                **({"last_sync_at": None} if new_account else {}),
                 "npsso": helpers.encrypt(npsso),
                 "account_id": account_id,
                 "online_id": online_id,
+                "import_existing_playtime": _psn_import_existing_playtime(request),
                 "connection_broken": False,
                 "last_error_message": "",
             },
-        ),
-    )
+        )
+
+    _run_with_lock_retry("connect PSN", _connect)
     messages.success(
         request,
         f"Connected to PlayStation Network as {online_id or account_id}.",
     )
-    _run_with_lock_retry(
-        "schedule PSN import",
-        lambda: _start_console_import(
-            request, "PSN", tasks.import_psn, PSN_RECURRING_TASK_NAME
-        ),
-    )
+    _run_with_lock_retry("schedule PSN import", lambda: _sync_psn_now(request))
     return redirect("import_data")
+
+
+def _sync_psn_now(request):
+    """Queue a sync now and make sure the recurring one is in place."""
+    _ensure_psn_schedule(request.user)
+    if (
+        _queue_task_or_message(
+            request,
+            tasks.import_psn,
+            user_id=request.user.id,
+            mode="new",
+        )
+        is False
+    ):
+        return
+    messages.info(
+        request,
+        "The PlayStation sync has been queued. It repeats every "
+        f"{psn_import.SYNC_EVERY_HOURS} hours.",
+    )
 
 
 @require_POST
@@ -3869,6 +3956,7 @@ def psn_disconnect(request):
             task=PSN_RECURRING_TASK_NAME,
         ).delete()
         PSNAccount.objects.filter(user=request.user).delete()
+        PlaytimeSnapshot.objects.filter(user=request.user, source="psn").delete()
 
     _run_with_lock_retry("disconnect PSN", _disconnect)
     messages.info(request, "Disconnected PlayStation Network.")
@@ -3883,7 +3971,15 @@ def import_psn(request):
         messages.error(request, "Connect PlayStation Network before importing.")
         return redirect("import_data")
 
-    _start_console_import(request, "PSN", tasks.import_psn, PSN_RECURRING_TASK_NAME)
+    wants_existing = _psn_import_existing_playtime(
+        request,
+        default=account.import_existing_playtime,
+    )
+    if wants_existing != account.import_existing_playtime:
+        account.import_existing_playtime = wants_existing
+        account.save(update_fields=["import_existing_playtime"])
+
+    _run_with_lock_retry("schedule PSN import", lambda: _sync_psn_now(request))
     return redirect("import_data")
 
 

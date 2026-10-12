@@ -124,6 +124,25 @@ def filter_items_to_fetch(items):
     return selected.distinct()
 
 
+def _aired_show_recheck_q():
+    """Match annotated shows whose episodes have all aired and are due a look.
+
+    Neither provider announces a new season for a show that is already fully
+    aired: TMDB's change feed only covers a few days, and TVDB shows are only
+    refreshed while they still have a future episode. Without this, such a show
+    never gains the new season's events and sorts into the no-date tail of
+    "Next episode air date" (#1531). Needs `has_season_events` and
+    `has_future_events` annotated on the queryset.
+    """
+    recheck_days = getattr(settings, "CALENDAR_AIRED_SHOW_RECHECK_DAYS", 0)
+    if recheck_days <= 0:
+        return Q(pk__in=[])
+    cutoff = timezone.now() - timezone.timedelta(days=recheck_days)
+    return Q(has_season_events=True, has_future_events=False) & (
+        Q(calendar_checked_at__isnull=True) | Q(calendar_checked_at__lt=cutoff)
+    )
+
+
 def get_tv_items_to_include(tv_items):
     """Return tracked TMDB TV item ids that should be refreshed."""
     tracked_count = tv_items.count()
@@ -140,9 +159,14 @@ def get_tv_items_to_include(tv_items):
     included_tv_rows = list(
         tv_items.annotate(
             has_season_events=Exists(season_events),
+            has_future_events=Exists(
+                season_events.filter(datetime__gte=timezone.now()),
+            ),
         )
         .filter(
-            Q(media_id__in=changed_tv_ids) | Q(has_season_events=False),
+            Q(media_id__in=changed_tv_ids)
+            | Q(has_season_events=False)
+            | _aired_show_recheck_q(),
         )
         .values("id", "media_id", "title", "has_season_events"),
     )
@@ -158,6 +182,12 @@ def get_tv_items_to_include(tv_items):
         if item["media_id"] in changed_tv_ids:
             logger.info(
                 "TV selection: including %s (%s) because TMDB reported changes",
+                item["title"],
+                item["media_id"],
+            )
+        elif item["has_season_events"]:
+            logger.info(
+                "TV selection: including %s (%s) to look for a new season",
                 item["title"],
                 item["media_id"],
             )
@@ -201,15 +231,28 @@ def get_tvdb_tv_items_to_include(tv_items):
         tv_items.annotate(
             has_season_events=Exists(season_events),
             has_refreshable_events=Exists(refreshable_season_events),
+            has_future_events=Exists(
+                season_events.filter(datetime__gte=now),
+            ),
         )
         .filter(
-            Q(has_season_events=False) | Q(has_refreshable_events=True),
+            Q(has_season_events=False)
+            | Q(has_refreshable_events=True)
+            | _aired_show_recheck_q(),
         )
-        .values("id", "media_id", "title", "has_season_events"),
+        .values(
+            "id", "media_id", "title", "has_season_events", "has_refreshable_events"
+        ),
     )
 
     for item in included_tv_rows:
-        if item["has_season_events"]:
+        if item["has_season_events"] and not item["has_refreshable_events"]:
+            logger.info(
+                "TVDB TV selection: including %s (%s) to look for a new season",
+                item["title"],
+                item["media_id"],
+            )
+        elif item["has_season_events"]:
             logger.info(
                 "TVDB TV selection: including %s (%s) because it has "
                 "future or unknown-date episodes",

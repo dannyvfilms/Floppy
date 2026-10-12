@@ -102,6 +102,16 @@ urlpatterns = [
         name="api_collection",
     ),
     re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/episodes/(?P<episode_number>\d+)/collection/?$",
+        fork_views.MediaCollectionView.as_view(),
+        name="api_media_episode_collection",
+    ),
+    re_path(
+        r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/collection/?$",
+        fork_views.MediaCollectionView.as_view(),
+        name="api_media_collection",
+    ),
+    re_path(
         r"^collection/(?P<entry_id>\d+)/?$",
         fork_views.CollectionEntryView.as_view(),
         name="api_collection_entry",

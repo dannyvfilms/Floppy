@@ -11,7 +11,10 @@ from app.services import music_scrobble
 from integrations import external_references, plex_audiobook_sync
 from integrations import plex as plex_api
 from integrations.imports import plex_audiobooks
-from integrations.imports.helpers import find_item_across_buckets
+from integrations.imports.helpers import (
+    find_item_across_buckets,
+    get_or_create_item_across_buckets,
+)
 from integrations.matching import unique_title_match
 
 from .base import BaseWebhookProcessor
@@ -888,7 +891,8 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
             )
             return
 
-        movie_item, _ = app.models.Item.objects.get_or_create(
+        movie_item, _ = get_or_create_item_across_buckets(
+            user=user,
             media_id=tmdb_id,
             source=Sources.TMDB.value,
             media_type=MediaTypes.MOVIE.value,
@@ -1080,7 +1084,8 @@ class PlexWebhookProcessor(BaseWebhookProcessor):
                 )
                 return
 
-            movie_item, _ = app.models.Item.objects.get_or_create(
+            movie_item, _ = get_or_create_item_across_buckets(
+                user=user,
                 media_id=tmdb_id,
                 source=Sources.TMDB.value,
                 media_type=MediaTypes.MOVIE.value,

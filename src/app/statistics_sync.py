@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 # Bump when the shape of a published payload changes; older snapshots are
 # served until the next sync replaces them.
-SNAPSHOT_SCHEMA_VERSION = 17
+SNAPSHOT_SCHEMA_VERSION = 18
 
 # Cheap ranges rebuilt on every sync, in this order.
 HOT_RANGES = (
@@ -1127,13 +1127,18 @@ def run_sync(
                     timeout=None,
                 )
 
-        heavy_due = _heavy_due(state, now, full=full, today=today)
         snapshots = {
             snapshot.range_name: snapshot
             for snapshot in StatisticsSnapshot.objects.filter(user_id=user_id).only(
                 "range_name", "generation", "built_day", "schema_version"
             )
         }
+        # A schema bump must reach the heavy ranges too, even when the
+        # generation and day markers say they were synced already.
+        heavy_due = _heavy_due(state, now, full=full, today=today) or any(
+            snapshot.schema_version != SNAPSHOT_SCHEMA_VERSION
+            for snapshot in snapshots.values()
+        )
 
         def needs_rebuild(range_name):
             snapshot = snapshots.get(range_name)

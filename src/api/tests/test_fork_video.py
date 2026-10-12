@@ -1,8 +1,12 @@
 """Video play upsert."""
 
+from unittest.mock import patch
+
 from django.urls import reverse
+from django.utils import timezone
 
 from app import history_cache
+from app.history_cache_day_builder import build_history_day
 from app.models import Item, MediaTypes, Status, Video, VideoPlay
 
 from .base import FloppyApiTestCase
@@ -82,7 +86,9 @@ class VideoPlayApiTests(FloppyApiTestCase):
         self.assertEqual(video.progress, 600)
         self.assertEqual(video.end_date, before.end_date)
         self._post(progressSeconds=50, externalId="youtube:vid1:2026-10-03")
-        self.assertEqual(VideoPlay.objects.get(external_id__endswith="10-03").progress, 600)
+        self.assertEqual(
+            VideoPlay.objects.get(external_id__endswith="10-03").progress, 600
+        )
 
     def test_a_later_post_does_not_rename_the_shared_item(self):
         """The item is shared between users, so only the first post names it."""
@@ -157,3 +163,129 @@ class VideoPlayApiTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("plays", response.data["detail"])
+
+    def test_an_approved_thumbnail_is_stored_as_the_item_image(self):
+        """i.ytimg.com and img.youtube.com are the YouTube artwork hosts."""
+        thumb = "https://i.ytimg.com/vi/vid1/mqdefault.jpg"
+        self._post(thumbnailUrl=thumb)
+        self.assertEqual(Item.objects.get(media_id="vid1").image, thumb)
+
+        other = "https://img.youtube.com/vi/vid2/hqdefault.jpg"
+        self._post(
+            media_id="vid2", externalId="youtube:vid2:2026-10-02", thumbnail_url=other
+        )
+        self.assertEqual(Item.objects.get(media_id="vid2").image, other)
+
+    def test_an_unapproved_thumbnail_is_ignored(self):
+        """A caller-supplied host is not stored and does not fail the play."""
+        response = self._post(thumbnailUrl="https://evil.example/poster.jpg")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Item.objects.get(media_id="vid1").image, "")
+
+    def test_a_later_thumbnail_does_not_replace_the_stored_image(self):
+        """The first approved poster stays. The item is shared across users."""
+        first = "https://i.ytimg.com/vi/vid1/mqdefault.jpg"
+        self._post(thumbnailUrl=first)
+        self._post(
+            thumbnailUrl="https://i.ytimg.com/vi/vid1/hqdefault.jpg",
+            externalId="youtube:vid1:2026-10-03",
+        )
+        self.assertEqual(Item.objects.get(media_id="vid1").image, first)
+
+    def test_a_thumbnail_over_plain_http_is_ignored(self):
+        """An http poster would be blocked as mixed content on an https install."""
+        response = self._post(thumbnailUrl="http://i.ytimg.com/vi/vid1/mqdefault.jpg")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Item.objects.get(media_id="vid1").image, "")
+
+    def test_the_first_description_is_kept(self):
+        """The item is shared, so a later report never rewrites the description."""
+        self._post(description="  What this video is about.  ")
+        self._post(description="A different text.", externalId="youtube:vid1:2026-10-03")
+        self.assertEqual(
+            Item.objects.get(media_id="vid1").synopsis,
+            "What this video is about.",
+        )
+
+    def test_the_details_page_shows_what_the_client_reported(self):
+        """Channel and length in the sidebar, description and YouTube link on the page."""
+        self._post(
+            channel="Beyond Babish",
+            lengthSeconds=3900,
+            description="Ranking every pumpkin product.",
+            publishedAt="2026-09-20T10:00:00Z",
+        )
+        # The base class stubs metadata for the API; this page needs the real one.
+        self._metadata_patcher.stop()
+        self.client.force_login(self.user1)
+        url = reverse(
+            "media_details",
+            kwargs={
+                "source": "youtube",
+                "media_type": MediaTypes.VIDEO.value,
+                "media_id": "vid1",
+                "title": "a-video",
+            },
+        )
+        # The sidebar and links load in a second request.
+        response = self.client.get(url, {"fragment": "secondary"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Beyond Babish")
+        self.assertContains(response, "1h 5m")
+        self.assertNotContains(response, "No details available")
+        page = self.client.get(url)
+        self.assertContains(page, "Ranking every pumpkin product.")
+        self.assertContains(page, "https://www.youtube.com/watch?v=vid1")
+
+    def test_a_thumbnail_for_another_video_is_ignored(self):
+        """A poster is only kept when its URL names the video being posted."""
+        response = self._post(thumbnailUrl="https://i.ytimg.com/vi/other/mqdefault.jpg")
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(Item.objects.get(media_id="vid1").image, "")
+        self._post(thumbnailUrl="https://i.ytimg.com/an/vid1/avatar.jpg")
+        self.assertEqual(Item.objects.get(media_id="vid1").image, "")
+
+    def test_a_new_poster_refreshes_history_for_other_viewers(self):
+        """The poster is on the shared item, so every viewer's cached days go stale."""
+        item = Item.objects.create(
+            media_id="vid1",
+            source="youtube",
+            media_type=MediaTypes.VIDEO.value,
+            library_media_type=MediaTypes.VIDEO.value,
+            title="A Video",
+        )
+        other = Video.objects.create(item=item, user=self.user2)
+        other.upsert_play("youtube:vid1:2026-09-01", 900, end_date=timezone.now())
+        with patch(
+            "api.fork_views_video.history_cache.invalidate_history_days",
+        ) as invalidate:
+            self._post(thumbnailUrl="https://i.ytimg.com/vi/vid1/mqdefault.jpg")
+        poster_calls = [
+            call
+            for call in invalidate.call_args_list
+            if call.kwargs.get("reason") == "video_poster_change"
+        ]
+        self.assertEqual([call.args[0] for call in poster_calls], [self.user2.id])
+
+    def test_plays_on_the_same_day_list_the_latest_post_first(self):
+        """YouTube only gives a day, so the plays tie and the later post wins."""
+        for media_id in ("vidA", "vidB", "vidC"):
+            self._post(
+                media_id=media_id,
+                title=media_id,
+                externalId=f"youtube:{media_id}:2026-10-02",
+            )
+        day = history_cache.history_day_key(VideoPlay.objects.first().end_date)
+        history_day = build_history_day(self.user1, day)
+        titles = [entry["title"] for entry in history_day["entries"]]
+        self.assertEqual(titles, ["vidC", "vidB", "vidA"])
+
+    def test_searching_videos_returns_an_empty_page(self):
+        """Videos come from clients, so the search API has no provider to ask."""
+        response = self.client.get(
+            reverse("api_search_provider", kwargs={"media_type": "video"}),
+            {"q": "anything"},
+            **self.auth_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["results"], [])

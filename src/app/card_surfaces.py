@@ -41,6 +41,9 @@ SURFACES = {
         show_release_year_placeholder=False,
         hover_action_mode="none",
     ),
+    # A person's or studio's titles: the shared card plus what that person did
+    # on each one (role line, watched runtime).
+    "credit": CardSurface(),
     # Provider results are not saved items, so there is no release year to load.
     "search": CardSurface(show_release_year_placeholder=False),
     # Picking an item inside a modal: a click previews it, no hover actions.
@@ -68,6 +71,7 @@ CARD_VALUES = frozenset(
     {
         "item",
         "media",
+        "credit",
         "title",
         "card_media_type",
         "current_sort",

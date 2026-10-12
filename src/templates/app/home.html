@@ -10,10 +10,30 @@
   {# Styles live in the content block so boosted navigation keeps them #}
   <style>
     @media (max-width: 639.98px) {
+      /* Title never wraps; the sort method drops to its own line only when it does not fit beside it. */
       .home-row-heading {
+        flex-wrap: wrap;
+        max-width: 100%;
+        min-width: 0;
+        row-gap: 0.125rem;
+      }
+
+      .home-row-heading-text {
         flex-wrap: nowrap;
         max-width: 100%;
         min-width: 0;
+      }
+
+      /* leading-none plus overflow:hidden (ellipsis) would clip the tails of g, y and p. */
+      .home-row-heading-title,
+      .home-row-heading-separator,
+      .home-row-heading-detail {
+        font-size: var(--text-base);
+        line-height: 1.35;
+      }
+
+      .home-row-heading-sort-button {
+        margin-left: 0;
       }
 
       .home-row-heading-title,
@@ -78,10 +98,10 @@
         <section class="space-y-4 animate-pulse" aria-hidden="true">
           <div class="h-6 w-40 bg-gray-700 rounded"></div>
           <div class="flex gap-4 overflow-hidden">
-            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
-            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
-            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
-            <div class="home-row-card w-44 h-64 shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
+            <div class="home-row-card w-44 aspect-[41/64] self-start shrink-0 bg-[var(--color-surface)] rounded-lg"></div>
           </div>
         </section>
       </div>

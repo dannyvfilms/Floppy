@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import json
 import sqlite3
 import tempfile
@@ -34,12 +36,12 @@ from app.models import (
     Sources,
     Status,
 )
-from app.providers import services
+from app.providers import credentials, services
 from app.services.grouped_anime import GroupedAnimeMatch
 from integrations.imports import helpers, trakt
 from integrations.imports.helpers import MediaImportError
 from integrations.imports.trakt import TraktImporter, importer
-from integrations.models import ExternalReference
+from integrations.models import ExternalReference, TraktAccount
 
 mock_path = Path(__file__).resolve().parent.parent / "mock_data"
 app_mock_path = (
@@ -3604,3 +3606,174 @@ class TraktRefreshUsesAuthorizedRedirectUri(TestCase):
         self.assertEqual(result["redirect_uri"], self.CALLBACK_URI)
         sent = mock_api_request.call_args.kwargs["params"]
         self.assertEqual(sent["redirect_uri"], self.CALLBACK_URI)
+
+
+class TraktWithoutClientSecret(TestCase):
+    """An app made without a client secret (PKCE) never sends one (#1523)."""
+
+    CALLBACK_URI = "https://floppy.example.com/import/trakt/private"
+
+    def test_pkce_pair_is_an_s256_challenge_of_the_verifier(self):
+        verifier, challenge = trakt.new_pkce_pair()
+
+        digest = hashlib.sha256(verifier.encode()).digest()
+        self.assertEqual(
+            challenge,
+            base64.urlsafe_b64encode(digest).decode().rstrip("="),
+        )
+        self.assertNotEqual(verifier, trakt.new_pkce_pair()[0])
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_code_exchange_sends_the_verifier_and_no_secret(
+        self,
+        mock_api_request,
+        _mock_username,
+    ):
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+        request = RequestFactory().get("/import/trakt/private", {"code": "abc"})
+
+        trakt.handle_oauth_callback(
+            request,
+            redirect_uri=self.CALLBACK_URI,
+            client_id="client",
+            client_secret="",
+            code_verifier="verifier",
+        )
+
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(sent["code_verifier"], "verifier")
+        self.assertNotIn("client_secret", sent)
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_code_exchange_with_a_secret_is_unchanged(
+        self,
+        mock_api_request,
+        _mock_username,
+    ):
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+        request = RequestFactory().get("/import/trakt/private", {"code": "abc"})
+
+        trakt.handle_oauth_callback(
+            request,
+            redirect_uri=self.CALLBACK_URI,
+            client_id="client",
+            client_secret="secret",
+        )
+
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(sent["client_secret"], "secret")
+        self.assertNotIn("code_verifier", sent)
+
+    @patch("integrations.imports.trakt.update_refresh_token")
+    @patch("integrations.imports.trakt.helpers.decrypt_or_raise", return_value="old")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_refresh_omits_the_secret_when_there_is_none(
+        self,
+        mock_api_request,
+        _mock_decrypt,
+        _mock_update,
+    ):
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+
+        with patch(
+            "integrations.imports.trakt.credentials.get",
+            side_effect=lambda _slug, field: {"client_id": "client"}.get(field, ""),
+        ):
+            trakt.get_access_token("enc", self.CALLBACK_URI)
+
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertEqual(sent["client_id"], "client")
+        self.assertNotIn("client_secret", sent)
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.resilient_request")
+    def test_device_poll_omits_the_secret_when_there_is_none(
+        self,
+        mock_request,
+        _mock_username,
+    ):
+        response = Response()
+        response.status_code = 200
+        response._content = json.dumps(
+            {"access_token": "a", "refresh_token": "r"},
+        ).encode()
+        mock_request.return_value = response
+
+        trakt.poll_device_token("device-code", "client", "")
+
+        self.assertEqual(
+            mock_request.call_args.kwargs["json"],
+            {"code": "device-code", "client_id": "client"},
+        )
+
+
+@override_settings(TRAKT_API="env-id", TRAKT_API_SECRET="env-secret")
+class TraktSecretBelongsToTheClientId(TestCase):
+    """A secret from another source is never paired with someone's own client ID (#1523)."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="trakt-pkce-owner")
+
+    def _use_own_app(self, secret=None):
+        TraktAccount.objects.create(
+            user=self.user,
+            client_id=helpers.encrypt("own-id"),
+            client_secret=helpers.encrypt(secret) if secret else None,
+        )
+        credentials.invalidate_user_cache(self.user)
+
+    def test_instance_secret_is_not_paired_with_a_pkce_client_id(self):
+        self._use_own_app()
+
+        with credentials.current_user_scope(self.user):
+            self.assertEqual(trakt.default_client_secret(), "")
+
+    def test_own_secret_is_used_with_own_client_id(self):
+        self._use_own_app("own-secret")
+
+        with credentials.current_user_scope(self.user):
+            self.assertEqual(trakt.default_client_secret(), "own-secret")
+
+    def test_instance_secret_is_used_with_the_instance_client_id(self):
+        self.assertEqual(trakt.default_client_secret(), "env-secret")
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.api_request")
+    def test_explicit_empty_secret_is_not_replaced_by_the_instance_secret(
+        self,
+        mock_api_request,
+        _mock_username,
+    ):
+        mock_api_request.return_value = {"access_token": "a", "refresh_token": "r"}
+        request = RequestFactory().get("/lists/import/trakt/callback", {"code": "abc"})
+
+        trakt.handle_oauth_callback(
+            request,
+            redirect_uri="https://floppy.example.com/lists/import/trakt/callback",
+            client_id="own-id",
+            client_secret="",
+            code_verifier="verifier",
+        )
+
+        sent = mock_api_request.call_args.kwargs["params"]
+        self.assertNotIn("client_secret", sent)
+
+    @patch("integrations.imports.trakt.get_username_from_oauth", return_value="floppy")
+    @patch("integrations.imports.trakt.services.resilient_request")
+    def test_device_poll_with_an_empty_secret_ignores_the_instance_secret(
+        self,
+        mock_request,
+        _mock_username,
+    ):
+        response = Response()
+        response.status_code = 200
+        response._content = json.dumps(
+            {"access_token": "a", "refresh_token": "r"},
+        ).encode()
+        mock_request.return_value = response
+
+        trakt.poll_device_token("device-code", "own-id", "")
+
+        self.assertNotIn("client_secret", mock_request.call_args.kwargs["json"])
