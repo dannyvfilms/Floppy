@@ -340,6 +340,14 @@ def store_playback_progress(
     )
 
 
+def _release_checkin_card(user_id: int, state: dict | None) -> None:
+    """Tell the check-in a real event is replacing its card (see ``app.checkin``)."""
+    if state and state.get("checkin_token"):
+        from app import checkin
+
+        checkin.mark_taken_over(user_id, state.pop("checkin_token"))
+
+
 def apply_playback_event(
     *,
     user_id: int,
@@ -403,6 +411,7 @@ def apply_playback_event(
             )
             or not rating_key
         ):
+            _release_checkin_card(user_id, existing_state)
             # Grace period instead of immediate deletion — keeps the
             # card visible across auto-play transitions and brief gaps.
             if view_offset_seconds is not None:
@@ -442,6 +451,9 @@ def apply_playback_event(
 
     if event_type not in ("media.play", "media.pause", "media.scrobble"):
         return
+
+    if not checkin_token:
+        _release_checkin_card(user_id, existing_state)
 
     offset_seconds = view_offset_seconds
     dur_seconds = duration_seconds

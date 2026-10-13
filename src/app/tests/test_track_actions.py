@@ -94,7 +94,7 @@ class CheckInActionsTests(SimpleTestCase):
         )
         self.assertEqual(
             self.keys(checkin.PHASE_FINISHABLE, Status.IN_PROGRESS.value),
-            ["finish", "pause", EDIT],
+            ["finish", "pause", "cancel", EDIT],
         )
 
     def test_paused_check_in_leads_with_resume(self):

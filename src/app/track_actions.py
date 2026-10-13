@@ -47,6 +47,7 @@ def track_actions(media_type, status, checkin_phase=None):
             return [
                 {"key": "finish", "label": _("Finish"), "icon": "checkmark"},
                 {"key": "pause", "label": _("Pause"), "icon": "pause"},
+                {"key": "cancel", "label": _("Cancel check-in"), "icon": "x"},
                 edit,
             ]
         if phase == checkin.PHASE_PAUSED:
