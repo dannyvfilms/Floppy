@@ -882,6 +882,64 @@ class ImportMDBList(TestCase):
         self.assertEqual(season.status, Status.IN_PROGRESS.value)
         self.assertEqual(tv.status, Status.IN_PROGRESS.value)
 
+    def _single_purpose_responses(self):
+        """One watched movie that is also collected, plus a separate watchlist movie."""
+        return {
+            "/sync/watched": {
+                "movies": [
+                    {
+                        "watched_at": "2023-01-02T00:00:00Z",
+                        "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+                    },
+                ],
+            },
+            "/watchlist/items": [
+                {"title": "WL Movie", "mediatype": "movie", "ids": {"tmdb": 999}},
+                {"title": "Test Movie", "mediatype": "movie", "ids": {"tmdb": 67890}},
+            ],
+            "/sync/collection": {
+                "movies": [
+                    {
+                        "collected_at": "2023-01-04T00:00:00Z",
+                        "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+                    },
+                ],
+            },
+        }
+
+    def test_watchlist_mode_only_adds_planned_titles(self):
+        """Watchlist only skips history and collection and keeps tracked titles."""
+        existing = Movie.objects.create(
+            item=Item.objects.create(
+                media_id="67890",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Test Movie",
+            ),
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        self._run_import(self._single_purpose_responses(), mode="watchlist")
+
+        self.assertEqual(
+            list(Movie.objects.filter(user=self.user).order_by("item__media_id").values_list("item__media_id", "status")),
+            [("67890", Status.COMPLETED.value), ("999", Status.PLANNING.value)],
+        )
+        existing.refresh_from_db()
+        self.assertEqual(existing.status, Status.COMPLETED.value)
+        self.assertFalse(CollectionEntry.objects.filter(user=self.user).exists())
+
+    def test_update_collection_mode_only_touches_collection(self):
+        """Collection only records owned copies and imports no history or watchlist."""
+        self._run_import(self._single_purpose_responses(), mode="update_collection")
+
+        self.assertEqual(
+            list(CollectionEntry.objects.filter(user=self.user).values_list("item__media_id", flat=True)),
+            ["67890"],
+        )
+        self.assertFalse(Movie.objects.filter(user=self.user).exists())
+
     def test_watchlist_uses_offset_pagination(self):
         """Watchlist retrieval follows the same offset contract as sync."""
         pages = {

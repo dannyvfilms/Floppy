@@ -595,8 +595,9 @@ def run_import(importer, *, prepare_input=True):
             if not run.prepared_digest:
                 if prepare_input:
                     importer._validate_username()
-                    importer.process_dropped()
-                    for stage_name in ("history", "watchlist", "ratings", "notes", "comments", "collection"):
+                    if importer.full_import:
+                        importer.process_dropped()
+                    for stage_name in importer.stages:
                         renew(run, owner)
                         with _phase(stage_name, importer.username):
                             getattr(importer, f"process_{stage_name}")()

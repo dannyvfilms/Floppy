@@ -77,6 +77,16 @@ PSN_IMPORT_LOCK_SECONDS = 15 * 60
 
 
 
+# Sources that read "Watchlist only" and "Collection only" themselves, and the
+# ones among them that hold collection data.
+MODE_AWARE_SOURCES = frozenset(
+    {"plex", "trakt", "trakt_export", "wetrakr", "mdblist", "trakt_collection"},
+)
+COLLECTION_SOURCES = frozenset(
+    {"plex", "trakt", "trakt_export", "mdblist", "trakt_collection"},
+)
+
+
 def import_media(
     importer_func,
     identifier,
@@ -96,6 +106,14 @@ def import_media(
     task_id = current_task.request.id if current_task and current_task.request else None
 
     source = getattr(importer_func, "__module__", "").rsplit(".", 1)[-1]
+    if mode == "update_collection" and source not in COLLECTION_SOURCES:
+        return f"{source.replace('_', ' ').title()} has no collection data, so there was nothing to update."
+    # A source that reads these modes itself keeps its own rules; every other
+    # source runs as "new" so no existing entry is touched.
+    watchlist_scope = False
+    if mode in helpers.SINGLE_PURPOSE_MODES and source not in MODE_AWARE_SOURCES:
+        watchlist_scope = mode == "watchlist"
+        mode = "new"
     import_run = None
     state = {}
     if importer_func is trakt.importer:
@@ -130,6 +148,7 @@ def import_media(
             # A Celery task runs no middleware, so without this the importer
             # would not see the user's personal provider keys (#1488).
             credentials.current_user_scope(user),
+            helpers.watchlist_only_scope(watchlist_scope),
         ):
             if oauth_username is None:
                 imported_counts, warnings = importer_func(

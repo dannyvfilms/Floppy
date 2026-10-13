@@ -48,6 +48,8 @@ HISTORY_LOG_EVERY = 1000
 METADATA_MEMO_SIZE = 8
 METADATA_MEMO_MAX_BYTES = 128 * 1024
 ITEM_MEMO_SIZE = 64
+TRAKT_STAGES = ("history", "watchlist", "ratings", "notes", "comments", "collection")
+MODE_STAGES = {"watchlist": ("watchlist",), "update_collection": ("collection",)}
 SQLITE_WRITE_ATTEMPTS = 4
 
 
@@ -830,7 +832,11 @@ class TraktImporter(TraktMetadataResolverMixin):
         self.username = username
         self.user = user
         self.external_reference_integration = "trakt"
-        self.mode = mode
+        # Watchlist only and Collection only run a single stage; the watchlist
+        # stage then behaves like "new" so it never touches an existing entry.
+        self.full_import = mode not in MODE_STAGES
+        self.stages = MODE_STAGES.get(mode, TRAKT_STAGES)
+        self.mode = "new" if mode == "watchlist" else mode
         self.refresh_token = refresh_token
         self.redirect_uri = redirect_uri
         self.is_oauth_import = bool(refresh_token)
@@ -969,17 +975,11 @@ class TraktImporter(TraktMetadataResolverMixin):
 
             return run_import(self)
         self._validate_username()
-        self.process_dropped()
-        for name, stage in (
-            ("history", self.process_history),
-            ("watchlist", self.process_watchlist),
-            ("ratings", self.process_ratings),
-            ("notes", self.process_notes),
-            ("comments", self.process_comments),
-            ("collection", self.process_collection),
-        ):
+        if self.full_import:
+            self.process_dropped()
+        for name in self.stages:
             with _phase(name, self.username):
-                stage()
+                getattr(self, f"process_{name}")()
 
         with _phase("save media", self.username):
             helpers.cleanup_existing_media(self.to_delete, self.user)
