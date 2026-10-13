@@ -29,13 +29,18 @@ class TrackActionsTests(SimpleTestCase):
             MediaTypes.ANIME.value,
             MediaTypes.BOOK.value,
             MediaTypes.COMIC.value,
-            MediaTypes.VIDEO.value,
         ):
             with self.subTest(media_type=media_type):
                 self.assertEqual(
                     self.keys(media_type, Status.COMPLETED.value),
                     [ADD, EDIT],
                 )
+
+    def test_videos_keep_one_row_so_they_never_offer_a_new_entry(self):
+        self.assertEqual(
+            self.keys(MediaTypes.VIDEO.value, Status.COMPLETED.value),
+            [EDIT],
+        )
 
     def test_unfinished_items_only_edit(self):
         for status in (

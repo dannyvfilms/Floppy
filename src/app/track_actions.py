@@ -12,14 +12,15 @@ from app.models import MediaTypes, Status
 
 # Every play is its own entry, so adding one is always the forward action.
 ALWAYS_ADD_ENTRY = frozenset({MediaTypes.GAME.value, MediaTypes.BOARDGAME.value})
-# Once a finished entry exists, the next thing to do is another one.
+# Once a finished entry exists, the next thing to do is another one. Videos keep
+# one row per user (repeat watches are plays on it) and TV-backed anime one
+# tracker, so neither can take a second entry.
 ADD_ENTRY_WHEN_COMPLETED = frozenset(
     {
         MediaTypes.MOVIE.value,
         MediaTypes.ANIME.value,
         MediaTypes.BOOK.value,
         MediaTypes.COMIC.value,
-        MediaTypes.VIDEO.value,
     },
 )
 
