@@ -21,6 +21,7 @@ from app import providers
 from app.db_retry import run_retryable_db_operation
 from app.history_cache_utils import history_deferred_item_fields
 from app.models import Episode, MediaTypes, Status
+from app.models.tv import _UNSET_END_DATE
 from app.services.completion import normalize_completed_entries
 from integrations import import_progress
 from integrations.models import ImportRun
@@ -463,7 +464,17 @@ def _backfill_completed_season_episodes(seasons, *, prepare_only=False):
             continue
         try:
             season_metadata = _fetch_season_metadata_with_retry(season)
-            episodes_to_create.extend(season.get_remaining_eps(season_metadata))
+            episodes_to_create.extend(
+                season.get_remaining_eps(
+                    season_metadata,
+                    # A season that arrived with a known watched date fans out
+                    # to that date. Without this the fabricated episodes take
+                    # the user's preference, which defaults to "now" — so an
+                    # import of old history stamps every invented episode with
+                    # the import time and the show reads as watched today.
+                    end_date=getattr(season, "_pending_end_date", _UNSET_END_DATE),
+                ),
+            )
         except (
             providers.services.ProviderAPIError,
             RequestException,
