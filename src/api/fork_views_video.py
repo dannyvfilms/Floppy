@@ -20,6 +20,7 @@ from .helpers import check_source_type
 MAX_SECONDS = 2_147_483_647
 MAX_EXTERNAL_ID_LENGTH = 255
 MAX_THUMBNAIL_URL_LENGTH = 2048
+MAX_DESCRIPTION_LENGTH = 5000
 
 
 def _end_date_from_external_id(external_id):
@@ -136,6 +137,13 @@ class VideoPlayView(APIView):
             item.image = thumbnail_url
             item.save(update_fields=["image"])
             _invalidate_history_for_other_viewers(item, request.user)
+
+        # The description shows on the details page. It is set once, like the
+        # poster, because the item is shared.
+        description = str(request.data.get("description") or "").strip()
+        if description and not item.synopsis:
+            item.synopsis = description[:MAX_DESCRIPTION_LENGTH]
+            item.save(update_fields=["synopsis"])
 
         # The upload date puts the video on the Calendar. It is set once, so a
         # later report never moves the event.

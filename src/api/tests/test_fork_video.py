@@ -198,6 +198,45 @@ class VideoPlayApiTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Item.objects.get(media_id="vid1").image, "")
 
+    def test_the_first_description_is_kept(self):
+        """The item is shared, so a later report never rewrites the description."""
+        self._post(description="  What this video is about.  ")
+        self._post(description="A different text.", externalId="youtube:vid1:2026-10-03")
+        self.assertEqual(
+            Item.objects.get(media_id="vid1").synopsis,
+            "What this video is about.",
+        )
+
+    def test_the_details_page_shows_what_the_client_reported(self):
+        """Channel and length in the sidebar, description and YouTube link on the page."""
+        self._post(
+            channel="Beyond Babish",
+            lengthSeconds=3900,
+            description="Ranking every pumpkin product.",
+            publishedAt="2026-09-20T10:00:00Z",
+        )
+        # The base class stubs metadata for the API; this page needs the real one.
+        self._metadata_patcher.stop()
+        self.client.force_login(self.user1)
+        url = reverse(
+            "media_details",
+            kwargs={
+                "source": "youtube",
+                "media_type": MediaTypes.VIDEO.value,
+                "media_id": "vid1",
+                "title": "a-video",
+            },
+        )
+        # The sidebar and links load in a second request.
+        response = self.client.get(url, {"fragment": "secondary"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Beyond Babish")
+        self.assertContains(response, "1h 5m")
+        self.assertNotContains(response, "No details available")
+        page = self.client.get(url)
+        self.assertContains(page, "Ranking every pumpkin product.")
+        self.assertContains(page, "https://www.youtube.com/watch?v=vid1")
+
     def test_a_thumbnail_for_another_video_is_ignored(self):
         """A poster is only kept when its URL names the video being posted."""
         response = self._post(thumbnailUrl="https://i.ytimg.com/vi/other/mqdefault.jpg")

@@ -23,8 +23,9 @@ from requests_ratelimiter import LimiterAdapter, LimiterSession
 from urllib3.util.retry import Retry
 
 from app import config, helpers, request_timing
+from app.helpers import seconds_to_hm
 from app.log_safety import exception_summary, mapping_keys
-from app.models import Item, MediaTypes, Sources
+from app.models import Item, MediaTypes, Sources, Video
 from app.providers import (
     bgg,
     comicvine,
@@ -1072,7 +1073,19 @@ def _resolve_video_metadata(media_id, source):
     ).first()
     if item is None:
         raise_not_found_error(source, media_id, "video")
-    return _stored_item_metadata(item)
+    metadata = _stored_item_metadata(item)
+    # Channel and length come from whoever reported the video; they describe
+    # the video, so any tracker row will do.
+    video = Video.objects.filter(item=item).order_by("-id").first()
+    details = {}
+    if video and video.channel:
+        details["channel"] = video.channel
+    if video and video.length_seconds:
+        details["runtime"] = seconds_to_hm(video.length_seconds)
+    if item.release_datetime:
+        details["publish_date"] = item.release_datetime
+    metadata["details"] = details
+    return metadata
 
 
 def get_media_metadata(
