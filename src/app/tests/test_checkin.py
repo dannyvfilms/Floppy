@@ -280,6 +280,84 @@ class CheckInTests(TestCase):
         self.assertEqual(planning.status, Status.PLANNING.value)
         self.assertIsNone(planning.start_date)
 
+    def test_a_taken_over_card_that_expires_does_not_complete_the_movie(self):
+        planning = self.movie(Status.PLANNING.value)
+        self.start()
+        live_playback.apply_playback_event(
+            user_id=self.user.id,
+            event_type="media.play",
+            playback_media_type=MediaTypes.MOVIE.value,
+            media_id="603",
+            source=Sources.TMDB.value,
+            rating_key="plex-1",
+            title="Heat",
+            duration_seconds=RUNTIME_SECONDS,
+            image="http://example.com/heat.jpg",
+        )
+        # The server stopped early and its card aged out before the assumed end.
+        live_playback.clear_user_playback_state(self.user.id)
+
+        with self.at(RUNTIME_SECONDS + 1):
+            checkin.settle(self.user.id)
+
+        planning.refresh_from_db()
+        self.assertEqual(planning.status, Status.IN_PROGRESS.value)
+
+    def test_cancel_after_pause_and_resume_still_undoes_the_check_in(self):
+        planning = self.movie(Status.PLANNING.value)
+        self.start()
+        checkin.pause(self.user, "movie", "603")
+        self.start()
+
+        checkin.cancel(self.user, "movie", "603")
+
+        planning.refresh_from_db()
+        self.assertEqual(planning.status, Status.PLANNING.value)
+
+    def test_cancel_after_pause_and_resume_removes_the_rewatch_row(self):
+        done = self.movie(Status.COMPLETED.value)
+        self.start()
+        checkin.pause(self.user, "movie", "603")
+        self.start()
+
+        checkin.cancel(self.user, "movie", "603")
+
+        self.assertEqual(list(Movie.objects.filter(item=self.item)), [done])
+
+    def test_starting_another_movie_pauses_the_running_one(self):
+        first = self.movie(Status.PLANNING.value)
+        other = Item.objects.create(
+            media_id="604",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Ronin",
+            runtime_minutes=RUNTIME_MINUTES,
+        )
+        Movie.objects.create(item=other, user=self.user, status=Status.PLANNING.value)
+        self.start()
+        with self.at(600):
+            with no_provider_calls():
+                checkin.start(self.user, "movie", "604")
+
+        self.assertEqual(cache.get(checkin._key(self.user.id))["media_id"], "604")
+        first.refresh_from_db()
+        self.assertEqual(first.status, Status.IN_PROGRESS.value)
+        self.assertEqual(self.phase(first), checkin.PHASE_PAUSED)
+
+    def test_a_long_movie_keeps_its_record_until_the_end_can_settle(self):
+        self.item.runtime_minutes = 600
+        self.item.save()
+        self.movie(Status.PLANNING.value)
+        with patch.object(checkin.cache, "set", wraps=cache.set) as set_mock:
+            self.start()
+
+        record_writes = [
+            call
+            for call in set_mock.call_args_list
+            if call.args[0] == checkin._key(self.user.id)
+        ]
+        self.assertGreater(record_writes[-1].kwargs["timeout"], 600 * 60)
+
     def test_actions_need_a_running_check_in(self):
         self.movie(Status.PLANNING.value)
 
@@ -476,6 +554,15 @@ class CheckInShowTests(TestCase):
 
         self.assertFalse(Episode.objects.filter(related_season=self.season).exists())
         self.assertIsNone(self.card())
+
+    def test_cancel_after_pause_and_resume_still_removes_the_play_it_added(self):
+        self.start()
+        checkin.pause(self.user, "tv", "1668")
+        self.start()
+
+        checkin.cancel(self.user, "tv", "1668")
+
+        self.assertFalse(Episode.objects.filter(related_season=self.season).exists())
 
     def test_cancel_keeps_a_play_that_was_already_open(self):
         Episode.objects.create(
