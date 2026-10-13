@@ -183,6 +183,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         # Track existing media to handle "new" mode correctly
         self.existing_media = helpers.get_existing_media(user)
+        self.deleted_media = helpers.get_deleted_media(user)
 
         # Track existing plays for exact dedupe and distinct-episode roll-up.
         (
@@ -467,6 +468,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -508,6 +510,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -572,6 +575,9 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
         tmdb_id = self._resolve_entry_tmdb_id(show_data, MediaTypes.TV.value)
         if not tmdb_id:
+            return
+
+        if tmdb_id in self.deleted_media[MediaTypes.TV.value][Sources.TMDB.value]:
             return
 
         episode_watch_key = (tmdb_id, season_number, episode_number, watched_at_dt)
@@ -803,6 +809,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -902,6 +909,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 
@@ -1018,6 +1026,7 @@ class MDBListImporter(TraktMetadataResolverMixin):
             Sources.TMDB.value,
             tmdb_id,
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 

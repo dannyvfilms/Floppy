@@ -191,6 +191,7 @@ class SimklImporter:
 
         # Track existing media for "new" mode
         self.existing_media = helpers.get_existing_media(user)
+        self.deleted_media = helpers.get_deleted_media(user)
         self.existing_children = helpers.get_existing_children(user)
 
         # Track media IDs to delete in overwrite mode
@@ -314,6 +315,7 @@ class SimklImporter:
                     tv_source,
                     str(tv_media_id),
                     self.mode,
+                    deleted_media=self.deleted_media,
                 )
 
                 if should_process_tv:
@@ -621,6 +623,7 @@ class SimklImporter:
                     Sources.TMDB.value,
                     str(tmdb_id),
                     self.mode,
+                    deleted_media=self.deleted_media,
                 ):
                     continue
 
@@ -709,6 +712,7 @@ class SimklImporter:
             Sources.MAL.value,
             str(mal_id),
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 

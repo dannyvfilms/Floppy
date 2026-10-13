@@ -162,6 +162,7 @@ class PlexHistoryImporter:
         self.fast_mode = fast_mode
         self.processor = PlexWebhookProcessor()
         self.existing_media = helpers.get_existing_media(user)
+        self.deleted_media = helpers.get_deleted_media(user)
         self.to_delete = defaultdict(lambda: defaultdict(set))
         self.bulk_media = defaultdict(list)
         self.media_instances = defaultdict(lambda: defaultdict(list))
@@ -1454,6 +1455,7 @@ class PlexHistoryImporter:
             Sources.TMDB.value,
             str(media_id),
             self.mode,
+            deleted_media=self.deleted_media,
             skip_existing=skip_existing,
         )
 

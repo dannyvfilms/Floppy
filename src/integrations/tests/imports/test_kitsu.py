@@ -8,8 +8,10 @@ from django.test import TestCase
 
 from app.models import (
     Anime,
+    DeletedMedia,
     Manga,
     MediaTypes,
+    Sources,
     Status,
 )
 from integrations.imports import (
@@ -114,3 +116,33 @@ class ImportKitsu(TestCase):
         self.assertEqual(instance.progress, 26)
         self.assertEqual(instance.status, Status.COMPLETED.value)
         self.assertEqual(instance.notes, "Great series!")
+
+    def test_process_entry_skips_an_anime_the_user_deleted(self):
+        """An anime the user deleted by hand stays deleted across syncs (#1133)."""
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.ANIME.value,
+            source=Sources.MAL.value,
+            media_id="1",
+        )
+        importer = kitsu.KitsuImporter("testuser", self.user, "new")
+        entry = self.sample_anime_response["data"][0]
+        media_lookup = {
+            item["id"]: item
+            for item in self.sample_anime_response["included"]
+            if item["type"] == "anime"
+        }
+        mapping_lookup = {
+            item["id"]: item
+            for item in self.sample_anime_response["included"]
+            if item["type"] == "mappings"
+        }
+
+        importer._process_entry(
+            entry,
+            MediaTypes.ANIME.value,
+            media_lookup,
+            mapping_lookup,
+        )
+
+        self.assertEqual(importer.bulk_media[MediaTypes.ANIME.value], [])
