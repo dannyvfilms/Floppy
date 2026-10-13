@@ -249,7 +249,14 @@ def _collection_media_type_rows(
         .values_list("item__media_type")
         .annotate(total=Count("id")),
     )
-    home_order = get_home_configurable_media_types(request.user)
+    # Collection lists every owned type, disabled ones included, so keep the
+    # user's saved order for those as well as the enabled ones.
+    saved_order = list(request.user.home_screen_media_type_order or [])
+    home_order = saved_order + [
+        t
+        for t in get_home_configurable_media_types(request.user)
+        if t not in saved_order
+    ]
     ordered_types = [t for t in home_order if t in totals] + [
         t for t in MediaTypes.values if t in totals and t not in home_order
     ]

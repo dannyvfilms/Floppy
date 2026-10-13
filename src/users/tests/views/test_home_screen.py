@@ -427,9 +427,7 @@ class HomeScreenViewTests(TestCase):
         self.assertTemplateUsed(response, "users/home_screen.html")
 
         sections = json.loads(response.context["home_screen_sections_json"])
-        # Disabled Season isn't offered as a configurable section here, even
-        # though it still renders on Home itself (see get_home_configurable_
-        # media_types's include_disabled_season flag).
+        # A disabled Season isn't offered as a configurable section here.
         self.assertEqual(
             [section["media_type"] for section in sections],
             [HOME_ALL_MEDIA_TYPE, "tv", "movie"],
@@ -2011,13 +2009,11 @@ class HomeScreenViewTests(TestCase):
     def test_home_screen_save_preserves_existing_rows_for_disabled_season(self):
         """Saving other sections must not wipe pre-existing Season rows.
 
-        Season is intentionally excluded from the settings page's
-        configurable sections once disabled (see
-        get_home_configurable_media_types's include_disabled_season flag),
-        so a save payload never resubmits a season section for a user who
-        has season_enabled=False. That must not cause the save to delete
-        Season's stored rows out from under Home rendering, which still
-        force-includes Season regardless of the sidebar setting.
+        Season is excluded from the settings page's configurable sections
+        once disabled, so a save payload never resubmits a season section
+        for a user who has season_enabled=False. That must not cause the
+        save to delete Season's stored rows: they come back when Seasons is
+        re-enabled.
         """
         self._set_enabled_media_types(MediaTypes.TV.value, MediaTypes.SEASON.value)
         self.client.get(reverse("home_screen"))
@@ -2044,6 +2040,57 @@ class HomeScreenViewTests(TestCase):
                 media_type=MediaTypes.SEASON.value,
             ).exists(),
         )
+
+    def test_home_hides_season_row_when_seasons_disabled(self):
+        """A tracked season must not show on Home once Seasons is off (#1560)."""
+        self._set_enabled_media_types(
+            MediaTypes.TV.value,
+            MediaTypes.MOVIE.value,
+            MediaTypes.SEASON.value,
+        )
+        home_screen.ensure_home_screen_rows(self.user)
+        tv_item = Item.objects.create(
+            title="Seasons Off Show",
+            media_id="seasons-off",
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/seasons-off.jpg",
+        )
+        season_item = Item.objects.create(
+            title="Seasons Off Show",
+            media_id="seasons-off",
+            media_type=MediaTypes.SEASON.value,
+            source=Sources.TMDB.value,
+            image="https://example.com/seasons-off.jpg",
+            season_number=1,
+        )
+        tv = TV.objects.create(
+            item=tv_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.IN_PROGRESS.value,
+        )
+
+        def home_group_types():
+            cache.clear()
+            groups = home_screen.build_home_page_groups(self.user, items_limit=14)
+            return [group["media_type"] for group in groups]
+
+        self.assertIn(MediaTypes.SEASON.value, home_group_types())
+
+        self.user.season_enabled = False
+        self.user.save(update_fields=["season_enabled"])
+        self.assertNotIn(MediaTypes.SEASON.value, home_group_types())
+
+        # Turning Seasons back on restores the stored row, nothing was deleted.
+        self.user.season_enabled = True
+        self.user.save(update_fields=["season_enabled"])
+        self.assertIn(MediaTypes.SEASON.value, home_group_types())
 
     def test_home_screen_deleted_last_row_does_not_reseed(self):
         self._set_enabled_media_types(MediaTypes.TV.value)

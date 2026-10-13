@@ -166,6 +166,19 @@ class HomeTests(FloppyApiTestCase):
         self.assertIn("ids", row_item["item"])
         self.assertIn("image", row_item["item"])
 
+    def test_home_hides_seasons_group_when_seasons_disabled(self):
+        """Home follows the sidebar: no Seasons group once Seasons is off (#1560)."""
+
+        def group_types():
+            response = self.call_api("get", "api_home", headers=self.auth_headers)
+            self.assertEqual(response.status_code, HTTP.OK)
+            return [group["media_type"] for group in response.json()["groups"]]
+
+        self.assertIn(MediaTypes.SEASON.value, group_types())
+        self.user1.season_enabled = False
+        self.user1.save(update_fields=["season_enabled"])
+        self.assertNotIn(MediaTypes.SEASON.value, group_types())
+
     def test_home_invalid_limit_rejected(self):
         """Non-numeric limits return 400."""
         response = self.call_api(
