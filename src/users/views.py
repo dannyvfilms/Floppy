@@ -897,9 +897,7 @@ def home_screen_filter_fields(request):
     at a time.
     """
     media_type = request.GET.get("media_type", "")
-    allowed_media_types = get_home_configurable_media_types(
-        request.user, include_disabled_season=False
-    )
+    allowed_media_types = get_home_configurable_media_types(request.user)
     if media_type not in allowed_media_types:
         raise Http404
     return JsonResponse(

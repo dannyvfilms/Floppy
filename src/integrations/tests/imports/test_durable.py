@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
-from app.models import TV, Episode, Item, Movie, Season, Status
+from app.models import TV, DeletedMedia, Episode, Item, Movie, Season, Status
 from integrations import import_progress
 from integrations.import_scope import ImportOverwriteConflictError
 from integrations.imports import durable, helpers
@@ -185,6 +185,17 @@ class DurableImportTests(TransactionTestCase):
         self.assertTrue(Movie.objects.filter(pk=replacement.pk).exists())
         receipt = self.run.chunk_receipts.get(phase="delete")
         self.assertTrue(receipt.metrics["commit_observed"])
+
+    def test_overwrite_delete_does_not_tombstone_the_replaced_row(self):
+        """Replacing a title is the import's doing, not the user deleting it."""
+        original = Movie.objects.bulk_create([Movie(item=Item.objects.first(), user=self.user, status=Status.PLANNING)])[0]
+        scopes = {"movie": {"tmdb": [original.item.media_id]}}
+        with import_progress.tracking(None, self.run.pk):
+            durable.snapshot_overwrite(self.run, self.owner, scopes, self.user)
+            durable.stage(self.run, self.owner, {"movie": []}, [], {"mode": "overwrite", "overwrite_scopes": scopes})
+            durable.delete_overwrite(self.run, self.owner)
+        self.assertFalse(Movie.objects.filter(pk=original.pk).exists())
+        self.assertFalse(DeletedMedia.objects.filter(user=self.user).exists())
 
     def test_overwrite_scope_fences_orm_and_bulk_writes_but_not_other_titles(self):
         """Cooperating writers reject a replacement scope before mutation."""

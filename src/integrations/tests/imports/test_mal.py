@@ -10,6 +10,7 @@ from django.test import TestCase, tag
 
 from app.models import (
     Anime,
+    DeletedMedia,
     Item,
     Manga,
     MediaTypes,
@@ -91,6 +92,32 @@ class ImportMAL(TestCase):
         self.assertEqual(erased_item.title, "Erased")
         self.assertEqual(erased_item.localized_title, "Erased")
         self.assertEqual(erased_item.original_title, "Boku dake ga Inai Machi")
+
+    @patch("requests.Session.get")
+    def test_import_does_not_bring_back_a_deleted_anime(self, mock_request):
+        """An anime the user deleted by hand stays deleted across syncs (#1133)."""
+        with Path(mock_path / "import_mal_anime.json").open() as file:
+            anime_response = json.load(file)
+        with Path(mock_path / "import_mal_manga.json").open() as file:
+            manga_response = json.load(file)
+        anime_mock = MagicMock()
+        anime_mock.json.return_value = anime_response
+        manga_mock = MagicMock()
+        manga_mock.json.return_value = manga_response
+        mock_request.side_effect = [anime_mock, manga_mock]
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.ANIME.value,
+            source=Sources.MAL.value,
+            media_id="31043",
+        )
+
+        mal.importer("bloodthirstiness", self.user, "new")
+
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 5)
+        self.assertFalse(
+            Anime.objects.filter(user=self.user, item__media_id="31043").exists(),
+        )
 
     @tag("network")
     def test_user_not_found(self):

@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -36,6 +37,34 @@ class HelpersTest(TestCase):
         """Set up test data."""
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
+
+    def test_overwrite_cleanup_does_not_tombstone_replaced_media(self):
+        """An overwrite import replacing a show is not the user deleting it."""
+        item = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+        )
+        TV.objects.create(item=item, user=self.user, status=Status.IN_PROGRESS.value)
+        to_delete = defaultdict(lambda: defaultdict(set))
+        to_delete[MediaTypes.TV.value][Sources.TMDB.value].add("1396")
+
+        helpers.cleanup_existing_media(to_delete, self.user)
+
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+        self.assertFalse(DeletedMedia.objects.filter(user=self.user).exists())
+
+        # The next delete the user makes is still remembered.
+        replacement = TV.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        replacement.delete()
+        self.assertTrue(
+            DeletedMedia.objects.filter(user=self.user, media_id="1396").exists(),
+        )
 
     def test_bulk_completed_media_removes_stale_planning_row(self):
         """Bulk persistence applies the same planning normalization as save()."""
