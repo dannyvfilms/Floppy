@@ -308,17 +308,26 @@ def _owns_card(user_id, record):
     return card is None or card.get("checkin_token") == record["token"]
 
 
+def release_running(user):
+    """Keep a running movie or show check-in's place before another check-in replaces it."""
+    running = _record(user.id)
+    if running is None:
+        return
+    if running.get("taken_over") or not _owns_card(user.id, running):
+        _drop_record(user.id)
+    else:
+        pause(user, running["media_type"], running["media_id"])
+
+
 def start(user, media_type, media_id):
     """Check in, resuming from a saved Pause if there is one."""
     subject = _subject(user, media_type, media_id)
 
-    running = _record(user.id)
-    if running is not None:
-        # One check-in per user: keep the running one's place before replacing it.
-        if running.get("taken_over") or not _owns_card(user.id, running):
-            _drop_record(user.id)
-        else:
-            pause(user, running["media_type"], running["media_id"])
+    # One check-in per user, across movies, shows and sessions.
+    from app import checkin_session
+
+    checkin_session.interrupt(user)
+    release_running(user)
 
     offset = _saved_position(user, subject.item)
     if subject.duration and offset >= subject.duration:

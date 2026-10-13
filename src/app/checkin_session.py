@@ -26,7 +26,7 @@ import uuid
 from django.core.cache import cache
 from django.utils import timezone
 
-from app import live_playback
+from app import checkin, live_playback
 from app.checkin import SETTLE_DELAY_SECONDS, SOURCE_LABEL, CheckInError
 from app.models import (
     BoardGame,
@@ -64,7 +64,7 @@ def supports(media_type):
 
 
 def _key(user_id):
-    return f"checkin_session_v1:{user_id}"
+    return f"checkin_session_v2:{user_id}"
 
 
 def _now_ts():
@@ -109,7 +109,7 @@ def _active_record(user, source, media_type, media_id):
 
 def _owns_card(user_id, record):
     card = live_playback.peek_user_playback_state(user_id)
-    return card is not None and card.get("checkin_token") == record["token"]
+    return card is None or card.get("checkin_token") == record["token"]
 
 
 def _end(user_id, record):
@@ -156,16 +156,25 @@ def _begin_reading(user, item, media_type):
     return {"row_id": latest.id, "created": False, "previous": previous}
 
 
+def interrupt(user):
+    """End the running session because another check-in is replacing it.
+
+    Keeps what it measured: a game's minutes, a reading end, a video's progress.
+    """
+    settle(user.id)
+    running = _record(user.id)
+    if running is None:
+        return
+    _end(user.id, running)
+    if running["media_type"] != MediaTypes.BOARDGAME.value:
+        _save(user, running, running["media_type"])
+
+
 def start(user, source, media_type, media_id):
     """Start a session and put its card on Home."""
     item = _item(user, source, media_type, media_id)
-    settle(user.id)
-    running = _record(user.id)
-    if running is not None:
-        # One session per user: keep what the running one measured before it goes.
-        _end(user.id, running)
-        if running["media_type"] != MediaTypes.BOARDGAME.value:
-            _save(user, running, running["media_type"])
+    interrupt(user)
+    checkin.release_running(user)
     row = {"row_id": None, "created": False, "previous": None}
     if media_type == MediaTypes.GAME.value:
         row = _begin_game(user, item)

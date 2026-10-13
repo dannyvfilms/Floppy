@@ -13,6 +13,7 @@ from app.models import (
     Item,
     Manga,
     MediaTypes,
+    Movie,
     Sources,
     Status,
     Video,
@@ -127,6 +128,43 @@ class GameSessionTests(SessionTestCase):
         self.assertIsNotNone(first.end_date)
         record = cache.get(checkin_session._key(self.user.id))
         self.assertEqual(record["media_id"], "77")
+
+    def test_a_session_from_before_the_record_changed_is_ignored(self):
+        cache.set(f"checkin_session_v1:{self.user.id}", {"media_type": "game"})
+
+        self.assertEqual(self.phase(), checkin.PHASE_IDLE)
+        self.start()
+
+    def test_starting_a_game_pauses_a_running_movie_check_in(self):
+        movie_item = Item.objects.create(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Heat",
+            runtime_minutes=100,
+        )
+        movie = Movie.objects.create(
+            item=movie_item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+        with (
+            patch(
+                "app.providers.tmdb.movie",
+                return_value={"title": "Heat", "image": ""},
+            ),
+            patch("app.services.metadata_resolution.upsert_provider_links"),
+            patch("app.models.Item.fetch_releases"),
+        ):
+            checkin.start(self.user, "movie", "603")
+
+        started = cache.get(checkin._key(self.user.id))["started_at_ts"]
+        with patch("app.checkin._now_ts", return_value=started + 600):
+            self.start()
+
+        self.assertIsNone(cache.get(checkin._key(self.user.id)))
+        movie.refresh_from_db()
+        self.assertEqual(checkin.phase(self.user, movie)["phase"], checkin.PHASE_PAUSED)
 
     def test_cancel_removes_the_entry_it_added(self):
         self.start()
@@ -430,6 +468,16 @@ class VideoSessionTests(SessionTestCase):
 
     def test_watching_to_the_end_completes_it(self):
         self.start()
+
+        with self.at(601):
+            self.phase()
+
+        self.earlier.refresh_from_db()
+        self.assertEqual(self.earlier.status, Status.COMPLETED.value)
+
+    def test_a_card_that_expired_first_does_not_lose_the_watch(self):
+        self.start()
+        live_playback.clear_user_playback_state(self.user.id)
 
         with self.at(601):
             self.phase()

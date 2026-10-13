@@ -344,6 +344,46 @@ class CheckInTests(TestCase):
         self.assertEqual(first.status, Status.IN_PROGRESS.value)
         self.assertEqual(self.phase(first), checkin.PHASE_PAUSED)
 
+    def test_checking_in_saves_a_running_game_session_first(self):
+        from app import checkin_session
+        from app.models import Game
+
+        game_item = Item.objects.create(
+            media_id="1942",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Hades",
+        )
+        Game.objects.create(
+            item=game_item, user=self.user, status=Status.PLANNING.value
+        )
+        self.movie(Status.PLANNING.value)
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value={"max_progress": None},
+        ):
+            checkin_session.start(self.user, "igdb", "game", "1942")
+            record = cache.get(checkin_session._key(self.user.id))
+            with patch(
+                "app.checkin_session._now_ts",
+                return_value=record["started_at_ts"] + 30 * 60,
+            ):
+                # Not start(): its provider stub would cap the game's minutes.
+                with (
+                    patch(
+                        "app.providers.tmdb.movie",
+                        return_value={"title": "Heat", "image": ""},
+                    ),
+                    patch("app.services.metadata_resolution.upsert_provider_links"),
+                    patch("app.models.Item.fetch_releases"),
+                ):
+                    checkin.start(self.user, "movie", "603")
+
+        self.assertIsNone(cache.get(checkin_session._key(self.user.id)))
+        game = Game.objects.get(id=record["row_id"])
+        self.assertEqual(game.progress, 30)
+        self.assertEqual(cache.get(checkin._key(self.user.id))["media_id"], "603")
+
     def test_a_long_movie_keeps_its_record_until_the_end_can_settle(self):
         self.item.runtime_minutes = 600
         self.item.save()
