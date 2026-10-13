@@ -9,6 +9,7 @@ from django.utils import timezone
 from app.models import (
     TV,
     Anime,
+    DeletedMedia,
     Episode,
     Item,
     ItemProviderLink,
@@ -618,8 +619,9 @@ class TestPlexImportScenarios(TestCase):
     Originally from test_plex_regression.py.
     """
 
+    @mock.patch("integrations.imports.helpers.get_deleted_media", return_value={})
     @mock.patch("integrations.imports.helpers.get_existing_media")
-    def setUp(self, mock_get_existing_media):
+    def setUp(self, mock_get_existing_media, _mock_get_deleted_media):
         mock_get_existing_media.return_value = {}
         self.user = mock.Mock()
         self.account = mock.Mock()
@@ -2662,6 +2664,45 @@ class TestPlexEpisodeResyncForExistingShow(TestCase):
         )
         self.assertEqual(episodes.count(), 2)
         self.assertEqual(episodes.last().item.episode_number, 2)
+
+    @patch("integrations.webhooks.anime_mappings.fetch_mapping_data", return_value={})
+    @patch("integrations.imports.plex.app.providers.tvdb.enabled", return_value=False)
+    def test_deleted_show_is_not_brought_back_by_history(
+        self,
+        _mock_tvdb_enabled,
+        _mock_mapping_data,
+    ):
+        """A show the user deleted stays deleted when Plex history lists it (#1133)."""
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            media_id="702",
+        )
+        importer = self._importer()
+        metadata = {
+            "type": "episode",
+            "title": "Episode 1",
+            "grandparentTitle": "Deleted Show",
+            "parentIndex": 1,
+            "index": 1,
+            "viewedAt": int(self.existing_watched_at.timestamp()),
+            "ratingKey": "rk-deleted",
+            "guid": "com.plexapp.agents.themoviedb://702/1/1?lang=en",
+        }
+        ids = {
+            "tmdb_id": "702",
+            "tvdb_id": None,
+            "imdb_id": None,
+            "anidb_id": None,
+            "plex_guid": None,
+        }
+
+        recorded = importer._record_episode_entry(metadata, ids)
+
+        self.assertTrue(recorded)
+        self.assertEqual(importer._episode_records, [])
+        self.assertEqual(importer.summary_counts["skipped_existing"], 1)
 
 
 class TestPlexImportCrossSourceDedup(TestCase):

@@ -19,6 +19,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from app.models import Item, Status
+from app.signals import importer_replacing_rows
 from integrations import import_progress
 from integrations.models import (
     ImportChunkReceipt,
@@ -451,7 +452,8 @@ def delete_overwrite(run, owner):
                     if pks - known:
                         message = "Overwrite scope received new dependent rows; import stopped without deleting them."
                         raise helpers.MediaImportError(message)
-                model.objects.filter(pk__in=identities).delete()
+                with importer_replacing_rows():
+                    model.objects.filter(pk__in=identities).delete()
                 ImportOverwriteTarget.objects.filter(pk__in=[target.pk for target in targets]).update(deleted=True)
                 ImportChunkReceipt.objects.create(run=run, phase="delete", start=targets[0].ordinal,
                                                  end=targets[-1].ordinal + 1, digest=chunk_digest, fence=run.fence)

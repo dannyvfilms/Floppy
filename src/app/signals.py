@@ -143,6 +143,10 @@ _SUPPRESS_MEDIA_CHANGE_SIDE_EFFECTS: ContextVar[bool] = ContextVar(
     "suppress_media_change_side_effects",
     default=False,
 )
+_IMPORTER_REPLACING_ROWS: ContextVar[bool] = ContextVar(
+    "importer_replacing_rows",
+    default=False,
+)
 
 
 @contextmanager
@@ -168,6 +172,21 @@ def suppress_media_change_side_effects():
         yield
     finally:
         _SUPPRESS_MEDIA_CHANGE_SIDE_EFFECTS.reset(token)
+
+
+@contextmanager
+def importer_replacing_rows():
+    """Mark deletes inside the block as an import replacing rows.
+
+    An overwrite import deletes a tracked show and writes it back. That is not
+    the user deleting it, so it must not leave a deletion tombstone: the
+    tombstone would make every later sync skip a show the user still tracks.
+    """
+    token = _IMPORTER_REPLACING_ROWS.set(True)
+    try:
+        yield
+    finally:
+        _IMPORTER_REPLACING_ROWS.reset(token)
 
 
 def media_change_side_effects_suppressed() -> bool:
@@ -686,7 +705,7 @@ def clear_discover_feedback_on_media_save(sender, instance, **kwargs):
 @receiver(post_delete, sender=Podcast)
 def record_deleted_media_tombstone(sender, instance, **kwargs):
     """Remember that the user deleted this item so imports don't recreate it."""
-    if kwargs.get("raw"):
+    if kwargs.get("raw") or _IMPORTER_REPLACING_ROWS.get():
         return
     user = getattr(instance, "user", None)
     item = getattr(instance, "item", None)

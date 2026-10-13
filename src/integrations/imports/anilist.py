@@ -116,6 +116,7 @@ class AniListImporter:
 
         # Track existing media for "new" mode
         self.existing_media = helpers.get_existing_media(user)
+        self.deleted_media = helpers.get_deleted_media(user)
 
         # Track media IDs to delete in overwrite mode
         self.to_delete = defaultdict(lambda: defaultdict(set))
@@ -288,6 +289,7 @@ class AniListImporter:
             Sources.MAL.value,
             str(content["media"]["idMal"]),
             self.mode,
+            deleted_media=self.deleted_media,
         ):
             return
 

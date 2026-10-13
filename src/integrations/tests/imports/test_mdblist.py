@@ -8,6 +8,7 @@ from django_celery_beat.models import PeriodicTask
 from app.models import (
     TV,
     CollectionEntry,
+    DeletedMedia,
     Episode,
     Item,
     MediaTypes,
@@ -530,6 +531,55 @@ class ImportMDBList(TestCase):
 
         tv = TV.objects.get(item__media_id="12345", user=self.user)
         self.assertEqual(tv.status, Status.DROPPED.value)
+
+    def test_deleted_show_is_not_brought_back(self):
+        """A show the user deleted stays deleted across syncs (#1133)."""
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.TV.value,
+            source=Sources.TMDB.value,
+            media_id="12345",
+        )
+        responses = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+                        },
+                    },
+                ],
+            },
+        }
+
+        self._run_import(responses)
+
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+
+    def test_overwrite_does_not_stop_later_syncs_of_the_same_show(self):
+        """Replacing a show in overwrite mode must not mark it as deleted."""
+        responses = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {
+                            "season": 1,
+                            "number": 1,
+                            "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+                        },
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+        self._run_import(responses, mode="overwrite")
+
+        self.assertTrue(TV.objects.filter(user=self.user).exists())
+        self.assertFalse(DeletedMedia.objects.filter(user=self.user).exists())
 
     def test_new_mode_rerun_does_not_duplicate(self):
         """Rerunning the same import in new mode creates no duplicates."""

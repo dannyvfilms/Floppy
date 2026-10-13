@@ -102,6 +102,32 @@ class GameSessionTests(SessionTestCase):
 
         self.assertEqual(Game.objects.exclude(pk=self.earlier.pk).get().progress, 1)
 
+    def test_another_users_tracker_does_not_allow_a_check_in(self):
+        stranger = get_user_model().objects.create_user(username="stranger")
+
+        with self.assertRaises(checkin.CheckInError):
+            checkin_session.start(stranger, "igdb", "game", "1942")
+
+        self.assertFalse(Game.objects.filter(user=stranger).exists())
+
+    def test_starting_another_game_saves_the_running_one_first(self):
+        other = Item.objects.create(
+            media_id="77",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Celeste",
+        )
+        Game.objects.create(item=other, user=self.user, status=Status.PLANNING.value)
+        self.start()
+        with self.at(30 * 60):
+            checkin_session.start(self.user, "igdb", "game", "77")
+
+        first = Game.objects.filter(item=self.item).exclude(pk=self.earlier.pk).get()
+        self.assertEqual(first.progress, 30)
+        self.assertIsNotNone(first.end_date)
+        record = cache.get(checkin_session._key(self.user.id))
+        self.assertEqual(record["media_id"], "77")
+
     def test_cancel_removes_the_entry_it_added(self):
         self.start()
 

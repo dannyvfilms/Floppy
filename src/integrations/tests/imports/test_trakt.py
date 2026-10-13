@@ -4,6 +4,7 @@ import json
 import sqlite3
 import tempfile
 import threading
+from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -698,6 +699,77 @@ class ImportTrakt(TestCase):
         # overwritten to Completed.
         self.assertEqual(len(trakt_importer.completed_seasons), 0)
         self.assertEqual(len(trakt_importer.completed_tvs), 0)
+
+    @patch("integrations.imports.trakt.TraktImporter._get_metadata")
+    def test_new_mode_still_syncs_a_show_an_overwrite_import_replaced(
+        self,
+        mock_get_metadata,
+    ):
+        """An overwrite import must not make later syncs skip the show (#375)."""
+        tv_item = Item.objects.get_or_create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            defaults={"title": "Test Show"},
+        )[0]
+        season_item = Item.objects.get_or_create(
+            media_id="12345",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            defaults={"title": "Season 1"},
+        )[0]
+        TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+
+        # What an overwrite import does: delete the show, then write it back.
+        to_delete = defaultdict(lambda: defaultdict(set))
+        to_delete[MediaTypes.TV.value][Sources.TMDB.value].add("12345")
+        helpers.cleanup_existing_media(to_delete, self.user)
+        # Imports write with bulk_create, which sends no post_save signal.
+        tv_obj = TV.objects.bulk_create(
+            [TV(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)],
+        )[0]
+        Season.objects.bulk_create(
+            [
+                Season(
+                    item=season_item,
+                    user=self.user,
+                    related_tv=tv_obj,
+                    status=Status.IN_PROGRESS.value,
+                ),
+            ],
+        )
+
+        def mock_metadata_side_effect(media_type, _, __, ___=None):
+            if media_type == MediaTypes.TV.value:
+                return {
+                    "title": "Test Show",
+                    "image": "tv_image.jpg",
+                    "last_episode_season": 2,
+                    "max_progress": 2,
+                }
+            if media_type == MediaTypes.SEASON.value:
+                return {
+                    "title": "Season 1",
+                    "image": "season_image.jpg",
+                    "episodes": [{"episode_number": 2, "still_path": "/still2.jpg"}],
+                    "max_progress": 5,
+                }
+            return None
+
+        mock_get_metadata.side_effect = mock_metadata_side_effect
+
+        trakt_importer = TraktImporter("testuser", self.user, "new")
+        trakt_importer.process_watched_episode(
+            {
+                "type": "episode",
+                "episode": {"season": 1, "number": 2, "title": "Episode 2"},
+                "show": {"title": "Test Show", "ids": {"tmdb": 12345}},
+                "watched_at": "2023-01-02T00:00:00.000Z",
+            },
+        )
+
+        self.assertEqual(len(trakt_importer.bulk_media[MediaTypes.EPISODE.value]), 1)
 
     @patch("integrations.imports.trakt.TraktImporter._get_metadata")
     def test_process_watched_episode_overwrite_mode_existing_show(

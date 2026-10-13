@@ -159,6 +159,13 @@ def _begin_reading(user, item, media_type):
 def start(user, source, media_type, media_id):
     """Start a session and put its card on Home."""
     item = _item(user, source, media_type, media_id)
+    settle(user.id)
+    running = _record(user.id)
+    if running is not None:
+        # One session per user: keep what the running one measured before it goes.
+        _end(user.id, running)
+        if running["media_type"] != MediaTypes.BOARDGAME.value:
+            _save(user, running, running["media_type"])
     row = {"row_id": None, "created": False, "previous": None}
     if media_type == MediaTypes.GAME.value:
         row = _begin_game(user, item)
@@ -217,24 +224,30 @@ def _save_video(user, record, progress_seconds):
         video.upsert_play(f"check-in:{record['token']}", progress_seconds)
 
 
+def _save(user, record, media_type):
+    """Save what a session measured so far: a game's minutes, a reading end, a video's progress."""
+    elapsed = max(0, _now_ts() - record["started_at_ts"])
+    if media_type == MediaTypes.VIDEO.value:
+        length = record["length"]
+        _save_video(user, record, min(elapsed, length) if length else elapsed)
+        return
+    row = MODELS[media_type].objects.filter(id=record["row_id"], user=user).first()
+    if row is None:
+        return
+    if media_type == MediaTypes.GAME.value:
+        row.progress += max(1, math.ceil(elapsed / 60))
+    row.end_date = _now()
+    row.save()
+
+
 def stop(user, source, media_type, media_id):
     """End the session and save what it measured."""
     record = _active_record(user, source, media_type, media_id)
     _end(user.id, record)
-    elapsed = max(0, _now_ts() - record["started_at_ts"])
     if media_type == MediaTypes.BOARDGAME.value:
         log_play(user, source, media_id)
-    elif media_type == MediaTypes.VIDEO.value:
-        length = record["length"]
-        _save_video(user, record, min(elapsed, length) if length else elapsed)
     else:
-        row = MODELS[media_type].objects.filter(id=record["row_id"], user=user).first()
-        if row is None:
-            return
-        if media_type == MediaTypes.GAME.value:
-            row.progress += max(1, math.ceil(elapsed / 60))
-        row.end_date = _now()
-        row.save()
+        _save(user, record, media_type)
 
 
 def cancel(user, source, media_type, media_id):

@@ -8,7 +8,10 @@ from django.test import TestCase, tag
 
 from app.models import (
     Anime,
+    DeletedMedia,
     Manga,
+    MediaTypes,
+    Sources,
     Status,
 )
 from integrations.imports import (
@@ -56,6 +59,26 @@ class ImportAniList(TestCase):
             .history.first()
             .history_date,
             datetime(2025, 6, 4, 10, 11, 17, tzinfo=UTC),
+        )
+
+    @patch("requests.Session.post")
+    def test_import_does_not_bring_back_a_deleted_anime(self, mock_request):
+        """An anime the user deleted by hand stays deleted across syncs (#1133)."""
+        with Path(mock_path / "import_anilist.json").open() as file:
+            anilist_response = json.load(file)
+        mock_request.return_value.json.return_value = anilist_response
+        DeletedMedia.objects.create(
+            user=self.user,
+            media_type=MediaTypes.ANIME.value,
+            source=Sources.MAL.value,
+            media_id="227",
+        )
+
+        anilist.importer(None, self.user, "new", "bloodthirstiness")
+
+        self.assertEqual(Anime.objects.filter(user=self.user).count(), 3)
+        self.assertFalse(
+            Anime.objects.filter(user=self.user, item__title="FLCL").exists(),
         )
 
     @patch("requests.Session.post")
