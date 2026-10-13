@@ -46,13 +46,16 @@ def _record(user_id):
     return cache.get(_key(user_id))
 
 
-def _item(source, media_type, media_id):
+def _item(user, source, media_type, media_id):
     item = Item.objects.filter(
         media_id=str(media_id),
         source=source,
         media_type=media_type,
     ).first()
-    if item is None or not MODELS[media_type].objects.filter(item=item).exists():
+    if (
+        item is None
+        or not MODELS[media_type].objects.filter(item=item, user=user).exists()
+    ):
         msg = "Track this before checking in."
         raise CheckInError(msg)
     return item
@@ -73,7 +76,13 @@ def _active_record(user, source, media_type, media_id):
 
 def start(user, source, media_type, media_id):
     """Start a session; a game saves its entry now so a lost record loses nothing."""
-    item = _item(source, media_type, media_id)
+    item = _item(user, source, media_type, media_id)
+    settle(user.id)
+    running = _record(user.id)
+    if running is not None:
+        # One session per user: keep what the running one measured before it goes.
+        cache.delete(_key(user.id))
+        _save_game_time(user, running)
     started = timezone.now().replace(second=0, microsecond=0)
     row_id = None
     if media_type == MediaTypes.GAME.value:
@@ -105,12 +114,9 @@ def start(user, source, media_type, media_id):
     )
 
 
-def stop(user, source, media_type, media_id):
-    """End the session and save what it measured."""
-    record = _active_record(user, source, media_type, media_id)
-    cache.delete(_key(user.id))
-    if media_type == MediaTypes.BOARDGAME.value:
-        log_play(user, source, media_id)
+def _save_game_time(user, record):
+    """Add a game session's elapsed minutes and end time to its entry."""
+    if not record["row_id"]:
         return
     row = Game.objects.filter(id=record["row_id"], user=user).first()
     if row is None:
@@ -119,6 +125,16 @@ def stop(user, source, media_type, media_id):
     row.progress += max(1, math.ceil(elapsed / 60))
     row.end_date = timezone.now().replace(second=0, microsecond=0)
     row.save()
+
+
+def stop(user, source, media_type, media_id):
+    """End the session and save what it measured."""
+    record = _active_record(user, source, media_type, media_id)
+    cache.delete(_key(user.id))
+    if media_type == MediaTypes.BOARDGAME.value:
+        log_play(user, source, media_id)
+        return
+    _save_game_time(user, record)
 
 
 def cancel(user, source, media_type, media_id):
@@ -136,7 +152,7 @@ def cancel(user, source, media_type, media_id):
 
 def log_play(user, source, media_id):
     """Add one play to the board game's latest entry."""
-    item = _item(source, MediaTypes.BOARDGAME.value, media_id)
+    item = _item(user, source, MediaTypes.BOARDGAME.value, media_id)
     row = BoardGame.objects.filter(item=item, user=user).order_by("-created_at").first()
     if row is None:
         msg = "Track this before logging a play."
