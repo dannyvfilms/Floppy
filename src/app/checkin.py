@@ -41,6 +41,10 @@ logger = logging.getLogger(__name__)
 
 SOURCE_LABEL = "check-in"
 RECORD_TIMEOUT_SECONDS = live_playback.PLAYBACK_CACHE_TIMEOUT_SECONDS
+# The record must outlive the assumed end so the settle step can still find it.
+RECORD_END_MARGIN_SECONDS = 3600
+# What a Pause remembers so a later Cancel can still undo the whole check-in.
+ROLLBACK_TIMEOUT_SECONDS = 7 * 24 * 3600
 # Finish replaces Pause at the same point a media server counts a title watched.
 FINISH_RATIO = live_playback.PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO
 SETTLE_DELAY_SECONDS = 5
@@ -54,7 +58,12 @@ PHASE_PAUSED = "paused"
 
 
 class CheckInError(Exception):
-    """A check-in action that cannot be carried out; the message is shown."""
+    """A check-in action that cannot be carried out; ``message`` is shown."""
+
+    def __init__(self, message):
+        """Keep the text on ``message`` for the view to return."""
+        super().__init__(message)
+        self.message = message
 
 
 @dataclass
@@ -91,8 +100,34 @@ def _key(user_id):
     return f"checkin_v1:{user_id}"
 
 
+def _rollback_key(user_id, media_type, media_id):
+    return f"checkin_rollback_v1:{user_id}:{media_type}:{media_id}"
+
+
 def _record(user_id):
     return cache.get(_key(user_id))
+
+
+def _save_record(user_id, record):
+    timeout = RECORD_TIMEOUT_SECONDS
+    if record["end_ts"] is not None:
+        timeout = max(
+            timeout,
+            record["end_ts"] - _now_ts() + RECORD_END_MARGIN_SECONDS,
+        )
+    cache.set(_key(user_id), record, timeout=timeout)
+
+
+def mark_taken_over(user_id, token):
+    """Note that a real scrobble replaced this check-in's card.
+
+    The replacement card can expire before the assumed end, and that must not
+    read as the check-in's own card disappearing.
+    """
+    record = _record(user_id)
+    if record is not None and record["token"] == token:
+        record["taken_over"] = True
+        _save_record(user_id, record)
 
 
 def _drop_record(user_id):
@@ -267,6 +302,15 @@ def _owns_card(user_id, record):
 def start(user, media_type, media_id):
     """Check in, resuming from a saved Pause if there is one."""
     subject = _subject(user, media_type, media_id)
+
+    running = _record(user.id)
+    if running is not None:
+        # One check-in per user: keep the running one's place before replacing it.
+        if running.get("taken_over") or not _owns_card(user.id, running):
+            _drop_record(user.id)
+        else:
+            pause(user, running["media_type"], running["media_id"])
+
     offset = _saved_position(user, subject.item)
     if subject.duration and offset >= subject.duration:
         offset = 0
@@ -275,6 +319,17 @@ def start(user, media_type, media_id):
         row = _begin_episode(user, subject)
     else:
         row = _begin_movie(user, subject, offset)
+
+    # A Resume continues the check-in a Pause left, so keep how to undo it.
+    rollback_key = _rollback_key(user.id, media_type, subject.media_id)
+    rollback = cache.get(rollback_key)
+    if rollback and rollback["row_id"] == row["row_id"]:
+        row = {**row, "created": rollback["created"], "previous": rollback["previous"]}
+    cache.set(
+        rollback_key,
+        {key: row[key] for key in ("row_id", "created", "previous")},
+        timeout=ROLLBACK_TIMEOUT_SECONDS,
+    )
 
     now_ts = _now_ts()
     remaining = subject.duration - offset if subject.duration else None
@@ -307,7 +362,7 @@ def start(user, media_type, media_id):
         ends_at_ts=end_ts,
         **subject.card,
     )
-    cache.set(_key(user.id), record, timeout=RECORD_TIMEOUT_SECONDS)
+    _save_record(user.id, record)
 
     from app.tasks import settle_checkin
 
@@ -363,6 +418,7 @@ def pause(user, media_type, media_id):
 
 def _complete(user, record, at):
     """Complete the row this check-in saved, unless something else already did."""
+    cache.delete(_rollback_key(user.id, record["media_type"], record["media_id"]))
     row = _row(user, record)
     if row is None or row.status != Status.IN_PROGRESS.value:
         return
@@ -402,6 +458,7 @@ def cancel(user, media_type, media_id):
             row.status = record["previous"]["status"]
             row.start_date = record["previous"]["start_date"]
             row.save()
+    cache.delete(_rollback_key(user.id, record["media_type"], record["media_id"]))
     _close_card(user.id, record)
 
 
@@ -414,9 +471,10 @@ def settle(user_id):
     record = _record(user_id)
     if record is None or record["end_ts"] is None or _now_ts() < record["end_ts"]:
         return
-    owned = _owns_card(user_id, record)
+    owned = not record.get("taken_over") and _owns_card(user_id, record)
     _close_card(user_id, record)
     if not owned:
+        cache.delete(_rollback_key(user_id, record["media_type"], record["media_id"]))
         return
     from django.contrib.auth import get_user_model
 

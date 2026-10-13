@@ -1136,7 +1136,11 @@ class HistoryMonthViewTests(TestCase):
     def _cache_large_history_day(self, *, keep_count=0, total_count=None):
         """Create and cache many same-day movie entries for pagination tests."""
         total_count = total_count or history_cache.HISTORY_ENTRIES_PER_DAY_PAGE + 5
-        now = timezone.now()
+        # Entries are spaced a second apart; keep them all on one local day even
+        # when the suite runs in the first seconds after midnight.
+        local_now = timezone.localtime()
+        day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        now = max(local_now, day_start + timedelta(seconds=total_count))
         for index in range(total_count):
             item = Item.objects.create(
                 media_id=f"large-history-{index}",
