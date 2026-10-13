@@ -564,6 +564,26 @@ class CheckInShowTests(TestCase):
 
         self.assertFalse(Episode.objects.filter(related_season=self.season).exists())
 
+    @patch("app.models.Episode._local_season_max_progress", return_value=3)
+    def test_cancel_puts_a_paused_season_and_show_back(self, _max_progress):
+        self.watched(1)
+        type(self.season).objects.filter(id=self.season.id).update(
+            status=Status.PAUSED.value,
+        )
+        type(self.show).objects.filter(id=self.show.id).update(
+            status=Status.PAUSED.value,
+        )
+        self.start()
+        self.season.refresh_from_db()
+        self.assertEqual(self.season.status, Status.IN_PROGRESS.value)
+
+        checkin.cancel(self.user, "tv", "1668")
+
+        self.season.refresh_from_db()
+        self.show.refresh_from_db()
+        self.assertEqual(self.season.status, Status.PAUSED.value)
+        self.assertEqual(self.show.status, Status.PAUSED.value)
+
     def test_cancel_keeps_a_play_that_was_already_open(self):
         Episode.objects.create(
             item=self.episodes[1],
