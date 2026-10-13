@@ -152,13 +152,19 @@ class TrackSplitTemplateTests(SimpleTestCase):
         self.assertIn("Another action", html)
         self.assertNotIn("Edit entry,", html)
 
-
     def test_grouped_anime_is_decided_by_its_stored_type(self):
         """A TMDB anime is one TV tracker, so a new entry would collide with it."""
         request = RequestFactory().get("/details/")
+        request.user = SimpleNamespace(id=1)
         media = {"source": "tmdb", "media_type": "anime", "media_id": "1"}
         for stored, expected in (("tv", False), ("anime", True)):
-            with self.subTest(stored=stored):
+            with (
+                self.subTest(stored=stored),
+                patch(
+                    "app.checkin.phase",
+                    return_value=None,
+                ),
+            ):
                 html = render_to_string(
                     "app/components/detail_track_split.html",
                     {
