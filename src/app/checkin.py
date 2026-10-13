@@ -31,6 +31,7 @@ from app.models import (
     MediaTypes,
     Movie,
     PlaybackProgress,
+    Season,
     Sources,
     Status,
 )
@@ -97,7 +98,7 @@ def episode_code(season_number, episode_number):
 
 
 def _key(user_id):
-    return f"checkin_v1:{user_id}"
+    return f"checkin_v2:{user_id}"
 
 
 def _rollback_key(user_id, media_type, media_id):
@@ -268,6 +269,14 @@ def _begin_episode(user, subject):
             "created": False,
             "previous": {"status": existing.status, "start_date": existing.start_date},
         }
+    # Saving the episode also moves its season and show to In Progress.
+    season, show = subject.season, subject.season.related_tv
+    parents = {
+        "season_id": season.id,
+        "season": season.status,
+        "tv_id": show.id,
+        "tv": show.status,
+    }
     row = Episode.objects.create(
         item=subject.item,
         related_season=subject.season,
@@ -275,7 +284,7 @@ def _begin_episode(user, subject):
         start_date=timezone.now().replace(second=0, microsecond=0),
         entry_source=SOURCE_LABEL,
     )
-    return {"row_id": row.id, "created": True, "previous": None}
+    return {"row_id": row.id, "created": True, "previous": None, "parents": parents}
 
 
 def _saved_position(user, item):
@@ -324,10 +333,15 @@ def start(user, media_type, media_id):
     rollback_key = _rollback_key(user.id, media_type, subject.media_id)
     rollback = cache.get(rollback_key)
     if rollback and rollback["row_id"] == row["row_id"]:
-        row = {**row, "created": rollback["created"], "previous": rollback["previous"]}
+        row = {
+            **row,
+            "created": rollback["created"],
+            "previous": rollback["previous"],
+            "parents": rollback.get("parents"),
+        }
     cache.set(
         rollback_key,
-        {key: row[key] for key in ("row_id", "created", "previous")},
+        {key: row.get(key) for key in ("row_id", "created", "previous", "parents")},
         timeout=ROLLBACK_TIMEOUT_SECONDS,
     )
 
@@ -447,6 +461,14 @@ def finish(user, media_type, media_id):
     _complete(user, record, timezone.now().replace(second=0, microsecond=0))
 
 
+def _restore_parents(parents):
+    """Put back the season and show status the created episode play changed."""
+    if not parents:
+        return
+    Season.objects.filter(id=parents["season_id"]).update(status=parents["season"])
+    TV.objects.filter(id=parents["tv_id"]).update(status=parents["tv"])
+
+
 def cancel(user, media_type, media_id):
     """Undo the check-in: remove the row it added, or restore what it changed."""
     record = _active_record(user, media_type, media_id)
@@ -454,6 +476,7 @@ def cancel(user, media_type, media_id):
     if row is not None and row.status == Status.IN_PROGRESS.value:
         if record["created"]:
             row.delete()
+            _restore_parents(record.get("parents"))
         elif record["previous"] and record["previous"]["status"] != row.status:
             row.status = record["previous"]["status"]
             row.start_date = record["previous"]["start_date"]
