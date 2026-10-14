@@ -4,13 +4,16 @@ Xbox Live exposes no purchase library, so "owned" is approximated by every title
 the account has played (see :mod:`integrations.xbox_api`). Hours played come
 from the per-title ``MinutesPlayed`` stat, which not every title publishes -- a
 missing value means unknown and must never overwrite existing progress.
+
+Xbox only reports lifetime totals, so each sync logs the increase since the
+previous one as a dated play session (see :mod:`playtime_sessions`).
 """
 
 import logging
 import re
-from collections import defaultdict
 from datetime import timedelta
 
+from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -20,13 +23,15 @@ from app.models import MediaTypes, Sources, Status
 from app.providers import services
 from app.providers.igdb import ExternalGameSource, external_game
 from integrations import connection_health, import_progress, xbox_api
-from integrations.imports import helpers, title_matching
+from integrations.imports import helpers, playtime_sessions, title_matching
 from integrations.imports.helpers import MediaImportError
 from integrations.models import XboxAccount
 
 logger = logging.getLogger(__name__)
 
 IMPORT_NOTE = "Imported from Xbox"
+SESSION_NOTE = "Xbox play session"
+SNAPSHOT_SOURCE = "xbox"
 RECENTLY_PLAYED_DAYS = 14
 
 # last_error_message is rendered on the import page and kept until the next
@@ -131,9 +136,20 @@ class XboxImporter:
         self.existing_media = helpers.get_existing_media(user)
         # Track media the user explicitly deleted, so it isn't recreated
         self.deleted_media = helpers.get_deleted_media(user)
-        self.to_update = []
-        self.to_update_meta = []
-        self.bulk_media = defaultdict(list)
+        self.sessions = playtime_sessions.PlaytimeSessionLogger(
+            user,
+            source=SNAPSHOT_SOURCE,
+            mode=mode,
+            import_note=IMPORT_NOTE,
+            session_note=SESSION_NOTE,
+            existing_media=self.existing_media,
+            # Read before this sync stamps the account: play since then can be
+            # dated on the first sync that remembers totals.
+            previous_sync_at=self.account.last_sync_at,
+        )
+        # Xbox titles merged per IGDB game (Xbox 360 and Xbox One/Series
+        # releases can share an IGDB entry), so their minutes add up.
+        self.observations = {}
         self.lookup_failures = 0
         # Provider errors point at IGDB; anything else is a bug on our side and
         # must not be reported as an unreachable provider.
@@ -188,7 +204,17 @@ class XboxImporter:
             import_progress.report(index, total, "Xbox")
             self._process_title(title_id, title, minutes_by_title.get(title_id))
 
-        matched = len(self.bulk_media[MediaTypes.GAME.value]) + len(self.to_update)
+        for media_id, observation in self.observations.items():
+            self.sessions.store(
+                media_id,
+                observation,
+                status=self._determine_game_status(
+                    observation.minutes,
+                    observation.last_played,
+                ),
+            )
+
+        matched = len(self.observations)
         logger.info(
             "Xbox: %d titles, %d matched, %d lookup failures (%d provider errors)",
             total,
@@ -213,36 +239,42 @@ class XboxImporter:
             self._mark_failed(msg, auth=False)
             raise MediaImportError(msg)
 
-        helpers.bulk_create_media(self.bulk_media, self.user)
-
-        if self.to_update:
-            app.models.Game.objects.bulk_update(
-                self.to_update,
-                fields=["progress", "status"],
+        # One transaction, so a failed snapshot save can't leave logged play
+        # without its remembered total (it would be logged again next sync).
+        with transaction.atomic():
+            helpers.bulk_create_media(
+                {MediaTypes.GAME.value: self.sessions.rows},
+                self.user,
             )
-            logger.info(
-                "Updated %d existing games for user %s",
-                len(self.to_update),
-                self.user.username,
-            )
+            if self.sessions.to_update:
+                app.models.Game.objects.bulk_update(
+                    self.sessions.to_update,
+                    fields=["progress", "status"],
+                )
+                logger.info(
+                    "Updated %d existing games for user %s",
+                    len(self.sessions.to_update),
+                    self.user.username,
+                )
+            self.sessions.save_snapshots()
 
-        if self.to_update_meta:
+        updated_items = [
+            game.item
+            for media_id in self.observations
+            if (game := self.sessions.existing_games.get(media_id))
+        ]
+        if updated_items:
             app.models.Item.objects.bulk_update(
-                self.to_update_meta,
+                updated_items,
                 fields=["title", "image"],
             )
 
         self._mark_synced()
 
-        imported_counts = {
-            media_type: len(media_list)
-            for media_type, media_list in self.bulk_media.items()
-        }
-        # Updates are reported too: a sync that only raised hours otherwise
-        # reads as "No media was imported" and skips the cache refresh that
-        # makes the new hours show up in History and Statistics.
-        imported_counts["created"] = len(self.bulk_media[MediaTypes.GAME.value])
-        imported_counts["updated"] = len(self.to_update)
+        # Updates and sessions are reported too: a sync that only added play
+        # otherwise reads as "No media was imported" and skips the cache
+        # refresh that makes the new hours show up in History and Statistics.
+        imported_counts = self.sessions.counts()
         logger.info(
             "Xbox import completed for user %s: %s",
             self.user.username,
@@ -344,47 +376,14 @@ class XboxImporter:
             )
             return
 
-        existing = self.existing_media[MediaTypes.GAME.value][Sources.IGDB.value].get(
+        observation = self.observations.setdefault(
             media_id,
-        )
-
-        if existing:
-            if self.mode == "overwrite":
-                # Xbox only reports MinutesPlayed for titles that publish it;
-                # leave progress alone rather than zeroing tracked hours.
-                if minutes is not None:
-                    existing.progress = minutes
-                if existing.status not in {
-                    Status.COMPLETED.value,
-                    Status.DROPPED.value,
-                }:
-                    existing.status = self._determine_game_status(minutes, last_played)
-                self.to_update.append(existing)
-
-            item = existing.item
-            item.title = igdb_game["title"]
-            item.image = igdb_game["image"]
-            self.to_update_meta.append(item)
-            return
-
-        item, _ = app.models.Item.objects.get_or_create(
-            media_id=media_id,
-            source=Sources.IGDB.value,
-            media_type=MediaTypes.GAME.value,
-            defaults={"title": igdb_game["title"], "image": igdb_game["image"]},
-        )
-        self.bulk_media[MediaTypes.GAME.value].append(
-            app.models.Game(
-                item=item,
-                user=self.user,
-                status=self._determine_game_status(minutes, last_played),
-                score=None,
-                progress=minutes or 0,
-                notes=IMPORT_NOTE,
-                start_date=None,
-                end_date=None,
+            playtime_sessions.PlaytimeObservation(
+                title=igdb_game["title"],
+                image=igdb_game["image"],
             ),
         )
+        observation.merge(minutes, None, last_played)
 
     def _last_time_played(self, title):
         """Return the title's last played datetime, if Xbox reported one."""
