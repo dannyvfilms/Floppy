@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from app import history_cache
-from app.models import Game, Item, MediaTypes, Sources, Status
+from app.models import DeletedMedia, Game, Item, MediaTypes, Sources, Status
 from integrations.imports import helpers, steam, xbox
 from integrations.models import PlaytimeSnapshot, XboxAccount
 from integrations.tasks._import_helpers import format_import_message
@@ -47,8 +47,8 @@ def tracked_minutes(user, media_id):
     )
 
 
-class SteamPlaySessions(TestCase):
-    """Steam playtime increases become dated Game rows."""
+class SteamTestCase(TestCase):
+    """Shared Steam sync harness."""
 
     def setUp(self):
         """Create a user and stub the IGDB lookups (app id N -> IGDB id N)."""
@@ -80,6 +80,10 @@ class SteamPlaySessions(TestCase):
             end_date__isnull=False,
         ).order_by("end_date")
 
+
+class SteamPlaySessions(SteamTestCase):
+    """Steam playtime increases become dated Game rows."""
+
     def test_first_sync_adds_undated_lifetime_row(self):
         """A brand-new game is added as before: one undated lifetime row."""
         counts, _ = self.sync(
@@ -92,7 +96,10 @@ class SteamPlaySessions(TestCase):
         self.assertEqual(counts[MediaTypes.GAME.value], 1)
         self.assertEqual(counts["game_sessions"], 0)
         snapshot = PlaytimeSnapshot.objects.get(user=self.user, source="steam")
-        self.assertEqual((snapshot.media_id, snapshot.minutes), ("10", 600))
+        self.assertEqual(
+            (snapshot.media_id, snapshot.minutes),
+            (f"{STEAM_ID}:10", 600),
+        )
 
     def test_next_sync_logs_increase_as_dated_session(self):
         """New minutes since the last sync become their own dated row."""
@@ -244,6 +251,84 @@ class SteamPlaySessions(TestCase):
                 self.assertEqual(minutes, 90)
 
 
+class SteamSessionSafety(SteamTestCase):
+    """Edge cases found in review: other sources, statuses, accounts, locks."""
+
+    def other_platform_play(self, minutes, days_ago=30):
+        """Add a dated play for game 10 from another source (e.g. PSN)."""
+        Game.objects.bulk_create(
+            [
+                Game(
+                    item=Item.objects.get(media_id="10"),
+                    user=self.user,
+                    status=Status.PAUSED.value,
+                    progress=minutes,
+                    start_date=timezone.now() - timedelta(days=days_ago, hours=2),
+                    end_date=timezone.now() - timedelta(days=days_ago),
+                ),
+            ],
+        )
+
+    def test_overwrite_leaves_other_platforms_rows_alone(self):
+        """A first-sighting reconcile never touches dated or other-source rows."""
+        self.sync([steam_game(10, 200)])
+        self.other_platform_play(500)
+        PlaytimeSnapshot.objects.all().delete()  # as before this change
+
+        self.sync([steam_game(10, 230)], mode="overwrite")
+
+        self.assertEqual(
+            sorted(
+                Game.objects.filter(user=self.user).values_list("progress", flat=True)
+            ),
+            [200, 500],
+        )
+
+    def test_session_keeps_completed_status_visible(self):
+        """Replaying a finished game logs time without un-completing it."""
+        self.sync([steam_game(10, 600)])
+        Game.objects.filter(user=self.user).update(status=Status.COMPLETED.value)
+        age_snapshots(24)
+
+        self.sync([steam_game(10, 660, recent=60, last_played=timezone.now())])
+
+        self.assertEqual(self.sessions().get().status, Status.COMPLETED.value)
+
+    def test_switching_steam_ids_does_not_invent_play(self):
+        """A different Steam account's total isn't a session on this one."""
+        self.sync([steam_game(10, 200)])
+        self.api.return_value = {"response": {"games": [steam_game(10, 1000)]}}
+
+        counts, _ = steam.importer("76561198000000001", self.user, "new")
+
+        self.assertFalse(self.sessions().exists())
+        self.assertEqual(counts["baseline"], 1)
+
+    def test_deleted_game_comes_back_with_lifetime_total(self):
+        """A game removed here returns whole, as it always did, not as a session."""
+        self.sync([steam_game(10, 600)])
+        Game.objects.filter(user=self.user).delete()
+
+        self.sync([steam_game(10, 630, recent=30, last_played=timezone.now())])
+
+        game = Game.objects.get(user=self.user)
+        self.assertEqual((game.progress, game.end_date), (630, None))
+
+    def test_overlapping_sync_is_skipped(self):
+        """A sync that starts while another runs skips instead of double-logging."""
+        from integrations.tasks import _media_imports
+
+        with patch.object(
+            _media_imports.cache_safety,
+            "acquire_lock",
+            return_value=False,
+        ):
+            result = _media_imports.import_steam(STEAM_ID, self.user.id, "new")
+
+        self.assertIn("already in progress", result)
+        self.assertFalse(Game.objects.filter(user=self.user).exists())
+
+
 class XboxPlaySessions(TestCase):
     """Xbox playtime increases become dated Game rows."""
 
@@ -322,8 +407,8 @@ class XboxPlaySessions(TestCase):
 
         self.assertGreaterEqual(self.sessions().get().end_date, before)
 
-    def test_upgrade_dates_play_since_last_account_sync(self):
-        """An upgraded account dates play since its last sync, capped by time."""
+    def tracked_game(self, progress):
+        """Create a game tracked before this change: one undated row."""
         item = Item.objects.create(
             media_id="1",
             source=Sources.IGDB.value,
@@ -335,16 +420,55 @@ class XboxPlaySessions(TestCase):
             item=item,
             user=self.user,
             status=Status.PAUSED.value,
-            progress=1000,
+            progress=progress,
         )
         self.account.last_sync_at = timezone.now() - timedelta(minutes=90)
         self.account.save()
+        return item
 
-        self.sync(1200, timezone.now() - timedelta(minutes=1))
+    def test_upgrade_dates_play_since_last_overwrite_sync(self):
+        """Overwrite kept hours in step, so play since the last sync is dated."""
+        self.tracked_game(1000)
 
-        # 200 new minutes can't fit in 90; only what fits is dated.
+        self.sync(1200, timezone.now() - timedelta(minutes=1), mode="overwrite")
+
+        # 200 new minutes can't fit in 90; only what fits is dated, and the
+        # rest still lands on the undated row so the total matches Xbox.
         self.assertEqual(self.sessions().get().progress, 90)
+        self.assertEqual(tracked_minutes(self.user, "1"), 1200)
         self.assertTrue(PlaytimeSnapshot.objects.filter(source="xbox").exists())
+
+    def test_upgrade_in_new_mode_does_not_date_old_play(self):
+        """New mode never refreshed hours: the difference is old play, not today's."""
+        self.tracked_game(1000)
+
+        counts, _ = self.sync(1800, timezone.now() - timedelta(minutes=1))
+
+        self.assertFalse(self.sessions().exists())
+        self.assertEqual(counts["baseline"], 1)
+        self.assertEqual(tracked_minutes(self.user, "1"), 1000)
+
+    def test_deleted_game_total_is_still_remembered(self):
+        """Re-adding a deleted game later doesn't log the gap as one session."""
+        self.sync(1000)
+        Game.objects.filter(user=self.user).delete()
+        # Deleting records a DeletedMedia tombstone, which the importer honors.
+        self.assertTrue(DeletedMedia.objects.filter(user=self.user).exists())
+
+        self.sync(1300)
+
+        self.assertFalse(Game.objects.filter(user=self.user).exists())
+        self.assertEqual(PlaytimeSnapshot.objects.get(source="xbox").minutes, 1300)
+
+    def test_new_xbox_account_starts_fresh(self):
+        """Totals are per XUID: another account's numbers aren't new play."""
+        self.sync(1000)
+        PlaytimeSnapshot.objects.update(media_id="999:1")  # a previous account
+
+        counts, _ = self.sync(1500, timezone.now())
+
+        self.assertFalse(self.sessions().exists())
+        self.assertEqual(counts["baseline"], 1)
 
     def test_unreported_minutes_leave_tracking_alone(self):
         """No MinutesPlayed: no snapshot, no session, hours untouched."""

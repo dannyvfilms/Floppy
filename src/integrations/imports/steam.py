@@ -51,6 +51,7 @@ class SteamImporter:
         self.sessions = playtime_sessions.PlaytimeSessionLogger(
             user,
             source=SNAPSHOT_SOURCE,
+            account=steam_id,
             mode=mode,
             import_note=IMPORT_NOTE,
             session_note=SESSION_NOTE,

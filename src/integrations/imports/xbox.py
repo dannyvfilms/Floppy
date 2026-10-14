@@ -136,20 +136,14 @@ class XboxImporter:
         self.existing_media = helpers.get_existing_media(user)
         # Track media the user explicitly deleted, so it isn't recreated
         self.deleted_media = helpers.get_deleted_media(user)
-        self.sessions = playtime_sessions.PlaytimeSessionLogger(
-            user,
-            source=SNAPSHOT_SOURCE,
-            mode=mode,
-            import_note=IMPORT_NOTE,
-            session_note=SESSION_NOTE,
-            existing_media=self.existing_media,
-            # Read before this sync stamps the account: play since then can be
-            # dated on the first sync that remembers totals.
-            previous_sync_at=self.account.last_sync_at,
-        )
+        # Built once the XUID is known: remembered totals are per account.
+        self.sessions = None
         # Xbox titles merged per IGDB game (Xbox 360 and Xbox One/Series
         # releases can share an IGDB entry), so their minutes add up.
         self.observations = {}
+        # Titles the user deleted here: never re-added, but their totals are
+        # still remembered so re-adding one later doesn't log the gap as play.
+        self.deleted_observations = {}
         self.lookup_failures = 0
         # Provider errors point at IGDB; anything else is a bug on our side and
         # must not be reported as an unreachable provider.
@@ -166,6 +160,18 @@ class XboxImporter:
         """Import the account's played Xbox titles."""
         try:
             xuid = self._resolve_xuid()
+            self.sessions = playtime_sessions.PlaytimeSessionLogger(
+                self.user,
+                source=SNAPSHOT_SOURCE,
+                account=xuid,
+                mode=self.mode,
+                import_note=IMPORT_NOTE,
+                session_note=SESSION_NOTE,
+                existing_media=self.existing_media,
+                # Read before this sync stamps the account: play since then can
+                # be dated on the first sync that remembers totals.
+                previous_sync_at=self.account.last_sync_at,
+            )
             titles = xbox_api.get_played_titles(self.api_key, xuid)
             minutes_by_title = xbox_api.get_minutes_played(
                 self.api_key,
@@ -213,6 +219,8 @@ class XboxImporter:
                     observation.last_played,
                 ),
             )
+        for media_id, observation in self.deleted_observations.items():
+            self.sessions.remember(media_id, observation.minutes)
 
         matched = len(self.observations)
         logger.info(
@@ -364,6 +372,7 @@ class XboxImporter:
 
         last_played = self._last_time_played(title)
         media_id = str(igdb_game["media_id"])
+        observations = self.observations
 
         if media_id in self.deleted_media[MediaTypes.GAME.value][Sources.IGDB.value]:
             # Xbox keeps reporting a title forever once it has been launched,
@@ -374,9 +383,9 @@ class XboxImporter:
                 name,
                 media_id,
             )
-            return
+            observations = self.deleted_observations
 
-        observation = self.observations.setdefault(
+        observation = observations.setdefault(
             media_id,
             playtime_sessions.PlaytimeObservation(
                 title=igdb_game["title"],
