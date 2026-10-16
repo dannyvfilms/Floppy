@@ -75,6 +75,9 @@ logger = logging.getLogger(__name__)
 
 # A sync that dies leaves its lock behind; it expires on its own after this.
 PSN_IMPORT_LOCK_SECONDS = 15 * 60
+# Steam libraries can take a while (an IGDB lookup per title), so the lock
+# outlives a slow first import; it is released as soon as the sync ends.
+PLAYTIME_IMPORT_LOCK_SECONDS = 60 * 60
 
 
 
@@ -411,22 +414,71 @@ def import_wetrakr_export(file, user_id, mode):
     return _run_file_import(wetrakr.importer, file, user_id, mode)
 
 
+def _run_playtime_import(platform, importer_func, identifier, user_id, mode, *, on_cache_error):
+    """Serialize one user's syncs for a platform that logs play sessions.
+
+    Steam and Xbox syncs diff against remembered lifetime totals, so two
+    overlapping syncs would both log the same new play.
+    """
+    lock_key = f"{platform.lower()}_import_lock_{user_id}"
+    task_id = current_task.request.id if current_task and current_task.request else "1"
+    if not cache_safety.acquire_lock(
+        lock_key,
+        timeout=PLAYTIME_IMPORT_LOCK_SECONDS,
+        on_error=on_cache_error,
+        value=task_id,
+    ):
+        logger.info(
+            "%s_import status=already_running user_id=%s",
+            platform.lower(),
+            user_id,
+        )
+        return f"Skipped: {platform} sync already in progress"
+    try:
+        return import_media(importer_func, identifier, user_id, mode)
+    finally:
+        cache_safety.release_lock(lock_key)
+
+
 @shared_task(name="Import from Steam")
 def import_steam(username, user_id, mode):
-    """Celery task for importing game data from Steam."""
-    return import_media(steam.importer, username, user_id, mode)
+    """Celery task for importing game data from Steam (one-off or scheduled)."""
+    return _run_playtime_import(
+        "Steam",
+        steam.importer,
+        username,
+        user_id,
+        mode,
+        on_cache_error=cache_safety.ON_ERROR_PROCEED,
+    )
 
 
 @shared_task(name="Import from Xbox")
 def import_xbox(user_id, mode="new"):
     """Celery task for importing game data from a connected Xbox account."""
-    return import_media(xbox.importer, None, user_id, mode)
+    return _run_playtime_import(
+        "Xbox",
+        xbox.importer,
+        None,
+        user_id,
+        mode,
+        on_cache_error=cache_safety.ON_ERROR_PROCEED,
+    )
 
 
 @shared_task(name="Import from Xbox (Recurring)")
 def import_xbox_recurring(user_id, mode="new"):
     """Recurring import task for Xbox."""
-    return import_media(xbox.importer, None, user_id, mode)
+    # Skip rather than risk two overlapping syncs logging the same play twice;
+    # the next run picks up the same growth.
+    return _run_playtime_import(
+        "Xbox",
+        xbox.importer,
+        None,
+        user_id,
+        mode,
+        on_cache_error=cache_safety.ON_ERROR_SKIP,
+    )
 
 
 def _run_psn_import(user_id, mode, *, on_cache_error):
