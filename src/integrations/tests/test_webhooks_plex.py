@@ -940,7 +940,15 @@ class PlexWebhookTests(TestCase):
     )
     @patch(
         "app.providers.tmdb.tv_with_seasons",
-        return_value={"title": "Medabots", "tvdb_id": "76906"},
+        side_effect=lambda _media_id, seasons: {
+            "title": "Medabots",
+            "tvdb_id": "76906",
+            **{
+                f"season/{number}": PlexWebhookTests._season_payload(count)
+                for number, count in ((1, 52), (2, 39))
+                if number in seasons
+            },
+        },
     )
     def test_tvdb_numbered_episode_is_filed_under_tmdb_numbering(
         self, _tv_with_seasons, _find_tv_media_id, handle_tv_episode, _mapping_data,

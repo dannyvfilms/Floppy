@@ -1728,12 +1728,18 @@ class PlexHistoryImporter:
             (plex_season_number, plex_episode_number),
         }:
             try:
-                translated = anime_mappings.get_tmdb_episode_from_tvdb(
+                translated = episode_remap.remap_via_anibridge(
                     anime_mappings.fetch_mapping_data(),
-                    show_ids.get("tvdb_id"),
-                    media_id,
+                    str(media_id),
                     plex_season_number,
                     plex_episode_number,
+                    {"tvdb_id": show_ids.get("tvdb_id")},
+                    lambda season: self._ensure_season_payload(
+                        str(media_id),
+                        season,
+                        series_search_title,
+                        show_year,
+                    ),
                 )
             except Exception as exc:  # pragma: no cover - defensive network guard
                 logger.warning(
@@ -1742,7 +1748,7 @@ class PlexHistoryImporter:
                 )
                 translated = None
             if translated is not None:
-                season_number, episode_number = translated
+                season_number, episode_number, _ = translated
 
         season_number, episode_number = external_references.map_episode_coordinates(
             reference,

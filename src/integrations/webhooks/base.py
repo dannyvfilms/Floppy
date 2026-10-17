@@ -460,12 +460,13 @@ class BaseWebhookProcessor:
         tmdb_season, tmdb_episode = season_number, episode_number
         if self._payload_numbering_is_tvdb():
             try:
-                translated = anime_mappings.get_tmdb_episode_from_tvdb(
+                translated = episode_remap.remap_via_anibridge(
                     anime_mappings.fetch_mapping_data(),
-                    tvdb_id,
                     media_id,
                     season_number,
                     episode_number,
+                    {"tvdb_id": tvdb_id},
+                    lambda season: self._load_tmdb_season(media_id, season),
                 )
             except Exception as exc:  # pragma: no cover - defensive network guard
                 logger.warning(
@@ -473,8 +474,8 @@ class BaseWebhookProcessor:
                     exception_summary(exc),
                 )
                 translated = None
-            if translated is not None and translated != (season_number, episode_number):
-                tmdb_season, tmdb_episode = translated
+            if translated is not None:
+                tmdb_season, tmdb_episode, _ = translated
                 logger.info(
                     "Translated TVDB-numbered episode %s S%sE%s to TMDB S%sE%s",
                     media_id,
@@ -1761,6 +1762,20 @@ class BaseWebhookProcessor:
         """
         return
 
+    def _load_tmdb_season(self, media_id, season_number):
+        """Return TMDB's payload for one season of a show, or None."""
+        try:
+            metadata = app.providers.tmdb.tv_with_seasons(media_id, [season_number])
+        except Exception as exc:  # pragma: no cover - defensive network guard
+            logger.warning(
+                "Season lookup failed during webhook remap of %s season %s: %s",
+                media_id,
+                season_number,
+                exception_summary(exc),
+            )
+            return None
+        return metadata.get(f"season/{season_number}")
+
     def _remap_episode_numbering(
         self,
         media_id,
@@ -1780,20 +1795,7 @@ class BaseWebhookProcessor:
         """
 
         def load_season(candidate_season):
-            try:
-                candidate_metadata = app.providers.tmdb.tv_with_seasons(
-                    media_id,
-                    [candidate_season],
-                )
-            except Exception as exc:  # pragma: no cover - defensive network guard
-                logger.warning(
-                    "Season lookup failed during webhook remap of %s season %s: %s",
-                    media_id,
-                    candidate_season,
-                    exception_summary(exc),
-                )
-                return None
-            return candidate_metadata.get(f"season/{candidate_season}")
+            return self._load_tmdb_season(media_id, candidate_season)
 
         if anime_mapping_data:
             remapped = episode_remap.remap_via_anibridge(

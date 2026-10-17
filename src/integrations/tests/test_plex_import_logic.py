@@ -2540,6 +2540,7 @@ class TestPlexIdentityAndScorePreservation(TestCase):
         "tmdb_show:888:s1": {"anilist:1138": {"1-52": "1-52"}, "mal:1138": {"1-52": "1-52"}},
         "tmdb_show:888:s2": {"mal:4052": {"1-39": "1-39"}},
     })
+    @patch.object(PlexHistoryImporter, "_ensure_season_payload")
     @patch("integrations.imports.plex.plex_api.fetch_metadata")
     @patch(
         "app.providers.tmdb.find",
@@ -2549,18 +2550,18 @@ class TestPlexIdentityAndScorePreservation(TestCase):
         self,
         _mock_find,
         mock_fetch_metadata,
+        mock_season_payload,
     ):
         """Plex S2E1 of Medabots is TMDB S1E27, though TMDB has an S2 too.
 
         Regression: the play was filed as TMDB S2E1, which belongs to the
-        sequel, and pushed the sequel's MAL entry to 26.
+        sequel, and pushed the sequel's MAL entry to 26. A translation onto an
+        episode TMDB does not list is refused and keeps Plex's numbering.
         """
         mock_fetch_metadata.return_value = {
             **self._show_metadata(),
             "Guid": [{"id": "tmdb://888"}, {"id": "tvdb://76906"}],
         }
-        importer = self._importer()
-        importer._current_section_uri = "http://plex"
         ids = {
             "tmdb_id": None,
             "tvdb_id": "220131",
@@ -2568,19 +2569,25 @@ class TestPlexIdentityAndScorePreservation(TestCase):
             "anidb_id": None,
             "plex_guid": None,
         }
+        row = self._episode_row(grandparentRatingKey="gp1", parentIndex=2, index=1)
 
-        importer._record_episode_entry(
-            self._episode_row(grandparentRatingKey="gp1", parentIndex=2, index=1),
-            ids,
-        )
-
-        record = importer._episode_records[0]
-        self.assertEqual(record["tmdb_id"], "888")
-        self.assertEqual((record["season_number"], record["episode_number"]), (1, 27))
-        self.assertEqual(
-            (record["plex_season_number"], record["plex_episode_number"]), (2, 1),
-        )
-
+        for season_one_length, expected in ((26, (2, 1)), (52, (1, 27))):
+            mock_season_payload.side_effect = lambda _id, season, *_args, n=season_one_length: (
+                {"episodes": [{"episode_number": e} for e in range(1, n + 1)]}
+                if season == 1
+                else None
+            )
+            importer = self._importer()
+            importer._current_section_uri = "http://plex"
+            importer._record_episode_entry(row, ids)
+            record = importer._episode_records[0]
+            self.assertEqual(record["tmdb_id"], "888")
+            self.assertEqual(
+                (record["season_number"], record["episode_number"]), expected,
+            )
+            self.assertEqual(
+                (record["plex_season_number"], record["plex_episode_number"]), (2, 1),
+            )
 
     @patch("app.providers.tvdb.enabled", return_value=False)
     @patch(
