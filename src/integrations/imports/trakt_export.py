@@ -14,7 +14,7 @@ import re
 import zipfile
 
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
-from integrations.imports.trakt import TraktImporter
+from integrations.imports.trakt import MODE_STAGES, TraktImporter
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +203,9 @@ def importer(file, user, mode):
 
     export_importer = TraktExportImporter(archive, user, mode)
     imported_counts, messages = export_importer.import_data()
+    if mode in MODE_STAGES:
+        # Watchlist only and Collection only leave the export's custom lists alone.
+        return imported_counts, messages
 
     lists_created, list_warnings = import_trakt_lists_from_export(user, archive)
     if lists_created:

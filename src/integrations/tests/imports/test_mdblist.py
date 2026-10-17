@@ -658,6 +658,47 @@ class ImportMDBList(TestCase):
         self.assertEqual(tv.status, Status.IN_PROGRESS.value)
         self.assertEqual(Episode.objects.filter(item__media_id="12345").count(), 2)
 
+    def test_new_season_of_a_dropped_or_paused_show_does_not_reopen_it(self):
+        """History for a season the user hasn't tracked keeps the show's status (#1133)."""
+        for status in (Status.DROPPED.value, Status.PAUSED.value):
+            with self.subTest(status=status):
+                TV.objects.filter(user=self.user).delete()
+                tv_item, _ = Item.objects.get_or_create(
+                    media_id="12345",
+                    source=Sources.TMDB.value,
+                    media_type=MediaTypes.TV.value,
+                    defaults={"title": "Test Show", "image": "image.jpg"},
+                )
+                tv = TV.objects.create(item=tv_item, user=self.user, status=status)
+
+                self._run_import(
+                    {
+                        "/sync/watched": {
+                            "episodes": [
+                                {
+                                    "watched_at": "2023-01-01T00:00:00Z",
+                                    "episode": {
+                                        "season": 1,
+                                        "number": 1,
+                                        "show": {
+                                            "title": "Test Show",
+                                            "ids": {"tmdb": 12345},
+                                        },
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                )
+
+                tv.refresh_from_db()
+                self.assertEqual(tv.status, status)
+                self.assertEqual(
+                    list(tv.seasons.values_list("status", flat=True)),
+                    [status],
+                )
+                self.assertEqual(Episode.objects.filter(related_season__related_tv=tv).count(), 1)
+
     def test_completion_rollup_preserves_dropped_status(self):
         """Completing an episode set does not replace dropped state."""
         first_episode = {
@@ -890,6 +931,64 @@ class ImportMDBList(TestCase):
         tv = TV.objects.get(item__media_id="12345", user=self.user)
         self.assertEqual(season.status, Status.IN_PROGRESS.value)
         self.assertEqual(tv.status, Status.IN_PROGRESS.value)
+
+    def _single_purpose_responses(self):
+        """One watched movie that is also collected, plus a separate watchlist movie."""
+        return {
+            "/sync/watched": {
+                "movies": [
+                    {
+                        "watched_at": "2023-01-02T00:00:00Z",
+                        "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+                    },
+                ],
+            },
+            "/watchlist/items": [
+                {"title": "WL Movie", "mediatype": "movie", "ids": {"tmdb": 999}},
+                {"title": "Test Movie", "mediatype": "movie", "ids": {"tmdb": 67890}},
+            ],
+            "/sync/collection": {
+                "movies": [
+                    {
+                        "collected_at": "2023-01-04T00:00:00Z",
+                        "movie": {"title": "Test Movie", "ids": {"tmdb": 67890}},
+                    },
+                ],
+            },
+        }
+
+    def test_watchlist_mode_only_adds_planned_titles(self):
+        """Watchlist only skips history and collection and keeps tracked titles."""
+        existing = Movie.objects.create(
+            item=Item.objects.create(
+                media_id="67890",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.MOVIE.value,
+                title="Test Movie",
+            ),
+            user=self.user,
+            status=Status.COMPLETED.value,
+        )
+
+        self._run_import(self._single_purpose_responses(), mode="watchlist")
+
+        self.assertEqual(
+            list(Movie.objects.filter(user=self.user).order_by("item__media_id").values_list("item__media_id", "status")),
+            [("67890", Status.COMPLETED.value), ("999", Status.PLANNING.value)],
+        )
+        existing.refresh_from_db()
+        self.assertEqual(existing.status, Status.COMPLETED.value)
+        self.assertFalse(CollectionEntry.objects.filter(user=self.user).exists())
+
+    def test_update_collection_mode_only_touches_collection(self):
+        """Collection only records owned copies and imports no history or watchlist."""
+        self._run_import(self._single_purpose_responses(), mode="update_collection")
+
+        self.assertEqual(
+            list(CollectionEntry.objects.filter(user=self.user).values_list("item__media_id", flat=True)),
+            ["67890"],
+        )
+        self.assertFalse(Movie.objects.filter(user=self.user).exists())
 
     def test_watchlist_uses_offset_pagination(self):
         """Watchlist retrieval follows the same offset contract as sync."""

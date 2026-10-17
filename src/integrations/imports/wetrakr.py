@@ -25,7 +25,7 @@ from datetime import datetime
 from app.models import Status
 from app.providers import services
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
-from integrations.imports.trakt import TRAKT_UNKNOWN_DATE, TraktImporter
+from integrations.imports.trakt import MODE_STAGES, TRAKT_UNKNOWN_DATE, TraktImporter
 
 logger = logging.getLogger(__name__)
 
@@ -411,6 +411,9 @@ class WeTrakrImporter(TraktImporter):
         user can also discard a movie, or a show they never started.
         """
         super().process_watchlist()
+        if not self.full_import:
+            # Watchlist only adds what is planned, not what was discarded.
+            return
         for entry in self.export.dropped():
             self._process_generic_entry(
                 entry,
@@ -452,7 +455,7 @@ def importer(file, user, mode):
             ),
         )
 
-    if "lists" not in export.sections_found:
+    if "lists" not in export.sections_found or mode in MODE_STAGES:
         # Keep lists from an earlier import when this upload has no lists file.
         return imported_counts, messages
 

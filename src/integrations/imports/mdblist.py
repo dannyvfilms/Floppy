@@ -30,6 +30,8 @@ from integrations.imports.trakt import TraktMetadataResolverMixin
 
 logger = logging.getLogger(__name__)
 
+MODE_STAGES = {"watchlist": "watchlist", "update_collection": "collection"}
+
 MDBLIST_API_BASE_URL = "https://api.mdblist.com"
 PAGE_SIZE = 500
 
@@ -178,7 +180,10 @@ class MDBListImporter(TraktMetadataResolverMixin):
         """Initialize the importer with the API key, user and mode."""
         self.api_key = api_key
         self.user = user
-        self.mode = mode
+        # Watchlist only and Collection only run one stage; the watchlist stage
+        # then behaves like "new" so it never touches an existing entry.
+        self.stage = MODE_STAGES.get(mode)
+        self.mode = "new" if mode == "watchlist" else mode
         self.warnings = []
 
         # Track existing media to handle "new" mode correctly
@@ -244,11 +249,14 @@ class MDBListImporter(TraktMetadataResolverMixin):
 
     def import_data(self):
         """Import all user data from MDBList."""
-        self.process_dropped()
-        self.process_watched()
-        self.process_watchlist()
-        self.process_ratings()
-        self.process_collection()
+        if self.stage is None:
+            self.process_dropped()
+            self.process_watched()
+            self.process_watchlist()
+            self.process_ratings()
+            self.process_collection()
+        else:
+            getattr(self, f"process_{self.stage}")()
 
         helpers.cleanup_existing_media(self.to_delete, self.user)
         self.warnings.extend(helpers.bulk_create_media(self.bulk_media, self.user))
@@ -649,7 +657,13 @@ class MDBListImporter(TraktMetadataResolverMixin):
                     item=season_item,
                     user=self.user,
                     related_tv=tv_obj,
-                    status=Status.IN_PROGRESS.value,
+                    # History for a new season of a show the user dropped or
+                    # paused is recorded without reopening the show.
+                    status=(
+                        tv_obj.status
+                        if tv_obj.status in app.models.USER_HELD_STATUSES
+                        else Status.IN_PROGRESS.value
+                    ),
                 )
                 if watched_at_dt is not None:
                     season_obj._history_date = watched_at_dt
