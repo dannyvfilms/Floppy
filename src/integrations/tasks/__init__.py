@@ -100,6 +100,7 @@ _EXPORT_MODULES = {
             "import_sonarr",
             "import_sonarr_recurring",
             "import_steam",
+            "import_itchio",
             "import_storygraph",
             "import_storyteller",
             "import_storyteller_recurring",
