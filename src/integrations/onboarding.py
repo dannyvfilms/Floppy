@@ -315,6 +315,14 @@ ONBOARDING_SOURCES: tuple[OnboardingSource, ...] = (
         upload_accept=".json,.zip",
     ),
     OnboardingSource(
+        "itchio",
+        (GAME,),
+        "credentials",
+        tags=("games",),
+        connect_url_name="import_itchio",
+        connect_fields=(("api_key", "itch.io API key", "password"),),
+    ),
+    OnboardingSource(
         "steam",
         (GAME,),
         "credentials",
