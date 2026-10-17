@@ -91,6 +91,7 @@ urlpatterns = [
     path("import/playnite", views.import_playnite, name="import_playnite"),
     path("import/grouvee", views.import_grouvee, name="import_grouvee"),
     path("import/steam", views.import_steam, name="import_steam"),
+    path("import/itchio", views.import_itchio, name="import_itchio"),
     path("import/radarr/connect", views.radarr_connect, name="radarr_connect"),
     path("import/radarr/disconnect", views.radarr_disconnect, name="radarr_disconnect"),
     path("import/radarr", views.import_radarr, name="import_radarr"),
