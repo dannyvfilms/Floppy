@@ -564,6 +564,8 @@ FILTERS: tuple[FilterDef, ...] = (
         "search",
         _text("search"),
         sql=lambda v, ctx: Q(title__icontains=v.search.strip())
+        | Q(original_title__icontains=v.search.strip())
+        | Q(localized_title__icontains=v.search.strip())
         | Q(media_id__icontains=v.search.strip()),
     ),
     FilterDef("rating", _rating_active, sql=_rating_sql),

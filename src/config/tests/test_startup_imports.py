@@ -63,6 +63,7 @@ names = (
     "Reconcile statistics sync",
     "Process media server webhook",
     "Process Stremio playback webhook",
+    "Process Stremio tracker event",
     "Verify Stremio playback completion",
     "Refresh Plex library sections",
     "Import from CLZ",

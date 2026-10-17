@@ -30,6 +30,30 @@ FUZZY_MATCH_SIMILARITY_THRESHOLD = 0.8
 FEW_CANDIDATES_AUTO_TRUST_MAX = 3
 
 
+def album_for_media_id(media_id):
+    """Return the Album behind an album page's media id, or None.
+
+    The album page identifies its Item with the release id, else the release
+    group id, else ``album-<pk>`` for an album with no MusicBrainz id.
+    """
+    media_id = str(media_id or "")
+    if media_id.startswith("album-"):
+        album_pk = media_id.removeprefix("album-")
+        if not album_pk.isdigit():
+            return None
+        return Album.objects.select_related("artist").filter(pk=album_pk).first()
+    if not media_id:
+        return None
+    return (
+        Album.objects.select_related("artist")
+        .filter(
+            models.Q(musicbrainz_release_id=media_id)
+            | models.Q(musicbrainz_release_group_id=media_id),
+        )
+        .first()
+    )
+
+
 def _parse_partial_date(date_str):
     """Parse a MusicBrainz partial date string (YYYY, YYYY-MM, or YYYY-MM-DD)."""
     if not date_str:

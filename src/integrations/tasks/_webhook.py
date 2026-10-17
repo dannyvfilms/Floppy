@@ -239,6 +239,49 @@ def process_stremio_webhook(payload, user_id, queue_member=None):
 
 
 @shared_task(
+    name="Process Stremio tracker event",
+    autoretry_for=(ProviderAPIError, requests.exceptions.RequestException),
+    max_retries=3,
+    retry_backoff=True,
+    retry_jitter=True,
+    soft_time_limit=90,
+    time_limit=120,
+)
+def process_stremio_tracker_event(
+    kind,
+    user_id,
+    media_type,
+    media_id,
+    extra,
+    received_at,
+):
+    """Record one Stremio player or library event on the worker.
+
+    `received_at` is when the request arrived, so a queued event keeps its place
+    in the session even if the worker picks it up late.
+    """
+    from django.utils.dateparse import parse_datetime
+
+    from integrations import stremio_tracker
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        return "unknown_user"
+    handler = (
+        stremio_tracker.record_player_event
+        if kind == "player"
+        else stremio_tracker.record_library_event
+    )
+    return handler(
+        user,
+        media_type,
+        media_id,
+        extra,
+        now=parse_datetime(received_at),
+    )
+
+
+@shared_task(
     name="Verify Stremio playback completion",
     soft_time_limit=90,
     time_limit=120,

@@ -1,4 +1,4 @@
-"""Deliver canonical state changes outward, exactly once each.
+"""Deliver watched-state and rating changes through a transactional outbox.
 
 The engine is a transactional outbox. The delivery row is written in the same
 transaction as the change that caused it, so there is no window in which state
@@ -10,7 +10,7 @@ Two rules do most of the safety work:
 
 - **Claim before you write.** A conditional update moves ``pending`` to
   ``in_flight``, and a partial unique index lets only one row per
-  (destination, item) hold that status. Serialization is enforced by the
+  (destination, item, operation) hold that status. Serialization is enforced by the
   database, not by a cache lock a crashed worker could hold forever.
 - **Retry by reading first.** A write that timed out may well have applied. Any
   attempt after the first reads provider state before re-issuing, so a network
@@ -21,11 +21,12 @@ Two rules do most of the safety work:
 import logging
 from uuid import uuid4
 
-from django.db import transaction
-from django.db.models import F, Q
+from django.db import IntegrityError, transaction
+from django.db.models import F, Max, Q
 from django.utils import timezone
 
 from integrations.models import (
+    CAPABILITY_RATING_PUSH,
     CAPABILITY_WATCHED_PUSH_PLAYED,
     CAPABILITY_WATCHED_PUSH_UNPLAYED,
     OutboundDeliveryStatus,
@@ -52,13 +53,14 @@ _ADAPTER_BUILDERS = {}
 def get_adapter(binding):
     """Return the adapter for a binding, or None when it has none."""
     if not _ADAPTER_BUILDERS:
-        from integrations.state.adapters import emby, jellyfin, kodi
+        from integrations.state.adapters import emby, jellyfin, kodi, tmdb
 
         _ADAPTER_BUILDERS.update(
             {
                 SyncClientKind.JELLYFIN.value: jellyfin.build_adapter,
                 SyncClientKind.EMBY.value: emby.build_adapter,
                 SyncClientKind.KODI.value: kodi.build_adapter,
+                SyncClientKind.TMDB.value: tmdb.build_adapter,
             },
         )
 
@@ -71,9 +73,7 @@ def get_adapter(binding):
 def _capability_for(watched):
     """Return the capability a write of this shape requires."""
     return (
-        CAPABILITY_WATCHED_PUSH_PLAYED
-        if watched
-        else CAPABILITY_WATCHED_PUSH_UNPLAYED
+        CAPABILITY_WATCHED_PUSH_PLAYED if watched else CAPABILITY_WATCHED_PUSH_UNPLAYED
     )
 
 
@@ -107,12 +107,14 @@ def enqueue_deliveries(change):
         OutboundStateDelivery.objects.filter(
             binding=binding,
             item=change.item,
+            operation="watched",
             status=OutboundDeliveryStatus.PENDING.value,
         ).update(status=OutboundDeliveryStatus.SUPERSEDED.value)
 
         delivery, was_created = OutboundStateDelivery.objects.get_or_create(
             binding=binding,
             item=change.item,
+            operation="watched",
             target_revision=change.revision,
             defaults={
                 "user": change.user,
@@ -130,19 +132,74 @@ def enqueue_deliveries(change):
     return created
 
 
+@transaction.atomic
+def enqueue_rating_change(user, item, score, *, client_kind=None):
+    """Queue a rating set/clear inside the transaction that writes the score.
+
+    Provider adapters own score normalization and identity resolution. The
+    outbox owns approval, ordering, coalescing and delivery for every provider.
+    """
+    deliveries = []
+    bindings = SyncBinding.objects.select_for_update().filter(user=user)
+    if client_kind is not None:
+        bindings = bindings.filter(client_kind=client_kind)
+    for binding in bindings:
+        if not binding.allows(SyncDirection.OUTBOUND.value, CAPABILITY_RATING_PUSH):
+            continue
+        adapter = get_adapter(binding)
+        if adapter is None or CAPABILITY_RATING_PUSH not in adapter.CAPABILITIES:
+            continue
+        previous = OutboundStateDelivery.objects.filter(
+            binding=binding,
+            item=item,
+            operation="rating",
+        )
+        revision = (
+            previous.aggregate(latest=Max("target_revision"))["latest"] or 0
+        ) + 1
+        previous.filter(status=OutboundDeliveryStatus.PENDING.value).update(
+            status=OutboundDeliveryStatus.SUPERSEDED.value,
+        )
+        delivery = OutboundStateDelivery.objects.create(
+            binding=binding,
+            user=user,
+            item=item,
+            operation="rating",
+            target_revision=revision,
+            rating=score,
+            client_event_id=str(uuid4()),
+        )
+        deliveries.append(delivery)
+        schedule_delivery(delivery)
+    return deliveries
+
+
 def claim(delivery_id):
     """Take exclusive ownership of one delivery, or return None.
 
     A conditional update rather than a lock: two workers racing here both issue
     the same statement, and only one of them updates a row.
     """
-    claimed = OutboundStateDelivery.objects.filter(
-        pk=delivery_id,
-        status=OutboundDeliveryStatus.PENDING.value,
-    ).update(
-        status=OutboundDeliveryStatus.IN_FLIGHT.value,
-        attempts=F("attempts") + 1,
-    )
+    try:
+        with transaction.atomic():
+            claimed = (
+                OutboundStateDelivery.objects.filter(
+                    pk=delivery_id,
+                    status=OutboundDeliveryStatus.PENDING.value,
+                )
+                .filter(
+                    Q(next_attempt_at__isnull=True)
+                    | Q(next_attempt_at__lte=timezone.now()),
+                )
+                .update(
+                    status=OutboundDeliveryStatus.IN_FLIGHT.value,
+                    attempts=F("attempts") + 1,
+                )
+            )
+    except IntegrityError:
+        # Another revision of this operation is still in flight. The sweeper
+        # will claim this one once that attempt has finished.
+        return None
     if not claimed:
         return None
     return OutboundStateDelivery.objects.get(pk=delivery_id)
@@ -170,6 +227,13 @@ def _finish(delivery, status, *, readback_digest="", error=""):
 
 def _reschedule(delivery, error):
     """Put a failed delivery back in the queue, or give up on it."""
+    if OutboundStateDelivery.objects.filter(
+        binding=delivery.binding,
+        item=delivery.item,
+        operation=delivery.operation,
+        target_revision__gt=delivery.target_revision,
+    ).exists():
+        return _finish(delivery, OutboundDeliveryStatus.SUPERSEDED.value)
     if delivery.attempts >= MAX_ATTEMPTS:
         return _finish(
             delivery,
@@ -216,12 +280,16 @@ def run_delivery(delivery_id):
     if not binding.is_operational():
         return _finish(delivery, OutboundDeliveryStatus.SKIPPED.value)
 
-    capability = _capability_for(delivery.intent)
+    capability = (
+        CAPABILITY_RATING_PUSH
+        if delivery.operation == "rating"
+        else _capability_for(delivery.intent)
+    )
     if not binding.allows(SyncDirection.OUTBOUND.value, capability):
         return _finish(delivery, OutboundDeliveryStatus.SKIPPED.value)
 
     adapter = get_adapter(binding)
-    if adapter is None:
+    if adapter is None or capability not in adapter.CAPABILITIES:
         return _finish(
             delivery,
             OutboundDeliveryStatus.SKIPPED.value,
@@ -229,6 +297,16 @@ def run_delivery(delivery_id):
         )
 
     try:
+        if (
+            delivery.operation == "rating"
+            and OutboundStateDelivery.objects.filter(
+                binding=binding,
+                item=delivery.item,
+                operation="rating",
+                target_revision__gt=delivery.target_revision,
+            ).exists()
+        ):
+            return _finish(delivery, OutboundDeliveryStatus.SUPERSEDED.value)
         external_id = adapter.resolve_external_id(delivery.item)
         if not external_id:
             # An unresolvable or ambiguous item is not a failure to retry: the
@@ -239,6 +317,15 @@ def run_delivery(delivery_id):
                 OutboundDeliveryStatus.SKIPPED.value,
                 error="Item could not be resolved unambiguously",
             )
+
+        if delivery.operation == "rating":
+            target = adapter.normalize_rating(delivery.rating)
+            if delivery.attempts > 1:
+                remote = adapter.read_rating(external_id)
+                if remote is not None and remote.score == target:
+                    return _finish(delivery, OutboundDeliveryStatus.DELIVERED.value)
+            adapter.write_rating(external_id, score=target)
+            return _finish(delivery, OutboundDeliveryStatus.DELIVERED.value)
 
         # Retry by reading first: a previous attempt may have applied before
         # the connection dropped, and re-issuing blindly is how a timeout
@@ -316,4 +403,5 @@ def schedule_delivery(delivery):
 
     transaction.on_commit(
         lambda: deliver_watched_state.delay(delivery_id=delivery.pk),
+        robust=True,
     )

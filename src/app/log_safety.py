@@ -28,14 +28,13 @@ _SECRET_NAME_KEYWORDS = (
     "api_key",
     "api-key",
     "sessionid",
+    "session_id",
 )
 # Match the keyword alone and let the name prefix stay where it is. The rules
 # below require a "=" or a ":" directly after the keyword, so the keyword must
 # be the last part of the name: "token_count=512", "status_code=200" and
 # "tokenizer_config=default" stay readable.
-_SECRET_NAME_PATTERN = "|".join(
-    re.escape(keyword) for keyword in _SECRET_NAME_KEYWORDS
-)
+_SECRET_NAME_PATTERN = "|".join(re.escape(keyword) for keyword in _SECRET_NAME_KEYWORDS)
 
 _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (

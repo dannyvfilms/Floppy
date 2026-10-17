@@ -1670,7 +1670,9 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                 select_related_fields.append("show")
                 select_related_fields.append("episode")
             elif media_type == MediaTypes.MUSIC.value:
-                select_related_fields.append("album")
+                select_related_fields.extend(
+                    ["album", "album__artist", "artist", "track"]
+                )
 
             queryset = (
                 queryset.annotate(

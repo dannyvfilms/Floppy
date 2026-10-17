@@ -84,6 +84,44 @@ def remap_via_tmdb_find(external_ids, actual_tmdb_id, load_season, find_cache=No
     return None
 
 
+def remap_via_anibridge(
+    mapping_data,
+    media_id,
+    season_number,
+    episode_number,
+    tv_metadata,
+    load_season,
+):
+    """Resolve anime numbering through the cached AniBridge episode graph.
+
+    The target is constrained to the already-resolved TMDB show. The season
+    loader remains owned by the caller so webhook and importer paths retain
+    their existing caching behavior.
+    """
+    if not mapping_data:
+        return None
+
+    from integrations.webhooks import anime_mappings
+
+    tv_metadata = tv_metadata or {}
+    metadata_ids = tv_metadata.get("provider_external_ids") or {}
+    mapping = anime_mappings.get_tmdb_episode_mapping(
+        mapping_data,
+        media_id,
+        season_number,
+        episode_number,
+        tvdb_id=tv_metadata.get("tvdb_id") or metadata_ids.get("tvdb_id"),
+    )
+    if mapping is None:
+        return None
+
+    target_season, target_episode = mapping
+    season_metadata = load_season(target_season)
+    if season_metadata and episode_in_season(target_episode, season_metadata):
+        return target_season, target_episode, season_metadata
+    return None
+
+
 def _spill_forward(season_number, episode_number, episode_counts):
     """Walk forward through seasons, spilling the episode offset over.
 

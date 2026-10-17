@@ -1,0 +1,23 @@
+{% load i18n %}
+
+<div class="bg-[var(--color-surface)] p-6 rounded-lg">
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-xl font-bold text-[var(--color-text)]">{{ track.title }}</h2>
+    <button type="button"
+            class="text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer"
+            aria-label="{% translate 'Close' %}"
+            @click="trackOpen = false">{% include "app/icons/x.svg" with classes="w-5 h-5" %}</button>
+  </div>
+  <form method="post" action="{% url 'music_track_notes' track.id %}">
+    {% csrf_token %}
+    <input type="hidden" name="return_url" value="{{ return_url }}">
+    {{ form.notes.errors }}
+    {% include "app/components/markdown_notes.html" with notes_field=form.notes only %}
+    <div class="flex justify-end">
+      <button type="submit"
+              class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 cursor-pointer">
+        {% translate 'Save notes' %}
+      </button>
+    </div>
+  </form>
+</div>

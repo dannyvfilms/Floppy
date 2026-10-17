@@ -450,6 +450,19 @@ class ResolverTests(TestCase):
         self.assertEqual(result, {LOGO: None, BACKDROP: None})
         self.assertFalse(GameArtwork.objects.exists())
 
+    def test_an_image_url_too_long_to_store_is_skipped_not_fatal(self):
+        too_long = Art("https://cdn2.steamgriddb.com/" + "a" * 1000, "steamgriddb", "1")
+        logo = Art("https://x.test/l.png", "thegamesdb", "2")
+
+        with (
+            patch.object(steamgriddb, "find", return_value={LOGO: too_long, BACKDROP: too_long}),
+            patch.object(thegamesdb, "find", return_value={LOGO: logo}),
+        ):
+            result = game_artwork.resolve(query())
+
+        self.assertEqual(result[LOGO], logo)
+        self.assertIsNone(result[BACKDROP])
+
     def test_after_an_error_the_next_views_do_not_hammer_providers(self):
         with patch.object(steamgriddb, "find", side_effect=requests.ConnectionError("down")), patch.object(thegamesdb, "find", return_value={}):
             game_artwork.resolve(query())
@@ -492,3 +505,278 @@ class ResolverTests(TestCase):
         built = game_artwork.query_for(12, {"title": "X", "details": {"release_date": None, "platforms": None}})
 
         self.assertEqual((built.year, built.platforms, built.steam_app_id), (None, (), ""))
+
+
+class ExpiryTests(TestCase):
+    """A refresh or a new key must not wait hours behind a stored lookup."""
+
+    def tearDown(self):
+        cache.clear()
+        super().tearDown()
+
+    def row(self, media_id="7", *, complete=False):
+        values = {"backdrop_url": "https://images.igdb.com/a.jpg", "backdrop_provider": "igdb"}
+        if complete:
+            values = {
+                "logo_url": "https://x.test/l.png",
+                "logo_provider": "steamgriddb",
+                "backdrop_url": "https://x.test/b.jpg",
+                "backdrop_provider": "steamgriddb",
+            }
+        return GameArtwork.objects.create(source="igdb", media_id=media_id, **values)
+
+    def test_a_refreshed_game_is_looked_up_again_even_when_complete(self):
+        row = self.row(complete=True)
+
+        game_artwork.expire("7")
+        row.refresh_from_db()
+
+        self.assertTrue(game_artwork.is_stale(row))
+        self.assertEqual(row.logo_url, "https://x.test/l.png")
+
+    def test_a_refresh_leaves_other_games_alone(self):
+        other = self.row("8", complete=True)
+
+        game_artwork.expire("7")
+        other.refresh_from_db()
+
+        self.assertFalse(game_artwork.is_stale(other))
+
+    def test_a_refresh_ends_the_error_backoff(self):
+        cache.set(game_artwork._error_key("7"), 1, 300)
+
+        game_artwork.expire("7")
+
+        self.assertIsNone(cache.get(game_artwork._error_key("7")))
+
+    def test_a_refreshed_game_gets_the_new_art_on_its_next_lookup(self):
+        self.row()
+        logo = Art("https://cdn2.steamgriddb.com/logo/1.png", "steamgriddb", "1")
+        backdrop = Art("https://cdn2.steamgriddb.com/hero/2.png", "steamgriddb", "2")
+        game_artwork.expire("7")
+
+        with patch.object(steamgriddb, "find", return_value={LOGO: logo, BACKDROP: backdrop}):
+            result = game_artwork.resolve(query())
+
+        self.assertEqual(result, {LOGO: logo, BACKDROP: backdrop})
+
+    def test_a_refresh_that_finds_nothing_keeps_the_stored_art(self):
+        self.row(complete=True)
+        game_artwork.expire("7")
+
+        with (
+            patch.object(steamgriddb, "find", side_effect=requests.ConnectionError("down")),
+            patch.object(thegamesdb, "find", return_value={}),
+        ):
+            result = game_artwork.resolve(query())
+
+        self.assertEqual(result[LOGO].url, "https://x.test/l.png")
+        self.assertEqual(result[BACKDROP].url, "https://x.test/b.jpg")
+
+    def test_refreshing_a_game_with_no_row_does_nothing(self):
+        game_artwork.expire("7")
+
+        self.assertFalse(GameArtwork.objects.exists())
+
+    def keyholder(self, name="keys"):
+        from django.contrib.auth import get_user_model
+
+        return get_user_model().objects.create_user(username=name, password="x")
+
+    def as_user(self, user):
+        from app.providers import credentials
+
+        return credentials.current_user_scope(user)
+
+    def test_a_new_instance_key_reopens_games_with_a_gap_for_everyone(self):
+        gap = self.row("7")
+        no_logo = GameArtwork.objects.create(
+            source="igdb",
+            media_id="9",
+            backdrop_url="https://x.test/b.jpg",
+            backdrop_provider="steamgriddb",
+        )
+        done = self.row("8", complete=True)
+
+        game_artwork.keys_saved()
+
+        self.assertTrue(game_artwork.is_stale(gap))
+        self.assertTrue(game_artwork.is_stale(no_logo))
+        self.assertFalse(game_artwork.is_stale(done))
+
+    def test_a_members_key_only_reopens_games_for_that_member(self):
+        owner, other = self.keyholder("owner"), self.keyholder("other")
+        row = self.row()
+
+        game_artwork.keys_saved(owner)
+
+        with self.as_user(owner):
+            self.assertTrue(game_artwork.is_stale(row))
+        with self.as_user(other):
+            self.assertFalse(game_artwork.is_stale(row))
+        self.assertFalse(game_artwork.is_stale(row))
+
+    def test_a_member_without_the_key_cannot_use_up_the_members_recheck(self):
+        owner, other = self.keyholder("owner"), self.keyholder("other")
+        self.row()
+        game_artwork.keys_saved(owner)
+
+        with (
+            self.as_user(other),
+            patch.object(steamgriddb, "find", return_value={}) as other_find,
+        ):
+            game_artwork.resolve(query())
+        other_find.assert_not_called()
+
+        logo = Art("https://cdn2.steamgriddb.com/logo/1.png", "steamgriddb", "1")
+        with (
+            self.as_user(owner),
+            patch.object(steamgriddb, "find", return_value={LOGO: logo}),
+            patch.object(thegamesdb, "find", return_value={}),
+        ):
+            result = game_artwork.resolve(query())
+
+        self.assertEqual(result[LOGO], logo)
+
+    def test_a_recheck_is_used_up_once_the_lookup_has_run(self):
+        owner = self.keyholder("owner")
+        self.row()
+        game_artwork.keys_saved(owner)
+
+        with (
+            self.as_user(owner),
+            patch.object(steamgriddb, "find", return_value={}),
+            patch.object(thegamesdb, "find", return_value={}),
+        ):
+            game_artwork.resolve(query())
+            row = GameArtwork.objects.get(media_id="7")
+            self.assertFalse(game_artwork.is_stale(row))
+
+    def test_a_new_key_ends_an_earlier_error_backoff(self):
+        owner = self.keyholder("owner")
+        with (
+            patch.object(steamgriddb, "find", side_effect=requests.ConnectionError("down")),
+            patch.object(thegamesdb, "find", return_value={}),
+        ):
+            game_artwork.resolve(query())
+        game_artwork.keys_saved(owner)
+        logo = Art("https://cdn2.steamgriddb.com/logo/1.png", "steamgriddb", "1")
+
+        with (
+            self.as_user(owner),
+            patch.object(steamgriddb, "find", return_value={LOGO: logo}),
+            patch.object(thegamesdb, "find", return_value={}),
+        ):
+            result = game_artwork.resolve(query())
+
+        self.assertEqual(result[LOGO], logo)
+
+    def test_an_error_backoff_does_not_settle_the_row(self):
+        row = self.row()
+        GameArtwork.objects.filter(pk=row.pk).update(resolved_at=timezone.now() - timedelta(hours=7))
+        cache.set(game_artwork._error_key("7"), 1, 300)
+
+        with patch.object(steamgriddb, "find") as mock_find:
+            game_artwork.resolve(query())
+
+        mock_find.assert_not_called()
+        self.assertTrue(game_artwork.is_stale(GameArtwork.objects.get(pk=row.pk)))
+
+    def test_saving_a_game_artwork_key_reopens_games_with_a_gap(self):
+        from app.providers import credentials
+
+        user = self.keyholder()
+        row = self.row()
+        for slug in ("steamgriddb", "thegamesdb"):
+            for save, scope in (
+                (lambda slug=slug: credentials.set_user(slug, user, {"api_key": "k"}), user),
+                (lambda slug=slug: credentials.set_instance(slug, {"api_key": "k"}), None),
+            ):
+                with self.subTest(slug=slug, personal=scope is not None):
+                    cache.clear()
+                    GameArtwork.objects.filter(pk=row.pk).update(resolved_at=timezone.now())
+                    row.refresh_from_db()
+                    with self.as_user(user):
+                        self.assertFalse(game_artwork.is_stale(row))
+
+                    save()
+
+                    with self.as_user(user):
+                        self.assertTrue(game_artwork.is_stale(row))
+
+    def test_saving_another_providers_key_leaves_artwork_alone(self):
+        from app.providers import credentials
+
+        row = self.row()
+
+        credentials.set_instance("tmdb", {"api_key": "k"})
+
+        self.assertFalse(game_artwork.is_stale(row))
+
+    def test_a_failure_while_reopening_artwork_does_not_fail_saving_the_key(self):
+        from app.providers import credentials
+
+        with patch.object(game_artwork, "keys_saved", side_effect=RuntimeError("cache")):
+            credentials.set_instance("steamgriddb", {"api_key": "k"})
+
+        self.assertEqual(credentials.instance_value("steamgriddb", "api_key"), "k")
+
+    @patch("app.game_artwork.gallery", return_value=[])
+    def test_the_game_page_loads_its_carousel_again_after_a_refresh(self, _gallery):
+        from app import carousel
+
+        self.row()
+        cache.set("igdb_carousel_v4_7", {"video": None, "photos": []}, 60)
+        self.assertTrue(carousel.confirmed_empty("game", "igdb", "7"))
+
+        game_artwork.expire("7")
+
+        self.assertFalse(carousel.confirmed_empty("game", "igdb", "7"))
+
+    @patch("app.game_artwork.gallery", return_value=[])
+    def test_the_game_page_loads_its_carousel_again_after_a_key_is_saved(self, _gallery):
+        from app import carousel
+
+        self.row()
+        cache.set("igdb_carousel_v4_7", {"video": None, "photos": []}, 60)
+        self.assertTrue(carousel.confirmed_empty("game", "igdb", "7"))
+
+        game_artwork.keys_saved()
+
+        self.assertFalse(carousel.confirmed_empty("game", "igdb", "7"))
+
+
+class GalleryProviderTests(TestCase):
+    @override_settings(STEAMGRIDDB_API_KEY="sgdb-key")
+    def test_steamgriddb_returns_all_heroes_sorted_with_thumbnails(self):
+        images = [
+            {"url": "https://x/low.jpg", "score": 1},
+            {"url": "https://x/high.jpg", "thumb": "https://x/thumb.jpg", "score": 9, "width": 1920, "height": 620},
+        ]
+        with patch.object(steamgriddb, "_game_id", return_value=55), patch(API, return_value={"data": images}) as api:
+            photos = steamgriddb.gallery(query())
+        self.assertEqual([p["url"] for p in photos], ["https://x/high.jpg", "https://x/low.jpg"])
+        self.assertEqual(photos[0]["thumb_url"], "https://x/thumb.jpg")
+        self.assertIn("/heroes/game/55", api.call_args.args[2])
+
+    @override_settings(THEGAMESDB_API_KEY="tgdb-key")
+    def test_thegamesdb_returns_every_fanart(self):
+        payload = {"data": {"base_url": {"original": "https://x/"}, "images": {"55": [
+            {"type": "fanart", "filename": "one.jpg"},
+            {"type": "fanart", "filename": "two.jpg"},
+            {"type": "clearlogo", "filename": "logo.png"},
+        ]}}}
+        with patch.object(thegamesdb, "_game_id", return_value=55), patch(API, return_value=payload):
+            photos = thegamesdb.gallery(query())
+        self.assertEqual([p["url"] for p in photos], ["https://x/one.jpg", "https://x/two.jpg"])
+
+    @override_settings(**DEV)
+    def test_screenscraper_gallery_strips_credentials_and_excludes_logos(self):
+        with patch(API, return_value=RESPONSE):
+            photos = screenscraper.gallery(query(platforms=(SNES,)))
+        self.assertEqual(len(photos), 2)
+        self.assertIn("media=fanart", photos[0]["url"])
+        self.assertEqual(photos[1]["url"], "https://api.screenscraper.fr/ss")
+        for photo in photos:
+            for secret in ("devid", "devpassword", "softname", "ssid", "sspassword"):
+                self.assertNotIn(secret, photo["url"])

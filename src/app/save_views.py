@@ -48,6 +48,7 @@ from app.templatetags.app_tags import media_url
 from app.track_modal_views import (
     _render_standard_track_modal,
 )
+from integrations.state.ratings import rating_edit
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ DETAILS_ROUTE_MIN_SEGMENTS = 2  # "details", "<source>", ... in the URL path
 
 
 @require_POST
+@rating_edit
 def media_save(request):
     """Save or update media data to the database."""
     media_id = request.POST["media_id"]
@@ -1058,6 +1060,7 @@ def _write_episode_save_oob(
 
 
 @require_POST
+@rating_edit
 def episode_save(request):
     """Handle the creation, deletion, and updating of episodes for a season."""
     media_id = request.POST["media_id"]

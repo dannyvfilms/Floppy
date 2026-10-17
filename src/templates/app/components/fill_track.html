@@ -173,7 +173,9 @@
           {% endif %}
 
           {% if form.notes %}
-            <div class="mb-4 sm:mb-5" x-data="{ notesOpen: false }">
+            <div class="mb-4 sm:mb-5"
+                 x-data="{ notesOpen: {% if notes_focus %}true{% else %}false{% endif %} }"
+                 {% if notes_focus %}x-init="$nextTick(() => $el.querySelector('textarea[name=notes]')?.focus())"{% endif %}>
               <label class="sm:hidden block text-xs font-medium mb-1 text-[var(--color-text-secondary)]">{% translate "Notes" %}</label>
               <button type="button"
                       @click="notesOpen = !notesOpen"

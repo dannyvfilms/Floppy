@@ -23,6 +23,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.models.episode_runtimes import usable_runtime_minutes
 from app.providers import services
 from integrations import import_progress
 from integrations import models as integration_models
@@ -1056,8 +1057,11 @@ class PocketCastsImporter:
 
         for episode in episode_items:
             duration_seconds = None
-            if episode.item and episode.item.runtime_minutes:
-                duration_seconds = episode.item.runtime_minutes * 60
+            minutes = usable_runtime_minutes(
+                episode.item.runtime_minutes if episode.item else None,
+            )
+            if minutes:
+                duration_seconds = minutes * 60
 
             history_items.append((episode.end_date, duration_seconds, "episode", True))
 
@@ -1071,8 +1075,9 @@ class PocketCastsImporter:
 
         for movie in movie_items:
             duration_seconds = None
-            if movie.item and movie.item.runtime_minutes:
-                duration_seconds = movie.item.runtime_minutes * 60
+            minutes = usable_runtime_minutes(movie.item.runtime_minutes)
+            if minutes:
+                duration_seconds = minutes * 60
 
             history_items.append((movie.end_date, duration_seconds, "movie", False))
 

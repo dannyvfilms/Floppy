@@ -160,6 +160,10 @@ SOURCES_CONFIG = {
         "name": "HowLongToBeat",
         "logo": static("img/hltb-logo.png"),
     },
+    "playnite": {
+        "name": "Playnite",
+        "logo": static("img/playnite-logo.svg"),
+    },
     "grouvee": {
         "name": "Grouvee",
         "logo": static("img/grouvee_logo.png"),
@@ -402,7 +406,7 @@ def user_uses_12_hour_format(user):
 
 @register.filter
 def user_date_format(date, user):
-    """Format a date according to user's date format preference."""
+    """Use the preferred date layout with month names in the active UI language."""
     if not date or not user:
         return ""
 
@@ -427,9 +431,9 @@ def user_date_format(date, user):
         if user.date_format == DateFormatChoices.ISO_8601:
             return local_dt.strftime("%Y-%m-%d")
         if user.date_format == DateFormatChoices.MONTH_D_YYYY:
-            return local_dt.strftime("%b %d, %Y")
+            return formats.date_format(local_dt, "M d, Y")
         if user.date_format == DateFormatChoices.D_MON_YYYY:
-            return local_dt.strftime("%d %b %Y")
+            return formats.date_format(local_dt, "d M Y")
         if user.date_format == DateFormatChoices.M_D_YYYY:
             return f"{local_dt.month}/{local_dt.day}/{local_dt.year}"
         if user.date_format == DateFormatChoices.D_M_YYYY:
@@ -439,7 +443,7 @@ def user_date_format(date, user):
         if user.date_format == DateFormatChoices.YYYY_MM_DD:
             return f"{local_dt.year}/{local_dt.month:02d}/{local_dt.day:02d}"
         if user.date_format == DateFormatChoices.LONG_EU:
-            return f"{local_dt.day} {local_dt.strftime('%b')}, {local_dt.year}"
+            return formats.date_format(local_dt, "j M, Y")
         # Default to system format
         return formats.date_format(local_dt, "DATE_FORMAT")
 

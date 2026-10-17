@@ -2000,6 +2000,24 @@ class Metadata(TestCase):
         )
 
     @patch("app.providers.comicvine.services.api_request")
+    def test_comic_volume_issues_request_a_later_page(self, mock_api_request):
+        """A later page sends its offset and does not reuse the first page's cache."""
+        volume_id = "paged-volume-test"
+        first_key = f"{Sources.COMICVINE.value}_volume_{volume_id}_issues"
+        second_key = f"{first_key}_offset_100"
+        comicvine.cache.set(first_key, [{"issue_number": "1"}])
+        self.addCleanup(comicvine.cache.delete, first_key)
+        self.addCleanup(comicvine.cache.delete, second_key)
+        mock_api_request.return_value = {
+            "results": [{"id": 101, "name": "Issue 101", "issue_number": "101"}],
+        }
+
+        result = comicvine.get_volume_issues(volume_id, offset=100)
+
+        self.assertEqual([issue["issue_number"] for issue in result], ["101"])
+        self.assertEqual(mock_api_request.call_args.kwargs["params"]["offset"], 100)
+
+    @patch("app.providers.comicvine.services.api_request")
     def test_comic_volume_issues_sort_cached_data(self, mock_api_request):
         """Cached volume issues should be corrected without a provider request."""
         volume_id = "cached-order-test"

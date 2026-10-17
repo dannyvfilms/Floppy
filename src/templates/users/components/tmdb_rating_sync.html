@@ -1,0 +1,58 @@
+{% load i18n %}
+<section class="bg-[var(--color-panel)] rounded-xl p-6 mb-6"
+         x-show="activeIntegration === 'all' || activeIntegration === 'sync' || activeIntegration === 'tmdb'">
+  <h2 class="text-xl font-semibold text-[var(--color-text)]">{% translate "TMDb ratings" %}</h2>
+  <p class="text-sm text-[var(--color-text-muted)] mt-1">
+    {% translate "Send your movie, show and episode ratings to your TMDb account. Season ratings stay in Floppy." %}
+  </p>
+  <p class="text-sm text-[var(--color-text-muted)] mt-2">
+    {% translate "Scores are rounded to the nearest half-point (minimum 0.5). Your Floppy score is unchanged. Clearing a rating removes it from TMDb. TMDb may remove rated titles from its watchlist, depending on your TMDb account settings." %}
+  </p>
+  {% if tmdb_rating_sync.account %}
+    <p class="mt-4 text-sm text-[var(--color-text)]">{% translate "Connected as" %} {{ tmdb_rating_sync.account.username }}</p>
+    {% if tmdb_rating_sync.account.connection_broken %}
+      <p class="mt-2 text-sm text-[var(--color-warning-text)]">{% translate "TMDb rejected your credentials. Reconnect your account." %}</p>
+    {% endif %}
+    {% if tmdb_rating_sync.account.last_error_message %}
+      <p class="mt-2 text-sm text-[var(--color-warning-text)]">{{ tmdb_rating_sync.account.last_error_message }}</p>
+    {% endif %}
+    <form method="post" action="{% url 'tmdb_settings' %}" class="mt-4 space-y-3">
+      {% csrf_token %}
+      <label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
+        <input type="checkbox" name="enabled" {% if tmdb_rating_sync.enabled %}checked{% endif %}>
+        {% translate "Automatically send my rating edits from Floppy" %}
+      </label>
+      <p class="text-sm text-[var(--color-text-muted)]">{% translate "Floppy replaces existing TMDb ratings. Imported ratings are only sent when you export them." %}</p>
+      <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm">{% translate "Save" %}</button>
+    </form>
+    {% if tmdb_rating_sync.enabled %}
+      <form method="post" action="{% url 'tmdb_export_ratings' %}" class="mt-4">
+        {% csrf_token %}
+        <p class="mb-2 text-sm text-[var(--color-text-muted)]">{% translate "Export uses your latest rating edit for each item, including clears. It can replace or remove existing TMDb ratings." %}</p>
+        <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm">{% translate "Export existing ratings" %}</button>
+      </form>
+    {% endif %}
+    <p class="mt-4 text-sm text-[var(--color-text-muted)]">
+      {% translate "Pending" %}: {{ tmdb_rating_sync.counts.pending|default:0 }} ·
+      {% translate "Sending" %}: {{ tmdb_rating_sync.counts.in_flight|default:0 }} ·
+      {% translate "Delivered" %}: {{ tmdb_rating_sync.counts.delivered|default:0 }} ·
+      {% translate "Failed" %}: {{ tmdb_rating_sync.counts.failed|default:0 }} ·
+      {% translate "Skipped" %}: {{ tmdb_rating_sync.counts.skipped|default:0 }}
+    </p>
+    {% for delivery in tmdb_rating_sync.recent %}
+      <p class="mt-2 text-sm text-[var(--color-text-muted)]">
+        {{ delivery.item }}: {{ delivery.get_status_display }}{% if delivery.last_error_message %} — {{ delivery.last_error_message }}{% endif %}
+      </p>
+    {% endfor %}
+    <form method="post" action="{% url 'tmdb_disconnect' %}" class="mt-4">
+      {% csrf_token %}
+      <button type="submit" class="text-sm text-[var(--color-link)] hover:underline">{% translate "Disconnect TMDb" %}</button>
+    </form>
+  {% endif %}
+  <form method="post" action="{% url 'tmdb_connect' %}" class="mt-4">
+    {% csrf_token %}
+    <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm">
+      {% if tmdb_rating_sync.account %}{% translate "Reconnect TMDb" %}{% else %}{% translate "Connect TMDb" %}{% endif %}
+    </button>
+  </form>
+</section>

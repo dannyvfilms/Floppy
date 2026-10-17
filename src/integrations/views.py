@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import re
 import secrets
 import zoneinfo
@@ -64,6 +65,7 @@ from integrations import (
     psn_api,
     seerr_api,
     stremio_catalog,
+    stremio_events,
     stremio_queue,
     tasks,
     xbox_api,
@@ -2413,6 +2415,32 @@ def import_hltb(request):
 
 
 @require_POST
+def import_playnite(request):
+    """View for importing a Playnite library CSV backup."""
+    file = request.FILES.get("playnite_csv")
+
+    if not file:
+        messages.error(request, "A Playnite CSV file is required.")
+        return _integration_redirect(request)
+
+    staged_file = _stage_upload_or_message(request, file, "Playnite CSV")
+    if staged_file is None:
+        return _integration_redirect(request)
+
+    if _queue_staged_task_or_message(
+        request,
+        tasks.import_playnite,
+        user_id=request.user.id,
+        file=staged_file,
+        mode=request.POST["mode"],
+        staged_paths=(staged_file,),
+    ) is False:
+        return _integration_redirect(request, connected_slug="playnite")
+    messages.info(request, "The Playnite library import has been queued.")
+    return _integration_redirect(request, connected_slug="playnite")
+
+
+@require_POST
 def import_grouvee(request):
     """View for importing game data from a Grouvee export (JSON or zip)."""
     file = request.FILES.get("grouvee_json")
@@ -3289,6 +3317,24 @@ def import_kavita(request):
     return _reading_server_sync_now(
         request, "Kavita", "kavita_account", tasks.import_kavita
     )
+
+
+@require_POST
+def refresh_kavita(request):
+    """Queue a full Kavita rescan with provider re-resolution."""
+    account = getattr(request.user, "kavita_account", None)
+    if not account:
+        messages.error(request, "Connect Kavita before refreshing.")
+        return redirect("import_data")
+    queued = _queue_task_or_message(
+        request,
+        tasks.import_kavita,
+        user_id=request.user.id,
+        mode="overwrite",
+    )
+    if queued is not False:
+        messages.info(request, "Kavita metadata refresh queued.")
+    return redirect("import_data")
 
 
 AUDIOBOOKSHELF_COVER_TIMEOUT = 15
@@ -5817,21 +5863,42 @@ def kodi_webhook(request, token):
 STREMIO_ADDON_MANIFEST = {
     # Keep the existing addon id so installed clients remain compatible.
     "id": "org.yamtrack.scrobbler",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "name": "Floppy",
     "description": (
         "Floppy Watchlist catalogs and playback scrobbling for Stremio."
     ),
-    "resources": ["catalog", "meta", "subtitles"],
+    # `player` and `library` are additive: a client that predates them parses
+    # the manifest, never matches the resource, and never calls the route.
+    "resources": ["catalog", "meta", "subtitles", "player", "library"],
     "types": ["movie", "series"],
     "idPrefixes": ["tt"],
     "catalogs": [],
     "behaviorHints": {"configurable": True, "configurationRequired": False},
 }
+# The player and library resources sit behind a kill switch so the manifest can
+# withdraw them without a code change. Only an explicit falsy value disables
+# them; declaring them is inert on clients that predate the resources.
+STREMIO_PLAYER_RESOURCES = ("player", "library")
+STREMIO_DISABLED_ENV_VALUES = {"0", "false", "no"}
+
+
+def _stremio_manifest_resources():
+    """Return the manifest resources, honoring the player/library kill switch."""
+    resources = list(STREMIO_ADDON_MANIFEST["resources"])
+    setting = os.environ.get("STREMIO_ENABLE_PLAYER_RESOURCE", "").strip().lower()
+    if setting in STREMIO_DISABLED_ENV_VALUES:
+        return [name for name in resources if name not in STREMIO_PLAYER_RESOURCES]
+    return resources
+
+
 STREMIO_SCROBBLE_THROTTLE_SECONDS = 1800
 STREMIO_MAX_MEDIA_ID_LENGTH = 128
 STREMIO_MEDIA_ID_PATTERN = re.compile(
-    r"^tt[0-9]+(?::[1-9][0-9]*:[1-9][0-9]*)?$",
+    # Season 0 is Stremio's specials bucket; episodes start at 1. Both bounds
+    # mirror MAX_EPISODE_COORDINATE so the route and the tracker agree on what
+    # is malformed.
+    r"^tt[0-9]+(?::[0-9]{1,4}:[1-9][0-9]{0,3})?$",
 )
 
 
@@ -5840,6 +5907,70 @@ def _stremio_addon_response(payload, status=200):
     response = JsonResponse(payload, status=status)
     response["Access-Control-Allow-Origin"] = "*"
     return response
+
+def _stremio_validated_media_id(
+    token,
+    media_type,
+    media_id,
+    *,
+    rejected,
+    forbidden=None,
+    allow_episode_id=False,
+):
+    """Authenticate an addon request and validate the media id it names.
+
+    Returns `(user, grant, media_id)` when the request may proceed, and the
+    response to send in its place otherwise. Every event route gates on this
+    same pair, so it lives here rather than four times over.
+
+    Each resource answers a refusal with its own protocol shape — Stremio
+    renders none of them, so `meta` sends an empty object, `subtitles` an empty
+    list (with a 200, since a subtitles request has no error to report), and
+    the write routes a `success` flag — so the caller passes its own
+    `(payload, status)`: `rejected` for a media id the pattern does not accept,
+    and `forbidden` for a grant minted without playback permission. A `None`
+    `forbidden` means the resource performs no write and needs no such gate.
+
+    The id is client-supplied and is bound into the tracker's queries, so it is
+    validated here rather than handed to a handler. `allow_episode_id` relaxes
+    the movie rule for `meta`, which answers for whatever id it is asked about
+    rather than writing playback for it.
+    """
+    user, grant = stremio_catalog.resolve_addon_credential(token)
+    if user is None:
+        logger.warning("Invalid token on Stremio addon request")
+        return _stremio_addon_response({"error": "Invalid token"}, status=401)
+
+    if forbidden is not None and grant is not None and not grant.allow_playback_start:
+        # These resources record playback, which is a write. A grant minted
+        # without that permission serves catalogs and nothing else.
+        logger.info(
+            "stremio_addon rejected reason=grant_excludes_playback_start "
+            "user_id=%s media_type=%s",
+            user.id,
+            media_type,
+        )
+        return _stremio_addon_response(*forbidden)
+
+    media_id = unquote(media_id)
+    malformed = (
+        media_type not in {"movie", "series"}
+        or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
+        or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
+        or (not allow_episode_id and media_type == "movie" and ":" in media_id)
+    )
+    if malformed:
+        # The id is logged only up to the bound the pattern itself enforces.
+        logger.info(
+            "stremio_addon rejected reason=invalid_media_id user_id=%s "
+            "media_type=%s media_id=%s",
+            user.id,
+            media_type,
+            media_id[:STREMIO_MAX_MEDIA_ID_LENGTH],
+        )
+        return _stremio_addon_response(*rejected)
+
+    return user, grant, media_id
 
 
 @login_not_required
@@ -5931,6 +6062,9 @@ def stremio_addon_manifest(request, token, config=None):
         "logo": request.build_absolute_uri(
             static("favicon/apple-touch-icon.png"),
         ),
+        # The kill switch withdraws the player/library resources from what
+        # clients see; the routes themselves are unconditional.
+        "resources": _stremio_manifest_resources(),
         # Both gates: the install URL picks the catalogs, the grant bounds them.
         "catalogs": stremio_catalog.manifest_catalogs_for_grant(
             user,
@@ -5946,18 +6080,16 @@ def stremio_addon_manifest(request, token, config=None):
 @require_GET
 def stremio_addon_meta(request, token, media_type, media_id):
     """Serve metadata for one item the user tracks."""
-    user, grant = stremio_catalog.resolve_addon_credential(token)
-    if user is None:
-        logger.warning("Invalid token on Stremio addon meta request")
-        return _stremio_addon_response({"error": "Invalid token"}, status=401)
-
-    media_id = unquote(media_id)
-    if (
-        media_type not in {"movie", "series"}
-        or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
-        or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
-    ):
-        return _stremio_addon_response({"meta": {}}, status=400)
+    validated = _stremio_validated_media_id(
+        token,
+        media_type,
+        media_id,
+        rejected=({"meta": {}}, 400),
+        allow_episode_id=True,
+    )
+    if isinstance(validated, HttpResponse):
+        return validated
+    user, grant, media_id = validated
 
     if grant is not None:
         stremio_catalog.touch_grant(grant)
@@ -5974,35 +6106,20 @@ def stremio_addon_meta(request, token, media_type, media_id):
 @login_not_required
 @csrf_exempt
 @require_GET
-def stremio_addon_subtitles(request, token, media_type, media_id, config=None):
+def stremio_addon_subtitles(request, token, media_type, media_id, extra=None, config=None):
     """Record a playback-start scrobble from a Stremio subtitles request."""
     from django.core.cache import cache
 
-    user, grant = stremio_catalog.resolve_addon_credential(token)
-    if user is None:
-        logger.warning("Invalid token on Stremio addon subtitles request")
-        return _stremio_addon_response({"error": "Invalid token"}, status=401)
-    if grant is not None and not grant.allow_playback_start:
-        # This route records a playback start, which is a write. A grant minted
-        # without that permission serves catalogs and nothing else.
-        logger.info("stremio_subtitles rejected reason=grant_excludes_playback_start")
-        return _stremio_addon_response({"subtitles": []})
-
-    media_id = unquote(media_id)
-    if (
-        media_type not in {"movie", "series"}
-        or len(media_id) > STREMIO_MAX_MEDIA_ID_LENGTH
-        or not STREMIO_MEDIA_ID_PATTERN.fullmatch(media_id)
-        or (media_type == "movie" and ":" in media_id)
-    ):
-        logger.info(
-            "stremio_queue status=limited reason=invalid_media_id user_id=%s "
-            "media_type=%s media_id=%s",
-            user.id,
-            media_type,
-            media_id[:STREMIO_MAX_MEDIA_ID_LENGTH],
-        )
-        return _stremio_addon_response({"subtitles": []})
+    validated = _stremio_validated_media_id(
+        token,
+        media_type,
+        media_id,
+        rejected=({"subtitles": []}, 200),
+        forbidden=({"subtitles": []}, 200),
+    )
+    if isinstance(validated, HttpResponse):
+        return validated
+    user, _grant, media_id = validated
 
     # Stremio re-requests subtitles on seeks and quality changes; only the
     # first request per item in the window records a scrobble.
@@ -6018,6 +6135,20 @@ def stremio_addon_subtitles(request, token, media_type, media_id, config=None):
             user.id,
         )
     elif throttle_added:
+        # Reported, not used: Stremio appends the selected release's
+        # `videoHash`/`videoSize`/`filename` here, and Floppy has always
+        # discarded them. One line per item per throttle window is enough to
+        # decide whether they are worth reading.
+        extras = stremio_events.parse_subtitles_video_extras(extra)
+        logger.info(
+            "stremio_subtitles_extras user_id=%s media_type=%s videoHash=%s "
+            "videoSize=%s filename=%s",
+            user.id,
+            media_type,
+            extras["videoHash"],
+            extras["videoSize"],
+            extras["filename"],
+        )
         queue_member = stremio_queue.member(media_type, media_id)
         queue_status = stremio_queue.reserve_pending(user.id, queue_member)
         if queue_status == "accepted":
@@ -6052,6 +6183,83 @@ def stremio_addon_subtitles(request, token, media_type, media_id, config=None):
             )
 
     return _stremio_addon_response({"subtitles": []})
+
+
+def _dispatch_stremio_tracker_event(kind, user, media_type, media_id, extra):
+    """Queue one player or library event so the web worker never does its writes.
+
+    A first-viewed episode can ask the provider for season metadata and a batched
+    library event writes up to a hundred rows, so both run on the Celery worker.
+    Stremio ignores the body and a 500 only makes the client retry, so a dispatch
+    failure is logged and accepted.
+    """
+    try:
+        tasks.process_stremio_tracker_event.delay(
+            kind,
+            user.id,
+            media_type,
+            media_id,
+            extra,
+            timezone.now().isoformat(),
+        )
+    except Exception:
+        logger.exception("stremio_%s status=dispatch_failed user_id=%s", kind, user.id)
+
+
+@login_not_required
+@csrf_exempt
+@require_GET
+def stremio_addon_player(
+    request,
+    token,
+    media_type,
+    media_id,
+    extra=None,
+    config=None,
+):
+    """Record one Stremio player event (start/pause/stop with position)."""
+    validated = _stremio_validated_media_id(
+        token,
+        media_type,
+        media_id,
+        rejected=({"success": False}, 400),
+        forbidden=({"success": True}, 200),
+    )
+    if isinstance(validated, HttpResponse):
+        return validated
+    user, _grant, media_id = validated
+
+    _dispatch_stremio_tracker_event("player", user, media_type, media_id, extra)
+
+    return _stremio_addon_response({"success": True})
+
+
+@login_not_required
+@csrf_exempt
+@require_GET
+def stremio_addon_library(
+    request,
+    token,
+    media_type,
+    media_id,
+    extra=None,
+    config=None,
+):
+    """Record one Stremio library event (watched/unwatched/add/remove)."""
+    validated = _stremio_validated_media_id(
+        token,
+        media_type,
+        media_id,
+        rejected=({"success": False}, 400),
+        forbidden=({"success": True}, 200),
+    )
+    if isinstance(validated, HttpResponse):
+        return validated
+    user, _grant, media_id = validated
+
+    _dispatch_stremio_tracker_event("library", user, media_type, media_id, extra)
+
+    return _stremio_addon_response({"success": True})
 
 
 @require_POST

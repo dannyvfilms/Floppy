@@ -78,6 +78,9 @@
 
 :root {
   /* Screen edges the camera or system UI covers; 0 on screens without them. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --header-safe-top: var(--safe-top);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --color-surface: #2a2f35;
@@ -594,6 +597,12 @@ main>.container,
   animation-delay: 70ms;
 }
 
+/* Cached posters must not replay the page/card entrance on every navigation. */
+main > .container:has(img[data-artwork-ready="true"]),
+:is(.media-grid, .detail-media-grid, .home-row-scrollbar-hidden) > :has(img[data-artwork-ready="true"]) {
+  animation: none;
+}
+
 .media-card-hover-outline::after {
   content: "";
   position: absolute;
@@ -663,9 +672,10 @@ html:is(.glass, .custom) [class*="bg-[var(--color-surface)]"] {
  * (via their `bg-[var(--color-surface)]` class) and nest fixed modal
  * overlays, so under glass/custom themes every card would permanently
  * capture its own modal instead of letting it use the viewport. Keep the
- * tinted background but drop the blur specifically on cards.
+ * tinted background but drop the blur specifically on cards. Use `:is` so
+ * this override matches the surface rule's specificity; `:where` loses to it.
  */
-html:is(.glass, .custom) :where(.media-card, .search-result-card, .search-result-card-square) {
+html:is(.glass, .custom) :is(.media-card, .search-result-card, .search-result-card-square) {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -1501,7 +1511,7 @@ html.light .theme-toggle-icon-moon {
 @media (max-width: 767.98px) {
   .detail-carousel-grid,
   .detail-flat-top {
-    --hero-line: calc(47dvh - 4rem);
+    --hero-line: calc(47dvh - 4rem - var(--header-safe-top));
     --hero-pad-y: 1.5rem;
     --hero-gutter-l: max(1rem, var(--safe-left));
     --hero-gutter-r: max(1rem, var(--safe-right));
@@ -1725,7 +1735,7 @@ html.light .theme-toggle-icon-moon {
     top: calc(-1 * var(--hero-pad-y));
     right: calc(-1 * var(--hero-gutter-r));
     left: calc(-1 * var(--hero-gutter-l));
-    height: calc(100dvh - 4rem);
+    height: calc(100dvh - 4rem - var(--header-safe-top));
     overflow: hidden;
     pointer-events: none;
   }
@@ -1779,9 +1789,24 @@ html.light .theme-toggle-icon-moon {
    beside the title, actions and chips instead of stacking them: the desktop
    arrangement at phone size. Compact only; the backdrop hero is already full width. */
 @media (min-width: 600px) and (max-width: 767.98px) {
+  :root {
+    --header-safe-top: 0px;
+  }
+
   /* Leave a four-rem gap centred on the unfolded screen's horizontal crease. */
   .detail-carousel-grid:has(.detail-mobile-hero__logo) {
-    --hero-line: calc(50dvh - 6rem);
+    --hero-line: calc(50dvh - 6rem - var(--header-safe-top));
+  }
+
+  .detail-mobile-hero__logo {
+    top: calc(var(--hero-line) - 2.5rem);
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero) [id^="detail-activity-subtitle-slot"] button,
+  .detail-carousel-grid:has(.detail-mobile-hero) .detail-mobile-meta {
+    font-size: 1rem;
+    line-height: 1.5;
+    letter-spacing: normal;
   }
 
   .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-carousel-grid__title {
@@ -1846,6 +1871,11 @@ html.light .theme-toggle-icon-moon {
     width: 2.75rem;
   }
 
+  /* Seven icons need 356px at the default gap; the column beside the poster is 334px at 600px. */
+  .detail-carousel-grid:not(:has(.detail-mobile-hero)) .detail-carousel-grid__actions > div > .mt-4 > .flex {
+    gap: 0.25rem;
+  }
+
   .detail-carousel-grid__actions [data-track-action-root],
   .detail-carousel-grid__actions [x-data*="editTrackOpen"] {
     width: auto;
@@ -1901,6 +1931,31 @@ html.light .theme-toggle-icon-moon {
 
   .detail-flat-top__info > .mb-6 {
     grid-column: 1 / -1;
+  }
+}
+
+/* Keep the unfolded portrait hero's proportions when its outer display is
+   rotated to landscape. Only the viewport becomes shorter; controls stay below
+   the fold and remain available by scrolling. */
+@media (min-width: 600px) and (max-width: 767.98px) and (orientation: landscape) {
+  .app-topbar__inner {
+    padding-right: 1rem;
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) {
+    --hero-line: calc(70vw - 6rem - var(--header-safe-top));
+  }
+
+  .detail-carousel-grid:has(.detail-mobile-hero__logo) .detail-mobile-hero {
+    height: calc(140vw - 4rem - var(--header-safe-top));
+  }
+}
+
+/* The unfolded display's iOS status controls share the navigation row. Reserve
+   their width only when the device reports a top system inset. */
+@media (min-width: 600px) and (max-width: 767.98px) and (orientation: portrait) {
+  .app-topbar__inner {
+    padding-right: max(1rem, var(--safe-right), min(8rem, calc(var(--safe-top) * 4)));
   }
 }
 
@@ -2160,6 +2215,92 @@ html.light .theme-toggle-icon-moon {
   }
 }
 
+@media (min-width: 600px) and (max-width: 767.98px) {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-promoted-content {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: start;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .detail-promoted-facts:not([hidden]) {
+    display: contents;
+  }
+
+  .detail-promoted-fact {
+    min-width: 0;
+    max-width: 24rem;
+  }
+
+  .detail-promoted-fact__label,
+  .detail-promoted-fact__value {
+    display: block;
+    overflow-wrap: anywhere;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+  }
+
+  .detail-promoted-fact__label {
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+
+  .detail-promoted-fact__full-label,
+  .detail-promoted-fact__runtime-separator {
+    display: none;
+  }
+
+  .detail-promoted-fact__compact-label {
+    display: inline;
+  }
+
+  .detail-promoted-fact__compact-break {
+    display: initial;
+  }
+
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-fact--promoted,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) ~ #detail-secondary-content .detail-sidebar-details:not(:has(.detail-sidebar-fact:not(.detail-sidebar-fact--promoted))) {
+    display: none;
+  }
+
+  .detail-secondary-sidebar {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 1rem;
+  }
+
+  .detail-secondary-sidebar > * {
+    grid-column: 1 / -1;
+  }
+
+  .detail-secondary-sidebar > :is(.detail-sidebar-genres, .detail-sidebar-studios, [data-detail-section="collection"]):not([hidden]) {
+    grid-column: auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .detail-secondary-sidebar > :is(.detail-sidebar-genres, .detail-sidebar-studios, [data-detail-section="collection"]) > .rounded-lg {
+    flex: 1;
+    text-align: left;
+  }
+
+  .detail-sidebar-genres > h2,
+  .detail-sidebar-studios > h2 {
+    display: flex;
+    align-items: center;
+    min-height: 2rem;
+  }
+
+  .detail-sidebar-genres > .rounded-lg > div {
+    justify-content: flex-start;
+  }
+}
+
 @media (min-width: 768px) {
   /* Desktop subtitles wrap naturally; size containment can collapse a title
      whose heading is hidden behind the clear logo. */
@@ -2311,6 +2452,7 @@ html.light .theme-toggle-icon-moon {
 
   .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header > .min-w-0 {
     display: block;
+    flex: none;
     width: 100%;
   }
 
@@ -2482,12 +2624,12 @@ html.light .theme-toggle-icon-moon {
 
   .detail-carousel-overview-caption {
     position: absolute;
-    right: 2px;
-    bottom: 2px;
-    left: 2px;
-    padding: 1rem 0.25rem 0.25rem;
-    border-radius: 0 0 0.25rem 0.25rem;
-    background: linear-gradient(to bottom, transparent, rgb(0 0 0 / 78%));
+    inset: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0.25rem;
+    background: linear-gradient(to bottom, transparent 20%, rgb(0 0 0 / 8%) 40%, rgb(0 0 0 / 28%) 60%, rgb(0 0 0 / 55%) 80%, rgb(0 0 0 / 78%));
   }
 
   .detail-carousel-strip-nav {

@@ -937,6 +937,7 @@ class HomeViewTests(TestCase):
         self.assertContains(response, "data-active-playback-card")
         self.assertContains(response, "Test TV Show")
         self.assertContains(response, "S01E02")
+        self.assertNotContains(response, "Stop check-in")
 
 
 class HomeRowCacheTests(TestCase):

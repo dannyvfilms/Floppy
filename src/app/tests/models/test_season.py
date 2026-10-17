@@ -191,8 +191,9 @@ class SeasonModel(TestCase):
                     end_date=datetime(2023, 7, ep_num, 0, 0, tzinfo=UTC),
                 )
 
-        # 5 of 6 episodes reached a second watch, a strict majority, so
-        # progress should advance to 6 rather than freeze at 4.
+        season.rewatch_started_at = datetime(2023, 7, 1, tzinfo=UTC)
+        season._invalidate_episode_stats()
+        # The explicit pass reaches episode 6 even with episode 5 skipped.
         self.assertEqual(season.progress, 6)
 
     def _make_skip_ahead_season(self, media_id, runtime_minutes=None):

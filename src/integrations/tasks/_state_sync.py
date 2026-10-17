@@ -1,4 +1,4 @@
-"""Celery tasks for watched-state delivery and reconciliation.
+"""Celery tasks for shared outbound delivery and watched-state reconciliation.
 
 All three run on the default queue. The interactive queue stays dedicated to
 user-triggered refreshes, and a library sweep is exactly the kind of
@@ -6,6 +6,7 @@ long-running work that must never sit in front of one.
 """
 
 import logging
+from contextlib import suppress
 
 from celery import shared_task
 from django.utils import timezone
@@ -46,6 +47,21 @@ def sweep_watched_state_deliveries(limit=100):
     for delivery in outbound.due_deliveries(limit=limit):
         outbound.run_delivery(delivery.pk)
         swept += 1
+
+    from integrations import connection_health
+    from integrations.models import TMDbAccount
+    from integrations.state.adapters.base import AdapterError
+    from integrations.state.adapters.tmdb import TMDbRatingAdapter
+
+    for account in (
+        TMDbAccount.objects.exclude(connection_broken=False)
+        .select_related("user")
+        .iterator(chunk_size=100)
+    ):
+        if connection_health.due_for_probe(account):
+            adapter = TMDbRatingAdapter(account)
+            with suppress(AdapterError):
+                adapter._request("GET", "account")
 
     if swept:
         logger.info("Swept %s pending watched-state deliveries", swept)

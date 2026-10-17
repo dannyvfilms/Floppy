@@ -15,10 +15,9 @@
     <div class="relative">
       <a href="{{ tracker.album|music_album_url }}">
         {% if tracker.album.image and tracker.album.image != IMG_NONE %}
-          <img alt="{{ tracker.album.title }}"
-               class="media-card-poster lazyload w-full aspect-[1/1] bg-[var(--color-surface-alt)] object-cover"
-               data-src="{{ tracker.album.image|image_url }}"
-               src="{{ IMG_NONE }}">
+          <img loading="lazy" decoding="sync" alt="{{ tracker.album.title }}"
+               class="media-card-poster w-full aspect-[1/1] bg-[var(--color-surface-alt)] object-cover"
+               src="{{ tracker.album.image|image_url }}">
         {% else %}
           <div class="w-full aspect-[1/1] bg-[var(--color-surface-alt)] flex items-center justify-center">
             {% icon 'music' is_active=False extra_classes="w-12 h-12 text-gray-600" %}

@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from django.template import engines
+from django.template.loader import render_to_string
 from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import translation
@@ -21,7 +22,9 @@ from app.templatetags.app_tags import (
     media_status_readable,
     media_type_readable,
     media_type_readable_plural,
+    month_abbreviation,
     progress_unit_label,
+    translate_activity_text,
 )
 
 
@@ -153,3 +156,39 @@ class FrenchPreferencesTests(TestCase):
         self.assertContains(response, "Paramètres")
         catalog = self.client.get(reverse("javascript-catalog"))
         self.assertContains(catalog, "Aujourd'hui")
+
+
+class SpanishPresentationTests(SimpleTestCase):
+    """Common Spanish screens use compiled catalogs without changing stored values."""
+
+    def test_common_screen_labels_are_translated(self):
+        with translation.override("es"):
+            for message in (
+                "Completed Items", "Average Rating", "Most Active Day",
+                "Your History", "Watched once", "No results found",
+                "Save appearance", "Refresh statistics",
+            ):
+                with self.subTest(message=message):
+                    self.assertNotEqual(translation.gettext(message), message)
+            self.assertEqual(Status.COMPLETED.value, "Completed")
+            self.assertEqual(media_status_readable(Status.COMPLETED), "Completado")
+
+    def test_cached_recap_label_translates_at_render_time(self):
+        highlights = {
+            "today_card": {"label": "TODAY IN HISTORY", "entry": None},
+        }
+        with translation.override("es"):
+            html = render_to_string(
+                "app/components/statistics/highlight_set.html",
+                {"highlights": highlights},
+            )
+        self.assertIn("HOY EN LA HISTORIA", html)
+        self.assertEqual(highlights["today_card"]["label"], "TODAY IN HISTORY")
+
+    def test_cached_activity_labels_translate_without_rebuilding_statistics(self):
+        with translation.override("es"):
+            self.assertEqual(month_abbreviation("Jan"), "Ene")
+            self.assertEqual(month_abbreviation("Aug"), "Ago")
+            self.assertEqual(month_abbreviation(""), "")
+            self.assertEqual(translate_activity_text("Up 9.8%"), "Sube un 9.8%")
+            self.assertEqual(translate_activity_text("Down 2%"), "Baja un 2%")

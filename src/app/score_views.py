@@ -3,9 +3,10 @@ from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.db.models.functions import TruncDate
-from django.http import HttpResponse, HttpResponseBadRequest, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -14,6 +15,7 @@ from django.views.decorators.http import require_POST
 from app import history_cache
 from app.models import Album, BasicMedia, Episode, Season
 from app.services.episode_scores import rate_episode
+from integrations.state.ratings import rating_edit
 
 logger = logging.getLogger(__name__)
 
@@ -53,13 +55,13 @@ def _collect_music_history_day_keys_for_artist(user, artist):
 
 
 @require_POST
+@rating_edit(implicit_clear=True)
 def update_media_score(request, media_type, instance_id):
     """Update the user's score for a media item."""
-    media = BasicMedia.objects.get_media(
-        request.user,
-        media_type,
-        instance_id,
-    )
+    try:
+        media = BasicMedia.objects.get_media(request.user, media_type, instance_id)
+    except ObjectDoesNotExist as error:
+        raise Http404 from error
 
     score_raw = request.POST.get("score")
     toggle = request.POST.get("toggle")
@@ -119,6 +121,7 @@ def update_media_score(request, media_type, instance_id):
 
 @login_required
 @require_POST
+@rating_edit(implicit_clear=True)
 def update_episode_score(request, season_id, episode_number):
     """Update the user's score for a specific episode."""
     season = get_object_or_404(Season, id=season_id, user=request.user)

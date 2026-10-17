@@ -964,9 +964,5 @@ def decrypt_or_raise(token):
         return decrypt(token)
     except InvalidToken as error:
         logger.exception("Failed to decrypt stored credential")
-        msg = (
-            "Stored credentials could not be decrypted. This usually happens "
-            "after the app's encryption key changes. Please reconnect this "
-            "integration."
-        )
+        msg = "Saved credentials can't be read. Reconnect this integration."
         raise MediaImportError(msg) from error

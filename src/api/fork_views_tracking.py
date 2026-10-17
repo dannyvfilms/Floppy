@@ -19,6 +19,7 @@ from app.models import Episode, ItemTag, MediaTypes, Movie, Tag
 from app.services import metadata_resolution
 from app.tasks_bulk_plays import bulk_episode_plays_task
 from app.templatetags.app_tags import media_url
+from integrations.state.ratings import rating_edit
 
 from .contract_serializers import DetailErrorSerializer
 from .helpers import (
@@ -71,6 +72,7 @@ class MediaEpisodeWatchView(drf_views.APIView):
         parameters=[MEDIA_TYPE_TV_ONLY_PARAM],
         responses={404: DetailErrorSerializer},
     )
+    @rating_edit
     def post(
         self,
         request,

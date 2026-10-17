@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
     ]
 
     dependencies = [
-        ('integrations', '0058_psn_playtime_snapshots'),
+        ('integrations', '0059_rating_sync'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

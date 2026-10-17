@@ -326,6 +326,41 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         finally:
             touch_context.close()
 
+    @patch("app.providers.services.get_media_metadata")
+    def test_glass_and_custom_grid_modals_fill_viewport(self, mock_get_metadata):
+        """Translucent cards must not capture their fixed modal overlays (#1579)."""
+        mock_get_metadata.return_value = {
+            "media_id": "1579",
+            "title": "Modal Test",
+            "media_type": MediaTypes.MOVIE.value,
+            "source": Sources.TMDB.value,
+            "image": "http://example.com/image.jpg",
+            "max_progress": 1,
+            "details": {"release_date": "2007-01-01"},
+            "related": {},
+        }
+        item = Item.objects.create(
+            media_id="1579",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Modal Test",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+
+        for theme in ("glass", "custom"):
+            with self.subTest(theme=theme):
+                self.user.theme = theme
+                self.user.save(update_fields=["theme"])
+                self.page.goto(f"{self.live_server_url}/medialist/movie?layout=grid")
+                card = self.page.locator(".media-card").first
+                expect(card).to_be_visible()
+                for action in ("Add to tracker", "Add to custom lists"):
+                    card.hover()
+                    card.get_by_title(action, exact=True).click()
+                    self._assert_visible_overlay_fills_viewport()
+                    self.page.keyboard.press("Escape")
+                    expect(self.page.locator("div.fixed.inset-0:visible")).to_have_count(0)
+
     def set_date_input(self, locator, value):
         """Set a hidden date-picker input and dispatch its change events."""
         locator.evaluate(

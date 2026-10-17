@@ -1337,3 +1337,14 @@ def split_pass_history(tracked_plays, season):
     return [
         play for play in tracked_plays if season.play_counts_for_pass(play)
     ], tracked_plays
+
+
+def entry_activity_key(entry):
+    """Sort key that puts the most recently active tracked entry last."""
+    dates = [d for d in (entry.end_date, entry.start_date) if d]
+    primary_date = max(dates) if dates else entry.created_at
+    return (
+        primary_date,
+        entry.start_date or entry.created_at,
+        entry.created_at,
+    )

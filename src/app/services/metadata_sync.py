@@ -7,7 +7,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from app import credits as credit_helpers
-from app import metadata_utils, view_constants
+from app import game_artwork, metadata_utils, view_constants
 from app.log_safety import exception_summary
 from app.models import MediaTypes, Sources
 from app.providers import services
@@ -103,6 +103,19 @@ def enrich_synced_item(
                 "Game length metadata could not be refreshed. Cached data will be used if available.",
             )
 
+        # The logo and backdrop are looked up when the page next loads, in the
+        # visitor's request, because a personal provider key only applies there.
+        try:
+            game_artwork.expire(item.media_id)
+            cache.delete(f"igdb_carousel_v4_{item.media_id}")
+        except Exception as exc:
+            logger.warning(
+                "game_artwork_refresh_failed item_id=%s media_id=%s error=%s",
+                item.id,
+                item.media_id,
+                exception_summary(exc),
+            )
+
     metadata_resolution.upsert_provider_links(
         item,
         metadata,
@@ -130,6 +143,7 @@ def enrich_synced_item(
             season_number=season_number,
         )
         if preferred_media_id:
+            language = metadata_resolution.metadata_language_default(user, item)
             preferred_tracking_type = metadata_resolution.get_tracking_media_type(
                 route_media_type,
                 source=preferred_provider,
@@ -140,6 +154,7 @@ def enrich_synced_item(
                     preferred_tracking_type,
                     preferred_media_id,
                     season_number=season_number,
+                    language=language,
                 ),
             )
             try:
@@ -150,6 +165,7 @@ def enrich_synced_item(
                     ),
                     preferred_media_id,
                     preferred_provider,
+                    language=language,
                 )
                 metadata_resolution.upsert_provider_links(
                     item,

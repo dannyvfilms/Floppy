@@ -817,7 +817,7 @@ function initStatisticsCharts() {
       // plural rule decides which wording each uses); swap in the real count
       // first (the template has no other digits), then the date.
       const marker = count > 2 ? "2" : String(count);
-      const template = heatmap.dataset["title" + marker];
+      const template = heatmap.getAttribute("data-title-" + marker);
       cell.title = template.replace(marker, String(count)).replace("__DATE__", cell.dataset.heatmapDate);
     });
   }

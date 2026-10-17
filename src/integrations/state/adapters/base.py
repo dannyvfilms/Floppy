@@ -12,6 +12,7 @@ plausible guess from ``read_state`` is worse than declaring the capability
 unavailable, because the engine treats a read as evidence.
 """
 
+from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
 
@@ -25,6 +26,36 @@ class TransientAdapterError(AdapterError):
 
 class TerminalAdapterError(AdapterError):
     """The call will not succeed as issued: bad credentials, unknown item."""
+
+
+class RemoteRating:
+    """Known remote rating; a null score means unrated, not unknown."""
+
+    def __init__(self, score: Decimal | None):
+        """Store the provider's score."""
+        self.score = score
+
+
+class RatingAdapter(Protocol):
+    """Optional rating capability; watched-only adapters need not implement it."""
+
+    CAPABILITIES: frozenset[str]
+
+    def resolve_external_id(self, item) -> str | None:
+        """Resolve only a confirmed provider identity."""
+        ...
+
+    def normalize_rating(self, score: Decimal | None) -> Decimal | None:
+        """Convert a Floppy score into the provider's supported scale."""
+        ...
+
+    def read_rating(self, external_id: str) -> RemoteRating | None:
+        """Return a known rating, or None when remote state is unknown."""
+        ...
+
+    def write_rating(self, external_id: str, *, score: Decimal | None) -> None:
+        """Set a score, or remove it when score is None."""
+        ...
 
 
 class RemoteState:

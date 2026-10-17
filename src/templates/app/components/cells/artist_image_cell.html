@@ -1,10 +1,9 @@
 {% load app_tags %}
 
 {% if media.artist.image and media.artist.image != IMG_NONE %}
-  <img alt="{{ media.artist.name }}"
-       class="lazyload min-w-10 w-10 h-10 object-cover rounded-md parent-hover-tap:hidden"
-       data-src="{{ media.artist.image|image_url }}"
-       src="{{ IMG_NONE }}">
+  <img data-media-artwork loading="lazy" decoding="sync" alt="{{ media.artist.name }}"
+       class="min-w-10 w-10 h-10 object-cover rounded-md parent-hover-tap:hidden"
+       src="{{ media.artist.image|image_url }}">
 {% else %}
   <div class="min-w-10 w-10 h-10 bg-[var(--color-surface-alt)] rounded-md flex items-center justify-center parent-hover-tap:hidden">
     {% include "app/icons/person.svg" with classes="w-5 h-5 text-gray-600" %}

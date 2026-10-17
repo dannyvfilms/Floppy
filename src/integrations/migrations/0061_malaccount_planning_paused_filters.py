@@ -41,7 +41,7 @@ class Migration(migrations.Migration):
     ]
 
     dependencies = [
-        ('integrations', '0059_malaccount'),
+        ('integrations', '0060_malaccount'),
     ]
 
     operations = [

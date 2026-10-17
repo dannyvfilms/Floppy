@@ -40,7 +40,7 @@
       </div>
       <div class="bg-[var(--color-surface-strong)] rounded-lg p-3 sm:p-4">
         <div class="flex items-center gap-2 mb-4">
-          <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">{% blocktranslate trimmed with value_1=consumption.unit_name %}Completed {{ value_1 }}s{% endblocktranslate %}</h3>
+          <h3 class="text-sm font-medium uppercase tracking-wide text-[var(--color-text-secondary)]">{% blocktranslate trimmed with value_1=consumption.unit_name|translate_detail_value %}Completed {{ value_1 }}s{% endblocktranslate %}</h3>
           <div class="relative" x-data="{ tooltipOpen: false }">
             <button @mouseenter="tooltipOpen = true" @mouseleave="tooltipOpen = false" @click="tooltipOpen = !tooltipOpen" @click.outside="tooltipOpen = false" class="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors cursor-pointer" type="button" aria-label="{% translate "Show information" %}">
               {% include "app/icons/info.svg" with classes="w-4 h-4" %}
@@ -54,7 +54,7 @@
                  x-transition:leave-end="opacity-0 scale-95"
                  class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 max-w-[calc(100vw-2rem)] p-3 text-white text-xs rounded-lg z-10"
                  style="display: none; background: rgba(0, 0, 0, 0.85); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);">
-              <p>{% blocktranslate trimmed with value_1=consumption.unit_name|lower %}Completed {{ value_1 }}s grouped by length for this range.{% endblocktranslate %}</p>
+              <p>{% blocktranslate trimmed with value_1=consumption.unit_name|translate_detail_value|lower %}Completed {{ value_1 }}s grouped by length for this range.{% endblocktranslate %}</p>
               <div class="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent" style="border-top-color: rgba(0, 0, 0, 0.85);"></div>
             </div>
           </div>
@@ -80,10 +80,10 @@
             <a href="{{ item.media.item|media_url }}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
               <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
               {% if item.media.item.image and item.media.item.image != IMG_NONE %}
-              <img src="{{ IMG_NONE }}"
-                   data-src="{{ item.media.item.image|image_url }}"
+              <img data-media-artwork loading="lazy" decoding="sync"
+                   src="{{ item.media.item.image|image_url }}"
                    alt="{{ item.media.item.title }}"
-                   class="lazyload w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
+                   class="w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
               {% else %}
               <div class="w-10 h-10 rounded bg-[var(--color-surface)]"></div>
               {% endif %}
@@ -114,10 +114,10 @@
               {% endif %}
                 <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
                 {% if author.image %}
-                <img src="{{ IMG_NONE }}"
-                   data-src="{{ author.image|image_url }}"
+                <img data-media-artwork loading="lazy" decoding="sync"
+                   src="{{ author.image|image_url }}"
                      alt="{{ author.name }}"
-                     class="lazyload w-10 h-10 rounded-full object-cover bg-[var(--color-surface)]">
+                     class="w-10 h-10 rounded-full object-cover bg-[var(--color-surface)]">
                 {% else %}
                 <div class="w-10 h-10 rounded-full bg-[var(--color-surface)] flex items-center justify-center">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-[var(--color-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -185,10 +185,10 @@
             <a href="{{ media.item|media_url }}" class="flex items-center space-x-3 hover:bg-[var(--color-surface)] rounded-md p-1 -m-1 transition-colors cursor-pointer">
               <span class="text-[var(--color-text-muted)] text-sm font-medium w-4">{{ forloop.counter }}</span>
               {% if media.item.image and media.item.image != IMG_NONE %}
-              <img src="{{ IMG_NONE }}"
-                   data-src="{{ media.item.image|image_url }}"
+              <img data-media-artwork loading="lazy" decoding="sync"
+                   src="{{ media.item.image|image_url }}"
                    alt="{{ media.item.title }}"
-                   class="lazyload w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
+                   class="w-10 h-10 rounded object-cover bg-[var(--color-surface)]">
               {% else %}
               <div class="w-10 h-10 rounded bg-[var(--color-surface)]"></div>
               {% endif %}

@@ -13,7 +13,7 @@
           hx-target="#session-track-modal-{{ entry.media_type }}-{{ entry.entry_key }}"
           hx-trigger="click"
           @click="trackOpen = true">
-    <img src="{{ entry.poster|image_url }}"
+    <img data-media-artwork loading="lazy" decoding="sync" src="{{ entry.poster|image_url }}"
          alt=""
          aria-hidden="true"
          class="w-10 shrink-0 rounded object-cover {% if entry.media_type == MediaTypes.MUSIC.value or entry.media_type == MediaTypes.PODCAST.value %}aspect-square{% else %}aspect-[2/3]{% endif %}">

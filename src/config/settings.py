@@ -344,8 +344,12 @@ PERF_LOG_QUERY_COUNT_THRESHOLD = config(
     cast=int,
 )
 TRAKT_IMPORT_CHUNK_ROWS = config("TRAKT_IMPORT_CHUNK_ROWS", default=100, cast=int)
-TRAKT_IMPORT_CHUNK_TARGET_MS = config("TRAKT_IMPORT_CHUNK_TARGET_MS", default=100, cast=int)
-TRAKT_IMPORT_STAGING_BYTES = config("TRAKT_IMPORT_STAGING_BYTES", default=512 * 1024 * 1024, cast=int)
+TRAKT_IMPORT_CHUNK_TARGET_MS = config(
+    "TRAKT_IMPORT_CHUNK_TARGET_MS", default=100, cast=int
+)
+TRAKT_IMPORT_STAGING_BYTES = config(
+    "TRAKT_IMPORT_STAGING_BYTES", default=512 * 1024 * 1024, cast=int
+)
 
 # High-water memory attribution (app/memory_envelope.py). Separate from the
 # slow-request log above: that one answers "what was slow", this one answers
@@ -1571,6 +1575,7 @@ else:
         "integrations.tasks._plex_collection",
         "integrations.tasks._plex_sections",
         "integrations.tasks._receipts",
+        "integrations.tasks._ratings",
         "integrations.tasks._state_sync",
         "integrations.tasks._webhook",
     )
@@ -1786,6 +1791,10 @@ CELERY_TASK_ROUTES = {
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },
     "Process Stremio playback webhook": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
+    "Process Stremio tracker event": {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },

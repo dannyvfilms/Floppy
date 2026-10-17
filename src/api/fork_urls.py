@@ -237,6 +237,11 @@ urlpatterns = [
         name="api_list_items_order",
     ),
     re_path(
+        r"^lists/(?P<list_id>\d+)/items/ranks/?$",
+        fork_views_lists.ListItemsRanksView.as_view(),
+        name="api_list_items_ranks",
+    ),
+    re_path(
         r"^lists/(?P<list_id>\d+)/recommendations/?$",
         fork_views_lists.ListRecommendationsView.as_view(),
         name="api_list_recommendations",

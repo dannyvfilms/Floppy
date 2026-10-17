@@ -37,6 +37,7 @@ def provider_metadata_cache_keys(
                 media_type,
                 season_number=season_number,
                 episode_number=episode_number,
+                language=language,
             ),
         )
     elif source == Sources.TVDB.value:

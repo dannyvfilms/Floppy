@@ -9,10 +9,9 @@
   <div class="flex items-center p-4 gap-4">
     <div class="shrink-0 relative">
       <a href="{{ item|media_url }}" hx-boost="true">
-        <img alt="{{ resolved_item_title|default:title }}"
-             class="lazyload w-16 h-24 object-cover rounded shadow-md bg-[var(--color-surface-alt)]"
-             data-src="{{ item.image|image_url }}"
-             src="{{ IMG_NONE }}">
+        <img data-media-artwork loading="lazy" decoding="sync" alt="{{ resolved_item_title|default:title }}"
+             class="w-16 h-24 object-cover rounded shadow-md bg-[var(--color-surface-alt)]"
+             src="{{ item.image|image_url }}">
       </a>
     </div>
 

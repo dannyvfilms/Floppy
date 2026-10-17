@@ -228,7 +228,7 @@ class GameSessionTests(SessionTestCase):
         idle = checkin.phase(self.user, self.earlier)
         self.assertEqual(
             [a["key"] for a in track_actions("game", Status.COMPLETED.value, idle)],
-            ["create", "start", "edit"],
+            ["start", "create", "edit"],
         )
         self.start()
         running = checkin.phase(self.user, self.earlier)
@@ -507,14 +507,63 @@ class SessionViewTests(SessionTestCase):
             kwargs={"source": "igdb", "media_type": media_type, "media_id": "1942"},
         )
 
-    def test_start_then_stop_refreshes_the_page(self):
+    def test_start_then_stop_updates_tracking_without_reloading(self):
         started = self.client.post(self.url(), {"action": "start"})
         stopped = self.client.post(self.url(), {"action": "stop"})
 
         for response in (started, stopped):
-            self.assertEqual(response.status_code, 204)
-            self.assertEqual(response["HX-Refresh"], "true")
+            self.assertEqual(response.status_code, 200)
+            self.assertNotIn("HX-Refresh", response)
+            self.assertContains(response, 'hx-swap-oob="outerHTML"')
+            self.assertNotContains(response, "detail-carousel-wrap")
         self.assertEqual(Game.objects.count(), 2)
+
+    def test_refresh_keeps_the_same_session_and_modal_targets(self):
+        started = self.client.post(self.url(), {"action": "start"})
+        current = Game.objects.order_by("-id").first()
+        self.assertContains(started, "Stop</span>")
+        self.assertContains(started, f'"instance_id": "{current.id}"')
+        count = Game.objects.count()
+        with patch("app.providers.services.get_media_metadata", side_effect=AssertionError("provider called")):
+            refreshed = self.client.post(self.url(), {"action": "refresh"})
+        self.assertEqual(refreshed.status_code, 200)
+        self.assertEqual(Game.objects.count(), count)
+        self.assertContains(refreshed, "/details/igdb/game/1942/hades")
+        self.assertNotContains(refreshed, "location.reload()")
+        cancelled = self.client.post(self.url(), {"action": "cancel"})
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(list(Game.objects.all()), [self.earlier])
+        self.assertContains(cancelled, "Check-in</span>")
+
+    def test_now_playing_stop_saves_elapsed_game_time(self):
+        self.client.post(self.url(), {"action": "start"})
+        record = checkin_session._record(self.user.id)
+        card = live_playback.build_home_playback_card(self.user)
+        self.assertEqual(card["checkin_control"]["action"], "stop")
+        with patch("app.checkin_session._now_ts", return_value=record["started_at_ts"] + 120):
+            response = self.client.post(self.url(), {
+                "action": "stop", "from_now_playing": "1", "checkin_token": record["token"],
+            })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"")
+        self.assertNotIn("HX-Refresh", response)
+        self.assertIsNone(live_playback.build_home_playback_card(self.user))
+        self.assertEqual(Game.objects.get(pk=record["row_id"]).progress, 2)
+
+    def test_now_playing_cancel_removes_the_session_it_started(self):
+        self.client.post(self.url(), {"action": "start"})
+        record = checkin_session._record(self.user.id)
+        fragment = self.client.get(reverse("active_playback_fragment"))
+        self.assertContains(fragment, 'aria-label="Stop check-in"')
+        self.assertContains(fragment, 'aria-label="Cancel check-in"')
+        self.assertContains(fragment, "rounded-full", count=2)
+        response = self.client.post(self.url(), {
+            "action": "cancel", "from_now_playing": "1", "checkin_token": record["token"],
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"")
+        self.assertEqual(list(Game.objects.all()), [self.earlier])
+        self.assertIsNone(live_playback.build_home_playback_card(self.user))
 
     def test_movie_actions_are_not_available_for_a_game(self):
         for name in ("pause", "finish", "resume"):

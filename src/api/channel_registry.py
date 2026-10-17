@@ -113,6 +113,34 @@ INBOUND_CHANNELS: tuple[InboundChannel, ...] = (
         dispatches_to="celery",
     ),
     InboundChannel(
+        key="stremioAddonPlayer",
+        address=(
+            "stremio-addon/{token}/player/{media_type}/{media_id}/"
+            "position=0&duration=0.json"
+        ),
+        provider="stremio",
+        summary=(
+            "Stremio player event carrying a playback position and duration in "
+            "the extra. Sent on play, pause, and stop, and the one source of a "
+            "resume position for a client that cannot emit a stop."
+        ),
+        dispatches_to="celery",
+    ),
+    InboundChannel(
+        key="stremioAddonLibrary",
+        address=(
+            "stremio-addon/{token}/library/{media_type}/{media_id}/"
+            "action=watched.json"
+        ),
+        provider="stremio",
+        summary=(
+            "Stremio library change (add, remove, watched, unwatched) for one "
+            "item, carrying the affected episode ids in `videoId` so a batch "
+            "arrives as one request."
+        ),
+        dispatches_to="celery",
+    ),
+    InboundChannel(
         key="listenBrainzSubmitListens",
         address="apis/listenbrainz/1/submit-listens",
         provider="listenbrainz",

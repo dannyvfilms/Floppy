@@ -571,7 +571,9 @@
       </div>
     </div>
 
-    <div id="collection-view" x-ref="collectionView" :class="renderedLayout === 'grid' ? 'media-grid' : ''">
+    <div id="collection-view" x-ref="collectionView"
+         class="{% if layout|default:'grid' == 'grid' %}media-grid{% endif %}"
+         :class="{ 'media-grid': renderedLayout === 'grid' }">
       {% include "app/components/collection_items.html" %}
     </div>
 

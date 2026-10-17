@@ -128,7 +128,11 @@ function dateRangePicker(options = {}) {
       const totalMinutes = s.total_minutes || 0;
       const totalHours = Math.round(totalMinutes / 60);
       const totalDays = Math.floor(totalMinutes / 60 / 24);
-      return { ...s, longest_streak_dates_display: dates, total_hours: totalHours, total_days: totalDays };
+      // Match the charts: format weekday names for the current UI locale,
+      // even when a warm statistics snapshot stores the English name.
+      const weekday = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].indexOf(s.most_active_day);
+      const weekdayLabel = weekday < 0 ? s.most_active_day : new Date(2024, 0, weekday + 1).toLocaleDateString(document.documentElement.lang || undefined, { weekday: "long" });
+      return { ...s, most_active_day_label: weekdayLabel, longest_streak_dates_display: dates, total_hours: totalHours, total_days: totalDays };
     },
 
     get currentConsumption() {

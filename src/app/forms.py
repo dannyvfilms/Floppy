@@ -984,6 +984,17 @@ class BulkEpisodeTrackForm(forms.Form):
         return cleaned_data
 
 
+class MusicTrackNotesForm(forms.ModelForm):
+    """Edit a song's notes independently of its listens."""
+
+    class Meta:
+        """Bind only the existing per-user notes field."""
+
+        model = Music
+        fields = ("notes",)
+        widgets = MediaForm.Meta.widgets
+
+
 class MusicForm(MediaForm):
     """Form for music tracks."""
 

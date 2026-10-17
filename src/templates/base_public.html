@@ -35,6 +35,7 @@
 
     <script src="{% javascript_catalog_url %}"></script>
     <script src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
+    <script src="{% static 'js/artwork-loading.js' %}{% get_static_file_mtime 'js/artwork-loading.js' %}"></script>
     <script>
       // Boosted navigation: never serve history entries from the local
       // snapshot cache; back/forward instead does a normal full page load.

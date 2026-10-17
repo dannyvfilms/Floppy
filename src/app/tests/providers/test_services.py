@@ -1046,7 +1046,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(result, [{"title": "Test Game"}])
 
-        mock_search.assert_called_once_with("test", 1)
+        mock_search.assert_called_once_with("test", 1, user=None)
 
     @patch("app.providers.hardcover.search")
     def test_search_hardcover_book(self, mock_search):

@@ -4,6 +4,7 @@ from celery import shared_task
 from django.contrib.auth import get_user_model
 
 _EXPORT_MODULES = {
+    "export_tmdb_ratings": "integrations.tasks._ratings",
     **dict.fromkeys(
         ("COMPACT_CHANGE_LOG_TASK_NAME", "compact_watch_state_changes"),
         "integrations.tasks._change_log",
@@ -85,8 +86,8 @@ _EXPORT_MODULES = {
             "import_kavita",
             "import_kavita_recurring",
             "import_kavita",
-    "import_kavita_recurring",
-    "import_kitsu",
+            "import_kavita_recurring",
+            "import_kitsu",
             "import_komga",
             "import_komga_recurring",
             "import_koreader",
@@ -94,6 +95,7 @@ _EXPORT_MODULES = {
             "import_mangabaka",
             "import_mdblist",
             "import_media",
+            "import_playnite",
             "import_kapowarr",
             "import_kapowarr_recurring",
             "import_mylar",
@@ -156,6 +158,7 @@ _EXPORT_MODULES = {
         (
             "WEBHOOK_PROCESSORS",
             "_webhook_history_user",
+            "process_stremio_tracker_event",
             "process_stremio_webhook",
             "process_webhook",
             "verify_stremio_playback",
@@ -230,6 +233,7 @@ __all__ = [
     "compact_integration_event_receipts",
     "compact_watch_state_changes",
     "deliver_watched_state",
+    "export_tmdb_ratings",
     "fetch_collection_metadata_for_item",
     "format_import_message",
     "format_media_type_display",
@@ -263,6 +267,7 @@ __all__ = [
     "import_media",
     "import_mylar",
     "import_mylar_recurring",
+    "import_playnite",
     "import_plex",
     "import_pocketcasts",
     "import_pocketcasts_history",
@@ -293,6 +298,7 @@ __all__ = [
     "poll_koito_for_user",
     "poll_lastfm_for_user",
     "preview_mal_sync",
+    "process_stremio_tracker_event",
     "process_stremio_webhook",
     "process_webhook",
     "pull_jellyfin_history",

@@ -56,11 +56,11 @@
          @mouseleave="hovering = false"
          class="relative shrink-0 self-start overflow-hidden">
       {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block">{% endif %}
-      <img src="{{ IMG_NONE }}"
+      <img data-media-artwork loading="lazy" decoding="sync"
            alt="{% blocktranslate trimmed with value_1=episode.display_episode_number|default:episode.episode_number %}E{{ value_1 }}{% endblocktranslate %}"
-           data-src="{{ episode.image|image_url }}"
+           src="{{ episode.image|image_url }}"
            data-image-source="{{ episode.image_source|default:'primary' }}"
-           class="lazyload {% if media_type == MediaTypes.PODCAST.value %}md:w-40 md:h-40{% else %}md:w-64 md:h-40{% endif %} {% if ep_detail_url %}hover:opacity-90 transition-opacity{% endif %} shrink-0 {% if episode.image != IMG_NONE %}object-cover{% endif %}"
+           class="{% if media_type == MediaTypes.PODCAST.value %}md:w-40 md:h-40{% else %}md:w-64 md:h-40{% endif %} {% if ep_detail_url %}hover:opacity-90 transition-opacity{% endif %} shrink-0 {% if episode.image != IMG_NONE %}object-cover{% endif %}"
            :style="{ filter: (blurActive && !epWatched && !revealed) ? 'blur(8px)' : '', transition: 'filter 0.4s ease' }">
       {% if ep_detail_url %}</a>{% endif %}
       {% if not public_view|default:False and user.is_authenticated %}

@@ -81,10 +81,10 @@ class CheckInActionsTests(SimpleTestCase):
             with self.subTest(status=status):
                 self.assertEqual(self.keys(checkin.PHASE_IDLE, status), ["start", EDIT])
 
-    def test_idle_completed_movie_keeps_add_entry_first(self):
+    def test_idle_completed_movie_leads_with_check_in(self):
         self.assertEqual(
             self.keys(checkin.PHASE_IDLE, Status.COMPLETED.value),
-            [ADD, "start", EDIT],
+            ["start", ADD, EDIT],
         )
 
     def test_running_check_in_leads_with_pause_then_finish(self):
@@ -243,6 +243,26 @@ class TrackSplitTemplateTests(SimpleTestCase):
         self.assertIn('@keydown.escape.window="trackMenuOpen = false"', html)
         self.assertIn("Another action", html)
         self.assertNotIn("Edit entry,", html)
+
+    def test_modal_actions_override_the_checkin_swap_mode(self):
+        html = self.render([self.action("create"), self.action("edit")])
+        self.assertEqual(html.count('hx-swap="innerHTML"'), 2)
+
+    def test_saving_a_movie_keeps_the_checkin_split_button(self):
+        request = RequestFactory().post("/save/")
+        request.user = SimpleNamespace(id=1)
+        with patch("app.checkin.phase", return_value={"phase": "idle", "reload_in": None}):
+            html = render_to_string("app/components/detail_track_action.html", {
+                "request": request,
+                "media": {"source": "tmdb", "media_type": "movie", "media_id": "238"},
+                "current_instance": SimpleNamespace(id=7, status=Status.COMPLETED.value),
+                "return_url": "%2Fdetails%2Ftmdb%2Fmovie%2F238%2Fmovie",
+                "swap_oob": True,
+            })
+        self.assertIn("Check-in</span>", html)
+        self.assertIn("Add new entry</button>", html)
+        self.assertIn('hx-swap-oob="outerHTML"', html)
+        self.assertNotIn('"return_url": "/save/"', html)
 
     def test_grouped_anime_is_decided_by_its_stored_type(self):
         """A TMDB anime is one TV tracker, so a new entry would collide with it."""

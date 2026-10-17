@@ -14,34 +14,9 @@
       {% include "app/icons/sidebar.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
       <h2 class="text-xl font-semibold">{% translate "Sidebar" %}</h2>
     </div>
-    <p class="text-[var(--color-text-muted)] mb-5 text-sm">{% translate "Customize the look and behavior of the user interface." %}</p>
+    <p class="text-[var(--color-text-muted)] mb-5 text-sm">{% translate "Choose which media types appear and how they are ordered." %}</p>
     <form method="post">
       {% csrf_token %}
-
-      {# Media Card Overlay #}
-      <div class="mb-5">
-        <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
-          <div class="flex-1">
-            <div class="flex items-center text-[var(--color-text-secondary)] mb-1">
-              {% include "app/icons/image.svg" with classes="w-5 h-5 mr-2" %}
-              <span class="text-sm font-medium">{% translate "Hide Hover Overlay on Touch Devices" %}</span>
-            </div>
-            <p class="text-xs text-[var(--color-text-muted)] ml-7">
-              {% translate "Hide the media card hover overlay with action buttons on touch devices for a cleaner mobile experience. On desktop, the overlay will still appear when you hover your mouse over media cards." %}
-            </p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer ml-4">
-            <input class="sr-only peer"
-                   type="checkbox"
-                   name="clickable_media_cards"
-                   {% if user.clickable_media_cards %}checked{% endif %}>
-            <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
-            </div>
-          </label>
-        </div>
-      </div>
-
-      <div class="border-t border-gray-600 my-5"></div>
 
       {# Media Types Settings #}
       <div class="mb-5">

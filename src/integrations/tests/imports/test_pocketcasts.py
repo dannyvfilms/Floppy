@@ -7,12 +7,15 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from app.models import (
+    TV,
+    Episode,
     Item,
     MediaTypes,
     Podcast,
     PodcastEpisode,
     PodcastShow,
     PodcastShowTracker,
+    Season,
     Sources,
     Status,
 )
@@ -66,6 +69,61 @@ class PocketCastsInferenceTests(TestCase):
         history_record.history_date = history_date
         history_record.save()
         return podcast
+
+    def test_history_durations_ignore_unknown_runtimes_and_missing_items(self):
+        """A 999998 runtime is not a duration, and an episode may have no item."""
+        show_item = Item.objects.create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Show",
+            image="http://example.com/show.jpg",
+        )
+        show = TV.objects.create(item=show_item, user=self.user)
+        season_item = Item.objects.create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Show",
+            image="",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=show,
+        )
+        episodes = {}
+        for number, runtime in ((1, 999998), (2, 45)):
+            episodes[number] = Item.objects.create(
+                media_id="900",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title="Show",
+                image="",
+                season_number=1,
+                episode_number=number,
+                runtime_minutes=runtime,
+            )
+        ended = self.sync_start + timedelta(minutes=30)
+        for number in (1, 2, 3):
+            Episode.objects.create(
+                item=episodes.get(number, episodes[2]),
+                related_season=season,
+                end_date=ended + timedelta(minutes=number),
+            )
+        # The column is nullable, though save() cannot write a null itself.
+        Episode.objects.filter(end_date=ended + timedelta(minutes=3)).update(
+            item=None,
+        )
+
+        rows = self.importer._get_history_items_in_range(
+            self.sync_start,
+            self.sync_end,
+        )
+
+        durations = [row[1] for row in rows if row[2] == "episode"]
+        self.assertEqual(durations, [None, 45 * 60, None])
 
     def test_infer_completion_with_anchor(self):
         """Anchored completion uses remaining time."""

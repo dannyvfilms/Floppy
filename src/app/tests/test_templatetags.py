@@ -2190,3 +2190,74 @@ class EntrySourceLabelTests(TestCase):
     def test_empty_values(self):
         self.assertEqual(app_tags.entry_source_label(""), "")
         self.assertEqual(app_tags.entry_source_label(None), "")
+
+
+class DetailActionRowTests(SimpleTestCase):
+    """Which icons the detail action row shows, and which fold into More on phones."""
+
+    def row(
+        self,
+        *,
+        source=Sources.TMDB.value,
+        media_type="movie",
+        seerr=False,
+        links=False,
+        podcast_show=None,
+    ):
+        user = SimpleNamespace(
+            seerr_url="https://seerr.test" if seerr else "",
+            seerr_api_key="key" if seerr else "",
+            seerr_user_id=1 if seerr else None,
+        )
+        context = {
+            "request": SimpleNamespace(user=user),
+            "detail_link_sections": [{"title": "Links"}] if links else [],
+            "podcast_show": podcast_show,
+        }
+        return app_tags.detail_action_row(context, {"source": source}, media_type)
+
+    def test_plain_page_keeps_every_icon_inline(self):
+        row = self.row()
+        self.assertEqual(row["overflow"], [])
+        self.assertFalse(row["link"])
+        self.assertFalse(row["seerr"])
+
+    def test_manual_items_have_no_sync_icon(self):
+        self.assertFalse(self.row(source=Sources.MANUAL.value)["sync"])
+        self.assertTrue(self.row()["sync"])
+
+    def test_seerr_needs_a_configured_server_and_a_tmdb_movie_or_show(self):
+        self.assertTrue(self.row(seerr=True)["seerr"])
+        self.assertTrue(self.row(seerr=True, media_type="tv")["seerr"])
+        self.assertFalse(self.row(seerr=False)["seerr"])
+        self.assertFalse(self.row(seerr=True, media_type="season")["seerr"])
+        self.assertFalse(self.row(seerr=True, source=Sources.MAL.value)["seerr"])
+
+    def test_podcast_shows_have_no_notes_icon(self):
+        self.assertFalse(self.row(podcast_show=object())["notes"])
+        self.assertTrue(self.row()["notes"])
+
+    def test_five_icons_do_not_overflow(self):
+        # tags, notes, lists, history, sync
+        self.assertEqual(self.row()["overflow"], [])
+        # tags, notes, lists, history (manual: no sync) + links
+        self.assertEqual(
+            self.row(source=Sources.MANUAL.value, links=True)["overflow"], []
+        )
+
+    def test_six_icons_move_the_last_two_into_more(self):
+        row = self.row(links=True)
+        self.assertEqual(row["overflow"], ["history", "sync"])
+
+    def test_seven_icons_move_the_last_three_into_more(self):
+        row = self.row(links=True, seerr=True)
+        self.assertEqual(row["overflow"], ["seerr", "history", "sync"])
+
+    def test_overflow_never_holds_the_first_four_icons(self):
+        for links in (False, True):
+            for seerr in (False, True):
+                for source in (Sources.TMDB.value, Sources.MANUAL.value):
+                    overflow = self.row(links=links, seerr=seerr, source=source)[
+                        "overflow"
+                    ]
+                    self.assertTrue(set(overflow) <= {"history", "seerr", "sync"})

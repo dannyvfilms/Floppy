@@ -7,7 +7,18 @@ from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from app.models import TV, Episode, Item, MediaTypes, PodcastShow, Season, Sources
+from app import game_artwork
+from app.models import (
+    TV,
+    Episode,
+    GameArtwork,
+    Item,
+    MediaTypes,
+    MetadataProviderPreference,
+    PodcastShow,
+    Season,
+    Sources,
+)
 from app.providers import tmdb, tvdb
 
 User = get_user_model()
@@ -18,6 +29,77 @@ class SyncMetadataViewTests(TestCase):
         self.credentials = {"username": "sync-user", "password": "12345"}
         self.user = User.objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
+
+    def test_sync_uses_selected_language_and_evicts_its_cached_payload(self):
+        """A localized refresh must not fetch or restore the instance language."""
+        self.user.metadata_language = "es-ES"
+        self.user.save(update_fields=["metadata_language"])
+        item = Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Godfather",
+            original_title="The Godfather",
+            localized_title="The Godfather",
+        )
+        for override in ("", "es-MX"):
+            with self.subTest(override=override):
+                MetadataProviderPreference.objects.update_or_create(
+                    user=self.user,
+                    item=item,
+                    defaults={"language": override},
+                )
+                language = override or "es-ES"
+                cache_key = tmdb._movie_cache_key(item.media_id, language)
+                cache.set(cache_key, {"title": "Stale translation"}, timeout=600)
+                metadata = {
+                    "title": "El padrino",
+                    "localized_title": "El padrino",
+                    "original_title": "The Godfather",
+                    "synopsis": "La historia de una familia.",
+                    "image": "https://example.com/poster.jpg",
+                    "details": {},
+                    "related": {},
+                }
+
+                def fetch(
+                    *args,
+                    expected_language=language,
+                    key=cache_key,
+                    payload=metadata,
+                    **kwargs,
+                ):
+                    self.assertEqual(kwargs["language"], expected_language)
+                    self.assertIsNone(cache.get(key))
+                    return payload
+
+                with (
+                    patch(
+                        "app.metadata_sync_views.services.get_media_metadata",
+                        side_effect=fetch,
+                    ),
+                    patch("app.metadata_sync_views._sync_plex_rating"),
+                    patch("app.views.Item.fetch_releases"),
+                    patch(
+                        "app.views.trakt_popularity_service.refresh_trakt_popularity"
+                    ),
+                    patch("app.views.credits.sync_item_credits_from_metadata"),
+                ):
+                    response = self.client.post(
+                        reverse(
+                            "sync_metadata",
+                            kwargs={
+                                "source": item.source,
+                                "media_type": item.media_type,
+                                "media_id": item.media_id,
+                            },
+                        ),
+                        {"next": "/"},
+                    )
+                self.assertEqual(response.status_code, 302)
+                item.refresh_from_db()
+                self.assertEqual(item.localized_title, "El padrino")
+                self.assertEqual(item.synopsis, metadata["synopsis"])
 
     @patch("app.fork_services_podcast.podcast_rss.fetch_feed_from_rss")
     def test_sync_metadata_on_a_podcast_show_uuid_rereads_the_feed(
@@ -96,6 +178,105 @@ class SyncMetadataViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
+
+    @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
+    @patch("app.metadata_sync_views._sync_plex_rating")
+    @patch("app.views.Item.fetch_releases")
+    @patch("app.views.game_length_services.refresh_game_lengths")
+    @patch("app.views.services.get_media_metadata")
+    def test_sync_metadata_reopens_the_artwork_lookup_for_igdb_games(
+        self,
+        mock_get_media_metadata,
+        _mock_refresh_game_lengths,
+        _mock_fetch_releases,
+        _mock_sync_plex_rating,
+        _mock_refresh_imdb_credits,
+    ):
+        """The new providers must be asked again after a manual refresh.
+
+        A game page that found nothing waits hours before asking again, so a
+        refresh that left the stored lookup alone looked like it did nothing.
+        """
+        mock_get_media_metadata.return_value = {
+            "media_id": "325609",
+            "title": "Dispatch",
+            "media_type": MediaTypes.GAME.value,
+            "source": Sources.IGDB.value,
+            "image": "https://example.com/dispatch.jpg",
+            "details": {"format": "Main game"},
+            "genres": [],
+            "related": {},
+        }
+        row = GameArtwork.objects.create(
+            source=Sources.IGDB.value,
+            media_id="325609",
+            backdrop_url="https://images.igdb.com/a.jpg",
+            backdrop_provider="igdb",
+        )
+        other = GameArtwork.objects.create(
+            source=Sources.IGDB.value,
+            media_id="1",
+            backdrop_url="https://images.igdb.com/b.jpg",
+            backdrop_provider="igdb",
+        )
+        cache.set("igdb_carousel_v4_325609", {"video": None, "photos": []}, 60)
+        url = reverse(
+            "sync_metadata",
+            kwargs={
+                "source": Sources.IGDB.value,
+                "media_type": MediaTypes.GAME.value,
+                "media_id": "325609",
+            },
+        )
+
+        response = self.client.post(url, {"next": "/"})
+
+        self.assertEqual(response.status_code, 302)
+        row.refresh_from_db()
+        other.refresh_from_db()
+        self.assertTrue(game_artwork.is_stale(row))
+        self.assertFalse(game_artwork.is_stale(other))
+        self.assertIsNone(cache.get("igdb_carousel_v4_325609"))
+
+    @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
+    @patch("app.metadata_sync_views._sync_plex_rating")
+    @patch("app.views.Item.fetch_releases")
+    @patch("app.views.game_length_services.refresh_game_lengths")
+    @patch("app.views.services.get_media_metadata")
+    def test_sync_metadata_survives_an_artwork_failure(
+        self,
+        mock_get_media_metadata,
+        _mock_refresh_game_lengths,
+        _mock_fetch_releases,
+        _mock_sync_plex_rating,
+        _mock_refresh_imdb_credits,
+    ):
+        mock_get_media_metadata.return_value = {
+            "media_id": "325609",
+            "title": "Dispatch",
+            "media_type": MediaTypes.GAME.value,
+            "source": Sources.IGDB.value,
+            "image": "https://example.com/dispatch.jpg",
+            "details": {"format": "Main game"},
+            "genres": [],
+            "related": {},
+        }
+
+        with patch("app.game_artwork.expire", side_effect=RuntimeError("db down")):
+            response = self.client.post(
+                reverse(
+                    "sync_metadata",
+                    kwargs={
+                        "source": Sources.IGDB.value,
+                        "media_type": MediaTypes.GAME.value,
+                        "media_id": "325609",
+                    },
+                ),
+                {"next": "/"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Item.objects.filter(media_id="325609").exists())
 
     @patch("app.tasks_imdb.refresh_imdb_game_credits_from_datasets.apply_async")
     @patch("app.metadata_sync_views._sync_plex_rating")

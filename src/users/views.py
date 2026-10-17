@@ -259,21 +259,25 @@ def _get_stored_plex_account(user):
 
 def _get_import_data_user(user):
     """Load the Import Data page's account relations in a single query."""
-    return user._meta.model.objects.select_related(
-        "plex_account",
-        "audiobookshelf_account",
-        "kavita_account",
-        "komga_account",
-        "pocketcasts_account",
-        "lastfm_account",
-        "koito_account",
-        "mal_account",
-    ).prefetch_related(
-        "radarr_instances",
-        "sonarr_instances",
-        "mylar_instances",
-        "kapowarr_instances",
-    ).get(pk=user.pk)
+    return (
+        user._meta.model.objects.select_related(
+            "plex_account",
+            "audiobookshelf_account",
+            "kavita_account",
+            "komga_account",
+            "pocketcasts_account",
+            "lastfm_account",
+            "koito_account",
+            "mal_account",
+        )
+        .prefetch_related(
+            "radarr_instances",
+            "sonarr_instances",
+            "mylar_instances",
+            "kapowarr_instances",
+        )
+        .get(pk=user.pk)
+    )
 
 
 def _refresh_cached_plex_sections(
@@ -719,7 +723,7 @@ def apply_media_type_preferences(
 
 @require_http_methods(["GET", "POST"])
 def sidebar(request):
-    """Render the sidebar settings page (media types visibility and UI preferences)."""
+    """Render the sidebar settings page (media type visibility and order)."""
     media_types = SIDEBAR_MEDIA_TYPES
 
     if request.method == "POST":
@@ -729,12 +733,6 @@ def sidebar(request):
             return redirect("sidebar")
 
         fields_to_update = []
-
-        # Handle clickable_media_cards preference
-        clickable_media_cards = request.POST.get("clickable_media_cards") == "on"
-        if request.user.clickable_media_cards != clickable_media_cards:
-            request.user.clickable_media_cards = clickable_media_cards
-            fields_to_update.append("clickable_media_cards")
 
         show_discover = request.POST.get("show_discover") == "on"
         if request.user.show_discover != show_discover:
@@ -790,20 +788,13 @@ def home_screen(request):
             messages.error(request, str(exc))
         else:
             fields_to_update = []
-            show_media_type_headers = (
-                request.POST.get("show_media_type_headers") == "1"
-            )
-            if (
-                request.user.home_show_media_type_headers
-                != show_media_type_headers
-            ):
+            show_media_type_headers = request.POST.get("show_media_type_headers") == "1"
+            if request.user.home_show_media_type_headers != show_media_type_headers:
                 request.user.home_show_media_type_headers = show_media_type_headers
                 fields_to_update.append("home_show_media_type_headers")
 
             if request.POST.get("home_media_type_chips_present") is not None:
-                chips_enabled = (
-                    request.POST.get("home_media_type_chips_enabled") == "1"
-                )
+                chips_enabled = request.POST.get("home_media_type_chips_enabled") == "1"
                 chip_style = request.POST.get("home_media_type_chip_style")
                 submitted_colors = {
                     media_type: request.POST.get(
@@ -815,9 +806,7 @@ def home_screen(request):
                 chip_colors = normalize_media_type_chip_colors(
                     request.user.home_media_type_chip_colors
                 )
-                chip_colors.update(
-                    normalize_media_type_chip_colors(submitted_colors)
-                )
+                chip_colors.update(normalize_media_type_chip_colors(submitted_colors))
 
                 if request.user.home_media_type_chips_enabled != chips_enabled:
                     request.user.home_media_type_chips_enabled = chips_enabled
@@ -853,9 +842,7 @@ def home_screen(request):
         )
 
     context = {
-        "home_screen_sections_json": json.dumps(
-            sections, cls=DjangoJSONEncoder
-        ),
+        "home_screen_sections_json": json.dumps(sections, cls=DjangoJSONEncoder),
         "show_media_type_headers": request.user.home_show_media_type_headers,
         "media_type_chip_styles": (
             ("solid", "Solid"),
@@ -1095,7 +1082,11 @@ def cards(request, media_type=None):
         request.user.card_metadata = parse_card_metadata(
             request.POST.get("card_metadata")
         )
-        request.user.save(update_fields=["card_metadata"])
+        fields = ["card_metadata"]
+        if "clickable_media_cards" in request.POST:
+            request.user.clickable_media_cards = request.POST.get("clickable_media_cards") == "on"
+            fields.append("clickable_media_cards")
+        request.user.save(update_fields=fields)
         messages.success(request, "Media cards updated")
         return _cards_redirect(media_type)
     if media_type is None:
@@ -1144,6 +1135,8 @@ def cards_preview(request):
         draft_payload = {}
     if "types" not in draft_payload and media_type in draft_payload:
         draft_payload = {"version": 1, "types": {media_type: draft_payload}}
+    if request.method == "POST" and isinstance(body.get("clickable_media_cards"), bool):
+        request.user.clickable_media_cards = body["clickable_media_cards"]
     request.user.card_metadata = parse_card_metadata(draft_payload)
     sample = _card_preview_sample(request.user, media_type)
     if sample is None:
@@ -1623,23 +1616,23 @@ def preferences(request):
                 )
                 fields_to_update.append("book_comic_manga_progress_percentage")
 
-        provider_region = request.POST.get("watch_provider_region", "")
-        if provider_region in [region[0] for region in watch_provider_regions]:
+        provider_region = request.POST.get("watch_provider_region")
+        if provider_region is not None:
+            if provider_region not in {region[0] for region in watch_provider_regions}:
+                provider_region = "UNSET"
             if request.user.watch_provider_region != provider_region:
                 request.user.watch_provider_region = provider_region
                 fields_to_update.append("watch_provider_region")
-        elif request.user.watch_provider_region != "UNSET":
-            request.user.watch_provider_region = "UNSET"
-            fields_to_update.append("watch_provider_region")
 
-        metadata_language = request.POST.get("metadata_language", "")
-        if metadata_language in {choice[0] for choice in metadata_language_choices}:
+        metadata_language = request.POST.get("metadata_language")
+        if metadata_language is not None:
+            if metadata_language not in {
+                choice[0] for choice in metadata_language_choices
+            }:
+                metadata_language = ""
             if request.user.metadata_language != metadata_language:
                 request.user.metadata_language = metadata_language
                 fields_to_update.append("metadata_language")
-        elif request.user.metadata_language != "":
-            request.user.metadata_language = ""
-            fields_to_update.append("metadata_language")
 
         session_duration = request.POST.get("session_duration")
         if session_duration is not None:
@@ -1657,6 +1650,10 @@ def preferences(request):
         if fields_to_update:
             request.user.save(update_fields=fields_to_update)
             request.user.refresh_from_db()
+            if "metadata_language" in fields_to_update:
+                from app.tasks_metadata_language import reset_metadata_language_repair
+
+                reset_metadata_language_repair(request.user.pk)
             if rating_scale_changed:
                 history_cache.invalidate_history_cache(
                     request.user.id,
@@ -1675,9 +1672,9 @@ def preferences(request):
                     debounce_seconds=0,
                 )
         success_message = (
-            "Settings updated successfully."
+            gettext("Settings updated successfully.")
             if "media_types_checkboxes" in request.POST
-            else "Preferences updated successfully."
+            else gettext("Preferences updated successfully.")
         )
         messages.success(request, success_message)
         return redirect("preferences")
@@ -1736,6 +1733,7 @@ def convert_tv_library(request):
 def integrations(request):
     """Render the integrations settings page."""
     from integrations.state import settings_view
+    from integrations.tmdb_views import rating_sync_status
     from integrations.webhooks.jellyfin import jellyfin_template_outdated
 
     user = request.user
@@ -1829,6 +1827,7 @@ def integrations(request):
         {
             "user": user,
             "sync_bindings": settings_view.binding_rows(user),
+            "tmdb_rating_sync": rating_sync_status(user),
             "sync_conflicts": settings_view.open_conflicts(user),
             "plex_webhook_needs_update": plex_webhook_needs_update,
             "jellyfin_template_outdated": jellyfin_template_outdated(user.id),
@@ -3621,7 +3620,9 @@ def update_jellyseerr_settings(request):
         seerr_user_id = user.seerr_user_id
     elif seerr_url:
         if not seerr_username:
-            messages.error(request, "A Seerr username is required to request from Seerr.")
+            messages.error(
+                request, "A Seerr username is required to request from Seerr."
+            )
             return redirect("integrations")
         try:
             api_key = raw_api_key or decrypt_or_raise(user.seerr_api_key)

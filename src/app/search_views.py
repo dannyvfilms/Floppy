@@ -150,7 +150,13 @@ def _tagged_untracked_items(user, media_type, query, library_ids):
         type_filter = Q(media_type=media_type)
 
     return (
-        Item.objects.filter(type_filter, tagged, title__icontains=query)
+        Item.objects.filter(
+            type_filter,
+            tagged,
+            Q(title__icontains=query)
+            | Q(original_title__icontains=query)
+            | Q(localized_title__icontains=query),
+        )
         .exclude(id__in=library_ids)
         .order_by("title", "id")
     )

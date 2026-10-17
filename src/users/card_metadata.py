@@ -553,7 +553,8 @@ def _format_episode_code(season_number, episode_number):
 
 def _show_episode_code(media):
     """Return the show's next episode, or the furthest one it already has."""
-    if media is None or not hasattr(media, "seasons"):
+    seasons = getattr(media, "seasons", None)
+    if seasons is None:
         return None
     target = getattr(media, "next_episode_target", None)
     if callable(target):
@@ -565,7 +566,7 @@ def _show_episode_code(media):
             if code and episode_number is not None:
                 return code
     best = None
-    for season in media.seasons.all():
+    for season in seasons.all():
         season_number = _from_obj(getattr(season, "item", None), "season_number")
         if not season_number:
             continue

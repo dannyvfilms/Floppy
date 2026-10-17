@@ -17,6 +17,10 @@ from django.utils.text import slugify
 from app import helpers
 from app.metadata_utils import ANIME_SUPPLEMENT_GENRE, genre_list_has_name
 from app.models import Item, MediaTypes, Sources
+from app.models.episode_runtimes import (
+    EXCLUDED_RUNTIME_SENTINELS,
+    usable_runtime_minutes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -590,6 +594,9 @@ def apply_playback_event(
 
     set_user_playback_state(user_id, state)
 
+    if not checkin_token:
+        _learn_runtime(state, dur_seconds)
+
     if store_progress:
         store_media_id, store_season, store_episode = _identifiers_from_state(
             existing_state,
@@ -718,6 +725,29 @@ def _format_clock(total_seconds: int) -> str:
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
+
+
+def _learn_runtime(state: dict, duration_seconds: int | None) -> None:
+    """Fill an unknown runtime from the duration the media server reported.
+
+    Only items marked unknown (999998/999999) are touched, so a runtime from a
+    provider is never overwritten by a server's file length.
+    """
+    minutes = (_coerce_int(duration_seconds, 0) or 0) // 60
+    if minutes < 1 or usable_runtime_minutes(minutes) is None:
+        return
+    if state.get("media_type") not in (
+        MediaTypes.MOVIE.value,
+        MediaTypes.EPISODE.value,
+    ):
+        return
+    item = _resolve_state_item(state)
+    if item is None or item.runtime_minutes not in EXCLUDED_RUNTIME_SENTINELS:
+        return
+    Item.objects.filter(
+        pk=item.pk,
+        runtime_minutes__in=EXCLUDED_RUNTIME_SENTINELS,
+    ).update(runtime_minutes=minutes)
 
 
 def _resolve_state_item(state: dict):
@@ -869,13 +899,18 @@ def _resolve_card_subtitle(state, title):
 def _resolve_progress(state, state_item):
     """Compute duration, progress, display string, and percent."""
     duration = max(0, _coerce_int(state.get("duration_seconds"), 0))
+    # A card cached before the sentinel runtime was excluded still carries it.
+    if duration in {m * 60 for m in EXCLUDED_RUNTIME_SENTINELS}:
+        duration = 0
+    runtime_minutes = usable_runtime_minutes(
+        state_item.runtime_minutes if state_item else None,
+    )
     if (
         not duration
-        and state_item
-        and state_item.runtime_minutes
+        and runtime_minutes
         and state.get("media_type") not in SESSION_MEDIA_TYPES
     ):
-        duration = max(0, int(state_item.runtime_minutes) * 60)
+        duration = runtime_minutes * 60
     progress = max(
         0,
         _coerce_int(
@@ -1069,6 +1104,9 @@ def build_home_playback_card(user) -> dict | None:
     if not state:
         return None
 
+    from app import checkin
+
+    control = checkin.card_control(user.id, state)
     state_item = _resolve_state_item(state)
     title = _resolve_card_title(state, state_item)
     episode_code, subtitle = _resolve_card_subtitle(state, title)
@@ -1126,6 +1164,7 @@ def build_home_playback_card(user) -> dict | None:
                 library_media_type = MediaTypes.ANIME.value
 
     return {
+        "checkin_control": control,
         "title": title,
         "subtitle": subtitle,
         "episode_code": episode_code,

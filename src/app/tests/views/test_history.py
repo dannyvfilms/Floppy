@@ -713,6 +713,8 @@ class SessionHistoryModalTests(TestCase):
         )
         self.assertContains(response, "Unknown date", html=False)
         self.assertIsNone(response.context["history_days"][-1]["date"])
+        # The unknown-date group must not read "Unknown Unknown date".
+        self.assertNotContains(response, ">Unknown</span>", html=False)
 
         other_item = self._create_item(MediaTypes.BOOK.value, "other-book", "Other Book")
         other_user = get_user_model().objects.create_user(

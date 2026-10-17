@@ -1636,11 +1636,14 @@ class ImportRun(models.Model):
 
         verbose_name = "import run"
         verbose_name_plural = "import runs"
-        constraints = [models.UniqueConstraint(
-            fields=["user", "source"],
-            condition=models.Q(source="trakt", status="running") & ~models.Q(phase=""),
-            name="one_active_durable_import",
-        )]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "source"],
+                condition=models.Q(source="trakt", status="running")
+                & ~models.Q(phase=""),
+                name="one_active_durable_import",
+            )
+        ]
         indexes = [
             models.Index(fields=["user", "-started_at"]),
             models.Index(fields=["user", "status"]),
@@ -1654,7 +1657,9 @@ class ImportRun(models.Model):
 class PreparedImportEntry(models.Model):
     """Sealed, ordered persistence decisions; never contains provider credentials."""
 
-    run = models.ForeignKey(ImportRun, on_delete=models.CASCADE, related_name="prepared_entries")
+    run = models.ForeignKey(
+        ImportRun, on_delete=models.CASCADE, related_name="prepared_entries"
+    )
     ordinal = models.PositiveIntegerField()
     model_label = models.CharField(max_length=100)
     operation = models.CharField(max_length=16)
@@ -1665,7 +1670,11 @@ class PreparedImportEntry(models.Model):
     class Meta:
         """Ordered cursor lookup and input identity."""
 
-        constraints = [models.UniqueConstraint(fields=["run", "ordinal"], name="import_entry_run_ordinal")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "ordinal"], name="import_entry_run_ordinal"
+            )
+        ]
         ordering = ["ordinal"]
 
     def __str__(self):
@@ -1676,7 +1685,9 @@ class PreparedImportEntry(models.Model):
 class ImportChunkReceipt(models.Model):
     """Media/history and this receipt commit together; publication is repeatable."""
 
-    run = models.ForeignKey(ImportRun, on_delete=models.CASCADE, related_name="chunk_receipts")
+    run = models.ForeignKey(
+        ImportRun, on_delete=models.CASCADE, related_name="chunk_receipts"
+    )
     phase = models.CharField(max_length=16, default="persist")
     start = models.PositiveIntegerField()
     end = models.PositiveIntegerField()
@@ -1690,7 +1701,11 @@ class ImportChunkReceipt(models.Model):
     class Meta:
         """Unique commit and bounded outbox lookup."""
 
-        constraints = [models.UniqueConstraint(fields=["run", "phase", "start"], name="import_chunk_run_start")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "phase", "start"], name="import_chunk_run_start"
+            )
+        ]
         indexes = [models.Index(fields=["publication_pending", "run"])]
 
     def __str__(self):
@@ -1701,7 +1716,9 @@ class ImportChunkReceipt(models.Model):
 class ImportOverwriteTarget(models.Model):
     """Original row identities: a resumed delete never targets replacements."""
 
-    run = models.ForeignKey(ImportRun, on_delete=models.CASCADE, related_name="overwrite_targets")
+    run = models.ForeignKey(
+        ImportRun, on_delete=models.CASCADE, related_name="overwrite_targets"
+    )
     ordinal = models.PositiveIntegerField()
     model_label = models.CharField(max_length=100)
     original_pk = models.PositiveBigIntegerField()
@@ -1711,7 +1728,12 @@ class ImportOverwriteTarget(models.Model):
     class Meta:
         """Stable deletion identity and cursor."""
 
-        constraints = [models.UniqueConstraint(fields=["run", "model_label", "original_pk"], name="import_overwrite_original")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "model_label", "original_pk"],
+                name="import_overwrite_original",
+            )
+        ]
         indexes = [models.Index(fields=["run", "deleted", "ordinal"])]
 
     def __str__(self):
@@ -1883,8 +1905,6 @@ class IntegrationEventReceipt(models.Model):
         return f"IntegrationEventReceipt({self.user.username}, {self.client_event_id})"
 
 
-
-
 class CatalogGrant(models.Model):
     """A revocable, per-resource grant for published read-only catalogs.
 
@@ -2030,6 +2050,7 @@ class SyncClientKind(models.TextChoices):
     STREMIO = "stremio", "Stremio"
     AUDIOBOOKSHELF = "audiobookshelf", "Audiobookshelf"
     GENERIC = "generic", "Generic client"
+    TMDB = "tmdb", "TMDb"
 
 
 class SyncDirection(models.TextChoices):
@@ -2057,6 +2078,7 @@ CAPABILITY_WATCHED_WRITE_UNPLAYED = "watched.write_unplayed"
 CAPABILITY_WATCHED_PUSH_PLAYED = "watched.push_played"
 CAPABILITY_WATCHED_PUSH_UNPLAYED = "watched.push_unplayed"
 CAPABILITY_LISTEN_READ = "listen.read"
+CAPABILITY_RATING_PUSH = "rating.push"
 
 
 class SyncBinding(models.Model):
@@ -2139,9 +2161,9 @@ class SyncBinding(models.Model):
         """
         if not self.is_operational():
             return False
-        return direction in (
-            self.approved_directions or []
-        ) and self.has_capability(capability)
+        return direction in (self.approved_directions or []) and self.has_capability(
+            capability
+        )
 
 
 class SyncCheckpoint(models.Model):
@@ -2511,6 +2533,12 @@ class OutboundStateDelivery(models.Model):
     # that revision describes. Both are needed: the revision orders the write,
     # the digest is what a read-back is compared against.
     target_revision = models.PositiveIntegerField(default=0)
+    operation = models.CharField(
+        max_length=16,
+        default="watched",
+        choices=[("watched", "Watched"), ("rating", "Rating")],
+    )
+    rating = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
     target_digest = models.CharField(max_length=64, blank=True, default="")
     intent = models.BooleanField(
         default=True,
@@ -2546,14 +2574,14 @@ class OutboundStateDelivery(models.Model):
         ordering = ["binding", "item", "target_revision"]
         constraints = [
             models.UniqueConstraint(
-                fields=["binding", "item", "target_revision"],
+                fields=["binding", "item", "operation", "target_revision"],
                 name="unique_delivery_per_revision",
             ),
             # Serialization primitive: at most one write per (destination, item)
             # can be in flight, enforced by the database rather than by a lock
             # that a crashed worker could hold forever.
             models.UniqueConstraint(
-                fields=["binding", "item"],
+                fields=["binding", "item", "operation"],
                 condition=models.Q(status="in_flight"),
                 name="unique_inflight_delivery_per_item",
             ),
@@ -2566,6 +2594,48 @@ class OutboundStateDelivery(models.Model):
     def __str__(self):
         """Readable representation."""
         return f"OutboundStateDelivery({self.binding_id}, item={self.item_id})"
+
+
+class RatingSyncEdit(models.Model):
+    """Latest explicit edit, including clears whose rating-only row was deleted."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    item = models.ForeignKey("app.Item", on_delete=models.CASCADE)
+    score = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    edited_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        """One latest explicit edit per user and item."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "item"], name="unique_rating_sync_edit"
+            )
+        ]
+
+    def __str__(self):
+        """Identify the edit without loading its related rows."""
+        return f"RatingSyncEdit(user={self.user_id}, item={self.item_id})"
+
+
+class TMDbAccount(models.Model):
+    """Personal TMDb authorization, separate from metadata API credentials."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tmdb_account"
+    )
+    account_id = models.CharField(max_length=64)
+    username = models.CharField(max_length=255, blank=True)
+    session_id = models.TextField(help_text="Encrypted TMDb session ID")
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    failure_count = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        """Readable identity without exposing the session credential."""
+        return f"TMDbAccount({self.username})"
 
 
 class EmbyAccount(models.Model):

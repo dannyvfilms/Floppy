@@ -1266,6 +1266,11 @@ class CustomListItem(models.Model):
         default="",
         help_text="Id of the tier this item is placed in; blank means Unranked.",
     )
+    rank = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Position of this item in an outside ranking, such as #81 of 100.",
+    )
 
     objects = CustomListItemManager()
 

@@ -97,6 +97,37 @@ Known remaining duplication:
   public lists.
 - Moving either onto the shared lookup needs its own change, with query-count checks.
 
+## Artwork loading
+
+Poster cards put the artwork URL directly in `src` and use native `loading="lazy"`.
+This lets the browser reuse cached artwork without waiting for JavaScript to replace
+a placeholder on each navigation, including HTMX swaps. Keep the aspect ratio so
+offscreen cards can stay deferred without shifting the grid.
+
+`artwork-loading.js`, loaded by both base templates, remembers up to 256 successfully
+loaded poster URLs and prepares them during HTMX swaps.
+Returning artwork uses eager loading and synchronous decoding so a cached image does
+not wait for another lazy-load visibility pass. URLs survive normal document
+navigation in session storage; a parser observer promotes them before the initial
+visibility pass and disconnects at DOMContentLoaded. The first eight images in each
+document or response load eagerly; unseen artwork beyond them stays lazy. Table
+thumbnails and other hand-built artwork use `data-media-artwork` to share this policy.
+Recently used URLs stay at the end of the bounded history rather than being evicted
+just because they were first encountered early in the session.
+
+Warm images carry `data-artwork-ready="true"`, which suppresses the containing page's
+and grid card's entrance animations. Otherwise an already-cached poster still fades
+in with a stagger on every navigation or appended page. No image fetch or decode is
+awaited before swapping the page. The login-response guard
+checks an actual meta element; matching raw response text would match the guard's
+own script and turn each boosted navigation into a second full page request.
+
+The list index has a separate cold-cover lookup for provider backdrops. Resolved URLs
+are cached for one hour and rendered directly on repeat visits. The key includes the
+first item's ID and image, so changing that item or its artwork bypasses the old entry.
+Only a cold cover uses the per-card HTMX request; page rendering never fetches providers.
+The first eight resolved index covers are eager even on a full document load.
+
 ## Card profiles
 
 Subtitle lines come from `User.card_metadata`, one profile per media type plus `person`.

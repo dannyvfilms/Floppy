@@ -12,6 +12,36 @@
     <div class="min-w-0 flex-1">
       <h3 class="text-lg font-semibold leading-none text-[var(--color-text)]">{% translate "Now Playing" %}</h3>
     </div>
+    {% if active_playback_card.checkin_control %}
+      {% with control=active_playback_card.checkin_control %}
+        <div class="flex shrink-0 items-center gap-1">
+          <button type="button"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                  title="{% translate 'Stop check-in' %}"
+                  aria-label="{% translate 'Stop check-in' %}"
+                  hx-post="{% url 'checkin_action' source=control.source media_type=control.media_type media_id=control.media_id %}"
+                  hx-vals='{"action": "{{ control.action }}", "from_now_playing": "1", "checkin_token": "{{ control.token }}"}'
+                  hx-target="#active-playback-container"
+                  hx-swap="innerHTML"
+                  hx-sync="#active-playback-container:replace"
+                  hx-disabled-elt="this">
+            {% include "app/icons/stop.svg" with classes="w-4 h-4" %}
+          </button>
+          <button type="button"
+                  class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                  title="{% translate 'Cancel check-in' %}"
+                  aria-label="{% translate 'Cancel check-in' %}"
+                  hx-post="{% url 'checkin_action' source=control.source media_type=control.media_type media_id=control.media_id %}"
+                  hx-vals='{"action": "cancel", "from_now_playing": "1", "checkin_token": "{{ control.token }}"}'
+                  hx-target="#active-playback-container"
+                  hx-swap="innerHTML"
+                  hx-sync="#active-playback-container:replace"
+                  hx-disabled-elt="this">
+            {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+          </button>
+        </div>
+      {% endwith %}
+    {% endif %}
   </div>
 
   <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square{% card_subtitle_class active_playback_card.media_type %}"

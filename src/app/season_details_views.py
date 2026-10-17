@@ -105,6 +105,17 @@ def season_details(
         season_number=season_number,
     )
     render_secondary_only = request.GET.get("fragment") == DETAIL_SECONDARY_FRAGMENT
+    initial_carousel = (
+        carousel_media.resolve_carousel_media(
+            MediaTypes.SEASON.value,
+            source,
+            media_id,
+            season_number=season_number,
+            cached_only=True,
+        )
+        if carousel_supported and not render_secondary_only
+        else None
+    )
     defer_detail_secondary = not render_secondary_only
     detail_return_url = _detail_request_url(request)
     detail_carousel_fragment_url = (
@@ -1067,6 +1078,7 @@ def season_details(
         "defer_detail_secondary": defer_detail_secondary,
         "render_secondary_only": render_secondary_only,
         "carousel_supported": carousel_supported,
+        "initial_carousel": initial_carousel,
         "detail_carousel_fragment_url": detail_carousel_fragment_url,
         **_build_detail_person_rows(season_metadata),
     }

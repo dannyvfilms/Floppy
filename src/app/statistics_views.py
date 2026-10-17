@@ -11,6 +11,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.timezone import datetime
+from django.utils.translation import gettext_noop
 from django.views.decorators.http import require_GET, require_POST
 
 from app import config, statistics_cache, stats_cast_crew
@@ -149,8 +150,8 @@ STATISTICS_COMPARE_LABELS = {
     STATISTICS_COMPARE_NONE: "No comparison",
 }
 STATISTICS_CARD_LAST_YEAR_LABELS = {
-    "This Year": "last year",
-    "This Month": "last year",
+    "This Year": gettext_noop("last year"),
+    "This Month": gettext_noop("last year"),
 }
 _STATISTICS_HOURS_DISPLAY_RE = re.compile(
     r"^\s*(\d+(?:\.\d+)?)h\s+(\d+(?:\.\d+)?)min\s*$"
@@ -597,11 +598,11 @@ def statistics(request):
 
         _compare_label = STATISTICS_COMPARE_LABELS[selected_compare_mode]
         _range_to_comparison_label = {
-            "Today": "yesterday",
-            "Yesterday": "previous day",
-            "This Week": "last week",
-            "This Month": "last month",
-            "This Year": "last year",
+            "Today": gettext_noop("yesterday"),
+            "Yesterday": gettext_noop("previous day"),
+            "This Week": gettext_noop("last week"),
+            "This Month": gettext_noop("last month"),
+            "This Year": gettext_noop("last year"),
         }
         if selected_range_name and selected_range_name.lower().startswith("last"):
             activity_comparison_period_label = selected_range_name.lower()

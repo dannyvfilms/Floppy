@@ -966,6 +966,9 @@ def backfill_item_metadata_task(
     else:
         game_length_batch_size = max(int(game_length_batch_size), 0)
 
+    from app.tasks_metadata_language import repair_metadata_language_batch
+
+    language_repair = repair_metadata_language_batch(batch_size=min(batch_size, 25))
     if interactive_request_active():
         logger.info("metadata_backfill_skipped reason=interactive_request_active")
         return {
@@ -981,6 +984,7 @@ def backfill_item_metadata_task(
             "message": "Skipped metadata backfill while an interactive request was active",
         }
 
+    batch_size = max(batch_size - language_repair["attempted"], 0)
     initial_items = list(_initial_metadata_items_queryset().order_by("id")[:batch_size])
     initial_item_ids = [item.id for item in initial_items]
     remaining_slots = max(batch_size - len(initial_items), 0)
@@ -1049,21 +1053,24 @@ def backfill_item_metadata_task(
     )
     if not items:
         return {
-            "success_count": 0,
-            "error_count": 0,
+            "success_count": language_repair["success"],
+            "error_count": language_repair["errors"],
+            "metadata_language_repair": language_repair,
             "remaining_metadata": 0,
             "remaining_release": 0,
             "remaining_discover_movie_metadata": 0,
             "remaining_game_lengths": 0,
             "remaining_status": 0,
             "message": (
-                "No items need metadata, release-date, Discover metadata, "
+                f"Attempted {language_repair['attempted']} metadata language repairs"
+                if language_repair["attempted"]
+                else "No items need metadata, release-date, Discover metadata, "
                 "game-length, or status backfill"
             ),
         }
 
-    success_count = 0
-    error_count = 0
+    success_count = language_repair["success"]
+    error_count = language_repair["errors"]
     release_updated_count = 0
     processed_movie_discover_items: list[Item] = []
     discover_item_ids = {item.id for item in discover_backfill_items}
@@ -1096,6 +1103,11 @@ def backfill_item_metadata_task(
                 _clear_item_metadata_cache(item)
 
             metadata = _fetch_item_metadata(item)
+            # Shared background fetches use the instance language, not the
+            # language chosen by the user who last synced this item (#1579).
+            # Fill missing synopses without replacing an existing translation.
+            if item.synopsis:
+                metadata = {**metadata, "synopsis": item.synopsis}
 
             update_fields = []
 
@@ -1294,6 +1306,7 @@ def backfill_item_metadata_task(
 
     result = {
         "success_count": success_count,
+        "metadata_language_repair": language_repair,
         "release_updated_count": release_updated_count,
         "error_count": error_count,
         "remaining_metadata": remaining_metadata,

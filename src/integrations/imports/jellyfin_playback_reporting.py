@@ -437,6 +437,7 @@ class JellyfinPlaybackReportingImporter:
                 row,
                 library,
                 source_id=f"{LIBRARY_BACKFILL_SOURCE}:{item_id}",
+                played=True,
             )
 
         self._save_skipped_count()
@@ -465,6 +466,7 @@ class JellyfinPlaybackReportingImporter:
         library: dict[str, dict],
         *,
         source_id: str | None = None,
+        played: bool = False,
     ) -> None:
         item = library.get(row.item_id)
         normalized_type = row.item_type.casefold()
@@ -477,6 +479,17 @@ class JellyfinPlaybackReportingImporter:
         if str(item.get("Type", "")).casefold() != normalized_type:
             self._skip(f"Line {row.line_number}: Jellyfin item type did not match the export.")
             return
+
+        # Played is authoritative only for the core-library backfill. The
+        # library's current Played flag cannot prove a historical session ended.
+        if not played:
+            runtime_ticks = item.get("RunTimeTicks")
+            if not isinstance(runtime_ticks, int) or runtime_ticks <= 0:
+                self._skip(f"Line {row.line_number}: Jellyfin runtime was missing or invalid.")
+                return
+            if row.play_duration * 10_000_000 * 5 < runtime_ticks * 4:
+                self._skip(f"Line {row.line_number}: session was below 80% of runtime.")
+                return
 
         candidates = _provider_candidates(item)
         series_item = None

@@ -1,34 +1,36 @@
 
 {% load i18n %}
+{% if not inline %}
 <div id="detail-carousel-logo-slot" hx-swap-oob="innerHTML">
   {% if carousel.overview %}
-    <img class="detail-carousel-overview-logo"
+    <img data-media-artwork class="detail-carousel-overview-logo"
          src="{{ carousel.overview.logo_url }}"
          alt="{% translate 'Media title logo' %}">
   {% endif %}
 </div>
+{% endif %}
 {% if carousel %}
   {% if carousel.hero %}
     {# Phone-only hero (see .detail-mobile-hero in input.css): the backdrop, blurred below the logo line. Hidden from md up, where the carousel below takes over. #}
     <div class="detail-mobile-hero md:hidden" aria-hidden="true">
-      <img class="detail-mobile-hero__blur" src="{{ carousel.hero.url }}" alt="">
-      <img class="detail-mobile-hero__sharp" src="{{ carousel.hero.url }}" alt="">
-      {% if carousel.hero.logo_url %}<img class="detail-mobile-hero__logo" src="{{ carousel.hero.logo_url }}" alt="">{% endif %}
+      <img data-media-artwork class="detail-mobile-hero__blur" src="{{ carousel.hero.url }}" alt="">
+      <img data-media-artwork class="detail-mobile-hero__sharp" src="{{ carousel.hero.url }}" alt="">
+      {% if carousel.hero.logo_url %}<img data-media-artwork class="detail-mobile-hero__logo" src="{{ carousel.hero.logo_url }}" alt="">{% endif %}
     </div>
   {% endif %}
   <div class="detail-carousel-content w-full h-full flex flex-col gap-2" x-data="{ selected: 0, mode: 'image', videoPlaying: false, items: [], blurUrl: '', previousBlurUrl: '', blurTransitioning: true, lightboxOpen: false, fit: localStorage.getItem('gallery-fit') || 'contain', stripHasOverflow: false, stripAtStart: true, stripAtEnd: true, updateStripScroll() { const strip = this.$refs.thumbnailStrip; if (!strip) return; this.stripHasOverflow = strip.scrollWidth > strip.clientWidth + 2; this.stripAtStart = strip.scrollLeft < 2; this.stripAtEnd = strip.scrollLeft + strip.clientWidth >= strip.scrollWidth - 2 }, blurSrc(item) { return item.kind === 'video' ? 'https://img.youtube.com/vi/' + item.key + '/maxresdefault.jpg' : item.url }, select(i) { if (i === this.selected) return; this.previousBlurUrl = this.blurUrl; this.blurUrl = this.blurSrc(this.items[i]); this.blurTransitioning = false; this.selected = i; this.mode = this.items[i].kind; this.videoPlaying = false; this.$nextTick(() => { const el = this.$refs['thumb_' + i]; if (el) el.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); requestAnimationFrame(() => requestAnimationFrame(() => { this.blurTransitioning = true })) }) }, next() { this.select((this.selected + 1) % this.items.length) }, prev() { this.select((this.selected - 1 + this.items.length) % this.items.length) }, toggleFit() { this.fit = this.fit === 'cover' ? 'contain' : 'cover'; localStorage.setItem('gallery-fit', this.fit) }, }" x-init="items = [ {% if carousel.overview %}{ kind: 'overview', url: '{{ carousel.overview.url|escapejs }}' },{% endif %}{% if carousel.video %}{ kind: 'video', key: '{{ carousel.video.key|escapejs }}' },{% endif %}
 
   {% for photo in carousel.photos %}{ kind: 'image', url: '{{ photo.url|escapejs }}' },{% endfor %}
   ]; mode = items[0].kind; blurUrl = blurSrc(items[0]); previousBlurUrl = blurUrl; $nextTick(() => updateStripScroll())" @resize.window.debounce.100ms="updateStripScroll()" @keydown.escape.window="lightboxOpen = false" @keydown.arrow-left.window="if (lightboxOpen) prev()" @keydown.arrow-right.window="if (lightboxOpen) next()">
-  <div class="detail-carousel-preview relative flex-1 min-h-[12rem]"
-       :class="mode === 'overview' ? 'detail-carousel-preview--overview' : 'detail-carousel-preview--bounded'">
+  <div class="detail-carousel-preview relative flex-1 min-h-[12rem] {% if carousel.overview %}detail-carousel-preview--overview{% else %}detail-carousel-preview--bounded{% endif %}"
+       :class="{ 'detail-carousel-preview--overview': mode === 'overview', 'detail-carousel-preview--bounded': mode !== 'overview' }">
     {% if carousel.overview %}
-      <img class="detail-carousel-overview-extension detail-carousel-overview-extension--outgoing"
+      <img data-media-artwork class="detail-carousel-overview-extension detail-carousel-overview-extension--outgoing"
            :class="{ 'detail-carousel-overview-extension--active': blurTransitioning }"
            :src="previousBlurUrl"
            onload="if (this.naturalWidth === 120) { this.src = this.src.replace('maxresdefault', 'hqdefault') }"
            alt="">
-      <img class="detail-carousel-overview-extension detail-carousel-overview-extension--incoming"
+      <img data-media-artwork class="detail-carousel-overview-extension detail-carousel-overview-extension--incoming"
            :class="{ 'detail-carousel-overview-extension--active': blurTransitioning }"
            :src="blurUrl"
            onload="if (this.naturalWidth === 120) { this.src = this.src.replace('maxresdefault', 'hqdefault') }"
@@ -39,7 +41,7 @@
               class="detail-carousel-video-poster relative block h-full w-full cursor-pointer"
               @click="videoPlaying = true"
               aria-label="{% translate "Play trailer" %}">
-        <img class="detail-carousel-main-image relative z-[1] w-full h-full"
+        <img data-media-artwork class="detail-carousel-main-image relative z-[1] w-full h-full"
              :class="mode === 'overview' ? 'detail-carousel-main-image--overview object-cover' : (fit === 'cover' ? 'object-cover' : 'object-contain')"
              :src="'https://img.youtube.com/vi/' + items[selected].key + '/maxresdefault.jpg'"
              onload="if (this.naturalWidth === 120) { this.src = this.src.replace('maxresdefault', 'hqdefault') }"
@@ -61,7 +63,7 @@
               allowfullscreen></iframe>
     </template>
     <template x-if="mode !== 'video'">
-      <img class="detail-carousel-main-image relative z-[1] w-full h-full cursor-pointer"
+      <img data-media-artwork class="detail-carousel-main-image relative z-[1] w-full h-full cursor-pointer"
            :class="mode === 'overview' ? 'detail-carousel-main-image--overview object-cover' : (fit === 'cover' ? 'object-cover' : 'object-contain')"
            :src="items[selected].url"
            alt=""
