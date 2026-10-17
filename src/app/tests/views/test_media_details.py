@@ -2084,6 +2084,44 @@ class MediaDetailsViewTests(TestCase):
 
         self.assertNotContains(response, "Not listened yet")
 
+    def test_music_track_details_lists_play_history_with_origin_url(self):
+        """A scrobble origin URL is shown on the track's play history."""
+        artist = Artist.objects.create(name="Play Artist")
+        album = Album.objects.create(title="Play Album", artist=artist)
+        track = Track.objects.create(album=album, title="Track One")
+        item = Item.objects.create(
+            media_id="recording-track-origin",
+            source=Sources.MUSICBRAINZ.value,
+            media_type=MediaTypes.MUSIC.value,
+            title="Track One",
+        )
+        Music.objects.create(
+            item=item,
+            user=self.user,
+            artist=artist,
+            album=album,
+            track=track,
+            status=Status.COMPLETED.value,
+            end_date=datetime(2026, 2, 2, 18, 0, tzinfo=UTC),
+            origin_url="https://soundcloud.example/track",
+        )
+
+        response = self.client.get(
+            reverse(
+                "music_track_details",
+                kwargs=self._track_details_kwargs(
+                    artist,
+                    album,
+                    track,
+                    "play-artist",
+                    "play-album",
+                ),
+            ),
+        )
+
+        self.assertContains(response, "https://soundcloud.example/track")
+        self.assertNotContains(response, "Not listened yet")
+
     def test_music_track_details_redirects_when_album_path_is_wrong(self):
         artist = Artist.objects.create(name="Right Artist")
         album = Album.objects.create(title="Right Album", artist=artist)

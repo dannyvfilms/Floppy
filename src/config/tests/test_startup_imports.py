@@ -132,6 +132,9 @@ print(json.dumps(sorted(name for name in watched if name in sys.modules)))
         environment = os.environ.copy()
         environment["DJANGO_SETTINGS_MODULE"] = "config.test_settings"
         environment["PYTHONPATH"] = str(settings.BASE_DIR)
+        # A developer .env with DEBUG=True turns on the debug toolbar, which
+        # production never loads.
+        environment["DEBUG"] = "False"
         if role:
             environment["FLOPPY_PROCESS_ROLE"] = role
         else:
