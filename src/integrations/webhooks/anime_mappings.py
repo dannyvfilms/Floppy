@@ -85,6 +85,38 @@ def get_mal_id_from_tvdb(
     )
 
 
+def get_mal_id_from_series(mapping_data, provider, series_id, season, episode):
+    """Resolve only unique, one-to-one episode mappings for outbound counts."""
+    if provider not in {"tmdb", "tvdb"}:
+        return None, None
+    candidates = set()
+    targets = mapping_data.get(f"{provider}_show:{series_id}:s{season}", {})
+    try:
+        for descriptor, ranges in targets.items():
+            mal_id = _parse_mal_descriptor(descriptor)
+            if mal_id is None:
+                continue
+            # Several MAL ids for one range can't give a single count, but
+            # only for the episodes that range covers.
+            several_ids = "," in descriptor
+            if not ranges:
+                if several_ids:
+                    return None, None
+                candidates.add((mal_id, episode))
+            for source_range, target_range in ranges.items():
+                source_start, source_end = _parse_episode_range(source_range)
+                if episode < source_start or (source_end is not None and episode > source_end):
+                    continue
+                if several_ids or "|" in target_range:
+                    return None, None
+                mapped = _map_target_episode_number(target_range, episode - source_start)
+                if mapped is not None:
+                    candidates.add((mal_id, mapped))
+    except (TypeError, ValueError, AttributeError):
+        return None, None
+    return candidates.pop() if len(candidates) == 1 else (None, None)
+
+
 def get_tmdb_episode_mapping(
     mapping_data,
     tmdb_id,
@@ -97,7 +129,11 @@ def get_tmdb_episode_mapping(
 
     AniBridge entries are directional, and only the TVDB season slice can name
     a TMDB target for the already resolved show, so the source identity is
-    fixed to TVDB and the target to that same show.
+    fixed to TVDB and the target to that same show. A direct link wins;
+    without one the episode pivots through the MAL or AniList entry both sides
+    map: TVDB splits Medabots' 52 episodes into S1 and S2, while TMDB keeps
+    them in S1 and links them only through AniList. AniDB is left out: its
+    season links are not reliable enough to move a watch.
     """
     if not isinstance(mapping_data, dict) or tmdb_id in (None, ""):
         return None
@@ -119,28 +155,48 @@ def get_tmdb_episode_mapping(
         return None
 
     target_prefix = f"tmdb_show:{tmdb_id}:s"
-    candidates: dict[int, int] = {}
-    for target_descriptor, ranges in targets.items():
-        if not target_descriptor.startswith(target_prefix):
-            continue
+    candidates = set()
+    try:
+        for descriptor, ranges in targets.items():
+            if not descriptor.startswith(target_prefix):
+                continue
+            target_season = int(descriptor[len(target_prefix) :])
+            target_episode = _one_to_one_target(ranges, source_episode)
+            if target_season > 0 and target_episode and target_episode > 0:
+                candidates.add((target_season, target_episode))
 
-        try:
-            target_season = int(target_descriptor[len(target_prefix) :])
-            target_episode = _map_episode_number(ranges, source_episode)
-        except (TypeError, ValueError):
-            continue
-
-        if target_season > 0 and target_episode and target_episode > 0:
-            candidates.setdefault(target_season, target_episode)
+        if not candidates:
+            tmdb_seasons = {
+                number: mapping_data[f"{target_prefix}{number}"]
+                for number in range(1, TMDB_SEASON_PROBE_LIMIT)
+                if f"{target_prefix}{number}" in mapping_data
+            }
+            for pivot in ("mal:", "anilist:"):
+                for descriptor, ranges in targets.items():
+                    if not descriptor.startswith(pivot) or "," in descriptor:
+                        continue
+                    pivot_episode = _one_to_one_target(ranges, source_episode)
+                    if pivot_episode is None:
+                        continue
+                    for number, tmdb_targets in tmdb_seasons.items():
+                        if descriptor not in tmdb_targets:
+                            continue
+                        mapped = _one_to_one_source(
+                            tmdb_targets[descriptor], pivot_episode
+                        )
+                        if mapped and mapped > 0:
+                            candidates.add((number, mapped))
+                if candidates:
+                    break
+    except (TypeError, ValueError, AttributeError):
+        return None
 
     # Identical source ranges can sit under two target seasons, so the only
     # serialisation-independent answer is to refuse the ambiguous mapping and
     # let the caller fall back rather than trust JSON key order.
     if len(candidates) != 1:
         return None
-
-    ((target_season, target_episode),) = candidates.items()
-    return target_season, target_episode
+    return candidates.pop()
 
 
 def get_mal_id_from_tmdb_movie(mapping_data, tmdb_movie_id):
@@ -170,6 +226,86 @@ def get_tmdb_movie_id_from_mal_id(mapping_data, mal_id):
             if found_id is not None and str(found_id) == mal_id_str:
                 return source_descriptor.split(":", 1)[1]
     return None
+
+
+def get_series_episode_from_mal(mapping_data, mal_id, mal_episode, provider="tmdb"):
+    """Return (series_id, season, episode) for a MAL episode, or None.
+
+    The reverse of get_mal_id_from_series: only a single one-to-one range
+    that covers the MAL episode counts, so a MAL entry split across seasons
+    lands in the season that actually holds the episode.
+    """
+    candidates = set()
+    prefix = f"{provider}_show:"
+    try:
+        for source_descriptor, targets in mapping_data.items():
+            parts = source_descriptor.split(":")
+            if (
+                not source_descriptor.startswith(prefix)
+                or len(parts) < DESCRIPTOR_SEASON_PART_INDEX
+                or not parts[2].startswith("s")
+            ):
+                continue
+            season = int(parts[2][1:])
+            for target_descriptor, ranges in targets.items():
+                if "," in target_descriptor:
+                    continue
+                if str(_parse_mal_descriptor(target_descriptor)) != str(mal_id):
+                    continue
+                if not ranges:
+                    candidates.add((parts[1], season, mal_episode))
+                for source_range, target_range in ranges.items():
+                    if "|" in target_range or "," in target_range:
+                        continue
+                    target_start, target_end = _parse_episode_range(target_range)
+                    if mal_episode < target_start or (
+                        target_end is not None and mal_episode > target_end
+                    ):
+                        continue
+                    source_start, source_end = _parse_episode_range(source_range)
+                    episode = source_start + mal_episode - target_start
+                    if source_end is None or episode <= source_end:
+                        candidates.add((parts[1], season, episode))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return candidates.pop() if len(candidates) == 1 else None
+
+
+# Highest TMDB season probed when pivoting a TVDB episode onto a TMDB show.
+TMDB_SEASON_PROBE_LIMIT = 100
+
+
+def _one_to_one_target(ranges, episode):
+    """Map an episode through ranges that send it to exactly one target episode."""
+    candidates = set()
+    for source_range, target_range in (ranges or {"1-": "1-"}).items():
+        # A ratio sends one episode to several; a comma only joins the pieces
+        # of one target sequence, so it stays one-to-one.
+        if "|" in target_range:
+            continue
+        source_start, source_end = _parse_episode_range(source_range)
+        if episode < source_start or (source_end is not None and episode > source_end):
+            continue
+        candidates.add(_map_target_episode_number(target_range, episode - source_start))
+    return candidates.pop() if len(candidates) == 1 else None
+
+
+def _one_to_one_source(ranges, target_episode):
+    """Return the source episode that ranges map onto target_episode, if unique."""
+    candidates = set()
+    for source_range, target_range in (ranges or {"1-": "1-"}).items():
+        if "|" in target_range or "," in target_range:
+            continue
+        target_start, target_end = _parse_episode_range(target_range)
+        if target_episode < target_start or (
+            target_end is not None and target_episode > target_end
+        ):
+            continue
+        source_start, source_end = _parse_episode_range(source_range)
+        episode = source_start + target_episode - target_start
+        if source_end is None or episode <= source_end:
+            candidates.add(episode)
+    return candidates.pop() if len(candidates) == 1 else None
 
 
 def find_entries_for_mal_id(mapping_data, mal_id):

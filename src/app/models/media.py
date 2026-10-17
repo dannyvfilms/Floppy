@@ -167,6 +167,57 @@ class Media(models.Model):
         else:
             super().save(*args, **kwargs)
 
+    def _sync_relevant_fields_changed(self):
+        """Return whether status, progress or score changed in this save()."""
+        return (
+            self.tracker.has_changed("status")
+            or self.tracker.has_changed("progress")
+            or self.tracker.has_changed("score")
+        )
+
+    def _score_cleared(self):
+        """Return whether this save() removes a rating that was set."""
+        return (
+            self.score is None
+            and self.tracker.has_changed("score")
+            and self.tracker.previous("score") is not None
+        )
+
+    def _queue_mal_sync(self, media_type, clear_score=False):
+        """Queue an async push of this entry's status to MyAnimeList, if applicable.
+
+        No-ops for entries not sourced from MAL (e.g. AniList-backed anime or
+        MangaUpdates-backed manga) and for users without an active per-item
+        MAL connection. The push waits for the save to commit, so the worker
+        never reads the previous state. Bulk imports bypass save() entirely, so
+        this only fires for interactive edits and webhook-driven updates -
+        never as a side effect of importing.
+        """
+        if self.item.source != Sources.MAL.value:
+            return
+
+        from integrations.mal_sync import per_item_sync_active
+        from integrations.tasks import sync_mal_status
+
+        if not per_item_sync_active(self.user_id):
+            return
+
+        def send():
+            try:
+                sync_mal_status.delay(
+                    media_type=media_type, media_id=self.pk, clear_score=clear_score,
+                )
+            # The broker is down; the save already committed, so never raise.
+            except Exception as error:
+                logger.warning(
+                    "mal_sync_enqueue_failed media_type=%s media_id=%s error=%s",
+                    media_type,
+                    self.pk,
+                    error,
+                )
+
+        transaction.on_commit(send)
+
     def _get_local_max_progress(self):
         """Return locally-derived length for music, podcasts, and videos without provider calls."""
         if self.item.media_type == MediaTypes.PODCAST.value:
@@ -751,6 +802,14 @@ class Manga(Media):
 
     tracker = FieldTracker()
 
+    def save(self, *args, **kwargs):
+        """Save the manga instance, then queue a MyAnimeList sync if relevant."""
+        should_sync = self._sync_relevant_fields_changed()
+        clear_score = self._score_cleared()
+        super().save(*args, **kwargs)
+        if should_sync:
+            self._queue_mal_sync(MediaTypes.MANGA.value, clear_score=clear_score)
+
     @property
     def formatted_progress(self):
         """Return progress as a percentage when percentage tracking is enabled."""
@@ -817,7 +876,12 @@ class Anime(Media):
         """
         is_create = self._state.adding
         status_changed = self.tracker.has_changed("status")
+        should_sync = self._sync_relevant_fields_changed()
+        clear_score = self._score_cleared()
         super().save(*args, **kwargs)
+
+        if should_sync:
+            self._queue_mal_sync(MediaTypes.ANIME.value, clear_score=clear_score)
 
         became_completed = self.status == Status.COMPLETED.value and (
             status_changed or is_create

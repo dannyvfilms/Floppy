@@ -623,6 +623,48 @@ class TrackModalViewTests(TestCase):
         self.assertEqual(response.context["title_subtitle"], "Titled Show · S1E2")
 
     @patch("app.providers.services.get_media_metadata")
+    def test_track_modal_untracked_episode_survives_episode_lookup_404(
+        self,
+        mock_get_metadata,
+    ):
+        """A season can list an episode its own endpoint 404s; the modal opens."""
+        season_payload = {
+            "title": "Titled Show",
+            "season_title": "Season 1",
+            "episodes": [{"episode_number": 2, "name": "Failure's Contagious"}],
+        }
+
+        def get_metadata(media_type, *args, **kwargs):
+            if media_type == MediaTypes.EPISODE.value:
+                raise services.ProviderAPIError(
+                    Sources.TMDB.value,
+                    SimpleNamespace(
+                        response=SimpleNamespace(status_code=404, headers={}),
+                    ),
+                    "cached episode lookup failure",
+                )
+            return season_payload
+
+        mock_get_metadata.side_effect = get_metadata
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.EPISODE.value,
+                    "media_id": "titled-show-1",
+                    "season_number": 1,
+                },
+            )
+            + "?is_create=1&episode_number=2",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["title"], "Failure's Contagious")
+        self.assertEqual(response.context["title_subtitle"], "Titled Show · S1E2")
+
+    @patch("app.providers.services.get_media_metadata")
     def test_track_modal_episode_title_falls_back_to_show_and_number(
         self,
         mock_get_metadata,

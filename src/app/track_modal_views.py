@@ -449,14 +449,46 @@ def _render_standard_track_modal(
                 percentage = round((media.progress / max_progress) * 100, 1)
                 initial_data["progress"] = percentage
     else:
-        with services.interactive_request_scope():
-            metadata = services.get_media_metadata(
-                media_type,
+        language = metadata_resolution.metadata_language_default(request.user)
+        try:
+            with services.interactive_request_scope():
+                metadata = services.get_media_metadata(
+                    media_type,
+                    media_id,
+                    source,
+                    [season_number],
+                    episode_number=episode_number,
+                    language=language,
+                )
+        except services.ProviderAPIError:
+            if media_type != MediaTypes.EPISODE.value:
+                raise
+            # The provider can list an episode in its season yet 404 the
+            # episode itself; the season payload still names it.
+            logger.warning(
+                "Falling back to season metadata for media_id=%s S%sE%s",
                 media_id,
-                source,
-                [season_number],
-                episode_number=episode_number,
-                language=metadata_resolution.metadata_language_default(request.user),
+                season_number,
+                episode_number,
+            )
+            with services.interactive_request_scope():
+                metadata = dict(
+                    services.get_media_metadata(
+                        MediaTypes.SEASON.value,
+                        media_id,
+                        source,
+                        [season_number],
+                        language=language,
+                    ),
+                )
+            metadata["episode_title"] = next(
+                (
+                    episode.get("name") or episode.get("title")
+                    for episode in metadata.get("episodes") or []
+                    if isinstance(episode, dict)
+                    and str(episode.get("episode_number")) == str(episode_number)
+                ),
+                None,
             )
         base_metadata = metadata
         title = metadata["title"]

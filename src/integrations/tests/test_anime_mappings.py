@@ -93,6 +93,54 @@ class AnimeMappingsTests(TestCase):
             anime_mappings.get_tmdb_episode_mapping(mapping_data, 65942, 4, 12),
         )
 
+    def test_tmdb_episode_mapping_pivots_through_a_shared_list_entry(self):
+        """Without a direct link, a shared AniList entry places the episode.
+
+        TVDB splits Medabots into S1 and S2 while TMDB keeps all 52 episodes in
+        S1, and the graph links the two only through AniList.
+        """
+        mapping_data = {
+            "tvdb_show:76906:s2": {"anilist:1138": {"1-26": "27-52"}},
+            "tmdb_show:888:s1": {"anilist:1138": {"1-52": "1-52"}},
+            "tmdb_show:888:s2": {"mal:4052": {"1-39": "1-39"}},
+        }
+
+        self.assertEqual(
+            anime_mappings.get_tmdb_episode_mapping(
+                mapping_data, 888, 2, 1, tvdb_id=76906,
+            ),
+            (1, 27),
+        )
+
+    def test_tmdb_episode_mapping_follows_joined_target_ranges(self):
+        """A comma joins one target sequence, so each episode still has one target."""
+        mapping_data = {
+            "tvdb_show:305089:s2": {
+                "tmdb_show:65942:s1": {"1-10": "26-30,32-36"},
+            },
+        }
+
+        self.assertEqual(
+            anime_mappings.get_tmdb_episode_mapping(
+                mapping_data, 65942, 2, 7, tvdb_id=305089,
+            ),
+            (1, 33),
+        )
+
+    def test_tmdb_episode_mapping_refuses_ratio_ranges(self):
+        """A ratio range sends one episode to several, so it moves nothing."""
+        mapping_data = {
+            "tvdb_show:305089:s2": {
+                "tmdb_show:65942:s1": {"1-5": "1-10|2"},
+            },
+        }
+
+        self.assertIsNone(
+            anime_mappings.get_tmdb_episode_mapping(
+                mapping_data, 65942, 2, 3, tvdb_id=305089,
+            ),
+        )
+
     def test_find_entries_for_mal_id_skips_malformed_target_descriptors(self):
         """Reverse lookup ignores malformed target descriptors."""
         mapping_data = {

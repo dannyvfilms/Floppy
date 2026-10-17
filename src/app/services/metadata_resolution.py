@@ -39,6 +39,9 @@ PROVIDER_EXTERNAL_ID_KEYS = {
     Sources.TVDB.value: "tvdb_id",
     Sources.MAL.value: "mal_id",
 }
+EXTERNAL_ID_KEY_PROVIDERS = {
+    key: provider for provider, key in PROVIDER_EXTERNAL_ID_KEYS.items()
+}
 
 
 @dataclass(slots=True)
@@ -475,6 +478,41 @@ def _upsert_provider_link(*, defaults: dict, **lookup):
     )
 
 
+def _contradicts_item_identity(
+    item: Item,
+    provider: str | None,
+    provider_media_id,
+    provider_media_type: str | None,
+    season_number: int | None,
+) -> bool:
+    """Return whether a show-level ID would contradict the item's own identity.
+
+    The item's media_id belongs to its source: a link to that source must carry
+    it, and a link to any other provider must not. Either write means an ID was
+    read under the wrong provider - D.Gray-man Hallow, a TVDB show, got its own
+    TVDB id stored as its TMDB link and its TVDB link replaced, after which no
+    import could match it and Plex created a duplicate.
+    """
+    if (
+        not provider
+        or season_number is not None
+        or provider_media_type != item.media_type
+    ):
+        return False
+    carries_own_id = str(provider_media_id) == str(item.media_id)
+    if carries_own_id == (provider == item.source):
+        return False
+    logger.warning(
+        "provider_link_refused item_id=%s item=%s:%s provider=%s provider_media_id=%s",
+        item.id,
+        item.source,
+        item.media_id,
+        provider,
+        provider_media_id,
+    )
+    return True
+
+
 def upsert_provider_links(
     item: Item | None,
     metadata: dict | None,
@@ -501,12 +539,33 @@ def upsert_provider_links(
     )
 
     external_ids = _normalize_external_ids(metadata, provider=normalized_provider)
+    external_ids = {
+        key: value
+        for key, value in external_ids.items()
+        if not _contradicts_item_identity(
+            item,
+            EXTERNAL_ID_KEY_PROVIDERS.get(key),
+            value,
+            normalized_media_type,
+            season_number,
+        )
+    }
     metadata_payload = dict(extra_metadata) if extra_metadata else {}
     retry_kwargs = (
         {"max_retries": retry_max_retries} if retry_max_retries is not None else {}
     )
 
-    if normalized_provider and metadata.get("media_id"):
+    if (
+        normalized_provider
+        and metadata.get("media_id")
+        and not _contradicts_item_identity(
+            item,
+            normalized_provider,
+            metadata["media_id"],
+            normalized_media_type,
+            season_number,
+        )
+    ):
         link_defaults = {
             "provider_media_id": str(metadata["media_id"]),
             "metadata": metadata_payload,

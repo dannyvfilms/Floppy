@@ -112,7 +112,9 @@ def remap_via_anibridge(
         episode_number,
         tvdb_id=tv_metadata.get("tvdb_id") or metadata_ids.get("tvdb_id"),
     )
-    if mapping is None:
+    # A mapping that keeps the numbers adds nothing the caller has not already
+    # checked, so it costs no season fetch.
+    if mapping is None or mapping == (int(season_number), int(episode_number)):
         return None
 
     target_season, target_episode = mapping

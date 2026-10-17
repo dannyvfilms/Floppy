@@ -660,6 +660,10 @@ class UserGetImportTasksTests(TestCase):
             date_done=timezone.now(),
             result='"Synced collection ownership."',
         )
+        # date_done is auto_now, so set the ordering timestamp explicitly.
+        TaskResult.objects.filter(task_id="task-radarr").update(
+            date_done=timezone.now() - timedelta(minutes=5),
+        )
 
         PeriodicTask.objects.create(
             name="Import from Radarr for test (every 2 hours)",
@@ -965,6 +969,10 @@ class UserGetImportTasksTests(TestCase):
             status="SUCCESS",
             date_done=timezone.now(),
             result='"Synced collection."',
+        )
+        # date_done is auto_now, so set the ordering timestamp explicitly.
+        TaskResult.objects.filter(task_id="task-radarr-recurring").update(
+            date_done=timezone.now() - timedelta(minutes=5),
         )
 
         import_tasks = self.user.get_import_tasks()
