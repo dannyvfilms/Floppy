@@ -167,6 +167,9 @@ if settings.ADMIN_ENABLED:
 if settings.ENABLE_DEBUG_TOOLBAR:
     urlpatterns.append(path("__debug__/", include("debug_toolbar.urls")))
 
+if settings.ENABLE_BROWSER_RELOAD:
+    urlpatterns.append(path("__reload__/", include("django_browser_reload.urls")))
+
 # Serve static files for local Django commands like runserver even when
 # DEBUG is disabled in the user's .env. The finders cover installed apps'
 # static (django_select2, admin), not just the project's own directory.

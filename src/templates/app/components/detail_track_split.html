@@ -13,7 +13,7 @@
          hx-trigger="checkin-refresh"
          hx-swap="none"
          {% endif %}
-         x-data="{ editTrackOpen: false, createTrackOpen: false, trackMenuOpen: false }"
+         x-data="{ editTrackOpen: {% if track_open %}true{% else %}false{% endif %}, createTrackOpen: false, trackMenuOpen: false }"
          class="relative inline-flex w-full md:w-auto"
          @click.outside="trackMenuOpen = false"
          @keydown.escape.window="trackMenuOpen = false"
@@ -76,7 +76,7 @@
         <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
              style="width: min(96vw, 72rem)"
              @click.stop>
-          <div id="{% component_id 'track' media current_instance.id %}"></div>
+          <div id="{% component_id 'track' media current_instance.id %}">{% if track_modal_content %}{{ track_modal_content|safe }}{% endif %}</div>
         </div>
       </div>
       </template>

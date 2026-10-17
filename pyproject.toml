@@ -63,6 +63,9 @@ test = [
 dev = [
     { include-group = "lint" },
     { include-group = "test" },
+    # Refreshes the browser when a template, static file or Python module
+    # changes under runserver. Dev-only: the Docker build skips this group.
+    "django-browser-reload==1.21.0",
 ]
 
 [tool.uv]
