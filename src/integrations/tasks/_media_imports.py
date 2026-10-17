@@ -21,6 +21,7 @@ from integrations.imports import (
     helpers,
     hltb,
     imdb,
+    itchio,
     jellyfin_playback_reporting,
     kapowarr,
     kavita,
@@ -415,6 +416,12 @@ def import_wetrakr_export(file, user_id, mode):
 def import_steam(username, user_id, mode):
     """Celery task for importing game data from Steam."""
     return import_media(steam.importer, username, user_id, mode)
+
+
+@shared_task(name="Import from itch.io")
+def import_itchio(user_id, mode="new"):
+    """Import owned itch.io games as custom entries."""
+    return import_media(itchio.importer, None, user_id, mode)
 
 
 @shared_task(name="Import from Xbox")
