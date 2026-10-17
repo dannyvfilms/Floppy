@@ -755,6 +755,55 @@ class AppTagsTests(TestCase):
             content,
         )
 
+    def test_history_card_video_watch_url_opens_externally(self):
+        """A stored watch URL is the only history link that leaves Floppy."""
+        item = Item.objects.create(
+            media_id="watch-1",
+            source=Sources.YOUTUBE.value,
+            media_type=MediaTypes.VIDEO.value,
+            title="A video",
+            image="http://example.com/video.jpg",
+        )
+        request = self.request_factory.get("/history")
+        request.user = self.user
+        watch_url = "https://www.youtube.com/watch?v=watch-1"
+        content = render_to_string(
+            "app/components/history_card.html",
+            {
+                "entry": SimpleNamespace(
+                    media_type=MediaTypes.VIDEO.value,
+                    album=None,
+                    item=item,
+                    poster=item.image,
+                    status="Completed",
+                    runtime_display="3m",
+                    display_title=item.title,
+                    title=item.title,
+                    played_at_local=timezone.now(),
+                    time_range_display="6:00 PM",
+                    play_count=1,
+                    progress_display=None,
+                    episode_label=None,
+                    episode_code=None,
+                    show=None,
+                    score=None,
+                    entry_key="video-entry-1",
+                    instance_id=1,
+                    watch_url=watch_url,
+                ),
+                "card_class": "search-result-card",
+                "history_mode": "history",
+                "user": self.user,
+            },
+            request=request,
+        )
+
+        self.assertIn(f'href="{watch_url}"', content)
+        self.assertIn('target="_blank"', content)
+        self.assertIn('rel="noopener noreferrer"', content)
+        self.assertNotIn("hx-boost", content)
+        self.assertIn("Edit tracking", content)
+
     def test_history_modal_actions_are_visible_on_touch_and_keyboard_focus(self):
         """History actions remain discoverable without a mouse hover."""
         request = self.request_factory.get("/media/movie/238")

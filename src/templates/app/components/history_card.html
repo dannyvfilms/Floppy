@@ -15,8 +15,8 @@
      :class="revealed ? 'media-card-revealed' : ''">
   <div class="media-card-visual relative">
     {% with entry.item|display_title:user as preferred_entry_title %}
-    <a hx-boost="true"
-       href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}">
+    <a {% if entry.media_type == MediaTypes.VIDEO.value and entry.watch_url %}target="_blank" rel="noopener noreferrer"{% else %}hx-boost="true"{% endif %}
+       href="{% if entry.media_type == MediaTypes.VIDEO.value and entry.watch_url %}{{ entry.watch_url }}{% elif entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}">
       <img loading="lazy" decoding="sync" alt="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}"
            class="media-card-poster w-full {% if card_class == 'search-result-card-square' %}aspect-[1/1]{% else %}aspect-[2/3]{% endif %} {% if entry.poster != IMG_NONE %}object-cover{% endif %}"
            src="{{ entry.poster|image_url }}">
@@ -60,8 +60,8 @@
         {# Darkening background layer #}
         <div class="absolute inset-0 bg-black/50 z-0"></div>
         
-        <a hx-boost="true"
-           href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
+        <a {% if entry.media_type == MediaTypes.VIDEO.value and entry.watch_url %}target="_blank" rel="noopener noreferrer"{% else %}hx-boost="true"{% endif %}
+           href="{% if entry.media_type == MediaTypes.VIDEO.value and entry.watch_url %}{{ entry.watch_url }}{% elif entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
            class="absolute inset-0 z-0"></a>
 
         <div class="relative z-10 flex w-full max-w-full flex-wrap items-center justify-center gap-2.5 px-2">
@@ -105,8 +105,8 @@
     {% with entry.item|display_title:user as preferred_entry_title %}
       {% with entry.item|alternative_title:user as entry_alternative_title %}
     <div class="media-card-title-row flex items-center gap-2 min-w-0">
-      <a href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
-         hx-boost="true"
+      <a href="{% if entry.media_type == MediaTypes.VIDEO.value and entry.watch_url %}{{ entry.watch_url }}{% elif entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}"
+         {% if entry.media_type == MediaTypes.VIDEO.value and entry.watch_url %}target="_blank" rel="noopener noreferrer"{% else %}hx-boost="true"{% endif %}
          class="media-card-title text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-link)] transition duration-300 line-clamp-1 min-w-0"
          title="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}">
         {{ preferred_entry_title|default:entry.display_title|default:entry.title }}

@@ -318,6 +318,7 @@ def _build_video_play_entry(play):
         "instance_id": play.id,
         "entry_key": f"video:{play.id}",
         "entry_source": "youtube",
+        "watch_url": video.watch_url,
     }
 
 
