@@ -172,6 +172,10 @@ SOURCES_CONFIG = {
         "name": "IMDB",
         "logo": static("img/imdb-logo.png"),
     },
+    "itchio": {
+        "name": "itch.io",
+        "logo": "https://itch.io/favicon.ico",
+    },
     "steam": {
         "name": "Steam",
         "logo": static("img/steam-logo.ico"),
