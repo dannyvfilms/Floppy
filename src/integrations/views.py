@@ -1823,6 +1823,25 @@ def import_grouvee(request):
 
 
 @require_POST
+def import_itchio(request):
+    """Store a user's itch.io key and queue a one-time library import."""
+    api_key = (request.POST.get("api_key") or "").strip()
+    if not api_key:
+        messages.error(request, "itch.io API key is required.")
+        return _integration_redirect(request, connected_slug="itchio")
+    credentials.set_user("itchio", request.user, {"api_key": api_key})
+    if _queue_task_or_message(
+        request,
+        tasks.import_itchio,
+        user_id=request.user.id,
+        mode=request.POST.get("mode", "new"),
+    ) is False:
+        return _integration_redirect(request, connected_slug="itchio")
+    messages.info(request, "The task to import your itch.io library has been queued.")
+    return _integration_redirect(request, connected_slug="itchio")
+
+
+@require_POST
 def import_steam(request):
     """View for importing game data from Steam."""
     steam_id = request.POST.get("user")
