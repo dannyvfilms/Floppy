@@ -294,6 +294,15 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             fields=(CredentialField("api_key", "API key", "GOOGLE_BOOKS_API_KEY"),),
         ),
         ProviderCredentialSpec(
+            slug="itchio",
+            group=GROUP_ACCOUNTS,
+            user_scope=True,
+            label="itch.io",
+            description="Used to import games from your itch.io library as custom entries.",
+            docs_url="https://itch.io/user/settings/api-keys",
+            fields=(CredentialField("api_key", "API key", "ITCHIO_API_KEY"),),
+        ),
+        ProviderCredentialSpec(
             slug="steam",
             group=GROUP_ACCOUNTS,
             user_scope=True,
