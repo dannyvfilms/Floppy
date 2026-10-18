@@ -2,7 +2,7 @@
 {% load i18n %}
 {% load app_tags %}
 
-{% if swap_oob and current_instance and media.media_type == "game" or swap_oob and current_instance and media.media_type == "movie" %}
+{% if swap_oob and current_instance.id and media.media_type == "game" or swap_oob and current_instance.id and media.media_type == "movie" %}
   {% include "app/components/detail_track_split.html" with media_type=media.media_type %}
 {% else %}
 <div id="{% component_id 'track-action' media %}"

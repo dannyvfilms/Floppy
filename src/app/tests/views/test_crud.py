@@ -1515,7 +1515,9 @@ class EditMedia(TestCase):
         self.assertContains(response, 'hx-swap-oob="outerHTML"', html=False)
         self.assertContains(response, f'id="detail-score-chip-{movie.id}"', html=False)
         self.assertContains(response, "Edit rating")
-        self.assertContains(response, "Completed")
+        # A completed movie offers another entry beside Check-in.
+        self.assertContains(response, "Check-in</span>", html=False)
+        self.assertContains(response, "Add new entry")
         trigger = json.loads(response["HX-Trigger"])
         self.assertEqual(trigger["closeModal"]["formId"], "track-form-test")
         self.assertEqual(trigger["showToast"]["type"], "success")
@@ -1738,7 +1740,7 @@ class EditMedia(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "data-track-action-root", html=False)
-        self.assertContains(response, "trackOpen: true", html=False)
+        self.assertContains(response, "editTrackOpen: true", html=False)
         self.assertContains(response, "track-form-test")
         self.assertContains(response, "data-track-modal-root", html=False)
         self.assertContains(
@@ -1752,6 +1754,48 @@ class EditMedia(TestCase):
             Movie.objects.get(item__media_id="10494").status,
             initial_status,
         )
+
+    @patch("app.save_views.ensure_item_metadata")
+    def test_add_movie_entry_htmx_validation_error_reopens_create_modal(
+        self, ensure_item_metadata_mock,
+    ):
+        """A failed Add new entry reopens its own modal on the split button."""
+        item = Item.objects.create(
+            media_id="10494",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Perfect Blue",
+            image="http://example.com/image.jpg",
+        )
+        Movie.objects.create(
+            item=item,
+            user=self.user,
+            progress=1,
+            status=Status.COMPLETED.value,
+        )
+        ensure_item_metadata_mock.return_value = SimpleNamespace(item=item)
+
+        response = self.client.post(
+            f"{reverse('media_save')}?next=/details/tmdb/movie/10494/perfect-blue",
+            {
+                "track_form_id": "track-form-test",
+                "media_id": "10494",
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "progress": 1,
+                "status": "bogus",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Check-in</span>", html=False)
+        self.assertContains(response, "createTrackOpen: true", html=False)
+        self.assertContains(response, "editTrackOpen: false", html=False)
+        self.assertContains(response, "track-form-test")
+        self.assertContains(response, "data-track-modal-root", html=False)
+        self.assertContains(response, 'hx-swap-oob="outerHTML"', html=False)
+        self.assertEqual(Movie.objects.filter(item=item).count(), 1)
 
     def test_edit_movie_image_url(self):
         """Test overriding a movie image URL from the edit form."""
