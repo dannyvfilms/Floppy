@@ -73,6 +73,11 @@ from integrations.tasks._plex_collection import update_collection_metadata_from_
 
 logger = logging.getLogger(__name__)
 
+# Importers whose every write either saves through the ORM (post_save marks
+# the day) or goes through helpers.bulk_create_media (published below), so a
+# changed poll refreshes only the days it touched instead of the whole library.
+DAY_SCOPED_IMPORTERS = (pocketcasts.importer,)
+
 # A sync that dies leaves its lock behind; it expires on its own after this.
 PSN_IMPORT_LOCK_SECONDS = 15 * 60
 
@@ -95,6 +100,7 @@ def import_media(
         logger.info("import_skipped_inactive_user user_id=%s", user_id)
         return "Import skipped: the account is deactivated."
     task_id = current_task.request.id if current_task and current_task.request else None
+    day_scoped = importer_func in DAY_SCOPED_IMPORTERS
 
     source = getattr(importer_func, "__module__", "").rsplit(".", 1)[-1]
     import_run = None
@@ -131,6 +137,7 @@ def import_media(
             # A Celery task runs no middleware, so without this the importer
             # would not see the user's personal provider keys (#1488).
             credentials.current_user_scope(user),
+            helpers.record_bulk_rows() as bulk_rows,
         ):
             if oauth_username is None:
                 imported_counts, warnings = importer_func(
@@ -148,6 +155,9 @@ def import_media(
                     **extra_kwargs,
                 )
             statistics_changes["unchanged"] = not has_imported_media(imported_counts)
+            if day_scoped:
+                helpers.publish_bulk_rows(user_id, bulk_rows)
+                statistics_changes["scoped"] = True
     except BaseException:
         # BaseException so a soft time limit or worker shutdown still leaves a
         # record. RUNNING only: a cancel has already marked the row CANCELLED.
@@ -201,6 +211,9 @@ def import_media(
             "import_catchup_skipped reason=signal_writes importer=gpodder user_id=%s",
             user_id,
         )
+    elif has_imported_media(imported_counts) and day_scoped:
+        # Rows it wrote were published above, day by day; no library-wide drop.
+        events.tasks.reload_calendar.delay()
     elif has_imported_media(imported_counts):
         events.tasks.reload_calendar.delay()
 

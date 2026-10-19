@@ -1,0 +1,65 @@
+{% load i18n %}
+{% if releases %}
+  <div class="space-y-6">
+    {% for release in releases %}
+      <details class="group space-y-2" {% if forloop.first %}open{% endif %}>
+        <summary class="flex flex-wrap items-center gap-2 cursor-pointer">
+          <span aria-hidden="true" class="inline-block text-xs text-[var(--color-text-muted)] transition-transform group-open:rotate-90">&#9656;</span>
+          <span class="font-mono text-[var(--color-text-primary)]">{{ release.tag }}</span>
+          {% if release.published %}
+            <span class="text-[var(--color-text-muted)] text-xs">{{ release.published }}</span>
+          {% endif %}
+          {% if release.installed %}
+            <span class="px-2 py-0.5 rounded-full text-xs bg-green-500/10 border border-green-500/30 text-[var(--color-text-secondary)]">{% translate "Installed" %}</span>
+          {% elif release.newer %}
+            <span class="px-2 py-0.5 rounded-full text-xs bg-indigo-500/10 border border-indigo-500/30 text-[var(--color-link)]">{% translate "Newer than yours" %}</span>
+          {% endif %}
+        </summary>
+        <div class="space-y-2 pt-2">
+          {% if release.highlights %}
+            <ul class="list-disc pl-5 space-y-1 text-sm text-[var(--color-text-secondary)]">
+              {% for item in release.highlights %}
+                <li>
+                  {% if item.title %}
+                    <span class="font-medium">{{ item.title }}</span>
+                    {% if item.text %}—{% endif %}
+                  {% endif %}
+                  {{ item.text }}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-[var(--color-text-muted)] text-sm">{% translate "See the release page for what changed." %}</p>
+          {% endif %}
+          <a href="{{ release.url }}"
+             target="_blank"
+             rel="noopener noreferrer"
+             class="inline-block text-sm text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">
+            {% translate "Release page on GitHub" %}
+            <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
+          </a>
+        </div>
+      </details>
+    {% endfor %}
+    <p class="text-[var(--color-text-muted)] text-sm">
+      <a href="{{ releases_url }}"
+         target="_blank"
+         rel="noopener noreferrer"
+         class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">
+        {% translate "All releases on GitHub" %}
+        <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
+      </a>
+    </p>
+  </div>
+{% else %}
+  <p class="text-[var(--color-text-muted)] text-sm">
+    {% translate "Release notes could not be loaded from GitHub." %}
+    <a href="{{ releases_url }}"
+       target="_blank"
+       rel="noopener noreferrer"
+       class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">
+      {% translate "See the releases on GitHub" %}
+      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
+    </a>
+  </p>
+{% endif %}

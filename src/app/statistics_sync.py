@@ -84,6 +84,9 @@ def coalesce_import_changes(user_id: int):
     Record the full sweep before writes: even a killed worker leaves recovery
     work behind. Dirty-day tokens still rotate, preserving concurrent marks.
     Other threads/processes retain the ordinary incremental marking path.
+
+    An import that marked each day it wrote sets ``scoped``; a clean finish
+    then drops the full sweep requested at the start.
     """
     users = _import_changes.get()
     if user_id in users:
@@ -93,7 +96,7 @@ def coalesce_import_changes(user_id: int):
     previous = StatisticsSyncState.objects.filter(user_id=user_id).values(*fields).first()
     mark_aggregate(user_id, reason="media_import_started", full_sweep=True)
     marker = StatisticsSyncState.objects.filter(user_id=user_id).values(*fields).first()
-    changes = {"marked": False, "unchanged": False}
+    changes = {"marked": False, "unchanged": False, "scoped": False}
     token = _import_changes.set(users | {user_id: changes})
     try:
         yield changes
@@ -107,6 +110,14 @@ def coalesce_import_changes(user_id: int):
                 generation=previous["generation"] + 1,
                 full_sweep_requested_at=marker["full_sweep_requested_at"],
             ).update(**previous)
+        elif changes["scoped"] and previous and marker:
+            # The import marked every day it wrote itself, so the sweep
+            # requested up front (for a worker killed mid-import) is spent:
+            # without this one changed row re-marks every day in the library.
+            StatisticsSyncState.objects.filter(
+                user_id=user_id,
+                full_sweep_requested_at=marker["full_sweep_requested_at"],
+            ).update(full_sweep_requested_at=previous["full_sweep_requested_at"])
 
 
 def _bulk_import_active(user_id: int) -> bool:

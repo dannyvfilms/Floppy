@@ -712,24 +712,6 @@ class PocketCastsImporter:
             imported_counts,
         )
 
-        # Trigger cache refresh if any podcasts were imported
-        # (bulk_create doesn't trigger signals, so we need to manually refresh)
-        if (
-            MediaTypes.PODCAST.value in imported_counts
-            and imported_counts[MediaTypes.PODCAST.value] > 0
-        ):
-            from app import statistics_cache
-            from app.history_cache import schedule_history_refresh
-
-            logger.debug(
-                "Triggering cache refresh for user %s after podcast import",
-                self.user.username,
-            )
-            schedule_history_refresh(self.user.id)
-            statistics_cache.invalidate_all_statistics_days(
-                self.user.id, reason="pocketcasts_import"
-            )
-
         return imported_counts, "\n".join(self.warnings) if self.warnings else ""
 
     def _disconnect_account(

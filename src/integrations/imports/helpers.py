@@ -5,6 +5,8 @@ import json
 import logging
 import time
 from collections import defaultdict
+from contextlib import contextmanager
+from contextvars import ContextVar
 from copy import copy
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -29,6 +31,54 @@ from integrations import import_progress
 from integrations.models import ImportRun
 
 logger = logging.getLogger(__name__)
+
+
+# Rows an import wrote with bulk_create, which sends no post_save signal. Set by
+# record_bulk_rows() for importers whose catch-up is scoped to what they wrote.
+_bulk_rows: ContextVar[list | None] = ContextVar("import_bulk_rows", default=None)
+
+
+@contextmanager
+def record_bulk_rows():
+    """Collect the rows ``bulk_create_media`` writes inside the block."""
+    rows = []
+    token = _bulk_rows.set(rows)
+    try:
+        yield rows
+    finally:
+        _bulk_rows.reset(token)
+
+
+def _note_bulk_rows(rows):
+    sink = _bulk_rows.get()
+    if sink is not None:
+        sink.extend(rows)
+
+
+def publish_bulk_rows(user_id, rows):
+    """Refresh History and Statistics for just the days bulk-written rows sit on.
+
+    The blanket alternative drops every cached day, and a library of thousands
+    of days then takes hours to rebuild, so a recurring poll that adds one row
+    kept the worker busy until the next poll. Every day a row's dates
+    touch is a superset of the days any History or Statistics placement uses.
+    """
+    from app import history_cache, statistics_sync
+
+    day_keys = set()
+    for row in rows:
+        start, end = getattr(row, "start_date", None), getattr(row, "end_date", None)
+        day_keys.update(history_cache.history_day_keys_for_range(start, end))
+        day_keys.update(
+            key for key in map(history_cache.history_day_key, (start, end)) if key
+        )
+    if day_keys:
+        history_cache.invalidate_history_days(
+            user_id, day_keys=sorted(day_keys), force=True, reason="import_rows"
+        )
+        statistics_sync.mark_days(user_id, day_keys, reason="import_rows")
+    elif rows:
+        statistics_sync.mark_aggregate(user_id, reason="import_rows")
 
 
 class MediaImportError(Exception):
@@ -513,6 +563,7 @@ def _backfill_completed_season_episodes(seasons, *, prepare_only=False):
             Episode,
             batch_size=500,
         )
+        _note_bulk_rows(created_episodes)
         normalize_completed_entries(created_episodes)
 
     return warnings
@@ -809,6 +860,7 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
             )
 
         created_media = retry_on_lock(create_media)
+        _note_bulk_rows(created_media)
         if normalize:
             normalize_completed_entries(created_media)
         if media_type in PROJECTED_MEDIA_TYPES:

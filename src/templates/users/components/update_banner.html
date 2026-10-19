@@ -1,0 +1,22 @@
+{% load i18n %}
+{% comment %}
+One-time "Floppy was updated" banner for administrators. The release tag the
+admin last saw lives in this browser's localStorage: a browser with nothing
+stored is treated as new (no banner), and a different tag shows the banner
+until it is dismissed or followed. Storage can be unavailable (private
+windows), so every access is guarded and the banner simply stays hidden.
+{% endcomment %}
+<div x-data="{ tag: '{{ RELEASE_TAG|escapejs }}', show: false, init() { try { const seen = localStorage.getItem('floppy_seen_release'); if (seen === null) { localStorage.setItem('floppy_seen_release', this.tag); } else { this.show = seen !== this.tag; } } catch (e) { this.show = false; } }, dismiss() { this.show = false; try { localStorage.setItem('floppy_seen_release', this.tag); } catch (e) {} } }"
+     x-show="show"
+     x-cloak
+     role="status"
+     class="mb-4 flex items-center gap-3 px-3 py-2 rounded-md text-sm bg-indigo-500/10 border border-indigo-500/30 text-[var(--color-text-secondary)]">
+  <span class="flex-1">{% blocktranslate %}Floppy was updated to {{ RELEASE_TAG }}.{% endblocktranslate %}</span>
+  <a href="{% url 'about' %}#whats-new"
+     @click="dismiss()"
+     class="underline text-[var(--color-link)] hover:text-[var(--color-link-hover)]">{% translate "See what's new" %}</a>
+  <button type="button"
+          @click="dismiss()"
+          class="px-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+          aria-label="{% translate 'Dismiss' %}">&times;</button>
+</div>

@@ -175,6 +175,7 @@ urlpatterns = [
         name="update_server_port",
     ),
     path("settings/about", views.about, name="about"),
+    path("settings/about/whats-new", views.whats_new, name="whats_new"),
     path(
         "delete_import_schedule",
         views.delete_import_schedule,

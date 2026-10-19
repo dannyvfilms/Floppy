@@ -537,13 +537,6 @@ def _schedule_metadata_statistics_refresh(items, field: str, reason: str):
             statistics_cache.invalidate_statistics_days(
                 user_id, day_keys, reason=reason
             )
-        statistics_cache.schedule_all_ranges_refresh(
-            user_id,
-            debounce_seconds=10,
-            countdown=3,
-            preferred_priority=BACKGROUND_TASK_PRIORITY,
-            all_time_priority=BACKGROUND_TASK_PRIORITY,
-        )
         logger.info(
             "metadata_refresh_scheduled user_id=%s field=%s days=%s reason=%s",
             user_id,

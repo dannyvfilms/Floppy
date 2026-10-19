@@ -1012,7 +1012,11 @@ def capture_statistics_previous_dates(sender, instance, **kwargs):
         sender.objects.filter(pk=instance.pk).values_list("start_date", "end_date").first()
     )
     instance._statistics_previous_dates = previous
-    instance._history_had_dates = previous is None or any(previous)
+    # History places podcasts and music by end date alone, so a start date
+    # does not make a row "dated": a progress save on an unfinished podcast
+    # left no day behind, yet dropped every cached day.
+    placed_by = previous[1:] if previous and sender in (Podcast, Music) else previous
+    instance._history_had_dates = previous is None or any(placed_by)
 
 
 @receiver(post_save, sender=Movie)

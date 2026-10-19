@@ -65,16 +65,29 @@
             {% translate "Floppy is an open-source, self-hosted media tracker and personal diary. Track, rate, and organize movies, shows, video games, books, music, podcasts, anime, comics, and more in one unified library." %}
           </p>
           <p class="text-[var(--color-text-muted)] text-sm leading-relaxed">
-            {% translate "Floppy began as a fork of" %}
-            <a href="https://github.com/FuzzyGrim/Yamtrack"
+            {% translate "Floppy is free and supported by" %}
+            <a href="https://github.com/sponsors/dannyvfilms?metadata_source=app-about-description"
                target="_blank"
                rel="noopener noreferrer"
                class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">
-              {% translate "Yamtrack" %}
-              <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
-            </a>
-            {% translate "and has diverged substantially since. Yamtrack CSV exports import directly." %}
+              {% translate "users like you" %}<span class="sr-only">{% translate "(opens in a new tab)" %}</span></a>.
           </p>
+        </div>
+      </section>
+
+      {# What's new #}
+      <section id="whats-new"
+               aria-labelledby="about-whats-new-heading"
+               class="space-y-3">
+        <div class="flex items-center gap-2 text-lg font-medium text-[var(--color-text-secondary)]">
+          {% include "app/icons/info.svg" with classes="w-5 h-5 text-[var(--color-link)]" %}
+          <h3 id="about-whats-new-heading">{% translate "What's new" %}</h3>
+        </div>
+        <div class="pl-7"
+             hx-get="{% url 'whats_new' %}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+          <p class="text-[var(--color-text-muted)] text-sm">{% translate "Loading release notes…" %}</p>
         </div>
       </section>
 

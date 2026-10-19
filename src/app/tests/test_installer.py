@@ -342,6 +342,78 @@ class RenderTemplateTests(SimpleTestCase):
             self.assertEqual(output.read_text(encoding="utf-8"), "a=1 b=@@B@@\n")
 
 
+class DockerStateTests(SimpleTestCase):
+    """The Docker check names what is wrong instead of guessing "stopped"."""
+
+    def _state(self, docker_body):
+        """Return docker_state's answer with a fake `docker` first on PATH."""
+        with tempfile.TemporaryDirectory() as tmp:
+            shim = Path(tmp) / "docker"
+            shim.write_text(f"#!/bin/sh\n{docker_body}\n", encoding="utf-8")
+            shim.chmod(0o755)
+            return run_helper(
+                f'PATH="{tmp}:$PATH"; docker_state',
+                tmp,
+            )
+
+    def test_working_docker_is_ready(self):
+        self.assertEqual(self._state("exit 0"), "ready")
+
+    def test_no_docker_is_missing(self):
+        out = run_helper("have() { return 1; }; docker_state", ROOT)
+        self.assertEqual(out, "missing")
+
+    def test_permission_denied_is_no_permission(self):
+        body = (
+            '[ "$1" = info ] && { echo "permission denied while trying to '
+            'connect to the Docker daemon socket" >&2; exit 1; }; exit 0'
+        )
+        self.assertEqual(self._state(body), "no-permission")
+
+    def test_unreachable_daemon_is_stopped(self):
+        body = (
+            '[ "$1" = info ] && { echo "Cannot connect to the Docker daemon '
+            'at unix:///var/run/docker.sock. Is the docker daemon running?" '
+            '>&2; exit 1; }; exit 0'
+        )
+        self.assertEqual(self._state(body), "stopped")
+
+    def test_missing_compose_plugin_is_no_compose(self):
+        body = '[ "$1" = compose ] && exit 1; exit 0'
+        self.assertEqual(self._state(body), "no-compose")
+
+    def test_any_other_failure_is_an_error_not_stopped(self):
+        body = (
+            '[ "$1" = info ] && { echo "request returned 500 for API route" '
+            '>&2; exit 1; }; exit 0'
+        )
+        self.assertEqual(self._state(body), "error")
+
+    def test_every_state_has_plain_wording(self):
+        for state in (
+            "ready",
+            "missing",
+            "stopped",
+            "no-permission",
+            "no-compose",
+            "error",
+        ):
+            text = run_helper(f"docker_state_text {state}", ROOT)
+            self.assertGreater(len(text), 10, state)
+            self.assertNotIn("-", text.split()[0], state)
+
+    def test_error_detail_quotes_docker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shim = Path(tmp) / "docker"
+            shim.write_text(
+                '#!/bin/sh\necho "plugin exploded" >&2\nexit 1\n',
+                encoding="utf-8",
+            )
+            shim.chmod(0o755)
+            out = run_helper(f'PATH="{tmp}:$PATH"; docker_error_detail', tmp)
+        self.assertIn("plugin exploded", out)
+
+
 class InstallStateTests(SimpleTestCase):
     def test_values_survive_a_round_trip(self):
         with tempfile.TemporaryDirectory() as temp_dir:

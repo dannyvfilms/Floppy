@@ -189,6 +189,21 @@ class BulkImportStatisticsTests(StatisticsSyncTestCase):
         self.assertEqual(self.state().generation, before)
         self.assertIsNone(self.state().full_sweep_requested_at)
 
+    def test_scoped_import_spends_the_sweep_it_requested_up_front(self):
+        self.full_sync()
+        with statistics_sync.coalesce_import_changes(self.user.id) as changes:
+            self.mark([self.day(3)])
+            changes["scoped"] = True
+        self.assertIsNone(self.state().full_sweep_requested_at)
+        self.assertTrue(StatisticsDirtyDay.objects.filter(user=self.user).exists())
+
+    def test_scoped_import_leaves_a_sweep_that_was_already_pending(self):
+        statistics_sync.mark_aggregate(self.user.id, full_sweep=True)
+        pending = self.state().full_sweep_requested_at
+        with statistics_sync.coalesce_import_changes(self.user.id) as changes:
+            changes["scoped"] = True
+        self.assertEqual(self.state().full_sweep_requested_at, pending)
+
     def test_noop_import_cannot_erase_concurrent_tracking(self):
         self.full_sync()
         before = self.state().generation

@@ -32,6 +32,7 @@ from app.history_entry_builders import (
     _build_episode_entry,
     _build_movie_entry,
     _build_video_play_entry,
+    _entry_dates,
     _format_boardgame_plays,
     _format_game_hours,
     _get_music_runtime_minutes,
@@ -292,6 +293,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                 "episode_label": None,
                 "episode_code": None,
                 "played_at_local": played_at_local,
+                **_entry_dates(record),
                 "runtime_minutes": 0,
                 "runtime_display": None,
                 "instance_id": record.id,
@@ -457,6 +459,8 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                 "episode_label": None,
                 "episode_code": None,
                 "played_at_local": latest_time,
+                **_entry_dates(entry_music),
+                "end_date": latest_time,
                 "runtime_minutes": group["total_runtime_minutes"],
                 "runtime_display": helpers.minutes_to_hhmm(
                     group["total_runtime_minutes"]
@@ -481,7 +485,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                 end_date__gte=day_start,
                 end_date__lt=day_end,
             )
-            .values_list("id", "end_date", "history_id", named=True)
+            .values_list("id", "start_date", "end_date", "history_id", named=True)
             .iterator(chunk_size=500)
         )
     if podcast_history_records:
@@ -566,6 +570,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                     "episode_label": None,
                     "episode_code": None,
                     "played_at_local": played_at_local,
+                    **_entry_dates(history_record, added_from=podcast),
                     "runtime_minutes": runtime_minutes,
                     "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
                     if runtime_minutes
@@ -628,6 +633,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                 "episode_label": None,
                 "episode_code": None,
                 "played_at_local": played_at_local,
+                **_entry_dates(game),
                 "runtime_minutes": runtime_minutes,
                 "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
                 if runtime_minutes
@@ -695,6 +701,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                 "episode_label": None,
                 "episode_code": None,
                 "played_at_local": played_at_local,
+                **_entry_dates(boardgame),
                 "runtime_minutes": 0,
                 "runtime_display": progress_display,
                 "instance_id": boardgame.id,
@@ -753,6 +760,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                 "episode_label": None,
                 "episode_code": None,
                 "played_at_local": day_dt,
+                **_entry_dates(game),
                 "runtime_minutes": minutes_for_day,
                 "runtime_display": helpers.minutes_to_hhmm(minutes_for_day)
                 if minutes_for_day
@@ -817,6 +825,7 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
                 "episode_label": None,
                 "episode_code": None,
                 "played_at_local": day_dt,
+                **_entry_dates(boardgame),
                 "runtime_minutes": 0,
                 "runtime_display": _format_boardgame_plays(plays_for_day)
                 if plays_for_day

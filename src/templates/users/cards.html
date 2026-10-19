@@ -156,7 +156,7 @@
             <span class="cards-select-wrap">
               <select class="cards-select" x-model="active" @change="switchType(active)">
                 <template x-for="entry in catalog" :key="'type-' + entry.id">
-                  <option :value="entry.id" x-text="entry.label"></option>
+                  <option :value="entry.id" :selected="entry.id === active" x-text="entry.label"></option>
                 </template>
               </select>
               {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
