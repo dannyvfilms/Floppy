@@ -1,20 +1,23 @@
 import logging
 import time
-from collections import defaultdict
+from datetime import UTC, datetime
 
 import requests
+from django.db import transaction
 
 import app
 from app.models import MediaTypes, Sources, Status
 from app.providers import credentials, services
 from app.providers.igdb import ExternalGameSource, describe_credentials, external_game
-from integrations.imports import helpers
+from integrations.imports import helpers, playtime_sessions
 from integrations.imports.helpers import MediaImportError, MediaImportUnexpectedError
 
 logger = logging.getLogger(__name__)
 
 STEAM_API_BASE_URL = "https://api.steampowered.com"
 IMPORT_NOTE = "Imported from Steam"
+SESSION_NOTE = "Steam play session"
+SNAPSHOT_SOURCE = "steam"
 
 
 def importer(steam_id, user, mode):
@@ -45,11 +48,18 @@ class SteamImporter:
             raise MediaImportError(msg)
 
         self.existing_media = helpers.get_existing_media(user)
-
-        self.to_update = []
-        self.to_update_meta = []
-
-        self.bulk_media = defaultdict(list)
+        self.sessions = playtime_sessions.PlaytimeSessionLogger(
+            user,
+            source=SNAPSHOT_SOURCE,
+            account=steam_id,
+            mode=mode,
+            import_note=IMPORT_NOTE,
+            session_note=SESSION_NOTE,
+            existing_media=self.existing_media,
+        )
+        # Steam titles merged per IGDB game, so two app IDs that resolve to
+        # the same game add up instead of logging each other's playtime.
+        self.observations = {}
 
         logger.info(
             "Initialized Steam importer for Steam ID %s with mode %s "
@@ -71,39 +81,42 @@ class SteamImporter:
         for game_data in owned_games:
             self._process_game(game_data)
 
-        helpers.bulk_create_media(self.bulk_media, self.user)
-
-        # Update existing games
-        if self.to_update:
-            app.models.Game.objects.bulk_update(
-                self.to_update, fields=["progress", "status"]
-            )
-            logger.info(
-                "Updated %d existing games for user %s",
-                len(self.to_update),
-                self.user.username,
+        for media_id, observation in self.observations.items():
+            self.sessions.store(
+                media_id,
+                observation,
+                status=self._determine_game_status(
+                    observation.minutes or 0,
+                    observation.recent_minutes or 0,
+                ),
             )
 
-        # Update item metadata
-        if self.to_update_meta:
+        # One transaction, so a failed snapshot save can't leave logged play
+        # without its remembered total (it would be logged again next sync).
+        with transaction.atomic():
+            helpers.bulk_create_media(
+                {MediaTypes.GAME.value: self.sessions.rows}, self.user
+            )
+            if self.sessions.to_update:
+                app.models.Game.objects.bulk_update(
+                    self.sessions.to_update, fields=["progress", "status"]
+                )
+            self.sessions.save_snapshots()
+
+        updated_items = [
+            game.item
+            for media_id in self.observations
+            if (game := self.sessions.existing_games.get(media_id))
+        ]
+        if updated_items:
             app.models.Item.objects.bulk_update(
-                self.to_update_meta, fields=["title", "image"]
-            )
-            logger.info(
-                "Updated metadata for %d items for user %s",
-                len(self.to_update_meta),
-                self.user.username,
+                updated_items, fields=["title", "image"]
             )
 
-        imported_counts = {
-            media_type: len(media_list)
-            for media_type, media_list in self.bulk_media.items()
-        }
-        # Updates are reported too: a sync that only raised hours otherwise
-        # reads as "No media was imported" and skips the cache refresh that
-        # makes the new hours show up in History and Statistics.
-        imported_counts["created"] = len(self.bulk_media[MediaTypes.GAME.value])
-        imported_counts["updated"] = len(self.to_update)
+        # Updates and sessions are reported too: a sync that only added play
+        # otherwise reads as "No media was imported" and skips the cache
+        # refresh that makes the new hours show up in History and Statistics.
+        imported_counts = self.sessions.counts()
 
         logger.info(
             "Steam import completed for user %s: %s",
@@ -205,51 +218,21 @@ class SteamImporter:
                 return
 
             media_id = str(igdb_game["media_id"])
-            existing = self.existing_media[MediaTypes.GAME.value][
-                Sources.IGDB.value
-            ].get(media_id)
-            if existing:
-                if self.mode == "overwrite":
-                    existing.progress = playtime_forever
-                    # Conscious choice: User manually set status to Completed/Dropped, we should not change it
-                    if existing.status not in {
-                        Status.COMPLETED.value,
-                        Status.DROPPED.value,
-                    }:
-                        existing.status = self._determine_game_status(
-                            playtime_forever, playtime_2weeks
-                        )
-                    self.to_update.append(existing)
-
-                item = existing.item
-                item.title = igdb_game["title"]
-                item.image = igdb_game["image"]
-                self.to_update_meta.append(item)
-                # In "new" mode, skip existing games
-            else:
-                item, _ = app.models.Item.objects.get_or_create(
-                    media_id=media_id,
-                    source=Sources.IGDB.value,
-                    media_type=MediaTypes.GAME.value,
-                    defaults={
-                        "title": igdb_game["title"],
-                        "image": igdb_game["image"],
-                    },
-                )
-                game = app.models.Game(
-                    item=item,
-                    user=self.user,
-                    status=self._determine_game_status(
-                        playtime_forever, playtime_2weeks
-                    ),
-                    score=None,
-                    progress=playtime_forever,
-                    notes=IMPORT_NOTE,
-                    start_date=None,
-                    end_date=None,
-                )
-
-                self.bulk_media[MediaTypes.GAME.value].append(game)
+            last_played = game_data.get("rtime_last_played")
+            observation = self.observations.setdefault(
+                media_id,
+                playtime_sessions.PlaytimeObservation(
+                    title=igdb_game["title"],
+                    image=igdb_game["image"],
+                ),
+            )
+            observation.merge(
+                playtime_forever,
+                playtime_2weeks,
+                datetime.fromtimestamp(int(last_played), tz=UTC)
+                if last_played
+                else None,
+            )
 
         except services.ProviderAPIError as e:
             msg = str(e).lower()
