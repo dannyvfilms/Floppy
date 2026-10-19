@@ -282,6 +282,15 @@ fi
 if [ -e "$BACKUP_DIR_PATH" ] && ! timeout 600 chown abc:abc -- "$BACKUP_DIR_PATH"; then
     echo "[entrypoint] WARNING: chown of ${BACKUP_DIR_PATH} failed or timed out (stalled mount?); continuing" >&2
 fi
+# Older images or root-run maintenance commands can leave the snapshot
+# directory root-owned. Repair this one managed directory, never a symlink or
+# the whole backup tree, so the unprivileged worker can publish snapshots.
+snapshot_dir="${BACKUP_DIR_PATH}/database"
+if [ -L "$snapshot_dir" ]; then
+    echo "[entrypoint] WARNING: snapshot directory ${snapshot_dir} is a symlink; refusing ownership repair" >&2
+elif [ -d "$snapshot_dir" ] && ! timeout 600 chown -h abc:abc -- "$snapshot_dir"; then
+    echo "[entrypoint] WARNING: chown of ${snapshot_dir} failed or timed out (stalled mount?); continuing" >&2
+fi
 
 # Bound recursive ownership fixes for the image-managed service directories: a
 # stalled bind mount must degrade to a warning instead of hanging boot (#341).

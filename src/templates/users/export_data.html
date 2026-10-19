@@ -32,22 +32,29 @@
         {% endif %}
       </p>
       <p class="mb-5 text-sm">
-        {% translate "For disaster recovery, Floppy separately writes a verified database snapshot to:" %} <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">{{ db_snapshot_status.path }}</code>
-        {% if db_snapshot_status.enabled %}
-          {% if db_snapshot_status.host_reachable %}
-            <br>
-            <span class="text-xs text-[var(--color-text-muted)]">{% blocktranslate count count=db_snapshot_status.file_count %}{{ count }} snapshot there now. This is the file to restore from if the database itself is damaged.{% plural %}{{ count }} snapshots there now. This is the file to restore from if the database itself is damaged.{% endblocktranslate %}</span>
+        {% if db_snapshot_status.supported %}
+          {% translate "For disaster recovery, Floppy separately writes a verified database snapshot to:" %} <code class="text-[var(--color-text-secondary)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">{{ db_snapshot_status.path }}</code>
+          {% if db_snapshot_status.enabled %}
+            {% if db_snapshot_status.host_reachable %}
+              <br>
+              <span class="text-xs text-[var(--color-text-muted)]">{% blocktranslate count count=db_snapshot_status.file_count %}{{ count }} snapshot there now. This is the file to restore from if the database itself is damaged.{% plural %}{{ count }} snapshots there now. This is the file to restore from if the database itself is damaged.{% endblocktranslate %}</span>
+            {% else %}
+              <br>
+              <span class="text-xs text-[var(--color-warning-text)]">{% translate "Not mounted to the host — add" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code> {% translate "to your docker-compose volumes to find these files." %}</span>
+            {% endif %}
           {% else %}
             <br>
-            <span class="text-xs text-[var(--color-warning-text)]">{% translate "Not mounted to the host — add" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">./backups:/floppy/backups</code> {% translate "to your docker-compose volumes to find these files." %}</span>
+            <span class="text-xs text-[var(--color-warning-text)]">{% translate "Disabled — set" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">DB_SNAPSHOT_ENABLED=true</code> {% translate "to turn it back on." %}</span>
           {% endif %}
         {% else %}
-          <br>
-          <span class="text-xs text-[var(--color-warning-text)]">{% translate "Disabled — set" %} <code class="text-[var(--color-warning-text)] bg-[var(--color-surface-strong)] px-1.5 py-0.5 rounded text-xs">DB_SNAPSHOT_ENABLED=true</code> {% translate "to turn it back on." %}</span>
+          {% translate "PostgreSQL database backups are not managed by Floppy. Configure and test pg_dump/pg_restore separately." %}
         {% endif %}
       </p>
 
-      <form method="post" action="{% url 'create_export_schedule' %}" id="exportForm" x-ref="exportForm">
+      <form method="post"
+            action="{% url 'create_export_schedule' %}"
+            id="exportForm"
+            x-ref="exportForm">
         {% csrf_token %}
         <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg mb-5">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -210,7 +217,9 @@
         <a href="{% url 'export_csv_letterboxd' %}"
            class="bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-border)] transition-colors rounded-lg p-4 text-left flex flex-col gap-2">
           <div class="flex items-center">{% source_display "letterboxd" %}</div>
-          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">{% translate "Watched movies with ratings and diary dates, ready for Letterboxd's CSV import." %}</p>
+          <p class="text-xs text-[var(--color-text-muted)] line-clamp-2">
+            {% translate "Watched movies with ratings and diary dates, ready for Letterboxd's CSV import." %}
+          </p>
         </a>
       </div>
     </div>
@@ -247,20 +256,47 @@
               {% if scheduled_backup.media_types is None %}
                 <div>{% translate "Media Types: All" %}</div>
               {% elif scheduled_backup.media_types %}
-                <div>{% blocktranslate with value1=scheduled_backup.media_types|join:", " %}Media Types: {{ value1 }}{% endblocktranslate %}</div>
+                <div>
+                  {% blocktranslate with value1=scheduled_backup.media_types|join:", " %}Media Types: {{ value1 }}{% endblocktranslate %}
+                </div>
               {% else %}
                 <div>{% translate "Media Types: None (Lists/Collection only)" %}</div>
               {% endif %}
-              <div>{% translate "Lists:" %} {% if scheduled_backup.include_lists %}{% translate "Included" %}{% else %}{% translate "Excluded" %}{% endif %}</div>
-              <div>{% translate "Collection:" %} {% if scheduled_backup.include_collection %}{% translate "Included" %}{% else %}{% translate "Excluded" %}{% endif %}</div>
-              <div>{% translate "Last Backup:" %} {% if scheduled_backup.last_run %}{{ scheduled_backup.last_run|user_datetime_format:user }}{% else %}{% translate "Never" %}{% endif %}</div>
-              <div>{% blocktranslate with value1=scheduled_backup.next_run|user_datetime_format:user %}Next Backup: {{ value1 }}{% endblocktranslate %}</div>
+              <div>
+                {% translate "Lists:" %}
+                {% if scheduled_backup.include_lists %}
+                  {% translate "Included" %}
+                {% else %}
+                  {% translate "Excluded" %}
+                {% endif %}
+              </div>
+              <div>
+                {% translate "Collection:" %}
+                {% if scheduled_backup.include_collection %}
+                  {% translate "Included" %}
+                {% else %}
+                  {% translate "Excluded" %}
+                {% endif %}
+              </div>
+              <div>
+                {% translate "Last dispatched:" %}
+                {% if scheduled_backup.last_run %}
+                  {{ scheduled_backup.last_run|user_datetime_format:user }}
+                {% else %}
+                  {% translate "Never" %}
+                {% endif %}
+              </div>
+              <div>
+                {% blocktranslate with value1=scheduled_backup.next_run|user_datetime_format:user %}Next Backup: {{ value1 }}{% endblocktranslate %}
+              </div>
             </div>
           </div>
         {% empty %}
           <div class="bg-[var(--color-surface-strong)] rounded-lg p-6 text-center">
             <p class="text-[var(--color-text-muted)] text-sm">{% translate "No scheduled exports configured" %}</p>
-            <p class="text-[var(--color-text-muted)] text-xs mt-1">{% translate "Set up a schedule above to automatically export your data" %}</p>
+            <p class="text-[var(--color-text-muted)] text-xs mt-1">
+              {% translate "Set up a schedule above to automatically export your data" %}
+            </p>
           </div>
         {% endfor %}
       </div>
@@ -273,7 +309,9 @@
         <h2 class="text-xl font-semibold">{% translate "Export History" %}</h2>
       </div>
 
-      <p class="text-[var(--color-text-muted)] mb-5 text-sm">{% translate "Showing export activity from the last 7 days." %}</p>
+      <p class="text-[var(--color-text-muted)] mb-5 text-sm">
+        {% translate "Showing export activity from the last 7 days." %}
+      </p>
 
       <div class="space-y-3">
         {% for result in export_tasks.results %}
@@ -302,7 +340,9 @@
                 {% if result.errors %}
                   <button @click="showDetails = !showDetails"
                           class="text-xs text-[var(--color-link)] hover:text-[var(--color-link-hover)] transition-colors cursor-pointer"
-                          x-text="showDetails ? gettext('Hide details') : gettext('Show details')">{% translate "Show details" %}</button>
+                          x-text="showDetails ? gettext('Hide details') : gettext('Show details')">
+                    {% translate "Show details" %}
+                  </button>
 
                   <div class="mt-2 space-y-1 text-sm bg-[var(--color-surface)] p-3 rounded"
                        x-show="showDetails">

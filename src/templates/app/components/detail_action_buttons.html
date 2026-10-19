@@ -55,8 +55,9 @@
             {% endif %}
           </div>
 
-          <div class="flex w-full items-center gap-2 md:w-auto md:flex-wrap">
-            {% if detail_link_sections %}
+          {% detail_action_row media media_type as row %}
+          <div class="flex w-full flex-wrap items-center gap-2 md:w-auto">
+            {% if row.link %}
               <div x-data="{ linksOpen: false, linksPinned: false }"
                    class="relative z-40 flex-1 md:flex-none"
                    @mouseenter="linksOpen = true"
@@ -164,6 +165,34 @@
               </template>
             </div>
 
+            {% if row.notes %}
+              <div x-data="{ trackOpen: false }" class="flex-1 md:flex-none">
+                <button type="button"
+                        class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer md:size-11 md:w-11"
+                        title="{% translate "Add or edit notes" %}"
+                        aria-label="{% translate "Add or edit notes" %}"
+                        hx-get="{% media_view_url 'track_modal' media %}"
+                        hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}", "focus": "notes", "track_action_update": "1"{% if hardcover_edition_id %}, "edition_id": "{{ hardcover_edition_id }}"{% endif %}}'
+                        hx-target="#{% component_id 'notes-track' media %}"
+                        hx-trigger="click"
+                        @click="trackOpen = true">{% include "app/icons/page.svg" with classes="w-4 h-4" %}</button>
+
+                <template x-teleport="body">
+                <div x-show="trackOpen"
+                @mousedown.self="trackOpen = false"
+                     x-cloak
+                     @keydown.escape.window="trackOpen = false"
+                     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                  <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
+                       style="width: min(96vw, 72rem)"
+                       @click.stop>
+                    <div id="{% component_id 'notes-track' media %}"></div>
+                  </div>
+                </div>
+                </template>
+              </div>
+            {% endif %}
+
             <div x-data="{ listsOpen: false }" class="flex-1 md:flex-none">
               <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer md:size-11 md:w-11"
                       title="{% translate "Add to custom lists" %}"
@@ -186,9 +215,9 @@
               </template>
             </div>
 
-            {% if request.user.seerr_url and request.user.seerr_api_key and request.user.seerr_user_id and media.source == Sources.TMDB.value and media_type in "movie,tv" %}
-              <div x-data="{ seerrOpen: false }" class="flex-1 md:flex-none">
-                <button class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer md:size-11 md:w-11"
+            {% if row.seerr %}
+              <div x-data="{ seerrOpen: false }" class="flex-1 md:flex-none{% if "seerr" in row.overflow %} max-[400px]:hidden{% endif %}">
+                <button id="detail-action-seerr" class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer md:size-11 md:w-11"
                         title="{% translate "Request in Seerr" %}"
                         hx-get="{% url 'seerr_request' media_type media.media_id %}"
                         hx-target="#{% component_id 'seerr' media %}"
@@ -210,9 +239,11 @@
             {% endif %}
 
             <button type="button"
+                    id="detail-action-history"
+                    title="{% translate "View history" %}"
                     aria-haspopup="dialog"
-                    aria-label="{% translate "View your activity history" %}"
-                    class="inline-flex h-11 w-full flex-1 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer md:size-11 md:w-11 md:flex-none"
+                    aria-label="{% translate "View history" %}"
+                    class="inline-flex h-11 w-full flex-1 items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer md:size-11 md:w-11 md:flex-none{% if "history" in row.overflow %} max-[400px]:hidden{% endif %}"
                     hx-get="{% url 'activity_sessions_modal' %}?{% if media_type == MediaTypes.SEASON.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}&season_number={{ media.season_number }}{% elif media_type == MediaTypes.TV.value %}media_type={{ MediaTypes.TV.value }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% elif media_type == MediaTypes.PODCAST.value and podcast_show %}media_type={{ MediaTypes.PODCAST.value }}&podcast_show={{ podcast_show.id }}{% else %}media_type={{ media_type }}&media_id={{ media.media_id|urlencode }}&source={{ media.source|urlencode }}{% endif %}{% if media_type == MediaTypes.GAME.value or media_type == MediaTypes.BOARDGAME.value %}&logging_style=sessions{% endif %}"
                     hx-target="#session-history-modal-host"
                     hx-swap="innerHTML"
@@ -220,9 +251,10 @@
               {% include "app/icons/history.svg" with classes="w-4 h-4" %}
             </button>
 
+            {% if row.sync %}
             <form method="post"
                   action="{% media_view_url 'sync_metadata' media %}"
-                  class="flex-1 md:flex-none"
+                  class="flex-1 md:flex-none{% if "sync" in row.overflow %} max-[400px]:hidden{% endif %}"
                   x-data="{ loading: false }"
                   @submit="loading = true">
               {% csrf_token %}
@@ -231,7 +263,8 @@
                      name="library_media_type"
                      value="{% if media_type == MediaTypes.ANIME.value or parent_media_type == MediaTypes.ANIME.value %}anime{% endif %}">
               <button type="submit"
-                      title="{% translate "Sync metadata with provider" %}"
+                      id="detail-action-sync"
+                      title="{% translate "Sync metadata" %}"
                       class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer disabled:opacity-75 md:size-11 md:w-11"
                       :disabled="loading">
                 <div :class="{ 'animate-spin': loading }">
@@ -239,6 +272,47 @@
                 </div>
               </button>
             </form>
+            {% endif %}
+
+            {# Below 400px the last icons fold in here so the row stays at five cells; each entry clicks the real button, which keeps its own modal. #}
+            {% if row.overflow %}
+              <div x-data="{ moreOpen: false }"
+                   class="relative flex-1 min-[400px]:hidden"
+                   @click.outside="moreOpen = false"
+                   @keydown.escape.window="moreOpen = false">
+                <button type="button"
+                        class="inline-flex h-11 w-full items-center justify-center rounded-xl border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm transition-colors duration-200 hover:bg-[var(--color-surface-muted)] cursor-pointer"
+                        title="{% translate "More actions" %}"
+                        aria-label="{% translate "More actions" %}"
+                        aria-haspopup="true"
+                        :aria-expanded="moreOpen.toString()"
+                        @click="moreOpen = !moreOpen">{% include "app/icons/ellipsis.svg" with classes="w-4 h-4" %}</button>
+                <div x-show="moreOpen"
+                     x-cloak
+                     x-transition:enter="transition ease-out duration-100"
+                     x-transition:enter-start="transform opacity-0 scale-95"
+                     x-transition:enter-end="transform opacity-100 scale-100"
+                     class="absolute right-0 top-full z-50 mt-2 w-60 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] py-1 shadow-lg">
+                  {% for key in row.overflow %}
+                    <button type="button"
+                            class="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] cursor-pointer"
+                            data-more-action="{{ key }}"
+                            @click="moreOpen = false; document.getElementById('detail-action-{{ key }}').click()">
+                      {% if key == "history" %}
+                        {% include "app/icons/history.svg" with classes="w-4 h-4 shrink-0" %}
+                        {% translate "View history" %}
+                      {% elif key == "seerr" %}
+                        {% include "app/icons/download.svg" with classes="w-4 h-4 shrink-0" %}
+                        {% translate "Request in Seerr" %}
+                      {% elif key == "sync" %}
+                        {% include "app/icons/circle-spinning-clockwise.svg" with classes="w-4 h-4 shrink-0" %}
+                        {% translate "Sync metadata" %}
+                      {% endif %}
+                    </button>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endif %}
           </div>
           {% if activity_subtitle or media.score_count is not None or trakt_score or imdb_score or mal_score or opencritic_score or user_medias and current_instance %}
           </div>

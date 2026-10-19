@@ -57,7 +57,7 @@
                href="{{ release.item|media_url }}"
                class="block">
               <div class="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
-                <img alt="{{ release }}"
+                <img data-media-artwork loading="lazy" decoding="sync" alt="{{ release }}"
                      class="w-10 h-10 object-cover rounded-md shrink-0"
                      src="{{ release.item.image|image_url }}">
                 <div class="flex-1 min-w-0">

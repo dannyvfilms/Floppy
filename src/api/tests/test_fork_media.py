@@ -301,7 +301,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
         )
 
     @patch("api.views.services.get_media_metadata")
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_detail_serves_cached_backdrop_without_calling_tmdb(
         self,
         mock_backdrop,
@@ -321,7 +321,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
 
     @patch("app.tasks_backdrops.warm_backdrops_task.apply_async")
     @patch("api.views.services.get_media_metadata")
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_detail_never_calls_the_provider_for_a_cold_backdrop(
         self,
         mock_backdrop,
@@ -339,7 +339,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
         mock_warm.assert_called_once()
 
     @patch("api.views.services.get_media_metadata")
-    @patch("lists.models.CustomList._get_tmdb_backdrop")
+    @patch("app.backdrops.get_tmdb_backdrop")
     def test_detail_serves_the_backdrop_once_the_warm_lands(
         self,
         mock_backdrop,
@@ -369,9 +369,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
         """Clients need to distinguish "no artwork" from "a poster", so: null."""
         mock_metadata.return_value = self._tv_metadata()
         # The provider's cached "no backdrop" answer.
-        cache.set(
-            f"tmdb_backdrop_tv_{self.tv_item.media_id}", settings.IMG_NONE, 60
-        )
+        cache.set(f"tmdb_backdrop_tv_{self.tv_item.media_id}", settings.IMG_NONE, 60)
 
         payload = self._get_detail().json()
 
@@ -381,7 +379,7 @@ class ForkBackdropFieldTests(FloppyApiTestCase):
         mock_warm.assert_not_called()
 
     @patch("api.views.services.get_media_metadata")
-    @patch("lists.models.CustomList._get_tmdb_backdrop", return_value=BACKDROP_URL)
+    @patch("app.backdrops.get_tmdb_backdrop", return_value=BACKDROP_URL)
     def test_episode_detail_carries_the_show_backdrop(
         self,
         mock_backdrop,

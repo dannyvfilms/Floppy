@@ -21,6 +21,18 @@ class MigrationHygieneCommandTests(TestCase):
     """Tests for migration hygiene command helpers and smoke behavior."""
 
     @override_settings(MIGRATION_MODULES={})
+    def test_strict_check_fails_when_the_base_ref_is_missing(self):
+        with (
+            patch.object(
+                check_migration_hygiene,
+                "_resolve_base_ref",
+                side_effect=CommandError("missing base"),
+            ),
+            self.assertRaisesRegex(CommandError, "requires a resolvable base ref"),
+        ):
+            call_command("check_migration_hygiene", strict=True, stdout=StringIO())
+
+    @override_settings(MIGRATION_MODULES={})
     def test_command_passes_with_head_baseline_for_users(self):
         """The command should pass against HEAD baseline for a stable app graph."""
         # Inspect the real graph even when FAST_DB builds the test schema

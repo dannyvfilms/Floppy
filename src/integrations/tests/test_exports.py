@@ -1,11 +1,14 @@
 import csv
 from datetime import UTC, datetime
 from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from app.mixins import disable_fetch_releases
@@ -31,7 +34,34 @@ from app.models import (
     Status,
     Tag,
 )
+from integrations import exports
 from lists.models import CustomList, CustomListItem
+
+
+class BackupDirectoryTests(SimpleTestCase):
+    """Backup filenames must not turn a username into a filesystem path."""
+
+    def test_username_cannot_escape_backup_directory(self):
+        with TemporaryDirectory() as temporary, override_settings(BACKUP_DIR=temporary):
+            root = Path(temporary)
+            for username in (".", "..", "../outside", "/outside"):
+                with self.subTest(username=username):
+                    user = SimpleNamespace(username=username, pk=42)
+                    with patch(
+                        "integrations.exports.generate_rows",
+                        return_value=iter(["data\n"]),
+                    ):
+                        path = Path(exports.write_backup(user))
+                    self.assertEqual(path.parent, root / "user:42")
+                    self.assertEqual(path.read_text(), "data\n")
+
+    def test_normal_username_keeps_existing_backup_location(self):
+        with TemporaryDirectory() as temporary, override_settings(BACKUP_DIR=temporary):
+            user = SimpleNamespace(username="alice.example", pk=42)
+            self.assertEqual(
+                exports.backup_directory(user),
+                Path(temporary) / "alice.example",
+            )
 
 
 class ExportCSVTest(TestCase):

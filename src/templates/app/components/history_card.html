@@ -17,18 +17,18 @@
     {% with entry.item|display_title:user as preferred_entry_title %}
     <a hx-boost="true"
        href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}">
-      <img alt="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}"
-           class="media-card-poster lazyload w-full {% if card_class == 'search-result-card-square' %}aspect-[1/1]{% else %}aspect-[2/3]{% endif %} {% if entry.poster != IMG_NONE %}object-cover{% endif %}"
-           data-src="{{ entry.poster|image_url }}"
-           src="{{ IMG_NONE }}">
+      <img loading="lazy" decoding="sync" alt="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}"
+           class="media-card-poster w-full {% if card_class == 'search-result-card-square' %}aspect-[1/1]{% else %}aspect-[2/3]{% endif %} {% if entry.poster != IMG_NONE %}object-cover{% endif %}"
+           src="{{ entry.poster|image_url }}">
     </a>
     {% endwith %}
 
     {# Status chip (top-left) #}
     {% if entry.status or entry.media_type == MediaTypes.EPISODE.value and history_mode != "release" %}
       {% with status_value=entry.status|default:"Completed" %}
+        {% translate status_value as status_label %}
         <div class="media-status-chip absolute top-2 left-2 bg-gray-900/90 text-white text-xs px-2 py-1 rounded-md flex items-center gap-1.5 shadow-md">
-          <span class="sr-only">{% blocktranslate trimmed with value_1=status_value %}Status: {{ value_1 }}{% endblocktranslate %}</span>
+          <span class="sr-only">{% blocktranslate trimmed with value_1=status_label %}Status: {{ value_1 }}{% endblocktranslate %}</span>
           <div class="w-4 h-4 {{ status_value|status_color }}" aria-hidden="true">
             {% if status_value == "Completed" %}
               {% include "app/icons/states/completed.svg" with classes="w-full h-full" %}

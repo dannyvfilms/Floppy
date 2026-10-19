@@ -66,6 +66,28 @@ class ImportYamtrack(TestCase):
             24,
         )
 
+    def test_csv_cannot_overwrite_another_users_shared_metadata(self):
+        """Importing private tracking data must preserve existing catalog data."""
+        existing_movie = Movie.objects.get(user=self.user)
+        original_item = existing_movie.item
+        original_title, original_image = original_item.title, original_item.image
+        other_user = get_user_model().objects.create_user(username="other")
+        payload = BytesIO(
+            (
+                "media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at\n"
+                f"{original_item.media_id},tmdb,movie,Overwritten,https://attacker.example/image,,,,1,Completed,,,,\n"
+            ).encode()
+        )
+
+        yamtrack.importer(payload, other_user, "overwrite")
+
+        original_item.refresh_from_db()
+        self.assertEqual(original_item.title, original_title)
+        self.assertEqual(original_item.image, original_image)
+        self.assertTrue(
+            Movie.objects.filter(user=other_user, item=original_item).exists()
+        )
+
     def test_historical_records(self):
         """Test historical records creation during import."""
         anime = Anime.objects.filter(user=self.user).first()
@@ -149,7 +171,7 @@ class ImportYamtrack(TestCase):
 
 
 class ImportYamtrackNewModeHealsMissingChildren(TestCase):
-    """"new" mode must add seasons/episodes an already-tracked show lacks.
+    """ "new" mode must add seasons/episodes an already-tracked show lacks.
 
     Regression test: the existence check used to collapse to "does the
     parent show exist", so an already-tracked show blocked every
@@ -1199,4 +1221,3 @@ class ImportYamtrackMediaIdValidation(TestCase):
         mock_search.assert_not_called()
         movie = Movie.objects.get(user=self.user)
         self.assertEqual(movie.item.media_id, "603")
-

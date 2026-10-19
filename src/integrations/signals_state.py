@@ -9,13 +9,42 @@ to deliver it commit together or not at all.
 
 import logging
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from app.models import WatchStateChange
+from app.models import TV, Season, WatchState, WatchStateChange
 from integrations.state.outbound import enqueue_deliveries, schedule_delivery
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(post_save, sender=Season)
+@receiver(post_save, sender=TV)
+@receiver(post_save, sender=WatchState)
+def sync_grouped_anime_change(sender, instance, **kwargs):
+    """Push grouped anime changes after the tracking transaction commits."""
+    from app.signals import media_change_side_effects_suppressed
+    from integrations.mal_sync import queue_grouped_sync
+
+    if kwargs.get("raw") or media_change_side_effects_suppressed():
+        return
+    if sender is WatchState and instance.item.media_type != "episode":
+        return
+    # Removing a show or season rating must clear it on MAL too, or the next
+    # full sync pulls MAL's old rating back.
+    clear_scope = None
+    if (
+        sender is not WatchState
+        and instance.score is None
+        and instance.tracker.has_changed("score")
+        and instance.tracker.previous("score") is not None
+    ):
+        clear_scope = "show" if sender is TV else instance.item.season_number
+    try:
+        queue_grouped_sync(instance.user_id, instance.item, clear_scope=clear_scope)
+    except ObjectDoesNotExist:
+        return
 
 
 @receiver(post_save, sender=WatchStateChange)

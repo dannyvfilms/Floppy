@@ -35,6 +35,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.models.episode_runtimes import usable_runtime_minutes
 from app.services.completion import select_preferred_activity_entry
 from app.services.episode_coordinates import InvalidEpisodeCoordinateError
 
@@ -90,6 +91,25 @@ def supports(media_type, source):
         MediaTypes.MOVIE.value,
         MediaTypes.TV.value,
     )
+
+
+def card_control(user_id, state):
+    """Return the stop action only for the manual check-in owning this card."""
+    token = state.get("checkin_token")
+    if not token:
+        return None
+    from app import checkin_session
+
+    for record, action in ((_record(user_id), "pause"), (checkin_session._record(user_id), "stop")):
+        if record and record["token"] == token:
+            return {
+                "token": token,
+                "source": record.get("source", Sources.TMDB.value),
+                "media_type": record["media_type"],
+                "media_id": record["media_id"],
+                "action": action,
+            }
+    return None
 
 
 def episode_code(season_number, episode_number):
@@ -161,7 +181,8 @@ def _tracked_show(user, media_id):
 
 
 def _seconds(runtime_minutes):
-    return runtime_minutes * 60 if runtime_minutes else None
+    minutes = usable_runtime_minutes(runtime_minutes)
+    return minutes * 60 if minutes else None
 
 
 def _subject(user, media_type, media_id):

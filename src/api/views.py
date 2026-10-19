@@ -52,6 +52,7 @@ from app.statistics import (
 )
 from events import tasks
 from events.models import Event
+from integrations.state.ratings import rating_edit
 from lists.forms import validate_public_slug
 from lists.models import CustomList, CustomListItem
 from users.models import MediaStatusChoices
@@ -68,6 +69,7 @@ from .contract_serializers import (
     CompleteMediaResponseSerializer,
     ConsumptionResponseSerializer,
     DetailErrorSerializer,
+    ListItemsEnvelopeSerializer,
     MediaUpdateRequestSerializer,
     SearchEnvelopeSerializer,
     TrackedMediaEnvelopeSerializer,
@@ -224,7 +226,7 @@ class CalendarUpdateView(drf_views.APIView):
 
     def post(self, request):
         """Trigger calendar events update for the authenticated user."""
-        tasks.reload_calendar.delay(request.user)
+        tasks.reload_calendar.delay(user_id=request.user.pk)
         return Response(
             {"detail": "Task queued"},
             status=HTTP.ACCEPTED,
@@ -610,6 +612,7 @@ class ListDetailView(drf_views.APIView):
 class ListItemsView(drf_views.APIView):
     """List items view."""
 
+    @extend_schema(responses={200: ListItemsEnvelopeSerializer})
     def get(self, request, list_id):
         """Get items of a list."""
         user = request.user
@@ -646,6 +649,14 @@ class ListItemsView(drf_views.APIView):
             },
             homogeneous=False,
         )
+        ranks = dict(
+            CustomListItem.objects.filter(
+                custom_list=user_list,
+                item_id__in=[entry.get("id") for entry in serialized_data],
+            ).values_list("item_id", "rank"),
+        )
+        for entry in serialized_data:
+            entry["rank"] = ranks.get(entry.get("id"))
         paginated_data["results"] = serialized_data
         return Response(paginated_data, status=HTTP.OK)
 
@@ -877,6 +888,7 @@ class MediaTypeListView(drf_views.APIView):
             500: DetailErrorSerializer,
         },
     )
+    @rating_edit
     def post(self, request, media_type):
         """Create a new consumption for a media item.
 
@@ -1096,7 +1108,9 @@ class MediaTypeListView(drf_views.APIView):
 
         media_form.save()
         apply_image_url(item, media_form.cleaned_data.get("image_url"))
-        episode_count_fields = metadata_utils.apply_provider_episode_count(item, metadata)
+        episode_count_fields = metadata_utils.apply_provider_episode_count(
+            item, metadata
+        )
         if episode_count_fields:
             item.save(update_fields=episode_count_fields)
         BasicMedia.objects.annotate_episode_progress(
@@ -1391,6 +1405,7 @@ class MediaDetailView(drf_views.APIView):
             500: DetailErrorSerializer,
         },
     )
+    @rating_edit
     def patch(self, request, media_type, source, media_id):
         """Update the convenience/default tracked row for a media item.
 
@@ -1790,6 +1805,7 @@ class MediaConsumptionEntryDetailView(drf_views.APIView):
             500: DetailErrorSerializer,
         },
     )
+    @rating_edit
     def patch(self, request, media_type, source, media_id, consumption_id):
         """Update one exact consumption history entry for a media item."""
         if not check_valid_type(media_type):
@@ -3826,6 +3842,7 @@ class MediaEpisodeDetailView(drf_views.APIView):
         parameters=[MEDIA_TYPE_PARAM, LIBRARY_MEDIA_TYPE_PARAM],
         responses={404: DetailErrorSerializer},
     )
+    @rating_edit
     def patch(
         self,
         request,
@@ -4324,6 +4341,7 @@ class MediaEpisodeConsumptionEntryDetailView(drf_views.APIView):
         parameters=[MEDIA_TYPE_PARAM, LIBRARY_MEDIA_TYPE_PARAM],
         responses={404: DetailErrorSerializer},
     )
+    @rating_edit
     def patch(
         self,
         request,

@@ -15,6 +15,7 @@ from app.models import (
     Anime,
     Episode,
     Item,
+    ItemProviderLink,
     MediaTypes,
     Movie,
     ProviderMetadataStatus,
@@ -925,6 +926,119 @@ class PlexWebhookTests(TestCase):
             ],
         }
 
+    @patch(
+        "integrations.webhooks.anime_mappings.fetch_mapping_data",
+        return_value={
+            "tvdb_show:76906:s2": {"anilist:1138": {"1-26": "27-52"}},
+            "tvdb_show:76906:s3": {"tmdb_show:11235:s2": {"1-39": "1-39"}},
+            "tmdb_show:11235:s1": {"anilist:1138": {"1-52": "1-52"}},
+        },
+    )
+    @patch.object(PlexWebhookProcessor, "_handle_tv_episode")
+    @patch.object(
+        PlexWebhookProcessor, "_find_tv_media_id", return_value=("11235", None, None),
+    )
+    @patch(
+        "app.providers.tmdb.tv_with_seasons",
+        side_effect=lambda _media_id, seasons: {
+            "title": "Medabots",
+            "tvdb_id": "76906",
+            **{
+                f"season/{number}": PlexWebhookTests._season_payload(count)
+                for number, count in ((1, 52), (2, 39))
+                if number in seasons
+            },
+        },
+    )
+    def test_tvdb_numbered_episode_is_filed_under_tmdb_numbering(
+        self, _tv_with_seasons, _find_tv_media_id, handle_tv_episode, _mapping_data,
+    ):
+        """Plex's Medabots S2 and S3 exist on TMDB but hold other episodes.
+
+        Regression: Plex S3E11 (Medabots Spirits) was filed as a local-only
+        TMDB S3E11, so it never reached the sequel's MAL entry.
+        """
+        self.user.anime_enabled = False
+        ids = {"tmdb_id": None, "tvdb_id": None, "imdb_id": None}
+        processor = PlexWebhookProcessor()
+
+        for plex_coordinates, tmdb_coordinates in (((2, 1), (1, 27)), ((3, 11), (2, 11))):
+            processor._process_tv(
+                self._rag_payload(*plex_coordinates), self.user, ids, *plex_coordinates,
+            )
+            self.assertEqual(handle_tv_episode.call_args.args[1:3], tmdb_coordinates)
+
+        processor._active_match_reference = ExternalReference(
+            review_status=ExternalReferenceReviewStatus.CORRECTED,
+        )
+        processor._process_tv(self._rag_payload(2, 1), self.user, ids, 2, 1)
+        self.assertEqual(handle_tv_episode.call_args.args[1:3], (2, 1))
+
+    @patch(
+        "integrations.webhooks.anime_mappings.fetch_mapping_data",
+        return_value={
+            "tvdb_show:76906:s2": {"tmdb_show:11235:s3": {"8-12": "1-5"}},
+        },
+    )
+    @patch("app.providers.tmdb.search", return_value={"results": []})
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_episode_missing_from_existing_season_remaps_via_anibridge(
+        self,
+        mock_tv_with_seasons,
+        mock_tmdb_tv,
+        _mock_tmdb_search,
+        _mock_mapping_data,
+    ):
+        """TVDB S2E10 lands on TMDB S3E3 when TMDB's S2 only has seven episodes."""
+        show_metadata = {
+            "title": "Demon Slayer",
+            "image": "",
+            "tvdb_id": "76906",
+            "synopsis": "",
+            "external_links": {},
+            "related": {
+                "seasons": [
+                    {"season_number": 2, "episode_count": 7},
+                    {"season_number": 3, "episode_count": 12},
+                ],
+            },
+        }
+
+        def fake_tv_with_seasons(_media_id, season_numbers):
+            metadata = dict(show_metadata)
+            for number, count in ((2, 7), (3, 12)):
+                if number in season_numbers:
+                    metadata[f"season/{number}"] = self._season_payload(count)
+            return metadata
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+        mock_tmdb_tv.return_value = dict(show_metadata)
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["anime_enabled"])
+
+        PlexWebhookProcessor()._handle_tv_episode(
+            "11235",
+            2,
+            10,
+            self._rag_payload(2, 10),
+            self.user,
+        )
+
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="11235",
+                item__season_number=3,
+                item__episode_number=3,
+            ).exists(),
+        )
+        self.assertFalse(
+            Episode.objects.filter(
+                item__media_id="11235",
+                item__season_number=2,
+            ).exists(),
+        )
+
     @patch("app.providers.tmdb.search", return_value={"results": []})
     @patch("app.providers.tmdb.find")
     @patch("app.providers.tmdb.tv_with_seasons")
@@ -1110,6 +1224,84 @@ class PlexWebhookTests(TestCase):
                 item__media_id="85937",
                 item__season_number=3,
                 item__episode_number=3,
+            ).exists(),
+        )
+
+    @patch(
+        "integrations.webhooks.anime_mappings.fetch_mapping_data",
+        return_value={
+            "tvdb_show:305089:s4": {
+                "tmdb_show:65942:s1": {"1-19": "67-85"},
+            },
+        },
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_anibridge_remaps_anime_webhook_before_fallback(
+        self,
+        mock_tv_with_seasons,
+        _mock_mapping,
+    ):
+        """Shared webhook remapping files Re:Zero under TMDB S1E78."""
+
+        def fake_tv_with_seasons(media_id, season_numbers):
+            if list(season_numbers) == [4]:
+                return {
+                    "title": "Re:ZERO -Starting Life in Another World-",
+                    "image": "",
+                    "tvdb_id": "305089",
+                    "related": {"seasons": [{"season_number": 1}]},
+                }
+            if list(season_numbers) == [1]:
+                return {
+                    "title": "Re:ZERO -Starting Life in Another World-",
+                    "image": "",
+                    "tvdb_id": "305089",
+                    "season/1": {
+                        "image": "",
+                        "episodes": [
+                            {"episode_number": 78, "runtime": 30},
+                        ],
+                    },
+                }
+            raise AssertionError(f"Unexpected seasons: {season_numbers}")
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+        payload = {
+            "event": "media.scrobble",
+            "Metadata": {
+                "type": "episode",
+                "grandparentTitle": "Re:ZERO -Starting Life in Another World-",
+                "index": 12,
+                "parentIndex": 4,
+                "Guid": [
+                    {"id": "tvdb://305089"},
+                    {"id": "imdb://tt5607616"},
+                ],
+            },
+        }
+
+        PlexWebhookProcessor()._handle_tv_episode(
+            "65942",
+            4,
+            12,
+            payload,
+            self.user,
+        )
+
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="65942",
+                item__season_number=1,
+                item__episode_number=78,
+                related_season__user=self.user,
+            ).exists(),
+        )
+        self.assertFalse(
+            Episode.objects.filter(
+                item__media_id="65942",
+                item__season_number=4,
+                item__episode_number=12,
+                related_season__user=self.user,
             ).exists(),
         )
 
@@ -2564,6 +2756,187 @@ class PlexWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         tv_instance.refresh_from_db()
         self.assertEqual(tv_instance.score, 7)
+
+    @patch("app.providers.tmdb.tv")
+    def test_show_rating_goes_to_flat_mal_anime(self, _mock_tv):
+        """A show tracked as flat MAL anime takes the rating on its Anime row.
+
+        A TV-library row is invisible to the anime details page and MAL sync,
+        so the rating must not create one.
+        """
+        anime_item = Item.objects.create(
+            media_id="35078",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Mitsuboshi Colors",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="76134",
+            season_number=1,
+        )
+        anime = Anime.objects.create(
+            item=anime_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=8,
+        )
+
+        def rate(user_rating):
+            return self._post_payload(
+                {
+                    "event": "media.rate",
+                    "Account": {"title": "testuser"},
+                    "Metadata": {
+                        "type": "show",
+                        "title": "Mitsuboshi Colors",
+                        "userRating": user_rating,
+                        "Guid": [{"id": "tmdb://76134"}],
+                    },
+                },
+            )
+
+        self.assertEqual(rate(8).status_code, 200)
+        anime.refresh_from_db()
+        self.assertEqual(anime.score, 8)
+        self.assertFalse(TV.objects.filter(user=self.user).exists())
+
+        self.assertEqual(rate(-1).status_code, 200)
+        anime.refresh_from_db()
+        self.assertIsNone(anime.score)
+
+    @patch("app.providers.tmdb.tv")
+    def test_show_rating_stays_on_a_tracked_tv_row_beside_a_flat_mal_entry(self, _mock_tv):
+        """Regression: a flat MAL entry linked to the show (an OVA, one cour)
+        took the Plex rating away from the user's real TV-library row.
+        """
+        tv_item = Item.objects.create(
+            media_id="76134", source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value, title="Mitsuboshi Colors",
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user, status=Status.IN_PROGRESS.value)
+        season = Season.objects.create(
+            item=Item.objects.create(
+                media_id="76134", source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value, season_number=1,
+                title="Mitsuboshi Colors",
+            ),
+            user=self.user, related_tv=tv, status=Status.IN_PROGRESS.value,
+        )
+        Episode.objects.create(
+            item=Item.objects.create(
+                media_id="76134", source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value, season_number=1, episode_number=1,
+                title="Episode 1",
+            ),
+            related_season=season,
+        )
+        anime_item = Item.objects.create(
+            media_id="35078", source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value, title="Mitsuboshi Colors OVA", image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item, provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value, provider_media_id="76134",
+            season_number=0,
+        )
+        anime = Anime.objects.create(
+            item=anime_item, user=self.user, status=Status.COMPLETED.value, progress=1,
+        )
+
+        self._post_payload(
+            {
+                "event": "media.rate",
+                "Account": {"title": "testuser"},
+                "Metadata": {
+                    "type": "show",
+                    "title": "Mitsuboshi Colors",
+                    "userRating": 8,
+                    "Guid": [{"id": "tmdb://76134"}],
+                },
+            },
+        )
+
+        tv.refresh_from_db()
+        anime.refresh_from_db()
+        self.assertEqual(tv.score, 8)
+        self.assertIsNone(anime.score)
+
+    def test_season_rating_no_flat_entry_covers_takes_the_tv_path(self):
+        """Regression: a season-2 rating beside a flat season-1 MAL entry
+        matched no title and was dropped instead of rating the season.
+        """
+        from integrations.webhooks.plex import PlexWebhookProcessor
+
+        anime_item = Item.objects.create(
+            media_id="35078", source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value, title="Mitsuboshi Colors", image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item, provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value, provider_media_id="76134",
+            season_number=1,
+        )
+        Anime.objects.create(
+            item=anime_item, user=self.user, status=Status.IN_PROGRESS.value, progress=8,
+        )
+
+        handled = PlexWebhookProcessor()._apply_flat_anime_rating(
+            self.user, "76134", 8, season_number=2,
+        )
+
+        self.assertFalse(handled)
+
+    @patch("app.providers.tmdb.tv")
+    def test_show_rating_reaches_a_rewatched_flat_mal_anime(self, _mock_tv):
+        """A rewatch row doesn't make the title ambiguous.
+
+        Regression: two Anime rows for one title were treated as two matches,
+        so the rating was skipped for every rewatched show.
+        """
+        anime_item = Item.objects.create(
+            media_id="35078",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Mitsuboshi Colors",
+            image="",
+        )
+        ItemProviderLink.objects.create(
+            item=anime_item,
+            provider=Sources.TMDB.value,
+            provider_media_type=MediaTypes.TV.value,
+            provider_media_id="76134",
+            season_number=1,
+        )
+        for status, progress in ((Status.COMPLETED.value, 12), (Status.IN_PROGRESS.value, 3)):
+            Anime.objects.create(
+                item=anime_item, user=self.user, status=status, progress=progress,
+            )
+
+        response = self._post_payload(
+            {
+                "event": "media.rate",
+                "Account": {"title": "testuser"},
+                "Metadata": {
+                    "type": "show",
+                    "title": "Mitsuboshi Colors",
+                    "userRating": 9,
+                    "Guid": [{"id": "tmdb://76134"}],
+                },
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            sorted(
+                Anime.all_objects.filter(user=self.user, item=anime_item)
+                .values_list("score", flat=True)
+            ),
+            [9, 9],
+        )
 
     @patch("app.providers.tmdb.search")
     @patch("app.providers.tmdb.find")

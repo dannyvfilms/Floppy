@@ -682,7 +682,7 @@ class ExportLogsTests(TestCase):
     def setUp(self):
         """Create a user and an isolated log directory to read from."""
         self.credentials = {"username": "test", "password": "12345"}
-        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.user = get_user_model().objects.create_superuser(**self.credentials)
         self.client.login(**self.credentials)
 
         log_dir = Path(tempfile.mkdtemp())
@@ -693,6 +693,25 @@ class ExportLogsTests(TestCase):
     def export_body(response):
         """Read the streamed download."""
         return b"".join(response.streaming_content).decode()
+
+    def test_export_logs_denies_regular_users(self):
+        """Instance-wide diagnostics must not disclose other users' activity."""
+        self.user.is_superuser = False
+        self.user.save(update_fields=["is_superuser"])
+
+        response = self.client.get(reverse("export_logs"))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertNotContains(
+            self.client.get(reverse("advanced")),
+            reverse("export_logs"),
+        )
+
+    def test_export_logs_requires_login(self):
+        """Anonymous requests must pass through authentication middleware."""
+        self.client.logout()
+        response = self.client.get(reverse("export_logs"))
+        self.assertEqual(response.status_code, 302)
 
     def test_export_logs_includes_rotated_backups_oldest_first(self):
         """The download should span rotated backups, not just the active file."""
@@ -728,7 +747,6 @@ class ExportLogsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("only entry", self.export_body(response))
-
 
     def test_export_logs_appends_supervisor_log_and_crash_tracebacks(self):
         """Process exits and fatal-signal tracebacks belong in the download."""

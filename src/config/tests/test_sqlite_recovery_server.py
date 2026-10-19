@@ -563,14 +563,28 @@ class RecoveryPageTests(SimpleTestCase):
             self.assertNotIn("href='/backup'", page)
             self.assertIn("FLOPPY_SQLITE_ALLOW_BACKUP_DOWNLOAD", page)
 
-    @mock.patch.dict(os.environ, {"FLOPPY_SQLITE_ALLOW_BACKUP_DOWNLOAD": "true"})
+    @mock.patch.dict(os.environ, {
+        "FLOPPY_SQLITE_ALLOW_BACKUP_DOWNLOAD": "true",
+        "FLOPPY_SQLITE_BACKUP_TOKEN": "test-only-download-token-32-characters",
+    })
     def test_backup_download_serves_sqlite_file(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_incident(tmp_dir)
             self.block_startup(db_path)
             base = self.serve(db_path)
 
-            with urllib.request.urlopen(f"{base}/backup") as response:  # noqa: S310
+            for fields in [{}, {"token": "wrong"}]:
+                with self.assertRaises(urllib.error.HTTPError) as denied:
+                    self.post(f"{base}/backup", fields)
+                self.assertEqual(denied.exception.code, 403)
+            with self.assertRaises(urllib.error.HTTPError) as denied:
+                urllib.request.urlopen(f"{base}/backup")  # noqa: S310
+            self.assertEqual(denied.exception.code, 404)
+            page = urllib.request.urlopen(base).read().decode()  # noqa: S310
+            self.assertNotIn(os.environ["FLOPPY_SQLITE_BACKUP_TOKEN"], page)
+            with self.post(f"{base}/backup", {
+                "token": os.environ["FLOPPY_SQLITE_BACKUP_TOKEN"],
+            }) as response:
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.headers.get("Content-Type"), "application/x-sqlite3")
                 self.assertIn("attachment", response.headers.get("Content-Disposition", ""))
@@ -583,6 +597,24 @@ class RecoveryPageTests(SimpleTestCase):
                 result = conn.execute("PRAGMA quick_check").fetchone()
                 self.assertEqual(result[0], "ok")
                 conn.close()
+
+    @mock.patch.dict(os.environ, {"FLOPPY_SQLITE_ALLOW_BACKUP_DOWNLOAD": "true"})
+    def test_download_requires_a_separate_strong_token_and_same_origin(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = self.create_incident(tmp_dir)
+            self.block_startup(db_path)
+            base = self.serve(db_path)
+            for token in ["", "short", "test-only-download-token-32-characters"]:
+                with mock.patch.dict(os.environ, {"FLOPPY_SQLITE_BACKUP_TOKEN": token}):
+                    headers = {"Origin": "https://outside.example"} if len(token) >= 32 else {}
+                    request = urllib.request.Request(  # noqa: S310 - loopback test server
+                        f"{base}/backup",
+                        data=urllib.parse.urlencode({"token": token}).encode(),
+                        headers=headers,
+                    )
+                    with self.assertRaises(urllib.error.HTTPError) as denied:
+                        urllib.request.urlopen(request)  # noqa: S310
+                    self.assertEqual(denied.exception.code, 403)
 
     def test_corrupt_status_renders_physical_corruption_card(self):
         report = {

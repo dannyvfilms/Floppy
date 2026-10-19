@@ -451,7 +451,7 @@ def collection_list(request, media_type=None):
             {"media_list": {"items": entries}},
         )
 
-    page_number = int(request.GET.get("page", 1))
+    page_number = helpers.get_page_number(request)
     collection_rows = []
     page_obj = []
     if group_by_type:

@@ -48,6 +48,8 @@ _PORT_ARG_INDEX = 2
 # it carries every account, session and integration secret. The download is
 # therefore off unless the operator turns it on for the length of the incident.
 _DOWNLOAD_ENV = "FLOPPY_SQLITE_ALLOW_BACKUP_DOWNLOAD"
+_DOWNLOAD_TOKEN_ENV = "FLOPPY_SQLITE_BACKUP_TOKEN"  # noqa: S105 - environment name
+_MIN_DOWNLOAD_TOKEN_LENGTH = 32
 # The approval code proves that the person has read the report file. The page
 # must never show it, or the code proves only that they opened the page.
 _SECRET_REPORT_KEYS = frozenset({"actions", "incident_token"})
@@ -178,8 +180,13 @@ def _backup_card(*, for_corruption: bool = False) -> str:
     """Offer the copy Floppy already made, or the download if it is open."""
     if _download_enabled():
         action = (
-            "<p><a class='button secondary' href='/backup'>"
-            "Download database copy</a></p>"
+            "<form method='post' action='/backup'>"
+            "<label>Database download token "
+            "<input type='password' name='token' required autocomplete='off'></label>"
+            "<button class='button secondary'>Download database copy</button>"
+            f"<p class='note'>Set {_DOWNLOAD_TOKEN_ENV} to a random token of at least "
+            "32 characters in the server environment. Enter it here; use HTTPS "
+            "or a trusted local connection.</p></form>"
         )
     elif for_corruption:
         action = (
@@ -654,7 +661,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(503, "paused", "text/plain; charset=utf-8")
             return
         if path == "/backup":
-            self._send_backup()
+            self._send(404, "not found", "text/plain; charset=utf-8")
             return
         report = _read_incident_report(self.db_path)
         status = read_startup_status(self.db_path)
@@ -676,6 +683,14 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if not self._is_same_origin():
             self._send(403, "cross-site request", "text/plain; charset=utf-8")
+            return
+        fields = self._read_body()
+        expected = os.environ.get(_DOWNLOAD_TOKEN_ENV, "")
+        supplied = (fields.get("token") or [""])[0] if fields is not None else ""
+        if len(expected) < _MIN_DOWNLOAD_TOKEN_LENGTH or not secrets.compare_digest(
+            supplied.encode(), expected.encode(),
+        ):
+            self._send(403, "invalid download token", "text/plain; charset=utf-8")
             return
         db_file = Path(self.db_path).resolve()
         try:
@@ -729,6 +744,9 @@ class _Handler(BaseHTTPRequestHandler):
         return bool(host) and urlsplit(origin).netloc == host
 
     def do_POST(self) -> None:
+        if self.path == "/backup":
+            self._send_backup()
+            return
         if self.path == "/retry":
             status = read_startup_status(self.db_path)
             if not status or status.get("status") != "timeout":

@@ -232,6 +232,14 @@ if BASE_URL:
 
 USE_X_FORWARDED = config("USE_X_FORWARDED", default=False, cast=bool)
 
+# External artwork and links must not receive private page paths or query strings.
+# Keep same-origin referrers for Django's HTTPS CSRF fallback when Origin is absent.
+SECURE_REFERRER_POLICY = "same-origin"
+
+# Opt in for HTTPS deployments; HTTP LAN installations must remain usable.
+SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=False, cast=bool)
+CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=False, cast=bool)
+
 SECURE_PROXY_SSL_HEADER = (
     ("HTTP_X_FORWARDED_PROTO", "https")
     if (config("USE_X_FORWARDED_PROTO", default=USE_X_FORWARDED, cast=bool))
@@ -344,8 +352,12 @@ PERF_LOG_QUERY_COUNT_THRESHOLD = config(
     cast=int,
 )
 TRAKT_IMPORT_CHUNK_ROWS = config("TRAKT_IMPORT_CHUNK_ROWS", default=100, cast=int)
-TRAKT_IMPORT_CHUNK_TARGET_MS = config("TRAKT_IMPORT_CHUNK_TARGET_MS", default=100, cast=int)
-TRAKT_IMPORT_STAGING_BYTES = config("TRAKT_IMPORT_STAGING_BYTES", default=512 * 1024 * 1024, cast=int)
+TRAKT_IMPORT_CHUNK_TARGET_MS = config(
+    "TRAKT_IMPORT_CHUNK_TARGET_MS", default=100, cast=int
+)
+TRAKT_IMPORT_STAGING_BYTES = config(
+    "TRAKT_IMPORT_STAGING_BYTES", default=512 * 1024 * 1024, cast=int
+)
 
 # High-water memory attribution (app/memory_envelope.py). Separate from the
 # slow-request log above: that one answers "what was slow", this one answers
@@ -419,6 +431,7 @@ MIDDLEWARE = [
     "app.middleware.UserLanguageMiddleware",
     "app.middleware.DiscoverWarmupMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "app.middleware.DemoAccountGuardMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django.contrib.auth.middleware.LoginRequiredMiddleware",
     # Answer htmx requests with HX-Redirect instead of a followable 302 to the
@@ -1246,6 +1259,18 @@ MAL_API = config(
 )
 MAL_NSFW = config("MAL_NSFW", default=False, cast=bool)
 
+# Only used to sync watch status back to MyAnimeList. Unlike MAL_API (search),
+# OAuth requires a redirect URI registered to a specific app, so this can't
+# ship a shared default the way IGDB_SECRET does - each user or instance
+# needs their own MyAnimeList API application (see integrations.mal_sync).
+MAL_API_SECRET = config(
+    "MAL_API_SECRET",
+    default=secret(
+        "MAL_API_SECRET_FILE",
+        "",
+    ),
+)
+
 MU_NSFW = config("MU_NSFW", default=False, cast=bool)
 
 MANGABAKA_NSFW = config("MANGABAKA_NSFW", default=False, cast=bool)
@@ -1554,10 +1579,12 @@ else:
         "integrations.tasks._jellyfin_pull",
         "integrations.tasks._koito",
         "integrations.tasks._lastfm",
+        "integrations.tasks._mal_sync",
         "integrations.tasks._media_imports",
         "integrations.tasks._plex_collection",
         "integrations.tasks._plex_sections",
         "integrations.tasks._receipts",
+        "integrations.tasks._ratings",
         "integrations.tasks._state_sync",
         "integrations.tasks._webhook",
     )
@@ -1675,13 +1702,11 @@ CELERY_RESULT_EXPIRES = 60 * 60 * 24 * 7  # 7 days
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-serializer
-CELERY_TASK_SERIALIZER = "pickle"
-# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-accept_content
-CELERY_ACCEPT_CONTENT = [
-    "application/json",
-    "application/x-python-serialize",
-    "application/x-pickle",
-]
+# Old pickle queues must be drained before upgrading; see docs/security-hardening.md.
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_RESULT_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_ROUTES = {
     "app.tasks.populate_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "app.tasks.reconcile_*": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1706,6 +1731,13 @@ CELERY_TASK_ROUTES = {
     },
     "Sync IMDB ratings from datasets": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Sync MAL ratings from API": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
+    # A user is watching a spinner for this. It makes many provider calls, so
+    # it stays off the single-slot interactive worker, but it must not queue
+    # behind metadata backfills on the background worker.
+    "Preview sync to MyAnimeList": {"priority": CELERY_TASK_PRIORITY_INTERACTIVE},
+    # A per-item push is one quick API call that follows a watch or an edit.
+    # At default priority it starved behind back-to-back statistics syncs.
+    "Sync status to MyAnimeList": {"priority": CELERY_TASK_PRIORITY_INTERACTIVE},
     "Warm Discover API Cache": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm Discover Startup Tabs": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Warm History Day Cache Coverage": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
@@ -1766,6 +1798,10 @@ CELERY_TASK_ROUTES = {
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },
     "Process Stremio playback webhook": {
+        "queue": "interactive",
+        "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
+    },
+    "Process Stremio tracker event": {
         "queue": "interactive",
         "priority": CELERY_TASK_PRIORITY_INTERACTIVE,
     },

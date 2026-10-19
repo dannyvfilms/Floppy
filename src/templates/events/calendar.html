@@ -13,7 +13,13 @@
 {% block content %}
   <div class="mb-8">
     <h1 class="text-3xl font-bold mb-2">{% translate "Calendar" %}</h1>
-    <p class="text-[var(--color-text-muted)]">{% translate "Track upcoming releases from your list." %}</p>
+    <p class="text-[var(--color-text-muted)]">
+      {% url 'history' as history_url %}
+      {% blocktranslate trimmed %}Upcoming episodes and releases for everything you're tracking, unless it's paused or dropped. What you've already watched, read or played is in <a href="{{ history_url }}" class="underline hover:text-[var(--color-link)]">History</a>.{% endblocktranslate %}
+    </p>
+    {% if not release_dict %}
+      <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Nothing this month. Add a show, movie, book or game to your library and its upcoming dates appear here." %}</p>
+    {% endif %}
   </div>
 
   <div class="bg-[var(--color-surface)] rounded-lg p-6 mb-6" x-data="calendarFilters()">

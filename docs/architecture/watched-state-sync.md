@@ -180,6 +180,10 @@ operations.
 
 ## Known gaps
 
+Rating sync reuses this outbox and its delivery tasks with a separate operation
+and adapter capability. See [Rating sync-back](rating-sync.md) for the shared
+contract and TMDb behavior.
+
 - The projection dual-writes alongside the legacy stores until
   `effective_state()` becomes the only reader.
 - `Movie.unwatch()` drops the play but leaves `status` at Completed, so the

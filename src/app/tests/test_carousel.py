@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from app import carousel
 from app.game_artwork.base import Art
-from app.models import GameArtwork, MediaTypes, Sources
+from app.models import GameArtwork, Item, MediaTypes, Sources
 from app.providers import services, tmdb
 
 IGDB_HERO = Art(
@@ -19,6 +19,9 @@ SGDB_LOGO = Art("https://cdn2.steamgriddb.com/logo/1.png", "steamgriddb", "9")
 
 class CarouselOverviewTests(SimpleTestCase):
     def setUp(self):
+        gallery_patch = patch("app.game_artwork.gallery", return_value=[])
+        gallery_patch.start()
+        self.addCleanup(gallery_patch.stop)
         image_url_patch = patch("app.carousel.rewrite_image_url", side_effect=lambda url: url)
         image_url_patch.start()
         self.addCleanup(image_url_patch.stop)
@@ -335,6 +338,9 @@ class GameCarouselRetryTests(TestCase):
     """A game counts as empty only once its artwork lookup settled."""
 
     def setUp(self):
+        gallery_patch = patch("app.game_artwork.gallery", return_value=[])
+        gallery_patch.start()
+        self.addCleanup(gallery_patch.stop)
         cache.set("igdb_carousel_v4_123", {"video": None, "photos": []}, 60)
 
     def tearDown(self):
@@ -391,8 +397,82 @@ class GameCarouselRetryTests(TestCase):
         self.assertEqual(seen, [True, True])
         self.assertFalse(services._interactive_request.get())
 
+    @patch("app.game_artwork.resolve")
+    @patch("app.providers.igdb.game")
+    @patch("lists.models.CustomList._get_igdb_carousel_media")
+    def test_cached_game_uses_stored_artwork_without_provider_calls(self, gallery, metadata, resolve):
+        self.row(
+            logo_url="https://x/logo.png",
+            backdrop_url="https://x/hero.jpg",
+            backdrop_provider="steamgriddb",
+        )
+        result = carousel.resolve_carousel_media("game", "igdb", "123", cached_only=True)
+        self.assertEqual(result["overview"]["logo_url"], "https://x/logo.png")
+        gallery.assert_not_called()
+        metadata.assert_not_called()
+        resolve.assert_not_called()
+
+    @patch("app.game_artwork.resolve")
+    @patch("lists.models.CustomList._get_igdb_carousel_media")
+    def test_cached_game_defers_missing_or_expired_artwork(self, gallery, resolve):
+        from app.game_artwork import expire
+
+        self.assertIsNone(carousel.resolve_carousel_media("game", "igdb", "123", cached_only=True))
+        self.row(logo_url="https://x/logo.png", backdrop_url="https://x/hero.jpg")
+        expire("123")
+        self.assertIsNone(carousel.resolve_carousel_media("game", "igdb", "123", cached_only=True))
+        gallery.assert_not_called()
+        resolve.assert_not_called()
+
+    @patch("app.providers.igdb.game", side_effect=services.ProviderNotConfiguredError("igdb", "no key"))
+    @patch("app.game_artwork.steamgriddb.find")
+    def test_saved_keys_upgrade_stored_game_without_an_igdb_key(self, find, _metadata):
+        from app import game_artwork
+
+        Item.objects.create(
+            source="igdb", media_type="game", media_id="123", title="Galactic Racer",
+            platforms=["PC (Microsoft Windows)"],
+        )
+        self.row()
+        self.assertTrue(self.empty())
+        game_artwork.keys_saved()
+        self.assertFalse(self.empty())
+        self.assertIsNone(carousel.resolve_carousel_media("game", "igdb", "123", cached_only=True))
+        find.assert_not_called()
+        find.return_value = {
+            "logo": SGDB_LOGO,
+            "backdrop": Art("https://cdn2.steamgriddb.com/hero/1.jpg", "steamgriddb", "1"),
+        }
+
+        result = carousel.resolve_carousel_media("game", "igdb", "123")
+
+        self.assertEqual(result["overview"]["logo_url"], SGDB_LOGO.url)
+        query = find.call_args.args[0]
+        self.assertEqual(query.title, "Galactic Racer")
+        self.assertEqual(query.platforms, ("PC (Microsoft Windows)",))
+        self.assertEqual(GameArtwork.objects.get(media_id="123").logo_url, SGDB_LOGO.url)
+        with patch("app.game_artwork._search", side_effect=AssertionError("unexpected lookup")):
+            warm = carousel.resolve_carousel_media("game", "igdb", "123", cached_only=True)
+        self.assertEqual(warm["overview"], result["overview"])
+
+    @patch("app.providers.tmdb.carousel_media")
+    def test_cached_tmdb_and_seasons_do_not_fetch(self, fetch):
+        for kind, season in [("movie", None), ("tv", None), ("season", 1)]:
+            data = {"video": None, "photos": [], "logos": ["/logo.png"], "backdrop_path": "/hero.jpg"}
+            with patch("app.providers.tmdb.peek_carousel_media", return_value=data):
+                result = carousel.resolve_carousel_media(kind, "tmdb", "123", season_number=season, cached_only=True)
+                self.assertIsNotNone(result["overview"])
+            with patch("app.providers.tmdb.peek_carousel_media", return_value=None):
+                self.assertIsNone(carousel.resolve_carousel_media(kind, "tmdb", "123", season_number=season, cached_only=True))
+        fetch.assert_not_called()
+
 
 class IgdbCarouselOverviewTests(TestCase):
+    def setUp(self):
+        gallery_patch = patch("app.game_artwork.gallery", return_value=[])
+        gallery_patch.start()
+        self.addCleanup(gallery_patch.stop)
+
     def tearDown(self):
         cache.clear()
         super().tearDown()
@@ -453,3 +533,64 @@ class IgdbCarouselOverviewTests(TestCase):
             CustomList()._get_igdb_carousel_media("123")
 
         self.assertEqual(mock_set.call_args.args[2], 60 * 60 * 24)
+
+
+class GameGalleryTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        Item.objects.create(source="igdb", media_type="game", media_id="123", title="Game")
+        GameArtwork.objects.create(
+            source="igdb", media_id="123", logo_url=SGDB_LOGO.url,
+            backdrop_url="https://x/hero.jpg", backdrop_provider="steamgriddb",
+        )
+        cache.set("igdb_carousel_v4_123", {"video": None, "photos": []}, 60)
+
+    @patch("app.game_artwork.steamgriddb.gallery")
+    @patch("app.game_artwork.thegamesdb.gallery")
+    def test_provider_gallery_is_merged_deduplicated_and_reused(self, tgdb, sgdb):
+        from app import game_artwork
+        from app.game_artwork import steamgriddb, thegamesdb
+
+        sgdb.return_value = [{"url": "https://x/hero.jpg"}, {"url": "https://x/shot.jpg", "width": 1920, "height": 1080}]
+        tgdb.return_value = [{"url": "https://x/shot.jpg"}, {"url": "https://x/fanart.jpg"}]
+        with patch("app.game_artwork.provider_order", return_value=[steamgriddb, thegamesdb]):
+            self.assertIsNone(carousel.resolve_carousel_media("game", "igdb", "123", cached_only=True))
+            sgdb.assert_not_called()
+            game_artwork.gallery("123")
+            warm = carousel.resolve_carousel_media("game", "igdb", "123", cached_only=True)
+            self.assertEqual([p["url"] for p in warm["photos"]], ["https://x/shot.jpg", "https://x/fanart.jpg"])
+            self.assertEqual(warm["photos"][0]["width"], 1920)
+            cache.delete("igdb_carousel_v4_123")
+            with patch("app.carousel.credentials.is_configured", return_value=False):
+                without_igdb = carousel.resolve_carousel_media("game", "igdb", "123", cached_only=True)
+            self.assertEqual(without_igdb["photos"], warm["photos"])
+            with patch("app.carousel.credentials.is_configured", return_value=True):
+                self.assertIsNone(carousel.resolve_carousel_media("game", "igdb", "123", cached_only=True))
+            game_artwork.gallery("123")
+            sgdb.assert_called_once()
+            tgdb.assert_called_once()
+            game_artwork.keys_saved()
+            game_artwork.gallery("123")
+            self.assertEqual(sgdb.call_count, 2)
+            game_artwork.expire("123")
+            game_artwork.gallery("123")
+            self.assertEqual(sgdb.call_count, 3)
+
+    @patch("app.game_artwork.steamgriddb.gallery", side_effect=RuntimeError("down"))
+    @patch("app.game_artwork.thegamesdb.gallery", return_value=[{"url": "https://x/fanart.jpg"}])
+    def test_failed_provider_does_not_hide_other_providers(self, _tgdb, _sgdb):
+        from app import game_artwork
+        from app.game_artwork import steamgriddb, thegamesdb
+
+        with patch("app.game_artwork.provider_order", return_value=[steamgriddb, thegamesdb]):
+            self.assertEqual(game_artwork.gallery("123")[0]["url"], "https://x/fanart.jpg")
+
+    @patch("app.game_artwork.steamgriddb.gallery")
+    def test_gallery_is_bounded(self, sgdb):
+        from app import game_artwork
+        from app.game_artwork import steamgriddb
+
+        sgdb.return_value = [{"url": f"https://x/{i}.jpg"} for i in range(60)]
+        with patch("app.game_artwork.provider_order", return_value=[steamgriddb]):
+            self.assertEqual(len(game_artwork.gallery("123")), game_artwork.MAX_GALLERY_PHOTOS)

@@ -202,6 +202,8 @@ class PlexHistoryImporter:
         # Store ratings from library items to apply during bulk media creation
         self._library_ratings: dict[tuple[str, str], float] = {}
         self._anime_import_keys: set[tuple[str, int]] = set()
+        # MAL-backed Anime rows the import wrote, pushed once it finishes.
+        self._imported_mal_anime_ids: set[int] = set()
         # One anime router for the whole run; see AnimeRouteResolver.
         self.anime_router = grouped_anime.AnimeRouteResolver(self.user)
         self._current_section_uri: str = ""
@@ -226,6 +228,8 @@ class PlexHistoryImporter:
         self._preserved_scores: dict[tuple, float] = {}
         # Cached tmdb.find remaps keyed by episode-level external ID
         self._episode_find_cache: dict[tuple[str, str], tuple | None] = {}
+        self._anibridge_mapping_loaded = False
+        self._anibridge_mapping_data = None
         # Cached (source, media_id, tv_metadata, season_metadata) genesis
         # resolution keyed by (tmdb show id, season number) — avoids repeating
         # a TVDB lookup for every episode record of the same show/season.
@@ -234,7 +238,53 @@ class PlexHistoryImporter:
         self._pending_external_references: list[dict] = []
 
     def import_data(self):
-        """Import history for the selected library."""
+        """Import history for the selected library.
+
+        Replayed plays save rows one by one, so their per-item MyAnimeList
+        pushes are skipped; each anime the import touched is pushed once at
+        the end instead.
+        """
+        from integrations.mal_sync import suppress_per_item_push
+
+        with suppress_per_item_push():
+            result = self._import_data()
+        self._push_imported_anime_to_mal()
+        return result
+
+    def _push_imported_anime_to_mal(self):
+        """Queue one MyAnimeList push per anime the import wrote.
+
+        Bulk-created episodes fire no save signals, so without this an imported
+        play reaches MAL only when the user runs or schedules a full sync.
+        """
+        from integrations.mal_sync import per_item_sync_active, queue_grouped_sync
+        from integrations.tasks import sync_mal_status
+
+        if not per_item_sync_active(self.user.id):
+            return
+        seasons = {
+            id(episode.related_season): episode.related_season
+            for episode in self.bulk_media.get(MediaTypes.EPISODE.value, [])
+        }
+        tv_items = {
+            season.related_tv.item_id: season.related_tv.item
+            for season in seasons.values()
+        }
+        # queue_grouped_sync skips non-anime shows and debounces per show.
+        for item in tv_items.values():
+            queue_grouped_sync(self.user.id, item)
+        for anime_id in self._imported_mal_anime_ids:
+            try:
+                sync_mal_status.delay(media_type=MediaTypes.ANIME.value, media_id=anime_id)
+            # The broker is down; the import already committed, so never raise.
+            except Exception as error:
+                logger.warning(
+                    "mal_sync_enqueue_failed media_type=anime media_id=%s error=%s",
+                    anime_id,
+                    error,
+                )
+
+    def _import_data(self):
         self._ensure_account_id()
         self._init_allowed_usernames()
         self._init_allowed_account_ids()
@@ -1669,6 +1719,37 @@ class PlexHistoryImporter:
             # Don't log a warning yet; return False to allow fallback to Movie
             return False
 
+        # Plex's season can exist on TMDB yet hold different episodes (TVDB
+        # Medabots S2E1 is TMDB S1E27), which the missing-season remap never
+        # sees. A TMDB-numbered find result or a correction is already right;
+        # a cached match that only repeats Plex's numbers is not.
+        if not corrected and (found_season, found_episode) in {
+            (None, None),
+            (plex_season_number, plex_episode_number),
+        }:
+            try:
+                translated = episode_remap.remap_via_anibridge(
+                    anime_mappings.fetch_mapping_data(),
+                    str(media_id),
+                    plex_season_number,
+                    plex_episode_number,
+                    {"tvdb_id": show_ids.get("tvdb_id")},
+                    lambda season: self._ensure_season_payload(
+                        str(media_id),
+                        season,
+                        series_search_title,
+                        show_year,
+                    ),
+                )
+            except Exception as exc:  # pragma: no cover - defensive network guard
+                logger.warning(
+                    "Failed to fetch anime mappings during Plex import: %s",
+                    exception_summary(exc),
+                )
+                translated = None
+            if translated is not None:
+                season_number, episode_number, _ = translated
+
         season_number, episode_number = external_references.map_episode_coordinates(
             reference,
             season_number,
@@ -2147,13 +2228,8 @@ class PlexHistoryImporter:
         if not tvdb_id:
             return
 
-        try:
-            mapping_data = anime_mappings.fetch_mapping_data()
-        except Exception as exc:  # pragma: no cover - defensive network guard
-            logger.warning(
-                "Failed to fetch anime mappings during Plex import: %s",
-                exception_summary(exc),
-            )
+        mapping_data = self._get_anibridge_mapping_data()
+        if not mapping_data:
             return
         yield (
             "TVDB",
@@ -2220,6 +2296,7 @@ class PlexHistoryImporter:
         ).first()
         if anime:
             self._apply_import_timestamp(anime, record["watched_at"])
+            self._imported_mal_anime_ids.add(anime.pk)
 
         self.counts[MediaTypes.ANIME.value] += 1
         self.summary_counts["created"] += 1
@@ -2504,6 +2581,26 @@ class PlexHistoryImporter:
                         if existing:
                             item_source, item_media_id = other_source, other_media_id
                             tv_key = f"{item_source}:{item_media_id}"
+                if existing is None:
+                    # A show tracked under another id is linked to this one
+                    # only through its provider links; the webhook finds it
+                    # the same way, so the two paths can't split one show. Only
+                    # the TMDB id is matched: the TVDB id TMDB reports can be a
+                    # parent series (D.Gray-man Hallow reports D.Gray-man's).
+                    linked_item = self.processor._find_existing_tracked_tv_item(
+                        self.user,
+                        {},
+                        actual_tmdb_id,
+                        preferred_library_media_type=anime_class,
+                    )
+                    if linked_item is not None:
+                        existing = self.existing_media[MediaTypes.TV.value][
+                            linked_item.source
+                        ].get(linked_item.media_id)
+                        if existing:
+                            item_source = linked_item.source
+                            item_media_id = linked_item.media_id
+                            tv_key = f"{item_source}:{item_media_id}"
                 if existing and self.mode == "new":
                     tv_obj = existing
                     # Apply rating from library items if available and different
@@ -2688,7 +2785,9 @@ class PlexHistoryImporter:
         ):
             return season_metadata
 
-        remapped = self._remap_episode_via_tmdb_find(record, tv_metadata)
+        remapped = self._remap_episode_via_anibridge(record, tv_metadata)
+        if remapped is None:
+            remapped = self._remap_episode_via_tmdb_find(record, tv_metadata)
         if remapped is None:
             remapped = self._remap_episode_via_cumulative_numbering(
                 record,
@@ -2747,6 +2846,21 @@ class PlexHistoryImporter:
             find_cache=self._episode_find_cache,
         )
 
+    def _remap_episode_via_anibridge(self, record: dict, tv_metadata: dict):
+        """Resolve anime episode numbering from the cached AniBridge graph."""
+        mapping_data = self._get_anibridge_mapping_data()
+        if not mapping_data:
+            return None
+
+        return episode_remap.remap_via_anibridge(
+            mapping_data,
+            tv_metadata.get("media_id", record["tmdb_id"]),
+            record["season_number"],
+            record["episode_number"],
+            tv_metadata,
+            self._season_loader(record),
+        )
+
     def _remap_episode_via_cumulative_numbering(self, record: dict, tv_metadata: dict):
         """Carry a TVDB-numbered episode into the right TMDB split season."""
         return episode_remap.remap_via_cumulative_numbering(
@@ -2755,6 +2869,24 @@ class PlexHistoryImporter:
             tv_metadata,
             self._season_loader(record),
         )
+
+    def _get_anibridge_mapping_data(self):
+        """Load AniBridge mappings once for this import, failing open."""
+        if self._anibridge_mapping_loaded:
+            return self._anibridge_mapping_data
+
+        self._anibridge_mapping_loaded = True
+        if not getattr(self.user, "anime_enabled", False):
+            return None
+
+        try:
+            self._anibridge_mapping_data = anime_mappings.fetch_mapping_data()
+        except Exception as exc:  # pragma: no cover - defensive network guard
+            logger.warning(
+                "AniBridge mapping lookup unavailable for Plex import: %s",
+                exception_summary(exc),
+            )
+        return self._anibridge_mapping_data
 
     def _ensure_season_payload(
         self,

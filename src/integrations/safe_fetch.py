@@ -341,10 +341,10 @@ def _clamped_timeouts(deadline):
     return (min(CONNECT_TIMEOUT, remaining), min(READ_TIMEOUT, remaining))
 
 
-def _read_bounded(response, deadline=None):
-    """Read at most MAX_BYTES of decoded content, refusing anything larger."""
+def _read_bounded(response, deadline=None, max_bytes=MAX_BYTES):
+    """Read at most max_bytes of decoded content, refusing anything larger."""
     declared = response.headers.get("Content-Length")
-    if declared and declared.isdigit() and int(declared) > MAX_BYTES:
+    if declared and declared.isdigit() and int(declared) > max_bytes:
         msg = "This response is larger than Floppy will fetch."
         raise UnsafeUrlError(REASON_RESPONSE_TOO_LARGE, msg)
 
@@ -357,7 +357,7 @@ def _read_bounded(response, deadline=None):
         # Content-Length, or omits it, must still not be able to exhaust
         # memory. Requests may perform many socket reads before yielding a
         # chunk, so this check cannot impose a hard wall-clock deadline.
-        if len(body) > MAX_BYTES:
+        if len(body) > max_bytes:
             msg = "This response is larger than Floppy will fetch."
             raise UnsafeUrlError(REASON_RESPONSE_TOO_LARGE, msg)
         if deadline is not None and time.monotonic() >= deadline:
@@ -367,7 +367,9 @@ def _read_bounded(response, deadline=None):
     return bytes(body)
 
 
-def safe_fetch(url, *, headers=None, session=None, total_timeout=None):
+def safe_fetch(
+    url, *, headers=None, session=None, total_timeout=None, max_bytes=MAX_BYTES
+):
     """Fetch ``url`` through the outbound boundary and return (response, body).
 
     The connection is pinned to the address validation resolved: each hop's
@@ -376,6 +378,9 @@ def safe_fetch(url, *, headers=None, session=None, total_timeout=None):
     (``total_timeout``, default :data:`TOTAL_TIMEOUT`) cancels connected
     sockets, including buffered reads and TLS. DNS resolution remains
     bounded only by OS resolver settings.
+
+    ``max_bytes`` caps the decoded body; podcast feeds use a larger bounded
+    budget than add-on manifests.
 
     ``session`` overrides the transport (used by tests) and is responsible
     for its own cancellation; the pinned session
@@ -433,7 +438,7 @@ def safe_fetch(url, *, headers=None, session=None, total_timeout=None):
                 continue
 
             try:
-                return response, _read_bounded(response, deadline)
+                return response, _read_bounded(response, deadline, max_bytes)
             finally:
                 response.close()
     except requests.RequestException as error:
@@ -545,10 +550,13 @@ def send_to_self_hosted(send, url, **kwargs):
         if not location:
             return response
         target = requests.compat.urljoin(current, location)
-        if urlparse(target).hostname != urlparse(current).hostname:
+        if urlparse(target).hostname != urlparse(current).hostname or (
+            urlparse(current).scheme.lower() == "https"
+            and urlparse(target).scheme.lower() != "https"
+        ):
             response.close()
             msg = (
-                "The server redirected to a different host. "
+                "The server redirected to a different host or an insecure connection. "
                 "Enter the address it redirects to instead."
             )
             raise SelfHostedUrlError(REASON_CROSS_HOST_REDIRECT, msg)

@@ -495,8 +495,9 @@
     </div>
 
     <div id="items-view"
+         class="{% if current_layout|default:'grid' == 'grid' %}media-grid{% endif %}"
          hx-history="false"
-         :class="renderedLayout === 'grid' ? 'media-grid' : ''">
+         :class="{ 'media-grid': renderedLayout === 'grid' }">
       {% if current_layout == 'table' %}
         {% include "lists/components/list_table.html" %}
       {% else %}

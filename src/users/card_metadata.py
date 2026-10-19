@@ -47,6 +47,9 @@ CARD_FIELDS = {
     "status": _field("Status", _ALL_MEDIA),
     "rating": _field("Score", _ALL_MEDIA),
     "last_played": _field("Last played", _ALL_MEDIA),
+    "date_added": _field("Date added", _ALL_MEDIA),
+    "start_date": _field("Start date", _ALL_MEDIA),
+    "end_date": _field("End date", _ALL_MEDIA),
     "synopsis": _field("Synopsis", _ALL_MEDIA),
     "artist": _field("Artist", {"music"}, _EXTRA),
     "album": _field("Album", {"music"}, _EXTRA),
@@ -553,7 +556,8 @@ def _format_episode_code(season_number, episode_number):
 
 def _show_episode_code(media):
     """Return the show's next episode, or the furthest one it already has."""
-    if media is None or not hasattr(media, "seasons"):
+    seasons = getattr(media, "seasons", None)
+    if seasons is None:
         return None
     target = getattr(media, "next_episode_target", None)
     if callable(target):
@@ -565,7 +569,7 @@ def _show_episode_code(media):
             if code and episode_number is not None:
                 return code
     best = None
-    for season in media.seasons.all():
+    for season in seasons.all():
         season_number = _from_obj(getattr(season, "item", None), "season_number")
         if not season_number:
             continue
@@ -631,6 +635,29 @@ def _last_played(item, media, user):
     from users.templatetags.user_tags import user_datetime_format
 
     return _text(user_datetime_format(played, user))
+
+
+def _entry_date(media, user, *names):
+    """Return the first of ``names`` set on the entry, in the user's date format."""
+    for name in names:
+        value = _from_obj(media, name)
+        if value:
+            from users.templatetags.user_tags import user_date_format
+
+            return _text(user_date_format(value, user)) if user else _text(value)
+    return None
+
+
+def _date_added(item, media, user):
+    return _entry_date(media, user, "aggregated_created_at", "created_at")
+
+
+def _start_date(item, media, user):
+    return _entry_date(media, user, "aggregated_start_date", "start_date")
+
+
+def _end_date(item, media, user):
+    return _entry_date(media, user, "aggregated_end_date", "end_date")
 
 
 def _synopsis(item, media, user):
@@ -757,6 +784,9 @@ _RENDERERS = {
     "rating": _rating,
     "episode_code": _episode_code,
     "last_played": _last_played,
+    "date_added": _date_added,
+    "start_date": _start_date,
+    "end_date": _end_date,
     "synopsis": _synopsis,
     "artist": _artist,
     "album": _album,

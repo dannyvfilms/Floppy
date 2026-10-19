@@ -27,8 +27,9 @@ def write_database_snapshot():
 
     No-ops when the deployment uses PostgreSQL, or when the feature is
     disabled -- checked here, not only at schedule-definition time, so
-    toggling DB_SNAPSHOT_ENABLED takes effect on the next run. Never raises:
-    a snapshot failure must never crash a worker or retry-storm.
+    toggling DB_SNAPSHOT_ENABLED takes effect on the next run. Failures raise
+    so Celery reports FAILURE rather than a misleading successful task. Celery
+    contains task exceptions; this task does not configure automatic retries.
     """
     if not settings.USING_SQLITE_DATABASE:
         return {"status": "skipped", "reason": "postgres"}
@@ -55,10 +56,11 @@ def write_database_snapshot():
         )
     except Exception:
         logger.exception("Database snapshot task failed unexpectedly")
-        return {"status": "error", "reason": "unexpected failure"}
+        raise
 
     if path is None:
-        return {"status": "error", "reason": "snapshot could not be verified"}
+        message = "Database snapshot failed; no verified backup was published"
+        raise RuntimeError(message)
 
     _log_snapshot_envelope(path, before, (time.perf_counter() - started) * 1000)
     return {"status": "ok", "path": str(path)}

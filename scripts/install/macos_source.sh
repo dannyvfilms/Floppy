@@ -90,7 +90,6 @@ floppy_commands_help() {
   Status:  sudo launchctl print system/com.floppy.app | head -n 20
   Logs:    tail -f "$LOG_DIR/gunicorn.log"   (and the other files in that directory)
   Resume:  bash "$REPO_DIR/scripts/install/main.sh"
-  Upgrade: git -C "$REPO_DIR" pull && "$UV" sync --locked --no-default-groups \\
-             && sudo launchctl kickstart -k system/com.floppy.app
+  Upgrade: follow "$REPO_DIR/docs/install.md" (stop, back up, update, migrate, collect static files, start)
 EOF
 }

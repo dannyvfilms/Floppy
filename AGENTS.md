@@ -355,7 +355,7 @@ Run tests through `scripts/test.sh`, in this priority order:
 3. **Full suite (rarely needed locally):** `scripts/test.sh --full` — all tags, including slow benchmarks/Playwright and live-provider `network` tests. Takes 20+ minutes and produces huge output. Only run it when the user asks or the risk clearly justifies it. Application-impacting PRs run the CI application suite, which excludes `network` tests; documentation-only trigger filtering is owned by `.github/workflows/app-tests.yml`.
 
 Notes:
-- **Diff selection:** `scripts/test.sh --affected` runs the tests that executed the changed lines, using `.floppy/affected.coverage` when that map exists. Record it with `scripts/test.sh --affected-record` (the CI suite: slow included, network excluded). A missing map, a new file, or a file coverage does not measure falls back to the import walk: a changed test module runs, a source module runs the tests that import it, and a file under one app with no importing test runs that app. Templates, static, the lockfile, settings, and the runner run the fast suite. A docs-only diff runs nothing. Pull requests download the map from the last successful run on `latest` and use the same selection.
+- **Local diff selection:** `scripts/test.sh --affected` uses `.floppy/affected.coverage` when present. Record it with `scripts/test.sh --affected-record`. Missing or uncovered lines fall back to direct importing tests or the owning app. Templates, static, the lockfile, settings, and the runner run the fast suite; docs-only changes run nothing. This is an iteration aid: application PRs and publication gates run the complete offline suite, including slow/browser tests.
 - Quick confidence: `uv run --no-sync ruff check src`
 - Deployment confidence: `uv run --no-sync python src/manage.py floppy_preflight` — paths,
   settings, database, migrations and Redis in one pass. Reads only, so it is safe against a
@@ -385,7 +385,7 @@ Notes:
 ## PR / Commit Expectations
 - **Never commit unless the user explicitly asks.** Finishing a task, passing tests, or reaching a natural stopping point does not justify an automatic commit. Wait for a direct instruction such as "commit this", "commit the changes", or "make a commit".
 - **Never amend a commit the user has not seen.** If a hook fails after a commit attempt, fix the issue and create a new commit — do not amend.
-- CI fails PRs that modify `.github/workflows/**` (see `.github/workflows/app-tests.yml`).
+- Workflow changes run normal PR checks. Image publication also requires the reusable application, lint/dependency and SQLite/PostgreSQL upgrade gates (see `.github/workflows/app-tests.yml` and `docker-image.yml`).
 - Large changes should be split into reviewable PRs or clearly justified if they cannot be.
 - Review summaries should call out behavior changes, files touched, validation run, and remaining risk.
 - Commit messages should use a short imperative title, then 1–3 bullet clarifications in the body. Optional issue lines: `Fixes #123` / `Refs #456`.

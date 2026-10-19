@@ -74,6 +74,10 @@ RATE_LIMIT_MAX_WAIT_SECONDS_INTERACTIVE = 5
 # thread for the full REQUEST_TIMEOUT, longer than nginx waits for the page.
 # An interactive caller has a stored-metadata fallback, so it gives up sooner.
 REQUEST_TIMEOUT_INTERACTIVE = 10
+# Comic Vine's API can accept a connection without returning a response when
+# its edge service is unhealthy. Do not let that hold the single local worker
+# for the global 120-second provider timeout.
+COMICVINE_REQUEST_TIMEOUT = 20
 
 _interactive_request = contextvars.ContextVar("_interactive_request", default=False)
 
@@ -462,7 +466,7 @@ session.mount(
 
 @request_timing.timed_provider_call
 def resilient_request(method, url, **kwargs):
-    """GET/POST through the shared rate-limited session.
+    """Send a request through the shared rate-limited session.
 
     Falls back to a per-process limited session if Redis breaks the shared
     bucket mid-run, instead of raising RedisError. Construction-time Redis
@@ -477,7 +481,12 @@ def resilient_request(method, url, **kwargs):
     provider response without api_request()'s retry/cooldown handling
     (e.g. Trakt device-code polling, HowLongToBeat scraping).
     """
-    request_func = session.get if method == "GET" else session.post
+    request_func = {
+        "GET": session.get,
+        "POST": session.post,
+        "PUT": session.put,
+        "PATCH": session.patch,
+    }[method]
     try:
         return request_func(url=url, **kwargs)
     except RedisError as error:
@@ -488,9 +497,12 @@ def resilient_request(method, url, **kwargs):
             url,
             error,
         )
-        fallback_func = (
-            _fallback_session.get if method == "GET" else _fallback_session.post
-        )
+        fallback_func = {
+            "GET": _fallback_session.get,
+            "POST": _fallback_session.post,
+            "PUT": _fallback_session.put,
+            "PATCH": _fallback_session.patch,
+        }[method]
         return fallback_func(url=url, **kwargs)
 
 
@@ -732,10 +744,10 @@ def api_request(
 
     Args:
         provider: Provider identifier for error messages
-        method: HTTP method ("GET" or "POST")
+        method: HTTP method ("GET", "POST", "PUT" or "PATCH")
         url: Request URL
         params: Query params for GET, JSON body for POST
-        data: Raw data for POST
+        data: Raw data for POST/PUT/PATCH (e.g. form-encoded body)
         headers: Request headers
         response_format: "json" (default) or "xml" for XML parsing
 
@@ -751,13 +763,18 @@ def api_request(
         )
 
     try:
+        request_timeout = (
+            COMICVINE_REQUEST_TIMEOUT
+            if provider == Sources.COMICVINE.value
+            else settings.REQUEST_TIMEOUT
+        )
         request_kwargs = {
             "url": url,
             "headers": headers,
             "timeout": (
-                min(settings.REQUEST_TIMEOUT, REQUEST_TIMEOUT_INTERACTIVE)
+                min(request_timeout, REQUEST_TIMEOUT_INTERACTIVE)
                 if _interactive_request.get()
-                else settings.REQUEST_TIMEOUT
+                else request_timeout
             ),
         }
 
@@ -771,6 +788,8 @@ def api_request(
         elif method == "POST":
             request_kwargs["data"] = data
             request_kwargs["json"] = params
+        elif method in {"PUT", "PATCH"}:
+            request_kwargs["data"] = data
 
         response = resilient_request(method, **request_kwargs)
         response.raise_for_status()
@@ -1692,7 +1711,7 @@ def search(
             if source == Sources.TMDB.value
             else tvdb.search(MediaTypes.TV.value, query, page, language)
         ),
-        MediaTypes.GAME.value: lambda: igdb.search(query, page),
+        MediaTypes.GAME.value: lambda: igdb.search(query, page, user=user),
         MediaTypes.BOOK.value: lambda: (
             openlibrary.search(query, page)
             if source == Sources.OPENLIBRARY.value

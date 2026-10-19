@@ -398,7 +398,14 @@ def apply_reorder_action(custom_list, item_id, action):
 
 
 def apply_full_order(custom_list, item_ids):
-    """Reorder items by an ordered ID list; returns an HTTP status code."""
+    """Reorder items by an ordered ID list; returns an HTTP status code.
+
+    ``item_ids`` are ``Item`` ids and may name every item in the list or only
+    a subset: the submitted items take the slots they already occupy, in the
+    submitted order, and the others stay where they are. A duplicate, or an id
+    that is not in this list, rejects the whole request with 400 and changes
+    nothing.
+    """
     if not item_ids:
         return 400
 
@@ -407,20 +414,20 @@ def apply_full_order(custom_list, item_ids):
             "date_added", "id"
         ),
     )
-    submitted_set = {str(i) for i in item_ids}
+    submitted = [str(i) for i in item_ids]
     item_map = {str(li.item_id): li for li in all_items}
+    submitted_set = set(submitted)
+    if len(submitted_set) != len(submitted) or not submitted_set <= set(item_map):
+        return 400
 
     # Positions in the full list currently occupied by the submitted subset
     original_positions = sorted(
         i for i, li in enumerate(all_items) if str(li.item_id) in submitted_set
     )
-    if not original_positions:
-        return 400
 
     # Place submitted items in their new DnD order at those same positions
-    for pos, item_id in zip(original_positions, item_ids, strict=False):
-        if str(item_id) in item_map:
-            all_items[pos] = item_map[str(item_id)]
+    for pos, item_id in zip(original_positions, submitted, strict=True):
+        all_items[pos] = item_map[item_id]
 
     base_time = timezone.now().replace(microsecond=0)
     for index, li in enumerate(all_items):

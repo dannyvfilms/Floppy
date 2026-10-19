@@ -10,10 +10,18 @@
          style="aspect-ratio: 3/2 !important;">
       <div class="relative">
         <a href="{% url 'list_detail' custom_list.public_reference %}">
+          {% if custom_list.cached_cover_url %}
+            {% if forloop.counter <= 8 %}
+              {% include "lists/components/list_cover_image.html" with image_url=custom_list.cached_cover_url name=custom_list.name cover_loading="eager" %}
+            {% else %}
+              {% include "lists/components/list_cover_image.html" with image_url=custom_list.cached_cover_url name=custom_list.name cover_loading="lazy" %}
+            {% endif %}
+          {% else %}
           <div class="media-card-poster w-full aspect-[3/2] bg-[var(--color-surface-alt)] animate-pulse"
                hx-get="{% url 'list_cover_image' custom_list.id %}"
                hx-trigger="revealed"
                hx-swap="outerHTML"></div>
+          {% endif %}
         </a>
 
         {% if custom_list.is_smart %}

@@ -10,7 +10,8 @@ services:
       - redis
     environment:
       - TZ=Europe/Berlin
-      - SECRET=longstring
+      # Set SECRET in .env; retain the existing key when upgrading.
+      - SECRET=${SECRET:?Set SECRET to a long random signing key}
       - REDIS_URL=redis://redis:6379
       - DB_HOST=db
       # These stay "yamtrack" on purpose: renaming the database, role, or
@@ -30,6 +31,9 @@ services:
       # Web concurrency is sized from the host automatically. Set
       # WEB_CONCURRENCY/GUNICORN_THREADS only when you intentionally want to
       # override the detected resource tier.
+    volumes:
+      - ./db:/floppy/db
+      - ./backups:/floppy/backups
     ports:
       - "8000:8000"
     networks:

@@ -18,10 +18,6 @@
     <meta name="mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-title" content="Floppy">
 
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="mobile-web-app-title" content="Floppy">
-
     <title>
       {% block title %}
         Floppy
@@ -42,6 +38,7 @@
 
     <script src="{% javascript_catalog_url %}"></script>
     <script src="{% static 'js/libraries/htmx-2.0.4.min.js' %}"></script>
+    <script src="{% static 'js/artwork-loading.js' %}{% get_static_file_mtime 'js/artwork-loading.js' %}"></script>
     <script>
       (function() {
         function getCookie(name) {
@@ -73,13 +70,14 @@
             if (!xhr) {
               return;
             }
-            const body = xhr.responseText || "";
-            if (body.indexOf('name="floppy-page" content="entrance"') === -1) {
-              return;
+            const body = event.detail.serverResponse || xhr.responseText || "";
+            // Match the actual meta element, not this guard's own script.
+            const page = new DOMParser().parseFromString(body, "text/html");
+            if (page.querySelector('meta[name="floppy-page"][content="entrance"]')) {
+              event.detail.shouldSwap = false;
+              event.detail.isError = false;
+              window.location.assign(xhr.responseURL || "{% url 'account_login' %}");
             }
-            event.detail.shouldSwap = false;
-            event.detail.isError = false;
-            window.location.assign(xhr.responseURL || "{% url 'account_login' %}");
           });
 
           document.body.addEventListener("htmx:configRequest", function(event) {
@@ -217,7 +215,7 @@
 
         {# Sidebar #}
         {% if not public_view|default:False %}
-          <aside class="fixed top-0 left-0 z-[43] h-dvh w-64 pl-[var(--safe-left)] bg-[var(--color-sidebar)] transform transition-[transform,translate,visibility] duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
+          <aside class="fixed top-0 left-0 z-[43] h-dvh w-64 pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] bg-[var(--color-sidebar)] transform transition-[transform,translate,visibility] duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
                  :class="isMobileMenuOpen ? 'translate-x-0' : 'max-lg:invisible'">
             <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
               <h1 class="flex items-center">
@@ -414,11 +412,19 @@
                 {% url 'integrations' as integrations_url %}
                 {% url 'import_data' as import_url %}
                 {% url 'export_data' as export_url %}
+                {% url 'mal_export' as mal_export_url %}
                 {% url 'ui_preferences' as ui_preferences_url %}
+                {% url 'appearance' as appearance_url %}
+                <a href="{% url 'appearance' %}"
+                   hx-boost="true"
+                   class="lg:hidden flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == appearance_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                  {% include "app/icons/moon.svg" with classes="w-5 h-5" %}
+                  <span>{% trans "Appearance" %}</span>
+                </a>
                 <a href="{{ account_url }}"
                    hx-boost="true"
-                   class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                  {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url %}
+                   class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url or request.path == mal_export_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                  {% if request.path == account_url or request.path == notifications_url or request.path == sidebar_url or request.path == ui_preferences_url or request.path == preferences_url or request.path == home_screen_url or request.path == integrations_url or request.path == import_url or request.path == export_url or request.path == mal_export_url %}
                     {% include "app/icons/settings.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
 
                   {% else %}
@@ -445,8 +451,8 @@
         {# Main content #}
         <div class="flex-1 flex flex-col min-h-screen min-w-0">
           {# Top bar #}
-          <div class="sticky top-0 z-50 bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
-            <div class="container mx-auto max-lg:max-w-none pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
+          <div class="sticky top-0 z-50 pt-[var(--header-safe-top)] bg-[var(--color-sidebar)] border-b border-[var(--color-border)] shadow-md">
+            <div class="app-topbar__inner container mx-auto max-lg:max-w-none pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
               <div class="flex items-center justify-between lg:justify-center gap-2 h-16 min-w-0">
                 {# Mobile: sidebar toggle button #}
                 {% if not public_view|default:False %}
@@ -592,7 +598,7 @@
           </div>
 
           <main class="flex-1 relative bg-[var(--color-page-bg)]">
-            <div class="container mx-auto max-lg:max-w-none pt-6 pb-6 sm:pb-12 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] sm:pl-[max(2rem,var(--safe-left))] sm:pr-[max(2rem,var(--safe-right))]">
+            <div class="container mx-auto max-lg:max-w-none pt-6 pb-[max(1.5rem,var(--safe-bottom))] sm:pb-[max(3rem,var(--safe-bottom))] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] sm:pl-[max(2rem,var(--safe-left))] sm:pr-[max(2rem,var(--safe-right))]">
               {% block content %}
               {% endblock content %}
             </div>

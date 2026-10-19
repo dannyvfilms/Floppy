@@ -6,7 +6,7 @@ from django.db.models import Q
 
 from app import config
 from app.models import MediaTypes
-from app.statistics_cache import STATISTICS_TOP_N
+from app.statistics_talent import STATISTICS_TOP_N
 
 logger = logging.getLogger(__name__)
 

@@ -21,7 +21,9 @@ from app import providers
 from app.db_retry import run_retryable_db_operation
 from app.history_cache_utils import history_deferred_item_fields
 from app.models import Episode, MediaTypes, Status
+from app.models.tv import _UNSET_END_DATE
 from app.services.completion import normalize_completed_entries
+from app.services.watch_state import PROJECTED_MEDIA_TYPES, project_watch_state
 from app.signals import importer_replacing_rows
 from integrations import import_progress
 from integrations.models import ImportRun
@@ -144,6 +146,8 @@ def get_or_create_item_across_buckets(
 # them for a whole library (``watch_providers`` is ~146 KiB a title) ran a large
 # Trakt export import out of memory before it wrote anything (#1252).
 PRELOAD_DEFERRED_ITEM_FIELDS = history_deferred_item_fields("item")
+# Items projected per query after a bulk import.
+PROJECTION_BATCH_SIZE = 500
 
 
 def get_existing_media(user):
@@ -465,7 +469,22 @@ def _backfill_completed_season_episodes(seasons, *, prepare_only=False):
             continue
         try:
             season_metadata = _fetch_season_metadata_with_retry(season)
-            episodes_to_create.extend(season.get_remaining_eps(season_metadata))
+            episodes_to_create.extend(
+                season.get_remaining_eps(
+                    season_metadata,
+                    # A season that arrived with a known watched date fans out
+                    # to that date. Without this the fabricated episodes take
+                    # the user's preference, which defaults to "now" — so an
+                    # import of old history stamps every invented episode with
+                    # the import time and the show reads as watched today.
+                    # A rating-only season carries only its history date.
+                    end_date=getattr(
+                        season,
+                        "_pending_end_date",
+                        getattr(season, "_history_date", _UNSET_END_DATE),
+                    ),
+                ),
+            )
         except (
             providers.services.ProviderAPIError,
             RequestException,
@@ -685,6 +704,7 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
     episode backfill failed, for callers that want to surface them.
     """
     warnings = []
+    projected_item_ids = set()
     if not prepared:
         prepare_bulk_media(bulk_media_list, user)
 
@@ -791,6 +811,10 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
         created_media = retry_on_lock(create_media)
         if normalize:
             normalize_completed_entries(created_media)
+        if media_type in PROJECTED_MEDIA_TYPES:
+            projected_item_ids.update(
+                row.item_id for row in created_media if row.item_id is not None
+            )
 
     # Run after every media type (including any episodes the importer supplied
     # directly) has been persisted, so the "does this season already have
@@ -802,7 +826,36 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
                 lambda: _backfill_completed_season_episodes(bulk_seasons),
             ),
         )
+        _project_season_episodes(bulk_seasons)
+    project_imported_watch_state(user, projected_item_ids)
     return warnings
+
+
+def project_imported_watch_state(user, item_ids):
+    """Project canonical watched state for items an import bulk-created rows for.
+
+    bulk_create fires no save signals, so the projection that
+    app.signals_watch_state keeps for every other write never sees these rows.
+    """
+    item_ids = sorted(item_ids)
+    for start in range(0, len(item_ids), PROJECTION_BATCH_SIZE):
+        for item in app.models.Item.objects.filter(
+            id__in=item_ids[start : start + PROJECTION_BATCH_SIZE],
+        ):
+            project_watch_state(user, item)
+
+
+def _project_season_episodes(seasons):
+    """Project the episodes under seasons whose Completed backfill added rows."""
+    seasons = [season for season in seasons if season.pk is not None]
+    users = {season.user_id: season.user for season in seasons}
+    item_ids = defaultdict(set)
+    for user_id, item_id in Episode.objects.filter(
+        related_season__in=seasons, item__isnull=False,
+    ).values_list("related_season__user_id", "item_id"):
+        item_ids[user_id].add(item_id)
+    for user_id, ids in item_ids.items():
+        project_imported_watch_state(users[user_id], ids)
 
 
 def backfill_completed_seasons(season_ids):
@@ -810,8 +863,10 @@ def backfill_completed_seasons(season_ids):
     if not season_ids:
         return []
     season_model = apps.get_model(app_label="app", model_name=MediaTypes.SEASON.value)
-    seasons = season_model.objects.filter(pk__in=season_ids)
-    return retry_on_lock(lambda: _backfill_completed_season_episodes(seasons))
+    seasons = list(season_model.objects.filter(pk__in=season_ids).select_related("user"))
+    warnings = retry_on_lock(lambda: _backfill_completed_season_episodes(seasons))
+    _project_season_episodes(seasons)
+    return warnings
 
 
 def create_import_schedule(
@@ -833,11 +888,10 @@ def create_import_schedule(
         so the schedule does not keep a dead token.
     """
     try:
+        # The entered time is already in the app's timezone; no conversion.
         import_time = (
             datetime.datetime.strptime(import_time, "%H:%M")
-            .astimezone(
-                timezone.get_default_timezone(),
-            )
+            .replace(tzinfo=timezone.get_default_timezone())
             .time()
         )
     except ValueError:
@@ -926,9 +980,5 @@ def decrypt_or_raise(token):
         return decrypt(token)
     except InvalidToken as error:
         logger.exception("Failed to decrypt stored credential")
-        msg = (
-            "Stored credentials could not be decrypted. This usually happens "
-            "after the app's encryption key changes. Please reconnect this "
-            "integration."
-        )
+        msg = "Saved credentials can't be read. Reconnect this integration."
         raise MediaImportError(msg) from error

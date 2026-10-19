@@ -146,6 +146,7 @@ class PlaybackReportingImporterTests(TestCase):
             {
                 "Id": "jf-item",
                 "Type": "Movie",
+                "RunTimeTicks": 1_200_000_000,
                 "ProviderIds": {"Tmdb": "123"},
             },
         ]
@@ -202,6 +203,7 @@ class PlaybackReportingImporterTests(TestCase):
             {
                 "Id": "jf-episode",
                 "Type": "Episode",
+                "RunTimeTicks": 1_200_000_000,
                 "SeriesId": "jf-series",
                 "ParentIndexNumber": 2,
                 "IndexNumber": 7,
@@ -293,6 +295,7 @@ class PlaybackReportingImporterTests(TestCase):
             {
                 "Id": "jf-episode",
                 "Type": "Episode",
+                "RunTimeTicks": 1_200_000_000,
                 "SeriesId": "jf-series",
                 "ParentIndexNumber": 2,
                 "IndexNumber": 7,
@@ -346,6 +349,7 @@ class PlaybackReportingImporterTests(TestCase):
             {
                 "Id": "jf-item",
                 "Type": "Movie",
+                "RunTimeTicks": 1_200_000_000,
                 "ProviderIds": {"Tmdb": "123"},
             },
         ]
@@ -359,6 +363,91 @@ class PlaybackReportingImporterTests(TestCase):
         self.assertIn("duplicate of an existing play", warnings)
         self.assertEqual(MoviePlay.objects.filter(movie=movie).count(), 0)
 
+    @patch(
+        "integrations.imports.jellyfin_playback_reporting.decrypt_or_raise",
+        return_value="api-key",
+    )
+    @patch("integrations.jellyfin_client.JellyfinClient.iter_library_items")
+    def test_completion_threshold_for_api_and_tsv(self, mock_library, mock_decrypt):
+        for path in ("api", "tsv"):
+            for item_type in ("Movie", "Episode"):
+                for runtime, duration, accepted in (
+                    (14_400_000_000, 540, False),  # 9 of 24 minutes
+                    (14_400_000_000, 1151, False),
+                    (14_400_000_000, 1152, True),  # exactly 80%
+                    (14_400_000_000, 1440, True),
+                    (14_400_000_000, 1600, True),
+                    (None, 1440, False),
+                    (0, 1440, False),
+                    (-1, 1440, False),
+                    ("invalid", 1440, False),
+                ):
+                    with self.subTest(
+                        path=path,
+                        item_type=item_type,
+                        runtime=runtime,
+                        duration=duration,
+                    ):
+                        item = {
+                            "Id": "jf-item",
+                            "Type": item_type,
+                            "ProviderIds": {"Tmdb": "123"},
+                            "SeriesId": "jf-series",
+                            "ParentIndexNumber": 1,
+                            "IndexNumber": 1,
+                            # A previous completed watch must not turn this
+                            # historical partial session into another watch.
+                            "UserData": {"Played": True},
+                        }
+                        if runtime is not None:
+                            item["RunTimeTicks"] = runtime
+                        mock_library.return_value = [
+                            item,
+                            {
+                                "Id": "jf-series",
+                                "Type": "Series",
+                                "ProviderIds": {"Tmdb": "456"},
+                            },
+                        ]
+                        importer = JellyfinPlaybackReportingImporter(
+                            self.user, self.account
+                        )
+                        with (
+                            patch.object(importer, "_import_movie") as movie,
+                            patch.object(importer, "_import_episode") as episode,
+                        ):
+                            if path == "api":
+                                _, warnings, cursor = importer.import_activity_rows(
+                                    [
+                                        {
+                                            "rowid": 17,
+                                            "date_created": "2024-01-02 03:04:05",
+                                            "user_id": "jf-user",
+                                            "item_id": "jf-item",
+                                            "item_type": item_type,
+                                            "play_duration": duration,
+                                        }
+                                    ]
+                                )
+                                self.assertEqual(cursor, 17)
+                            else:
+                                _, warnings = importer.import_data(
+                                    playback_row(
+                                        item_type=item_type,
+                                        duration=str(duration),
+                                    )
+                                )
+                        self.assertEqual(
+                            movie.call_count, int(accepted and item_type == "Movie")
+                        )
+                        self.assertEqual(
+                            episode.call_count, int(accepted and item_type == "Episode")
+                        )
+                        self.assertEqual(importer.skipped_count, int(not accepted))
+                        if accepted:
+                            self.assertEqual(warnings, "")
+                        else:
+                            self.assertIn("runtime", warnings)
 
 class PlaybackActivityAPIImportTests(TestCase):
     """Cover the Playback Reporting REST API import path (no manual TSV)."""
@@ -397,7 +486,12 @@ class PlaybackActivityAPIImportTests(TestCase):
             notes="",
         )
         mock_library.return_value = [
-            {"Id": "jf-item", "Type": "Movie", "ProviderIds": {"Tmdb": "123"}},
+            {
+                "Id": "jf-item",
+                "Type": "Movie",
+                "RunTimeTicks": 1_200_000_000,
+                "ProviderIds": {"Tmdb": "123"},
+            },
         ]
 
         entries = [

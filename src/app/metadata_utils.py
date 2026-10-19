@@ -37,6 +37,7 @@ def provider_metadata_cache_keys(
                 media_type,
                 season_number=season_number,
                 episode_number=episode_number,
+                language=language,
             ),
         )
     elif source == Sources.TVDB.value:
@@ -156,7 +157,7 @@ def _coerce_list(value, *, allow_scalar: bool = True) -> list:
 
 def normalize_genres(value) -> list[str]:
     """Normalize a provider or model genre payload into unique strings."""
-    from app.statistics import _coerce_genre_list
+    from app.stats_utils import _coerce_genre_list
 
     genres = _coerce_genre_list(value)
     return list(dict.fromkeys([str(genre) for genre in genres if genre]))

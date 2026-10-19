@@ -410,43 +410,10 @@ class CustomList(models.Model):
         return first_item.image
 
     def _get_tmdb_backdrop(self, media_type, media_id):
-        """Get backdrop image URL from TMDB for movies and TV shows.
+        """Delegate shared TMDB artwork fetching outside list persistence."""
+        from app.backdrops import get_tmdb_backdrop
 
-        Uses caching to avoid repeated API calls for the same item.
-        """
-        cache_key = f"tmdb_backdrop_{media_type}_{media_id}"
-        cached_backdrop = cache.get(cache_key)
-        if cached_backdrop is not None:
-            return cached_backdrop
-
-        try:
-            from app.providers import tmdb
-
-            if media_type == MediaTypes.MOVIE.value:
-                url = f"{tmdb.base_url}/movie/{media_id}"
-            else:
-                url = f"{tmdb.base_url}/tv/{media_id}"
-
-            params = dict(tmdb.base_params())
-            response = services.api_request(
-                Sources.TMDB.value,
-                "GET",
-                url,
-                params=params,
-            )
-
-            backdrop_path = response.get("backdrop_path")
-            if backdrop_path:
-                backdrop_url = f"https://image.tmdb.org/t/p/w1280{backdrop_path}"
-                # Cache for 7 days (same as TMDB metadata cache)
-                cache.set(cache_key, backdrop_url, 60 * 60 * 24 * 7)
-                return backdrop_url
-        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-            pass
-
-        # Cache the absence of backdrop to avoid repeated failed calls
-        cache.set(cache_key, settings.IMG_NONE, 60 * 60 * 24)
-        return settings.IMG_NONE
+        return get_tmdb_backdrop(media_type, media_id)
 
     def _get_igdb_backdrop(self, media_id):
         """Get widescreen backdrop image URL from IGDB for games.
@@ -946,14 +913,19 @@ class CustomList(models.Model):
                 next(iter(videos), None),
             )
             if best_video:
-                video = {"key": best_video["video_id"], "name": best_video.get("name", "")}
+                video = {
+                    "key": best_video["video_id"],
+                    "name": best_video.get("name", ""),
+                }
 
             game_response = response[0] if response else {}
             artworks_raw = game_response.get("artworks") or []
             screenshots_raw = game_response.get("screenshots") or []
 
             artwork_ids = [a["id"] for a in artworks_raw if a.get("id")]
-            artwork_image_ids = {a["id"]: a["image_id"] for a in artworks_raw if a.get("image_id")}
+            artwork_image_ids = {
+                a["id"]: a["image_id"] for a in artworks_raw if a.get("image_id")
+            }
             screenshot_image_ids = [
                 s["image_id"] for s in screenshots_raw if s.get("image_id")
             ]
@@ -1005,7 +977,9 @@ class CustomList(models.Model):
         except Exception:
             failed = True
             logger.warning(
-                "Failed to fetch IGDB carousel media for game %s", media_id, exc_info=True
+                "Failed to fetch IGDB carousel media for game %s",
+                media_id,
+                exc_info=True,
             )
 
         data = {
@@ -1265,6 +1239,11 @@ class CustomListItem(models.Model):
         blank=True,
         default="",
         help_text="Id of the tier this item is placed in; blank means Unranked.",
+    )
+    rank = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Position of this item in an outside ranking, such as #81 of 100.",
     )
 
     objects = CustomListItemManager()

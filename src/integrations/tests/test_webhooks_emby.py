@@ -25,6 +25,19 @@ class EmbyWebhookTests(TestCase):
         response = self.client.post(url, data={}, content_type="application/json")
         self.assertEqual(response.status_code, 401)
 
+    def test_debug_logging_omits_account_and_activity_values(self):
+        payload = {
+            "Event": "unsupported",
+            "User": {"Name": "private-account"},
+            "Item": {"Name": "private-media", "Path": "/private/library/file"},
+        }
+        with self.assertLogs("integrations.webhooks.emby", level="DEBUG") as logs:
+            EmbyWebhookProcessor().process_payload(payload, self.user)
+        output = " ".join(logs.output)
+        for value in ("private-account", "private-media", "/private/library/file"):
+            self.assertNotIn(value, output)
+        self.assertIn("item_keys", output)
+
     @tag("network")
     def test_tv_episode_mark_played(self):
         """Test webhook handles TV episode mark played event."""

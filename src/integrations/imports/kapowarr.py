@@ -9,6 +9,7 @@ from integrations import import_progress
 from integrations.imports.helpers import ConnectionAuthError, MediaImportError
 from integrations.imports.mylar import MylarImporter
 from integrations.models import KapowarrInstance
+from integrations.safe_fetch import send_to_self_hosted
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,8 @@ class KapowarrClient:
 
     def _request(self, path: str):
         try:
-            response = requests.get(
+            response = send_to_self_hosted(
+                requests.get,
                 f"{self.base_url}/api/{path}",
                 params={"api_key": self.api_key},
                 timeout=20,

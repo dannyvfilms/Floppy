@@ -30,8 +30,11 @@ OTHER = "other"
 # server that answered and said no.
 UNREACHABLE = frozenset({DNS, REFUSED, TIMEOUT})
 
-README_SECTION = "Floppy can't reach Redis"
-README_URL = "https://github.com/dannyvfilms/Floppy#floppy-cant-reach-redis"
+GUIDE_SECTION = "Floppy can't reach Redis"
+GUIDE_URL = (
+    "https://github.com/dannyvfilms/Floppy/blob/latest/docs/deployment.md"
+    "#floppy-cant-reach-redis"
+)
 
 # Celery also accepts brokers such as RabbitMQ. A failure there is not a Redis
 # problem, so it keeps the caller's own wording.
@@ -144,7 +147,7 @@ def explain_redis_error(error: BaseException, url: str | None) -> tuple[str, str
                 "put Floppy and Redis on the same user-defined Docker network (a "
                 "networks: entry on every service, and no network_mode: bridge), "
                 "or set REDIS_URL to an address this container can reach. See "
-                f'"{README_SECTION}" in the README: {README_URL}'
+                f'"{GUIDE_SECTION}" in the deployment guide: {GUIDE_URL}'
             )
         else:
             fix = "set REDIS_URL to a hostname this machine can resolve"
@@ -178,7 +181,7 @@ def unreachable_detail(error: BaseException, url: str | None) -> str | None:
     endpoint, _host = _endpoint(url)
     return (
         f"Floppy cannot reach Redis at {endpoint}: {cause}. "
-        f'See "{README_SECTION}" in the README.'
+        f'See "{GUIDE_SECTION}" in the deployment guide.'
     )
 
 

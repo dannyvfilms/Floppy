@@ -114,7 +114,9 @@ def _episode_cache_key(media_id, season_number, episode_number, language=None):
     )
 
 
-def metadata_cache_keys(media_id, media_type, season_number=None, episode_number=None):
+def metadata_cache_keys(
+    media_id, media_type, season_number=None, episode_number=None, language=None
+):
     """Return the versioned TMDB cache keys for an item.
 
     The movie and season keys carry a strategy version, so callers that clear
@@ -123,17 +125,17 @@ def metadata_cache_keys(media_id, media_type, season_number=None, episode_number
     """
     keys = []
     if media_type == MediaTypes.MOVIE.value:
-        keys.append(_movie_cache_key(media_id))
+        keys.append(_movie_cache_key(media_id, language))
     elif media_type == MediaTypes.TV.value:
-        keys.append(_tv_cache_key(media_id))
+        keys.append(_tv_cache_key(media_id, language))
     elif media_type == MediaTypes.SEASON.value and season_number is not None:
-        keys.append(_season_cache_key(media_id, season_number))
+        keys.append(_season_cache_key(media_id, season_number, language))
     elif (
         media_type == MediaTypes.EPISODE.value
         and season_number is not None
         and episode_number is not None
     ):
-        keys.append(_episode_cache_key(media_id, season_number, episode_number))
+        keys.append(_episode_cache_key(media_id, season_number, episode_number, language))
     return keys
 
 

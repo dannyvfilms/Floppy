@@ -15,8 +15,8 @@ Celery, the Gunicorn workers, and background tasks.
 HTTP request
      |
      v
-Nginx (port 8000) -----> access log: "$request_method $uri $server_protocol"
-     |                   Query strings and referrers are not written.
+Nginx (port 8000) -----> access log: "$request_method $server_protocol"
+     |                   Paths, query strings and referrers are not written.
      v
 Gunicorn (port 8001) --> accesslog = None. Nginx owns the request log.
      |                   Gunicorn still writes its error log.
@@ -97,23 +97,21 @@ readable: `status_code=200`, `error_code=RATE_LIMIT`, `token_count=512` and
 
 ## Structured payloads
 
-A webhook payload holds a person's account identity, their device's public
-address, and the private server's name and machine identifier next to the media
-event the log line exists to diagnose. A text rule cannot tell `Account.title`
-(a username) from `Metadata.title` (a media title), so
-`redact_payload_pii()` in `src/app/log_safety.py` matches on structure before
-`_process_webhook` dumps the payload.
+The webhook worker logs the provider and top-level payload keys, not the payload
+values. Plex, Jellyfin and Emby processor diagnostics also log structural keys
+rather than dumping incoming account, server, device and media objects. Media
+titles and activity are private data too; credential redaction alone does not
+make a payload safe to retain or share.
 
-| Key | Treatment |
-|---|---|
-| `Account`, `Server` | The whole object is replaced with `[REDACTED]`. |
-| `publicAddress`, `uuid`, `machineIdentifier` | The value is replaced, at any depth. |
-| `librarySectionTitle` | The value is replaced. |
-| `Metadata.title`, ids, `event`, `Player.local` | Kept: media identity is not PII. |
+`redact_payload_pii()` remains a structural scrubber for callers that need it:
+it replaces `Account` and `Server` containers and named address, device and
+library fields, without mutating the input. It does not anonymize arbitrary
+payloads or remove media titles. Other operational logs still contain usernames,
+local user IDs, media IDs and titles; inspect log downloads before sharing them.
 
-The scrubber returns a copy, so the payload the processor handles is unchanged.
-It runs before `redact_secrets()`, which still applies to the dumped text as a
-second boundary.
+Pocket Casts authentication diagnostics log response keys/types and HTTP status,
+without response values or error bodies. Unknown response fields can contain
+credentials even when their names do not contain `token` or `password`.
 
 ## Third-party debug logging
 
@@ -134,11 +132,10 @@ task-failure line and every traceback, so a third rule strips the quoted
 
 ## What the rules do not cover
 
-**OAuth `code` parameters.** `code` is too general to match. `status_code`,
-`error_code` and `country_code` are common in diagnostic output, and a rule for
-`code` would remove all of them. Nginx removes query strings from the request
-log, and Django logs the request path without the query, so an authorization
-code has no ordinary route into the log. Do not put one in a log message.
+**Bare OAuth codes.** URL query parameters named `code`, `state`, `device_code`
+and `user_code` are redacted. Unlabelled codes and arbitrary response bodies are
+not safe to log. Nginx omits request URLs entirely; external reverse proxies
+need their own log policy.
 
 **OAuth `client_id` parameters.** A `client_id` identifies the application, not
 the user, so it is not a secret and it stays readable. One case needs care.

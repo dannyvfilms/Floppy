@@ -54,7 +54,7 @@
                             {# Item image (if applicable) #}
                             {% if activity.item %}
                                 <a href="{{ activity.item|media_url }}" class="flex-shrink-0">
-                                    <img src="{{ activity.item.image|image_url }}"
+                                    <img data-media-artwork loading="lazy" decoding="sync" src="{{ activity.item.image|image_url }}"
                                          alt="{{ activity.item.title }}"
                                          class="w-12 h-16 object-cover rounded bg-[var(--color-surface-alt)]">
                                 </a>

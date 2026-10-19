@@ -17,7 +17,7 @@
         <input type="hidden" name="provider_media_id" value="{{ result.media_id }}">
         <input type="hidden" name="return_url" value="{{ return_url }}">
         {% if result.image %}
-          <img src="{{ result.image|image_url }}" alt="" class="w-8 h-12 object-cover rounded shrink-0">
+          <img data-media-artwork loading="lazy" decoding="sync" src="{{ result.image|image_url }}" alt="" class="w-8 h-12 object-cover rounded shrink-0">
         {% endif %}
         <span class="flex-1 text-sm text-[var(--color-text-secondary)] truncate">{{ result.title }}</span>
         <button type="submit"

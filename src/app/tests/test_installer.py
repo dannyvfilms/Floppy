@@ -119,8 +119,7 @@ class PromptCaptureTests(SimpleTestCase):
 
     def test_ask_choice_captures_a_typed_number(self):
         output = run_over_pty(
-            'ask_choice PICK "Pick one" a "a|Alpha|" "b|Beta|"\n'
-            'echo "GOT:[$PICK]"\n',
+            'ask_choice PICK "Pick one" a "a|Alpha|" "b|Beta|"\necho "GOT:[$PICK]"\n',
             sends=[b"2\n"],
         )
         self.assertIn("GOT:[b]", output)
@@ -291,6 +290,29 @@ class InstallerShellSyntaxTests(SimpleTestCase):
 
     def test_bootstrap_is_executable(self):
         self.assertTrue(ROOT.joinpath("scripts", "install.sh").stat().st_mode & 0o111)
+
+
+class WindowsInstallerTests(SimpleTestCase):
+    """scripts/install.ps1 runs under Windows PowerShell 5.1, which CI lacks.
+
+    The default Windows shell rejects PowerShell 7 syntax at parse time, before
+    a single line runs - the failure a first-time Windows user hit with the
+    Bash one-liner. These checks keep the script inside 5.1's grammar and on
+    the same image as the Bash installer.
+    """
+
+    text = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
+
+    def test_no_powershell_7_only_syntax(self):
+        code = "\n".join(line.split("#", 1)[0] for line in self.text.splitlines())
+        for token in ("&&", "||", "??", "$IsWindows", "-AsHashtable"):
+            with self.subTest(token=token):
+                self.assertNotIn(token, code)
+
+    def test_image_matches_the_bash_installer(self):
+        common = (INSTALL_DIR / "common.sh").read_text(encoding="utf-8")
+        image = re.search(r"FLOPPY_IMAGE=\$\{FLOPPY_IMAGE:-([^}]+)\}", common).group(1)
+        self.assertIn(f"else {{ '{image}' }}", self.text)
 
 
 class RenderTemplateTests(SimpleTestCase):
@@ -569,7 +591,9 @@ class GeneratedSupervisorTests(SimpleTestCase):
         )
         # Unquoted, because Supervisor takes these options literally: quoting
         # them would make the quotes part of the path.
-        self.assertEqual(parser["supervisord"]["logfile"], f"{root}/logs/supervisord.log")
+        self.assertEqual(
+            parser["supervisord"]["logfile"], f"{root}/logs/supervisord.log"
+        )
 
     def test_optional_workers_follow_the_resource_profile(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -614,13 +638,21 @@ class GeneratedNginxTests(SimpleTestCase):
         self.assertIn(f'alias "{root}/repo/src/staticfiles/";', conf)
         self.assertIn("server 127.0.0.1:8001;", conf)
 
-    def test_access_log_keeps_query_strings_out(self):
+    def test_access_log_keeps_urls_and_referrers_out(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            conf = self.render(Path(temp_dir))
-        self.assertIn("$request_method $uri $server_protocol", conf)
-        self.assertNotIn("$request ", conf)
-        self.assertNotIn("$query_string", conf)
-        self.assertNotIn("$http_referer", conf)
+            generated = self.render(Path(temp_dir))
+        for conf in (generated, (ROOT / "nginx.conf").read_text()):
+            with self.subTest(configuration=conf[:60]):
+                self.assertIn("$request_method $server_protocol", conf)
+                self.assertIn('add_header Referrer-Policy "same-origin" always;', conf)
+                for variable in (
+                    "$uri",
+                    "$request_uri",
+                    "$request ",
+                    "$query_string",
+                    "$http_referer",
+                ):
+                    self.assertNotIn(variable, conf)
 
 
 class GeneratedServiceUnitTests(SimpleTestCase):

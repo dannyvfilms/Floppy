@@ -8,10 +8,10 @@
     {# Cover image #}
     <div class="relative shrink-0 self-start overflow-hidden">
       {% if ep_detail_url %}<a href="{{ ep_detail_url }}" class="block">{% endif %}
-      <img src="{{ IMG_NONE }}"
+      <img data-media-artwork loading="lazy" decoding="sync"
            alt="#{{ episode.issue_number }}"
-           data-src="{{ episode.image|image_url }}"
-           class="lazyload md:w-64 md:h-40 {% if ep_detail_url %}hover:opacity-90 transition-opacity{% endif %} shrink-0 {% if episode.image != IMG_NONE %}object-cover{% endif %}">
+           src="{{ episode.image|image_url }}"
+           class="md:w-64 md:h-40 {% if ep_detail_url %}hover:opacity-90 transition-opacity{% endif %} shrink-0 {% if episode.image != IMG_NONE %}object-cover{% endif %}">
       {% if ep_detail_url %}</a>{% endif %}
       {% if episode.history %}
         <div class="absolute top-2 left-2 z-10 bg-emerald-600/90 rounded-full p-1" title="{% translate "Read" %}">

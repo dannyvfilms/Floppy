@@ -12,6 +12,7 @@ from django.db import models
 from django.utils import timezone
 
 from app.models import MediaTypes, Music
+from app.stats_utils import _coerce_genre_list
 
 logger = logging.getLogger(__name__)
 
@@ -429,36 +430,6 @@ def _localize_datetime(value):
 
 
 # ── Genre helpers ─────────────────────────────────────────────────────────────
-
-
-def _coerce_genre_list(value):
-    """Normalize a genre field (string, dict, or list) into a list of strings."""
-
-    def _coerce_one(v):
-        if not v:
-            return None
-        if isinstance(v, str):
-            return v
-        if isinstance(v, dict):
-            return v.get("name") or v.get("tag") or v.get("label")
-        return str(v)
-
-    if not value:
-        return []
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, dict):
-        coerced = _coerce_one(value)
-        return [coerced] if coerced else []
-    if isinstance(value, (list, tuple)):
-        out = []
-        for v in value:
-            coerced = _coerce_one(v)
-            if coerced:
-                out.append(coerced)
-        return out
-    coerced = _coerce_one(value)
-    return [coerced] if coerced else []
 
 
 def _resolve_genres(*items):

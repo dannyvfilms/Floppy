@@ -4,11 +4,20 @@
 {% media_track_actions media_type current_instance as track %}
 {% with main=track.actions.0 rest=track.actions|slice:"1:" %}
   {% with status_label=current_instance.status|media_status_readable %}
-    <div x-data="{ editTrackOpen: false, createTrackOpen: false, trackMenuOpen: false }"
+    <div id="{% component_id 'track-action' media %}"
+         data-track-action-root
+         {% if swap_oob %}hx-swap-oob="outerHTML"{% endif %}
+         {% if media_type == "game" or media_type == "movie" %}
+         hx-post="{% media_view_url 'checkin_action' media %}"
+         hx-vals='{"action": "refresh"}'
+         hx-trigger="checkin-refresh"
+         hx-swap="none"
+         {% endif %}
+         x-data="{ editTrackOpen: {% if track_open == 'edit' %}true{% else %}false{% endif %}, createTrackOpen: {% if track_open == 'create' %}true{% else %}false{% endif %}, trackMenuOpen: false }"
          class="relative inline-flex w-full md:w-auto"
          @click.outside="trackMenuOpen = false"
          @keydown.escape.window="trackMenuOpen = false"
-         {% if track.reload_ms %}x-init="setTimeout(() => { if (!editTrackOpen && !createTrackOpen) location.reload() }, {{ track.reload_ms }})"{% endif %}>
+         {% if track.reload_ms %}x-init="setTimeout(() => { if ($el.isConnected && !editTrackOpen && !createTrackOpen) {% if media_type == 'game' or media_type == 'movie' %}htmx.trigger($el, 'checkin-refresh'){% else %}location.reload(){% endif %} }, {{ track.reload_ms }})"{% endif %}>
       <div class="inline-flex w-full overflow-hidden rounded-xl shadow-sm md:w-auto">
         {% with action=main %}
           <button type="button"
@@ -67,7 +76,7 @@
         <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
              style="width: min(96vw, 72rem)"
              @click.stop>
-          <div id="{% component_id 'track' media current_instance.id %}"></div>
+          <div id="{% component_id 'track' media current_instance.id %}">{% if track_open == "edit" %}{{ track_modal_content|safe }}{% endif %}</div>
         </div>
       </div>
       </template>
@@ -81,7 +90,7 @@
         <div class="modal-max-height overflow-y-auto px-4 md:px-0 relative z-60 w-full"
              style="width: min(96vw, 72rem)"
              @click.stop>
-          <div id="{% component_id 'track' media %}"></div>
+          <div id="{% component_id 'track' media %}">{% if track_open == "create" %}{{ track_modal_content|safe }}{% endif %}</div>
         </div>
       </div>
       </template>

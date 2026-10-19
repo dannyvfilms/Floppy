@@ -224,7 +224,7 @@ def list_detail(request, list_reference):
         "direction": direction,
         "media_types": selected_media_types,
         "status_filter": status_filter,
-        "page": int(request.GET.get("page", 1)),
+        "page": helpers.get_page_number(request),
         "search_query": request.GET.get("q", ""),
     }
 

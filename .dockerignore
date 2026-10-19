@@ -1,9 +1,12 @@
 __pycache__
+**/.DS_Store
 *.pyc
 .env
 .coverage*
 venv
 .venv/
+.venv-*/
+*.sqlite3
 src/staticfiles
 src/db/db.sqlite3
 db.sqlite3-shm
@@ -37,12 +40,20 @@ TODO.txt
 .env.*
 # Runtime databases, backup directories and logs are never release inputs.
 src/db/
+src/backups/
 db/
 src/logs/
 .v2c/
 .video_agent/
+/floppy-film/
 reports/
 wiki/
 node_modules/
 .pytest_cache/
 .ruff_cache/
+
+# Local audit reports are review notes, not release inputs or cache artifacts.
+/*_AUDIT.md
+/*_FOLLOWUP.md
+/*_REVIEW.md
+/*_CLOSEOUT.md

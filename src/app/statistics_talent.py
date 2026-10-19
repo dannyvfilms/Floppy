@@ -9,7 +9,6 @@ from django.conf import settings
 from django.db.models import Q
 
 from app import credits as credit_helpers
-from app import statistics as stats
 from app.models import (
     CreditRoleType,
     Episode,
@@ -23,6 +22,7 @@ from app.models import (
     PersonGender,
     Studio,
 )
+from app.stats_utils import _format_hours_minutes
 
 logger = logging.getLogger(__name__)
 
@@ -497,7 +497,7 @@ def _get_person_talent_totals_from_context(user, person, context):
             "bucket": bucket,
             "plays": int(bucket_plays.get(bucket, 0)),
             "watched_minutes": watched_minutes,
-            "watched_time": stats._format_hours_minutes(
+            "watched_time": _format_hours_minutes(
                 watched_minutes, user.duration_format
             ),
             "unique_movies": unique_movies,
@@ -1114,7 +1114,7 @@ def _aggregate_top_talent(
                     "person_id": person.source_person_id,
                     "plays": int(plays),
                     "watched_minutes": watched_minutes,
-                    "watched_time": stats._format_hours_minutes(
+                    "watched_time": _format_hours_minutes(
                         watched_minutes, user.duration_format
                     ),
                     "unique_movies": unique_movies,
@@ -1169,7 +1169,7 @@ def _aggregate_top_talent(
                     "studio_id": studio.source_studio_id,
                     "plays": int(plays),
                     "watched_minutes": watched_minutes,
-                    "watched_time": stats._format_hours_minutes(
+                    "watched_time": _format_hours_minutes(
                         watched_minutes, user.duration_format
                     ),
                     "unique_movies": unique_movies,

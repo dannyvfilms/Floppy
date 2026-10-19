@@ -26,7 +26,7 @@
     <div class="p-4">
       <div class="flex gap-3">
         <div class="w-20 flex-shrink-0">
-          <img src="{{ media.image|image_url }}" alt="{{ media.title }}" class="w-full aspect-[2/3] object-cover rounded-lg bg-[var(--color-surface-alt)]">
+          <img data-media-artwork loading="lazy" decoding="sync" src="{{ media.image|image_url }}" alt="{{ media.title }}" class="w-full aspect-[2/3] object-cover rounded-lg bg-[var(--color-surface-alt)]">
         </div>
 
         <div class="flex-1 min-w-0">

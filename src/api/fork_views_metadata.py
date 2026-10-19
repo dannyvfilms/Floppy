@@ -20,6 +20,7 @@ from app.models import (
 )
 from app.services import metadata_resolution
 from app.services.metadata_projection import project_item_metadata
+from integrations.state.ratings import rating_edit
 
 from .contract_serializers import DetailErrorSerializer
 from .helpers import (
@@ -235,6 +236,7 @@ class MediaEpisodeScoreView(drf_views.APIView):
         parameters=[MEDIA_TYPE_TV_ONLY_PARAM],
         responses={404: DetailErrorSerializer},
     )
+    @rating_edit
     def patch(
         self,
         request,

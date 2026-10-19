@@ -1,11 +1,13 @@
 import json
 from collections import defaultdict
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 import requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase, tag
+from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 from app.models import (
@@ -353,6 +355,22 @@ class HelpersTest(TestCase):
             1,
         )
 
+    def test_bulk_create_media_projects_watch_state(self):
+        """Regression: bulk_create fires no save signals, so an imported play
+        left the item's projected watch state unwatched.
+        """
+        from app.models import WatchState
+
+        bulk_media = self._unsaved_tv_season_episode()
+        episode_item = bulk_media[MediaTypes.EPISODE.value][0].item
+        WatchState.objects.create(user=self.user, item=episode_item, watched=False)
+
+        helpers.bulk_create_media(bulk_media, self.user)
+
+        state = WatchState.objects.get(user=self.user, item=episode_item)
+        self.assertTrue(state.watched)
+        self.assertEqual(state.play_count, 1)
+
     @patch("integrations.episode_orders.resolve_incoming", return_value=None)
     def test_bulk_create_media_still_resolves_orders_for_a_show_with_one(
         self,
@@ -536,6 +554,53 @@ class HelpersTest(TestCase):
 
         self.assertEqual(warnings, [])
         self.assertEqual(Episode.objects.filter(related_season=season).count(), 1)
+
+    def test_backfill_dates_fabricated_episodes_to_the_seasons_watch_date(self):
+        """Fabricated episodes carry the season's date, not the import time.
+
+        A season imported as Completed from old history fans out the episodes
+        the source never itemised. Falling back to the user's preference
+        (default "now") stamps them with the import time, so a show watched
+        years ago reads as watched today — the whole show appears to have been
+        binged the night the import ran.
+        """
+        season = self._make_completed_season()
+        watched_on = timezone.now() - timedelta(days=500)
+        season._pending_end_date = watched_on
+        season_metadata = {
+            "episodes": [{"episode_number": 1, "still_path": None}],
+            "max_progress": 1,
+        }
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=season_metadata,
+        ):
+            warnings = helpers._backfill_completed_season_episodes([season])
+
+        self.assertEqual(warnings, [])
+        episode = Episode.objects.get(related_season=season)
+        self.assertEqual(episode.end_date, watched_on)
+
+    def test_backfill_uses_history_date_for_a_rating_only_season(self):
+        """A season carrying only its history date still dates its fan-out."""
+        season = self._make_completed_season()
+        rated_on = timezone.now() - timedelta(days=500)
+        season._history_date = rated_on
+        season_metadata = {
+            "episodes": [{"episode_number": 1, "still_path": None}],
+            "max_progress": 1,
+        }
+
+        with patch(
+            "app.providers.services.get_media_metadata",
+            return_value=season_metadata,
+        ):
+            warnings = helpers._backfill_completed_season_episodes([season])
+
+        self.assertEqual(warnings, [])
+        episode = Episode.objects.get(related_season=season)
+        self.assertEqual(episode.end_date, rated_on)
 
     def test_backfill_surfaces_warning_after_exhausted_retries(self):
         """A persistently failing fetch should be reported, not silently dropped."""

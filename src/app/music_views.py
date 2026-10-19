@@ -10,11 +10,12 @@ from django.db import IntegrityError, models
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext, gettext_noop
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from app.discover import tab_cache as discover_tab_cache
-from app.forms import BulkEpisodeTrackForm
+from app.forms import BulkEpisodeTrackForm, MusicTrackNotesForm
 from app.log_safety import exception_summary
 from app.models import (
     Album,
@@ -25,6 +26,7 @@ from app.models import (
     MediaTypes,
     Music,
     Sources,
+    Status,
     Track,
 )
 from app.services import bulk_music_tracking
@@ -1345,6 +1347,12 @@ def _render_music_track_details(request, track):
         "artist": artist,
         "album": album,
         "track": track,
+        "notes_entry": music_entry
+        if music_entry and music_entry.notes.strip()
+        else None,
+        "detail_notes_modal_url": reverse("music_track_notes", args=[track.id]),
+        "detail_notes_target_id": f"music-track-notes-{track.id}",
+        "detail_return_url": request.get_full_path(),
         "album_display_image": album_display_image,
         "track_genres": track_genres,
         "recording_release_date": recording_display["release_date"],
@@ -1362,6 +1370,60 @@ def _render_music_track_details(request, track):
         },
     }
     return render(request, "app/media_details.html", context)
+
+
+@require_http_methods(["GET", "POST"])
+def music_track_notes(request, track_id):
+    """Edit private track notes without recording a listen."""
+    from app import helpers
+
+    track = get_object_or_404(
+        Track.objects.select_related("album__artist"), id=track_id
+    )
+    music = _music_entry_for_track(request.user, track)
+    form = MusicTrackNotesForm(
+        request.POST if request.method == "POST" else None, instance=music
+    )
+    return_url = helpers.normalize_navigation_url(
+        request.POST.get("return_url") or request.GET.get("return_url"),
+    )
+    if request.method == "POST" and form.is_valid():
+        if music is not None or form.cleaned_data["notes"]:
+            music = form.save(commit=False)
+            if music.pk is None:
+                music.item, _ = Item.objects.get_or_create(
+                    source=Sources.MUSICBRAINZ.value,
+                    media_type=MediaTypes.MUSIC.value,
+                    media_id=track.musicbrainz_recording_id or f"track_{track.id}",
+                    defaults={
+                        "title": track.title,
+                        "image": track.album.image or settings.IMG_NONE,
+                    },
+                )
+                music.user = request.user
+                music.album = track.album
+                music.artist = track.album.artist
+                music.track = track
+                music.status = Status.PLANNING.value
+            # Music history rows are listens. A note edit must not add one.
+            music.save_without_historical_record(
+                update_fields=["notes"] if music.pk else None,
+            )
+        messages.success(request, gettext("Notes saved."))
+        if return_url and url_has_allowed_host_and_scheme(
+            return_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ):
+            return redirect(return_url)
+        return redirect(_music_track_detail_url(track))
+    response = render(
+        request,
+        "app/components/music_track_notes.html",
+        {"form": form, "track": track, "return_url": return_url},
+    )
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @require_GET
@@ -1855,7 +1917,11 @@ def artist_save(request):
         )
 
     next_url = request.GET.get("next", "")
-    if next_url:
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
         return redirect(next_url)
     return redirect(_music_artist_detail_url(artist))
 
@@ -1881,6 +1947,10 @@ def artist_delete(request):
         )
 
     next_url = request.GET.get("next", "")
-    if next_url:
+    if next_url and url_has_allowed_host_and_scheme(
+        next_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
         return redirect(next_url)
     return redirect(_music_artist_detail_url(artist))

@@ -24,6 +24,37 @@ class _UnrenderableLogValue:
 
 
 class LogSafetyTests(SimpleTestCase):
+    def test_bearer_tokens_in_request_paths_are_redacted(self):
+        paths = (
+            "/webhook/jellyfin/secret-value",
+            "/webhook/plex/secret-value",
+            "/webhook/emby/secret-value",
+            "/webhook/jellyseerr/secret-value",
+            "/webhook/kodi/secret-value",
+            "/stremio-addon/secret-value/manifest.json",
+            "/import/plex/cover/secret-value",
+            "/import/audiobookshelf/cover/secret-value",
+            "/calendar/download/secret-value",
+            "/rss/secret-value/movie/recent.xml",
+            "/image-cache/secret-value",
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                line = f'"GET /floppy{path} HTTP/1.1" 200'
+                self.assertEqual(
+                    redact_secrets(line),
+                    line.replace("secret-value", "[REDACTED]"),
+                )
+
+    def test_oauth_credentials_in_callback_queries_are_redacted(self):
+        line = (
+            '"GET /import/trakt/private?code=oauth-code&state=oauth-state HTTP/1.1" 302'
+        )
+        self.assertEqual(
+            redact_secrets(line),
+            '"GET /import/trakt/private?code=[REDACTED]&state=[REDACTED] HTTP/1.1" 302',
+        )
+
     def test_exception_summary_includes_status_without_message(self):
         response = type("Response", (), {"status_code": 404})()
         exc = Exception("contains secrets")

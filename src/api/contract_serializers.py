@@ -343,6 +343,111 @@ class DetailErrorSerializer(serializers.Serializer):
     errors = serializers.JSONField(required=False)
 
 
+class CaseInsensitiveChoiceField(serializers.ChoiceField):
+    """Accept a choice in any case with surrounding spaces."""
+
+    def to_internal_value(self, data):
+        """Normalize a string before matching it against the choices."""
+        if isinstance(data, str):
+            data = data.strip().lower()
+        return super().to_internal_value(data)
+
+
+class ListItemsReorderRequestSerializer(serializers.Serializer):
+    """Move one list item to the front, back, next or last position."""
+
+    ACTIONS = ("first", "back", "next", "last")
+
+    item_id = serializers.IntegerField(
+        min_value=1,
+        help_text=(
+            "Floppy's numeric Item id, the `id` field of an entry in "
+            "GET /api/v1/lists/{list_id}/items/ (not the `item_id` string)."
+        ),
+    )
+    action = CaseInsensitiveChoiceField(
+        choices=ACTIONS,
+        help_text=(
+            "first: move to the top. back: swap with the item above. "
+            "next: swap with the item below. last: move to the bottom."
+        ),
+    )
+
+
+class ListItemsOrderRequestSerializer(serializers.Serializer):
+    """Replace the order of a list's items."""
+
+    item_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        min_length=1,
+        help_text=(
+            "Floppy's numeric Item ids in the new order, the `id` field of an "
+            "entry in GET /api/v1/lists/{list_id}/items/ (not the `item_id` "
+            "string). Send every item of the list, or only a subset: the "
+            "listed items take the positions they already occupy, in the "
+            "order given, and the other items stay where they are. Each id "
+            "must appear once and belong to this list; otherwise the request "
+            "is rejected with 400 and nothing changes."
+        ),
+    )
+
+
+class ListItemRankSerializer(serializers.Serializer):
+    """One item's rank in an outside ranking."""
+
+    item_id = serializers.IntegerField(
+        min_value=1,
+        help_text=(
+            "Floppy's numeric Item id, the `id` field of an entry in "
+            "GET /api/v1/lists/{list_id}/items/ (not the `item_id` string)."
+        ),
+    )
+    rank = serializers.IntegerField(
+        min_value=1,
+        max_value=2_147_483_647,
+        allow_null=True,
+        help_text="The item's rank, such as 81 for #81. null clears its rank.",
+    )
+
+
+class ListItemsRanksRequestSerializer(serializers.Serializer):
+    """Set or clear the ranks of some items in a list."""
+
+    ranks = serializers.ListField(
+        child=ListItemRankSerializer(),
+        allow_empty=False,
+        min_length=1,
+        help_text=(
+            "Only the items listed change; every other item keeps its rank. "
+            "Each item_id may appear once and must belong to this list; "
+            "otherwise the request is rejected with 400 and nothing changes. "
+            "Different items may share a rank (a tie). Saving the ranks also "
+            "puts the ranked items of the list in rank order."
+        ),
+    )
+
+
+class ListItemResponseSerializer(TrackedMediaResponseSerializer):
+    """A list entry: the tracked media plus its rank in this list."""
+
+    rank = serializers.IntegerField(
+        allow_null=True,
+        help_text=(
+            "The item's rank in an outside ranking, set with PUT "
+            "/api/v1/lists/{list_id}/items/ranks/; null when it has none. "
+            "The order of the entries is the list's custom order."
+        ),
+    )
+
+
+class ListItemsEnvelopeSerializer(serializers.Serializer):
+    """Paginated list entries."""
+
+    pagination = PaginationSerializer()
+    results = ListItemResponseSerializer(many=True)
+
+
 class ListenBrainzErrorSerializer(serializers.Serializer):
     """ListenBrainz-compatible error body."""
 

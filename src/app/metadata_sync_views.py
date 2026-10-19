@@ -123,13 +123,10 @@ def update_metadata_provider_preference(request, source, media_type, media_id):
         )
         messages.success(request, gettext("Metadata provider updated."))
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -159,20 +156,22 @@ def update_metadata_language_preference(request, source, media_type, media_id):
     if language and language not in valid_codes:
         messages.error(request, gettext("That metadata language is not available."))
     else:
-        MetadataProviderPreference.objects.update_or_create(
+        preference, _ = MetadataProviderPreference.objects.get_or_create(
             user=request.user,
             item=item,
-            defaults={"language": language},
         )
+        if preference.language != language:
+            from app.tasks_metadata_language import reset_metadata_language_repair
+
+            preference.language = language
+            preference.save(update_fields=["language"])
+            reset_metadata_language_repair(request.user.pk)
         messages.success(request, gettext("Metadata language updated."))
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -450,13 +449,10 @@ def remap_metadata_provider(request, source, media_type, media_id):
         )
         messages.success(request, gettext("Remapped to the selected match."))
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -541,13 +537,10 @@ def set_hardcover_edition(request, item_id):
         )
         messages.success(request, gettext("Edition updated."))
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -586,13 +579,10 @@ def update_item_image(request, item_id):
     else:
         messages.success(request, gettext("Image URL already matches this item."))
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -641,13 +631,10 @@ def update_manual_item_metadata(request, item_id):
         logger.error(form.errors.as_json())
         helpers.form_error_messages(form, request)
 
-    if return_url and (
-        return_url.startswith("/")
-        or url_has_allowed_host_and_scheme(
-            return_url,
-            allowed_hosts={request.get_host()},
-            require_https=request.is_secure(),
-        )
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
     ):
         return redirect(return_url)
 
@@ -1568,7 +1555,9 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
             return HttpResponse(
                 status=204,
                 headers={
-                    "HX-Redirect": request.POST["next"],
+                    "HX-Redirect": helpers.safe_return_url(
+                        request, request.POST.get("next", "/")
+                    ),
                 },
             )
         return helpers.redirect_back(request)
@@ -1590,7 +1579,11 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         return HttpResponse(
             msg,
             status=400,
-            headers={"HX-Redirect": request.POST.get("next", "/")},
+            headers={
+                "HX-Redirect": helpers.safe_return_url(
+                    request, request.POST.get("next", "/")
+                )
+            },
         )
 
     if media_type == MediaTypes.PODCAST.value:
@@ -1616,12 +1609,39 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
         media_type,
         source=source,
     )
+    item_qs = Item.objects.filter(
+        media_id=media_id,
+        source=source,
+        media_type=tracking_media_type,
+        season_number=season_number,
+    )
+    library_media_type_param = request.POST.get("library_media_type")
+    if tracking_media_type in (
+        MediaTypes.TV.value,
+        MediaTypes.SEASON.value,
+        MediaTypes.EPISODE.value,
+    ):
+        if library_media_type_param == MediaTypes.ANIME.value:
+            item_qs = item_qs.filter(library_media_type=MediaTypes.ANIME.value)
+        else:
+            item_qs = item_qs.exclude(library_media_type=MediaTypes.ANIME.value)
+    if item_qs.count() > 1:
+        logger.warning(
+            "Multiple Item rows for media_id=%s source=%s media_type=%s season=%s — using oldest",
+            media_id,
+            source,
+            tracking_media_type,
+            season_number,
+        )
+    item = item_qs.order_by("id").first()
+    language = metadata_resolution.metadata_language_default(request.user, item)
     provider_cache_keys = metadata_utils.provider_metadata_cache_keys(
         source,
         tracking_media_type,
         media_id,
         season_number=season_number,
         route_media_type=media_type,
+        language=language,
     )
     cache_key = provider_cache_keys[0]
 
@@ -1643,6 +1663,7 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                 media_id,
                 source,
                 [season_number],
+                language=language,
             )
         except (requests.exceptions.RequestException, services.ProviderAPIError) as exc:
             _restore_cached_metadata(cache_key, cached_metadata, ttl)
@@ -1672,31 +1693,6 @@ def sync_metadata(request, source, media_type, media_id, season_number=None):
                 "details", {}
             ).get("number_of_pages")
 
-        item_qs = Item.objects.filter(
-            media_id=media_id,
-            source=source,
-            media_type=tracking_media_type,
-            season_number=season_number,
-        )
-        library_media_type_param = request.POST.get("library_media_type")
-        if tracking_media_type in (
-            MediaTypes.TV.value,
-            MediaTypes.SEASON.value,
-            MediaTypes.EPISODE.value,
-        ):
-            if library_media_type_param == MediaTypes.ANIME.value:
-                item_qs = item_qs.filter(library_media_type=MediaTypes.ANIME.value)
-            else:
-                item_qs = item_qs.exclude(library_media_type=MediaTypes.ANIME.value)
-        if item_qs.count() > 1:
-            logger.warning(
-                "Multiple Item rows for media_id=%s source=%s media_type=%s season=%s — using oldest",
-                media_id,
-                source,
-                tracking_media_type,
-                season_number,
-            )
-        item = item_qs.order_by("id").first()
         library_media_type_value = (
             library_media_type_param or metadata.get("library_media_type") or media_type
         )

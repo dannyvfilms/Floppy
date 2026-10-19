@@ -1,4 +1,3 @@
-import json
 import logging
 from contextlib import contextmanager, suppress
 from types import SimpleNamespace
@@ -10,7 +9,7 @@ from django.utils.module_loading import import_string
 from simple_history.models import HistoricalRecords
 
 from app import cache_safety
-from app.log_safety import redact_payload_pii, redact_secrets
+from app.log_safety import mapping_keys
 from app.providers.services import ProviderAPIError
 from integrations import anime_mapping
 from integrations.models import PlexWebhookShare
@@ -25,10 +24,6 @@ WEBHOOK_PROCESSORS = {
     "kodi": "integrations.webhooks.kodi.KodiWebhookProcessor",
     "stremio": "integrations.webhooks.stremio.StremioWebhookProcessor",
 }
-
-# Bounds one event's logged payload so a pathological payload can't crowd out
-# other log history in the rotating file the sanitized log export reads from.
-_WEBHOOK_PAYLOAD_LOG_CAP = 4000
 
 
 @contextmanager
@@ -65,17 +60,23 @@ def _process_webhook(provider, payload, user_id, share_id=None):
                 recipient_enabled=True,
             )
         except PlexWebhookShare.DoesNotExist:
-            logger.info("Skipping disabled or missing Plex webhook share id %s", share_id)
+            logger.info(
+                "Skipping disabled or missing Plex webhook share id %s", share_id
+            )
             return
 
         if not share.owner.is_active:
-            logger.info("Skipping Plex webhook share from inactive owner id %s", share.owner_id)
+            logger.info(
+                "Skipping Plex webhook share from inactive owner id %s", share.owner_id
+            )
             return
 
         user = share.recipient
         source_account = getattr(share.owner, "plex_account", None)
         if not source_account or not source_account.plex_token:
-            logger.info("Skipping Plex webhook share %s without an owner Plex account", share.id)
+            logger.info(
+                "Skipping Plex webhook share %s without an owner Plex account", share.id
+            )
             return
         source_username = share.plex_username
         source_libraries = share.allowed_libraries
@@ -83,7 +84,9 @@ def _process_webhook(provider, payload, user_id, share_id=None):
         try:
             user = user_model.objects.get(pk=user_id)
         except user_model.DoesNotExist:
-            logger.warning("Skipping %s webhook for missing user id %s", provider, user_id)
+            logger.warning(
+                "Skipping %s webhook for missing user id %s", provider, user_id
+            )
             return
 
     if not user.is_active:
@@ -107,12 +110,7 @@ def _process_webhook(provider, payload, user_id, share_id=None):
                 error,
             )
 
-    dumped_payload = redact_secrets(
-        json.dumps(redact_payload_pii(payload), default=str),
-    )
-    if len(dumped_payload) > _WEBHOOK_PAYLOAD_LOG_CAP:
-        dumped_payload = dumped_payload[:_WEBHOOK_PAYLOAD_LOG_CAP] + "...[truncated]"
-    logger.info("Webhook payload for %s: %s", provider, dumped_payload)
+    logger.info("Webhook received provider=%s keys=%s", provider, mapping_keys(payload))
 
     try:
         with _webhook_history_user(user):
@@ -236,6 +234,49 @@ def process_stremio_webhook(payload, user_id, queue_member=None):
             payload.get("id"),
         )
     return result
+
+
+@shared_task(
+    name="Process Stremio tracker event",
+    autoretry_for=(ProviderAPIError, requests.exceptions.RequestException),
+    max_retries=3,
+    retry_backoff=True,
+    retry_jitter=True,
+    soft_time_limit=90,
+    time_limit=120,
+)
+def process_stremio_tracker_event(
+    kind,
+    user_id,
+    media_type,
+    media_id,
+    extra,
+    received_at,
+):
+    """Record one Stremio player or library event on the worker.
+
+    `received_at` is when the request arrived, so a queued event keeps its place
+    in the session even if the worker picks it up late.
+    """
+    from django.utils.dateparse import parse_datetime
+
+    from integrations import stremio_tracker
+
+    user = get_user_model().objects.filter(pk=user_id).first()
+    if user is None:
+        return "unknown_user"
+    handler = (
+        stremio_tracker.record_player_event
+        if kind == "player"
+        else stremio_tracker.record_library_event
+    )
+    return handler(
+        user,
+        media_type,
+        media_id,
+        extra,
+        now=parse_datetime(received_at),
+    )
 
 
 @shared_task(

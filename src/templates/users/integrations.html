@@ -51,6 +51,7 @@
       </section>
     {% endif %}
 {% include "users/components/sync_state_section.html" %}
+{% include "users/components/tmdb_rating_sync.html" %}
     {% if request.GET.onboarding %}
       {# Guided setup banner: shown when the user arrived here from the setup wizard #}
       <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">
@@ -1183,7 +1184,7 @@
             {# djlint:on #}
           </li>
           <li>{% translate "Leave the username and password fields blank." %}</li>
-          <li>{% translate "In the add-on's \"Scrobble at specific events\" settings, make sure" %} <strong>{% translate "Start playback" %}</strong>, <strong>{% translate "Playback stopped (not finished)" %}</strong>{% translate ", and" %} <strong>{% translate "Playback finished (not stopped before reaching the end)" %}</strong> {% translate "are all enabled (they're on by default)." %}</li>
+          <li>{% blocktranslate %}In the add-on's "Scrobble at specific events" settings, make sure{% endblocktranslate %} <strong>{% translate "Start playback" %}</strong>, <strong>{% translate "Playback stopped (not finished)" %}</strong>{% translate ", and" %} <strong>{% translate "Playback finished (not stopped before reaching the end)" %}</strong> {% translate "are all enabled (they're on by default)." %}</li>
           <li>{% translate "If you use the add-on's" %} <strong>{% translate "Skip all events after sending stop/end" %}</strong> {% translate "option, turn it off — it can suppress the events Floppy needs to mark an episode watched." %}</li>
           <li>{% translate "An item is marked watched when playback reaches 80% or Kodi reports" %} <em>{% translate "Playback finished" %}</em>.</li>
         </ol>

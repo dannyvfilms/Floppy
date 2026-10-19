@@ -3,8 +3,10 @@ from decimal import Decimal
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest import mock
 
+from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 from django.utils import timezone
 
 from app import image_cache
@@ -12,6 +14,7 @@ from app.media_list_filters import MediaListFilters
 from app.models import (
     TV,
     CollectionEntry,
+    Episode,
     Game,
     Item,
     ItemTag,
@@ -23,6 +26,8 @@ from app.models import (
 )
 from events.models import Event
 from lists.models import CustomListItem
+from users import home_screen
+from users.models import HomeScreenRow, HomeScreenRowTypeChoices
 
 from .base import FloppyApiTestCase
 
@@ -128,6 +133,67 @@ class MediaListFilterParityTests(FloppyApiTestCase):
         # That Item carries the show's title as a placeholder, which is not
         # the episode's name, and nothing else knows the name (#1281).
         self.assertIsNone(next_episode["title"])
+
+    def test_historical_repeats_do_not_lower_fully_watched_show_progress(self):
+        """Uneven historical plays must agree across API, dashboard and Home (#1584)."""
+        season = self.season_medias[0]
+        watched_at = timezone.now() - timezone.timedelta(days=1)
+        Event.objects.filter(item=season.item).update(datetime=watched_at)
+        Episode.objects.filter(related_season=season).update(
+            status=Status.COMPLETED.value,
+            end_date=watched_at,
+        )
+        Episode.objects.bulk_create([
+            Episode(
+                item=episode.item,
+                related_season=season,
+                status=Status.COMPLETED.value,
+                end_date=watched_at,
+            )
+            for episode in self.episode_medias[:2]
+        ])
+
+        response = self._get_tv(progress="caught_up")
+        self.assertEqual(response.status_code, HTTP.OK)
+        results = {entry["item"]["media_id"]: entry for entry in response.json()["results"]}
+        self.assertIn("1001", results)
+        self.assertEqual(results["1001"]["progress"], 3)
+        self.assertEqual(results["1001"]["episodes_left"], 0)
+        self.assertIsNone(results["1001"]["next_episode"])
+        response = self._get_tv(progress="not_caught_up")
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertNotIn(
+            "1001", [entry["item"]["media_id"] for entry in response.json()["results"]],
+        )
+
+        self.client.force_login(self.user1)
+        response = self.client.get(
+            reverse("medialist", args=["tv"]), {"progress": "not_caught_up"},
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertNotIn(
+            "1001", [entry.item.media_id for entry in response.context["media_list"].object_list],
+        )
+        row = HomeScreenRow.objects.create(
+            user=self.user1,
+            media_type="tv",
+            position=0,
+            row_type=HomeScreenRowTypeChoices.LIBRARY_QUERY,
+            filters={"progress": "not_caught_up"},
+        )
+        section = home_screen._build_row_section(self.user1, row, "tv", 14)
+        self.assertNotIn(
+            self.tv_medias[0].item_id, [entry.item.pk for entry in section["items"]],
+        )
+        row.filters = {"progress": "caught_up"}
+        row.save()
+        cache.clear()
+        section = home_screen._build_row_section(self.user1, row, "tv", 14)
+        caught_up = {
+            entry.item.pk: entry for entry in section["items"]
+        }
+        self.assertIn(self.tv_medias[0].item_id, caught_up)
+        self.assertEqual(caught_up[self.tv_medias[0].item_id].media.progress, 3)
 
     def _next_episode_1001(self):
         response = self._get_tv(
@@ -796,4 +862,3 @@ class MediaListSqlPushdownTests(FloppyApiTestCase):
                 "/api/v1/media/game/", params, **self.auth_headers,
             )
             self.assertEqual(response.status_code, HTTP.OK, params)
-

@@ -326,9 +326,18 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             user_scope=True,
             label="MyAnimeList",
             logo_slug="myanimelist",
-            description="Anime and manga metadata.",
+            description="Anime and manga metadata, and syncing watch status back.",
             docs_url="https://myanimelist.net/apiconfig",
-            fields=(CredentialField("client_id", "Client ID", "MAL_API"),),
+            fields=(
+                CredentialField("client_id", "Client ID", "MAL_API"),
+                CredentialField(
+                    "client_secret",
+                    "Client secret",
+                    "MAL_API_SECRET",
+                    required=False,
+                    placeholder="Sync to MyAnimeList: set with the Client ID from the same app",
+                ),
+            ),
         ),
         ProviderCredentialSpec(
             slug="igdb",
@@ -356,7 +365,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             validator=_validate_thegamesdb,
             label="TheGamesDB",
             description="Extra coverage. Clear logos and fanart.",
-            docs_url="https://forums.thegamesdb.net/viewforum.php?f=10",
+            docs_url="https://api.thegamesdb.net/key.php",
             fields=(CredentialField("api_key", "API key", "THEGAMESDB_API_KEY"),),
         ),
         ProviderCredentialSpec(
@@ -689,6 +698,31 @@ def get(slug, field_name, user=None):
     )
 
 
+def get_together(slug, field_names, user=None):
+    """Return several fields from the first tier that supplies all of them.
+
+    For credentials that only work as a set, like an OAuth client ID and
+    secret: resolving each field on its own can pair values from two
+    different apps. Returns empty strings when no single tier has them all.
+    """
+    user = _resolve_user(user)
+    spec = REGISTRY.get(slug)
+    fields = [get_field(slug, name) for name in field_names]
+    if spec is None or None in fields:
+        return tuple("" for _ in field_names)
+    tiers = (
+        lambda field: user_value(spec, field, user),
+        env_value,
+        lambda field: _instance_map().get(slug, {}).get(field.name, ""),
+        default_value,
+    )
+    for tier in tiers:
+        values = tuple(tier(field) for field in fields)
+        if all(values):
+            return values
+    return tuple("" for _ in field_names)
+
+
 def cache_suffix(slug, *field_names, user=None):
     """Return a stable digest of the credentials a cached token was minted from.
 
@@ -718,6 +752,23 @@ def instance_value(slug, field_name):
     return _instance_map().get(slug, {}).get(field_name, "")
 
 
+def _note_game_artwork_key(slug, user=None):
+    """Let games that lack artwork look again once a game artwork key is saved.
+
+    A game page that found nothing waits hours before asking again, so without
+    this a freshly added key would seem to do nothing.
+    """
+    from app import game_artwork
+
+    if slug not in game_artwork.CREDENTIAL_PROVIDERS:
+        return
+    try:
+        game_artwork.keys_saved(user)
+    except Exception:
+        # The key is already saved; a missed note only delays the new lookup.
+        logger.warning("Could not note game artwork key for %s", slug, exc_info=True)
+
+
 def set_instance(slug, values, actor=None):
     """Store instance credentials for a provider.
 
@@ -745,6 +796,7 @@ def set_instance(slug, values, actor=None):
                 field=field_name,
             ).delete()
     invalidate_cache()
+    _note_game_artwork_key(slug)
 
 
 def clear_instance(slug):
@@ -797,6 +849,7 @@ def set_user(slug, user, values):
                 field=field_name,
             ).delete()
     invalidate_user_cache(user)
+    _note_game_artwork_key(slug, user)
 
 
 def clear_user(slug, user):

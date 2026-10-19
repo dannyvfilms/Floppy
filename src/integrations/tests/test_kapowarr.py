@@ -67,7 +67,7 @@ def _response(payload, status_code=200):
     return response
 
 
-def _fake_kapowarr(url, params=None, timeout=None):
+def _fake_kapowarr(url, params=None, timeout=None, allow_redirects=False):
     """Answer like a Kapowarr server holding one series, Saga."""
     if url.endswith("/api/volumes"):
         return _response(VOLUMES)
@@ -134,7 +134,7 @@ class KapowarrImporterTests(TestCase):
         ):
             kapowarr.importer(None, self.user, "new")
 
-        def _issue_301_deleted(url, params=None, timeout=None):
+        def _issue_301_deleted(url, params=None, timeout=None, allow_redirects=False):
             response = _fake_kapowarr(url, params=params, timeout=timeout)
             if url.endswith("/api/volumes/1"):
                 data = copy.deepcopy(SAGA)
@@ -157,7 +157,7 @@ class KapowarrImporterTests(TestCase):
         ):
             kapowarr.importer(None, self.user, "new")
 
-        def _volume_fails(url, params=None, timeout=None):
+        def _volume_fails(url, params=None, timeout=None, allow_redirects=False):
             if url.endswith("/api/volumes/1"):
                 raise requests.exceptions.ReadTimeout("read timed out")
             return _fake_kapowarr(url, params=params, timeout=timeout)

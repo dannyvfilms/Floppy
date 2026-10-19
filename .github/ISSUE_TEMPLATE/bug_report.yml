@@ -6,18 +6,20 @@ body:
   - type: markdown
     attributes:
       value: |
-        **Before you file this: attach your logs.** Reports without them are much harder to act
-        on — this is almost always the fastest way for us to diagnose issues like webhook or
-        integration bugs.
+        Include relevant diagnostics when you can. Logs can help diagnose webhook or
+        integration bugs, but may contain private activity or secrets. Review and trim
+        them before posting. Report sensitive security issues privately using
+        [SECURITY.md](https://github.com/dannyvfilms/Floppy/blob/latest/SECURITY.md).
   - type: checkboxes
     id: logs-attached
     attributes:
       label: Logs
       description: |
-        Go to **Settings > Advanced** in Floppy and click **Download Sanitized Logs** (tokens,
-        passwords, and API keys are automatically redacted), then attach the file in the field
-        below. If Floppy will not start and you cannot reach that page, run the startup check
-        instead and paste its output in the field below:
+        Instance administrators can use **Settings > Advanced > Download Sanitized Logs**.
+        Known credential patterns are redacted; private titles, account details, URLs, or
+        unrecognized secrets can remain. Share only a reviewed, relevant excerpt. If you
+        cannot access logs, describe the problem without them. If Floppy will not start,
+        you can run the startup check and review its output before sharing:
 
         ```bash
         # The container runs, but it is unhealthy or idle.
@@ -27,15 +29,15 @@ body:
         docker compose run --rm floppy python manage.py floppy_preflight --json
         ```
       options:
-        - label: I attached sanitized logs or startup check output below, or explained why I can't
+        - label: I reviewed any diagnostics I am sharing for private data and secrets
           required: true
   - type: textarea
     id: log-output
     attributes:
       label: Log file / startup check output
-      description: Drag and drop the downloaded log file here, or paste the startup check output.
+      description: Share a reviewed excerpt or startup check output, if useful. Diagnostics are optional.
     validations:
-      required: true
+      required: false
   - type: textarea
     id: description
     attributes:

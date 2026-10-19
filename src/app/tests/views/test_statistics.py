@@ -584,7 +584,9 @@ class StatisticsViewTests(TestCase):
         # On the 1st the month-to-date range is one day and is correctly
         # labelled "Today", so pin "today" to the 15th of last month.
         real_localdate = timezone.localdate
-        today = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(day=15)
+        today = (timezone.localdate().replace(day=1) - timedelta(days=1)).replace(
+            day=15
+        )
         month_start = today.replace(day=1)
         last_year_today = today - relativedelta(years=1)
 
@@ -2265,7 +2267,7 @@ class StatisticsViewTests(TestCase):
         self.assertEqual(item_relation_queries, [])
 
     def test_statistics_view_lazyloads_media_list_images(self):
-        """Statistics list cards should lazyload their thumbnails instead of eager-loading them."""
+        """Statistics thumbnails expose their URL while staying natively lazy."""
         cache.clear()
         self.client.login(**self.credentials)
         played_at = timezone.make_aware(
@@ -2340,30 +2342,16 @@ class StatisticsViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         response_body = response.content.decode()
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-movie\.jpg"'
-        )
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-game\.jpg"'
-        )
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-artist\.jpg"'
-        )
-        self.assertRegex(
-            response_body, r'<img[^>]+data-src="http://example\.com/lazy-album\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-movie\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-game\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-artist\.jpg"'
-        )
-        self.assertNotRegex(
-            response_body, r'<img[^>]+\ssrc="http://example\.com/lazy-album\.jpg"'
-        )
+        for media_kind in ("movie", "game", "artist", "album"):
+            with self.subTest(media_kind=media_kind):
+                self.assertRegex(
+                    response_body,
+                    rf'<img[^>]+loading="lazy"[^>]+src="http://example\.com/lazy-{media_kind}\.jpg"',
+                )
+                self.assertNotIn(
+                    f'data-src="http://example.com/lazy-{media_kind}.jpg"',
+                    response_body,
+                )
 
     @patch("app.tasks.enqueue_credits_backfill_items")
     def test_statistics_top_talent_uses_episode_credits_with_show_fallback(

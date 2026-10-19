@@ -294,6 +294,11 @@ class Command(BaseCommand):
             )
 
         failures = []
+        if strict and base_ref is None:
+            failures.append(
+                "Strict migration hygiene requires a resolvable base ref; "
+                "fetch it or pass --base-ref explicitly."
+            )
         if multi_leaf_apps:
             lines = ["Multiple migration leaf nodes detected:"]
             for app, nodes in sorted(multi_leaf_apps.items()):

@@ -1,7 +1,7 @@
-import json
 import logging
 
 from app import live_playback
+from app.log_safety import mapping_keys
 from app.models import MediaTypes, Sources
 
 from .base import BaseWebhookProcessor
@@ -33,8 +33,9 @@ class EmbyWebhookProcessor(BaseWebhookProcessor):
     def process_payload(self, payload, user):
         """Process the incoming Emby webhook payload."""
         logger.debug(
-            "Processing Emby webhook payload: %s",
-            json.dumps(payload, indent=2),
+            "Processing Emby webhook payload keys=%s item_keys=%s",
+            mapping_keys(payload),
+            mapping_keys(payload.get("Item")),
         )
 
         event_type = payload.get("Event")

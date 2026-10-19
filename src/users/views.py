@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from allauth.account.views import SignupView
+from allauth.core import ratelimit
 from allauth.socialaccount.views import SignupView as SocialSignupView
 from celery import states
 from django.apps import apps
@@ -53,7 +54,7 @@ from app.models import (
 from app.providers import credentials, tmdb
 from app.templatetags import app_tags
 from config import run_state
-from integrations import exports, plex, seerr_api, stremio_catalog, tasks
+from integrations import exports, mal_sync, plex, seerr_api, stremio_catalog, tasks
 from integrations.imports import plex as plex_import
 from integrations.imports import psn as psn_import
 from integrations.imports import trakt as trakt_imports
@@ -71,7 +72,7 @@ from integrations.models import (
 )
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
 from users import appearance as appearance_config
-from users import cache_management
+from users import cache_management, helpers
 from users.forms import (
     AuthenticatorSetupForm,
     NotificationSettingsForm,
@@ -259,20 +260,25 @@ def _get_stored_plex_account(user):
 
 def _get_import_data_user(user):
     """Load the Import Data page's account relations in a single query."""
-    return user._meta.model.objects.select_related(
-        "plex_account",
-        "audiobookshelf_account",
-        "kavita_account",
-        "komga_account",
-        "pocketcasts_account",
-        "lastfm_account",
-        "koito_account",
-    ).prefetch_related(
-        "radarr_instances",
-        "sonarr_instances",
-        "mylar_instances",
-        "kapowarr_instances",
-    ).get(pk=user.pk)
+    return (
+        user._meta.model.objects.select_related(
+            "plex_account",
+            "audiobookshelf_account",
+            "kavita_account",
+            "komga_account",
+            "pocketcasts_account",
+            "lastfm_account",
+            "koito_account",
+            "mal_account",
+        )
+        .prefetch_related(
+            "radarr_instances",
+            "sonarr_instances",
+            "mylar_instances",
+            "kapowarr_instances",
+        )
+        .get(pk=user.pk)
+    )
 
 
 def _refresh_cached_plex_sections(
@@ -342,6 +348,31 @@ def account(request):
 
     if request.method == "POST":
         action = request.POST.get("action", "")
+
+        if action in {
+            "enable_authenticator",
+            "start_authenticator_setup",
+            "disable_authenticator",
+            "regenerate_recovery_codes",
+        }:
+            # The demo password is public: an authenticator attached to it
+            # would let one visitor reset the password for everyone else.
+            if request.user.is_demo:
+                messages.error(request, "This section is view-only for demo accounts.")
+                return redirect("account")
+            limited = ratelimit.consume_or_429(request, action="reauthenticate")
+            if limited is not None:
+                return limited
+            if action != "regenerate_recovery_codes":
+                confirmation = RegenerateRecoveryCodesForm(
+                    request.POST, user=request.user
+                )
+                if not confirmation.is_valid():
+                    messages.error(
+                        request,
+                        "Enter your current password to change authenticator recovery.",
+                    )
+                    return redirect("account")
 
         if "username" in request.POST:
             user_form = UserUpdateForm(request.POST, instance=request.user)
@@ -475,6 +506,15 @@ def password_recover(request):
     form = PasswordRecoveryForm()
 
     if request.method == "POST":
+        # This custom flow does not pass through allauth's reset view. Apply
+        # its per-IP and per-account limits before checking short TOTP codes.
+        limited = ratelimit.consume_or_429(
+            request,
+            action="reset_password",
+            key=request.POST.get("username", "").strip().casefold(),
+        )
+        if limited is not None:
+            return limited
         form = PasswordRecoveryForm(request.POST)
         if form.is_valid():
             user = form.save()
@@ -718,7 +758,7 @@ def apply_media_type_preferences(
 
 @require_http_methods(["GET", "POST"])
 def sidebar(request):
-    """Render the sidebar settings page (media types visibility and UI preferences)."""
+    """Render the sidebar settings page (media type visibility and order)."""
     media_types = SIDEBAR_MEDIA_TYPES
 
     if request.method == "POST":
@@ -728,12 +768,6 @@ def sidebar(request):
             return redirect("sidebar")
 
         fields_to_update = []
-
-        # Handle clickable_media_cards preference
-        clickable_media_cards = request.POST.get("clickable_media_cards") == "on"
-        if request.user.clickable_media_cards != clickable_media_cards:
-            request.user.clickable_media_cards = clickable_media_cards
-            fields_to_update.append("clickable_media_cards")
 
         show_discover = request.POST.get("show_discover") == "on"
         if request.user.show_discover != show_discover:
@@ -789,20 +823,13 @@ def home_screen(request):
             messages.error(request, str(exc))
         else:
             fields_to_update = []
-            show_media_type_headers = (
-                request.POST.get("show_media_type_headers") == "1"
-            )
-            if (
-                request.user.home_show_media_type_headers
-                != show_media_type_headers
-            ):
+            show_media_type_headers = request.POST.get("show_media_type_headers") == "1"
+            if request.user.home_show_media_type_headers != show_media_type_headers:
                 request.user.home_show_media_type_headers = show_media_type_headers
                 fields_to_update.append("home_show_media_type_headers")
 
             if request.POST.get("home_media_type_chips_present") is not None:
-                chips_enabled = (
-                    request.POST.get("home_media_type_chips_enabled") == "1"
-                )
+                chips_enabled = request.POST.get("home_media_type_chips_enabled") == "1"
                 chip_style = request.POST.get("home_media_type_chip_style")
                 submitted_colors = {
                     media_type: request.POST.get(
@@ -814,9 +841,7 @@ def home_screen(request):
                 chip_colors = normalize_media_type_chip_colors(
                     request.user.home_media_type_chip_colors
                 )
-                chip_colors.update(
-                    normalize_media_type_chip_colors(submitted_colors)
-                )
+                chip_colors.update(normalize_media_type_chip_colors(submitted_colors))
 
                 if request.user.home_media_type_chips_enabled != chips_enabled:
                     request.user.home_media_type_chips_enabled = chips_enabled
@@ -852,9 +877,7 @@ def home_screen(request):
         )
 
     context = {
-        "home_screen_sections_json": json.dumps(
-            sections, cls=DjangoJSONEncoder
-        ),
+        "home_screen_sections_json": json.dumps(sections, cls=DjangoJSONEncoder),
         "show_media_type_headers": request.user.home_show_media_type_headers,
         "media_type_chip_styles": (
             ("solid", "Solid"),
@@ -982,7 +1005,11 @@ def toggle_obfuscate_episodes(request):
         user.obfuscate_episodes = not user.obfuscate_episodes
         user.save(update_fields=["obfuscate_episodes"])
     return redirect(
-        request.POST.get("next") or request.META.get("HTTP_REFERER") or "home"
+        app_helpers.safe_return_url(
+            request,
+            request.POST.get("next") or request.META.get("HTTP_REFERER"),
+            reverse("home"),
+        )
     )
 
 
@@ -1094,7 +1121,13 @@ def cards(request, media_type=None):
         request.user.card_metadata = parse_card_metadata(
             request.POST.get("card_metadata")
         )
-        request.user.save(update_fields=["card_metadata"])
+        fields = ["card_metadata"]
+        if "clickable_media_cards" in request.POST:
+            request.user.clickable_media_cards = (
+                request.POST.get("clickable_media_cards") == "on"
+            )
+            fields.append("clickable_media_cards")
+        request.user.save(update_fields=fields)
         messages.success(request, "Media cards updated")
         return _cards_redirect(media_type)
     if media_type is None:
@@ -1143,6 +1176,8 @@ def cards_preview(request):
         draft_payload = {}
     if "types" not in draft_payload and media_type in draft_payload:
         draft_payload = {"version": 1, "types": {media_type: draft_payload}}
+    if request.method == "POST" and isinstance(body.get("clickable_media_cards"), bool):
+        request.user.clickable_media_cards = body["clickable_media_cards"]
     request.user.card_metadata = parse_card_metadata(draft_payload)
     sample = _card_preview_sample(request.user, media_type)
     if sample is None:
@@ -1215,7 +1250,9 @@ def _card_preview_stand_in(media_type):
         aggregated_status="In progress",
         last_played_at=timezone.now(),
         is_statusless=False,
-        end_date=None,
+        created_at=timezone.now() - timedelta(days=30),
+        start_date=timezone.now() - timedelta(days=14),
+        end_date=timezone.now() - timedelta(days=2),
         aggregated_end_date=None,
         next_event=None,
         card_tile_url="",
@@ -1622,23 +1659,23 @@ def preferences(request):
                 )
                 fields_to_update.append("book_comic_manga_progress_percentage")
 
-        provider_region = request.POST.get("watch_provider_region", "")
-        if provider_region in [region[0] for region in watch_provider_regions]:
+        provider_region = request.POST.get("watch_provider_region")
+        if provider_region is not None:
+            if provider_region not in {region[0] for region in watch_provider_regions}:
+                provider_region = "UNSET"
             if request.user.watch_provider_region != provider_region:
                 request.user.watch_provider_region = provider_region
                 fields_to_update.append("watch_provider_region")
-        elif request.user.watch_provider_region != "UNSET":
-            request.user.watch_provider_region = "UNSET"
-            fields_to_update.append("watch_provider_region")
 
-        metadata_language = request.POST.get("metadata_language", "")
-        if metadata_language in {choice[0] for choice in metadata_language_choices}:
+        metadata_language = request.POST.get("metadata_language")
+        if metadata_language is not None:
+            if metadata_language not in {
+                choice[0] for choice in metadata_language_choices
+            }:
+                metadata_language = ""
             if request.user.metadata_language != metadata_language:
                 request.user.metadata_language = metadata_language
                 fields_to_update.append("metadata_language")
-        elif request.user.metadata_language != "":
-            request.user.metadata_language = ""
-            fields_to_update.append("metadata_language")
 
         session_duration = request.POST.get("session_duration")
         if session_duration is not None:
@@ -1656,6 +1693,10 @@ def preferences(request):
         if fields_to_update:
             request.user.save(update_fields=fields_to_update)
             request.user.refresh_from_db()
+            if "metadata_language" in fields_to_update:
+                from app.tasks_metadata_language import reset_metadata_language_repair
+
+                reset_metadata_language_repair(request.user.pk)
             if rating_scale_changed:
                 history_cache.invalidate_history_cache(
                     request.user.id,
@@ -1674,9 +1715,9 @@ def preferences(request):
                     debounce_seconds=0,
                 )
         success_message = (
-            "Settings updated successfully."
+            gettext("Settings updated successfully.")
             if "media_types_checkboxes" in request.POST
-            else "Preferences updated successfully."
+            else gettext("Preferences updated successfully.")
         )
         messages.success(request, success_message)
         return redirect("preferences")
@@ -1735,6 +1776,7 @@ def convert_tv_library(request):
 def integrations(request):
     """Render the integrations settings page."""
     from integrations.state import settings_view
+    from integrations.tmdb_views import rating_sync_status
     from integrations.webhooks.jellyfin import jellyfin_template_outdated
 
     user = request.user
@@ -1828,6 +1870,7 @@ def integrations(request):
         {
             "user": user,
             "sync_bindings": settings_view.binding_rows(user),
+            "tmdb_rating_sync": rating_sync_status(user),
             "sync_conflicts": settings_view.open_conflicts(user),
             "plex_webhook_needs_update": plex_webhook_needs_update,
             "jellyfin_template_outdated": jellyfin_template_outdated(user.id),
@@ -1953,6 +1996,9 @@ def import_data(request):
     # Get Last.fm account
     lastfm_account = getattr(user, "lastfm_account", None)
 
+    # Get MyAnimeList sync account
+    mal_account = getattr(user, "mal_account", None)
+
     # Get Koito account
     koito_account = getattr(user, "koito_account", None)
     koito_history_status_label = "Not started"
@@ -2049,6 +2095,8 @@ def import_data(request):
         "pocketcasts_account": pocketcasts_account,
         "gpodder_account": gpodder_account,
         "lastfm_account": lastfm_account,
+        "mal_account": mal_account,
+        "mal_sync_configured": mal_sync.is_sync_configured(user),
         "koito_account": koito_account,
         "radarr_instances": radarr_instances,
         "sonarr_instances": sonarr_instances,
@@ -2196,8 +2244,7 @@ def _backup_dir_status(user):
     Creates the directory if missing so it's browsable even before any export
     has run.
     """
-    backup_dir = Path(settings.BACKUP_DIR) / str(user.username)
-    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_dir = exports.backup_directory(user)
     file_count = sum(1 for entry in backup_dir.iterdir() if entry.is_file())
     return {
         "path": str(backup_dir),
@@ -2226,10 +2273,17 @@ def _db_snapshot_status():
     written by app.tasks_db_backup.write_database_snapshot, so the same page
     that explains CSV export can show whether a real database backup exists.
     """
+    if not settings.USING_SQLITE_DATABASE:
+        return {"supported": False}
     snapshot_dir = Path(settings.BACKUP_DIR) / "database"
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
-    file_count = sum(1 for entry in snapshot_dir.iterdir() if entry.is_file())
+    snapshot_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    file_count = sum(
+        1
+        for entry in snapshot_dir.glob("*.sqlite3")
+        if entry.is_file() and not entry.is_symlink() and not entry.name.startswith(".")
+    )
     return {
+        "supported": True,
         "path": str(snapshot_dir),
         "file_count": file_count,
         "host_reachable": _mount_is_host_reachable(snapshot_dir),
@@ -2254,6 +2308,43 @@ def export_data(request):
         "db_snapshot_status": _db_snapshot_status(),
     }
     return render(request, "users/export_data.html", context)
+
+
+@require_GET
+def mal_export(request):
+    """Render the MyAnimeList export (status sync) settings page."""
+    user = request.user
+    mal_account = getattr(user, "mal_account", None)
+    schedule = None
+    periodic_task = (
+        PeriodicTask.objects.filter(
+            Q(kwargs__contains=f'"user_id": {user.id},')
+            | Q(kwargs__contains=f'"user_id": {user.id}' + "}"),
+            task=tasks.MAL_FULL_SYNC_TASK_NAME,
+        )
+        .select_related("crontab")
+        .first()
+    )
+    if periodic_task:
+        schedule_info = helpers.get_export_next_run_info(periodic_task)
+        if schedule_info:
+            schedule = {
+                "task": periodic_task,
+                "last_run": periodic_task.last_run_at,
+                "next_run": schedule_info["next_run"],
+                "frequency": schedule_info["frequency"],
+            }
+
+    context = {
+        "user": user,
+        "mal_account": mal_account,
+        "mal_sync_configured": mal_sync.is_sync_configured(user),
+        "mal_export_schedule": schedule,
+        "mal_sync_initial": mal_sync.full_sync_report(mal_account) if mal_account else None,
+        "mal_ignored_mappings": mal_sync.ignored_mappings(user) if mal_account else [],
+        "mal_manual_mappings": mal_sync.manual_episode_mappings(user) if mal_account else [],
+    }
+    return render(request, "users/mal_export.html", context)
 
 
 @require_GET
@@ -2341,6 +2432,9 @@ def export_logs(request):
     container this runs in may already be short of memory. After floppy.log come
     the process manager's log and any crash tracebacks (see config.run_state).
     """
+    if not request.user.is_superuser:
+        return HttpResponse(status=403)
+
     from app.log_safety import redact_secrets
 
     log_name = Path(settings.LOG_FILE).name
@@ -3239,7 +3333,11 @@ def regenerate_token(request):
 def update_plex_usernames(request):
     """Update the Plex usernames for the user."""
     usernames = request.POST.get("plex_usernames", "")
-    redirect_target = request.POST.get("next") or "integrations"
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("integrations"),
+    )
 
     username_list = [u.strip() for u in usernames.split(",") if u.strip()]
 
@@ -3293,6 +3391,14 @@ def update_jellyfin_webhook_events(request):
     messages.success(request, "Jellyfin webhook settings updated successfully")
 
     return redirect("integrations")
+
+
+@require_POST
+def update_group_scrobbled_anime(request):
+    """Toggle converting flat MAL anime to per-episode tracking on scrobble."""
+    request.user.group_scrobbled_anime = request.POST.get("enabled") == "true"
+    request.user.save(update_fields=["group_scrobbled_anime"])
+    return redirect("mal_export")
 
 
 def _plex_library_values(account):
@@ -3444,7 +3550,11 @@ def delete_plex_webhook_share(request):
 @require_POST
 def update_plex_webhook_libraries(request):
     """Update selected Plex libraries allowed for webhook events."""
-    redirect_target = request.POST.get("next") or "integrations"
+    redirect_target = app_helpers.safe_return_url(
+        request,
+        request.POST.get("next"),
+        reverse("integrations"),
+    )
     selected_libraries = request.POST.getlist("plex_webhook_libraries")
 
     deduplicated_libraries: list[str] = []
@@ -3526,7 +3636,13 @@ def update_jellyseerr_settings(request):
                 + ". Valid: "
                 + ", ".join(sorted(valid_seerr_statuses)),
             )
-            return redirect(request.META.get("HTTP_REFERER", "/settings/integrations"))
+            return redirect(
+                app_helpers.safe_return_url(
+                    request,
+                    request.META.get("HTTP_REFERER"),
+                    reverse("import_data"),
+                ),
+            )
         trigger_statuses = ",".join(tokens)
     else:
         # Blank means "default behaviour" (processor skips UNKNOWN)
@@ -3570,7 +3686,9 @@ def update_jellyseerr_settings(request):
         seerr_user_id = user.seerr_user_id
     elif seerr_url:
         if not seerr_username:
-            messages.error(request, "A Seerr username is required to request from Seerr.")
+            messages.error(
+                request, "A Seerr username is required to request from Seerr."
+            )
             return redirect("integrations")
         try:
             api_key = raw_api_key or decrypt_or_raise(user.seerr_api_key)
@@ -3608,7 +3726,13 @@ def update_jellyseerr_settings(request):
     )
 
     messages.success(request, "Seerr settings saved.")
-    return redirect(request.META.get("HTTP_REFERER", "/settings/integrations"))
+    return redirect(
+        app_helpers.safe_return_url(
+            request,
+            request.META.get("HTTP_REFERER"),
+            reverse("import_data"),
+        ),
+    )
 
 
 @require_POST

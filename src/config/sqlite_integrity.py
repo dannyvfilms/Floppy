@@ -11,7 +11,7 @@ import sys
 import tempfile
 import time
 from collections import Counter
-from contextlib import suppress
+from contextlib import ExitStack, closing, suppress
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -123,7 +123,7 @@ def _inspect_foreign_keys(conn: sqlite3.Connection) -> dict:
             continue
         shadowed_aliases = sorted(
             name
-            for name, in conn.execute(
+            for (name,) in conn.execute(
                 "SELECT name FROM pragma_table_xinfo(?, 'main')",
                 [table],
             )
@@ -145,7 +145,7 @@ def _inspect_foreign_keys(conn: sqlite3.Connection) -> dict:
             "WHERE type = 'trigger' AND tbl_name = ? COLLATE NOCASE",
             [table, table],
         )
-        for trigger_name, in triggers:
+        for (trigger_name,) in triggers:
             unsafe_reasons.append(
                 f"affected table {table!r} has trigger {trigger_name!r}; "
                 "DELETE trigger safety cannot be proven"
@@ -356,7 +356,10 @@ def recent_verification(
     # A local build bakes the placeholder "unknown" (Dockerfile ARG default),
     # so two different local images would otherwise look identical.
     commit_sha = (os.environ.get("COMMIT_SHA") or "").strip()
-    if commit_sha.lower() in {"", "unknown", "none"} or record.get("commit_sha") != commit_sha:
+    if (
+        commit_sha.lower() in {"", "unknown", "none"}
+        or record.get("commit_sha") != commit_sha
+    ):
         return None, "the image changed since the last verification"
     try:
         file_stat = Path(db_path).resolve().stat()
@@ -413,7 +416,10 @@ def warm_database_cache(
                 while count := source.readinto(buffer):
                     total += count
                     now = time.monotonic()
-                    if on_progress and now - last_report >= _WARM_REPORT_INTERVAL_SECONDS:
+                    if (
+                        on_progress
+                        and now - last_report >= _WARM_REPORT_INTERVAL_SECONDS
+                    ):
                         on_progress(total)
                         last_report = now
         except FileNotFoundError:
@@ -498,8 +504,7 @@ def startup_progress_diagnostics(
         progress_age = phase_elapsed
         progress_state = (
             "quiet"
-            if progress_age is not None
-            and progress_age > _PROGRESS_QUIET_AFTER_SECONDS
+            if progress_age is not None and progress_age > _PROGRESS_QUIET_AFTER_SECONDS
             else "none_yet"
         )
     elif progress_age is None:
@@ -584,7 +589,9 @@ def mark_startup_status_timeout(
     previous = read_startup_status(db_path) or {}
     phase = previous.get("phase", "unknown")
     elapsed = previous.get("elapsed_seconds")
-    elapsed = float(elapsed) if isinstance(elapsed, int | float) else float(timeout_seconds)
+    elapsed = (
+        float(elapsed) if isinstance(elapsed, int | float) else float(timeout_seconds)
+    )
     elapsed = max(elapsed, float(timeout_seconds))
     if read_bytes is None:
         read_bytes = previous.get("read_bytes")
@@ -844,17 +851,22 @@ def _selected_action(incident: dict, incident_token: str) -> str:
     return action
 
 
-def _prune_recovery_backups(recovery_dir: Path, max_keep: int = 10) -> None:
+def _prune_recovery_backups(
+    recovery_dir: Path, max_keep: int = 10, *, newest: Path | None = None
+) -> None:
     """Retain only the most recent recovery backups to bound disk usage."""
+    max_keep = max(1, max_keep)
     try:
         backups = [
             path
             for path in recovery_dir.glob("*.sqlite3")
-            if path.is_file() and not path.is_symlink() and not path.name.startswith(".")
+            if path.is_file()
+            and not path.is_symlink()
+            and not path.name.startswith(".")
         ]
         if len(backups) <= max_keep:
             return
-        backups.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        backups.sort(key=lambda p: (p == newest, p.stat().st_mtime), reverse=True)
         for stale in backups[max_keep:]:
             with suppress(OSError):
                 stale.unlink()
@@ -907,6 +919,52 @@ def _report_corruption(db_path: str, reason: str) -> None:
         _log(f"[entrypoint] Could not publish the damaged-file report: {error}")
 
 
+class _SnapshotVerificationError(sqlite3.DatabaseError):
+    """The copy failed quick_check: the source's pages were copied verbatim."""
+
+
+def _backup_to_staging(source, directory_descriptor, staging_name, *, timeout=5.0):
+    """Verify a copy before handing it to the descriptor-based publisher.
+
+    Linux opens the reserved file through its pinned directory descriptor.
+    Other POSIX hosts use a private system-temporary workspace: SQLite needs
+    a pathname (including for journals), and /dev/fd is not a directory-path
+    substitute on macOS. Only verified bytes cross into the reserved file,
+    using openat, never a potentially replaced destination directory path.
+    The fallback needs one additional database-sized copy on temporary storage.
+    """
+    with ExitStack() as stack:
+        if sys.platform.startswith("linux"):
+            staging_path = Path(f"/proc/self/fd/{directory_descriptor}/{staging_name}")
+        else:
+            workspace = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+            staging_path = workspace / "snapshot.sqlite3.tmp"
+            descriptor = os.open(
+                staging_path, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600
+            )
+            os.close(descriptor)
+        with closing(sqlite3.connect(staging_path, timeout=timeout)) as destination:
+            source.backup(destination)
+            result = destination.execute("PRAGMA quick_check").fetchall()
+            if result != [("ok",)]:
+                message = "backup quick_check did not return 'ok'"
+                raise _SnapshotVerificationError(message)
+        if not sys.platform.startswith("linux"):
+            descriptor = os.open(
+                staging_name,
+                os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=directory_descriptor,
+            )
+            with (
+                os.fdopen(descriptor, "wb") as target,
+                staging_path.open("rb") as verified,
+            ):
+                if not stat.S_ISREG(os.fstat(target.fileno()).st_mode):
+                    message = "backup staging path is not a regular file"
+                    raise OSError(message)
+                shutil.copyfileobj(verified, target, length=1024 * 1024)
+
+
 def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
     """Create a consistent SQLite backup while the caller holds the write lock."""
     database_path = Path(db_path).resolve()
@@ -914,9 +972,7 @@ def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
     with suppress(FileExistsError):
         recovery_dir.mkdir(mode=0o700)
     directory_flags = (
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     )
     try:
         recovery_descriptor = os.open(recovery_dir, directory_flags)
@@ -939,30 +995,18 @@ def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
         staging_name = f".{database_path.stem}-{secrets.token_hex(16)}.sqlite3.tmp"
         staging_descriptor = os.open(
             staging_name,
-            os.O_RDWR
-            | os.O_CREAT
-            | os.O_EXCL
-            | getattr(os, "O_NOFOLLOW", 0),
+            os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
             0o600,
             dir_fd=recovery_descriptor,
         )
         os.close(staging_descriptor)
-        staging_path = Path(f"/proc/self/fd/{recovery_descriptor}/{staging_name}")
 
         source = None
-        destination = None
         published = False
         succeeded = False
         try:
             source = sqlite3.connect(f"{database_path.as_uri()}?mode=ro", uri=True)
-            destination = sqlite3.connect(staging_path)
-            source.backup(destination)
-            result = destination.execute("PRAGMA quick_check").fetchone()
-            if not result or result[0] != "ok":
-                message = "backup quick_check did not return 'ok'"
-                raise sqlite3.DatabaseError(message)
-            destination.close()
-            destination = None
+            _backup_to_staging(source, recovery_descriptor, staging_name)
             source.close()
             source = None
 
@@ -1000,11 +1044,9 @@ def _create_verified_backup(db_path: str, fingerprint: str) -> Path:
             # Prune after the new copy is in place, never before. Pruning first
             # would leave max_keep copies and then add one more, so the folder
             # would settle one above the bound it is meant to hold.
-            _prune_recovery_backups(recovery_dir)
+            _prune_recovery_backups(recovery_dir, newest=recovery_dir / final_name)
             return recovery_dir / final_name
         finally:
-            if destination is not None:
-                destination.close()
             if source is not None:
                 source.close()
             with suppress(FileNotFoundError):
@@ -1033,12 +1075,10 @@ def create_live_database_snapshot(
     same time. WAL mode's MVCC is what makes this safe -- the backup's read
     snapshot never blocks, and is never blocked by, a concurrent writer; that
     is what the online backup API is for. This is deliberately a separate,
-    self-contained function rather than a refactor of _create_verified_backup:
-    that function is hardened for the pre-Django bootstrap context (no
-    concurrent writers, caller holds the write lock), and is proven there.
-    Duplicating its staging/publish logic here is a smaller risk than
-    reshaping it. Every failure is caught and reported as None; a bad day for
-    backups must never be a bad day for the worker that calls this.
+    function, sharing only the verified staging operation with the bootstrap
+    backup. Publication and cleanup remain independent of the repair path.
+    Expected I/O and SQLite failures are logged and returned as None; the
+    Celery task turns that outcome into a failed task without automatic retries.
     """
     try:
         return _write_live_snapshot(
@@ -1049,12 +1089,14 @@ def create_live_database_snapshot(
         )
     except sqlite3.DatabaseError as error:
         _log(f"[db-snapshot] Could not write a database snapshot: {error}")
-        busy = getattr(error, "sqlite_errorcode", None) in {
-            sqlite3.SQLITE_BUSY,
-            sqlite3.SQLITE_LOCKED,
-        }
-        if not busy:
-            # Mirrors check_database_integrity's bootstrap-path reporting: a
+        code = getattr(error, "sqlite_errorcode", 0) or 0
+        if isinstance(error, _SnapshotVerificationError) or code & 0xFF in {
+            sqlite3.SQLITE_CORRUPT,
+            sqlite3.SQLITE_NOTADB,
+        }:
+            # A failed quick_check on the copy, or an explicit corruption code,
+            # justifies a damaged-source report.
+            # CANTOPEN, IOERR and FULL can describe destination failures. A
             # damaged source database must surface the same recovery-page
             # report here, not just a log line, or a live snapshot failure
             # leaves operators with no record of why backups stopped.
@@ -1135,10 +1177,8 @@ def _write_live_snapshot(
             dir_fd=dest_descriptor,
         )
         os.close(staging_descriptor)
-        staging_path = Path(f"/proc/self/fd/{dest_descriptor}/{staging_name}")
 
         source = None
-        destination = None
         published = False
         succeeded = False
         try:
@@ -1147,14 +1187,9 @@ def _write_live_snapshot(
                 uri=True,
                 timeout=timeout_seconds,
             )
-            destination = sqlite3.connect(staging_path, timeout=timeout_seconds)
-            source.backup(destination)
-            result = destination.execute("PRAGMA quick_check").fetchone()
-            if not result or result[0] != "ok":
-                message = "snapshot quick_check did not return 'ok'"
-                raise sqlite3.DatabaseError(message)
-            destination.close()
-            destination = None
+            _backup_to_staging(
+                source, dest_descriptor, staging_name, timeout=timeout_seconds
+            )
             source.close()
             source = None
 
@@ -1200,15 +1235,15 @@ def _write_live_snapshot(
             record_verified_database(str(database_path), source="snapshot")
             # Prune after the new copy is in place, never before -- see the
             # matching comment on the _create_verified_backup call site.
-            _prune_recovery_backups(dest_dir, max_keep=max_keep)
+            _prune_recovery_backups(
+                dest_dir, max_keep=max_keep, newest=dest_dir / final_name
+            )
             _log(
                 f"[db-snapshot] page_cache_release path={final_name} "
                 f"bytes={snapshot_bytes} advice={advice}",
             )
             return dest_dir / final_name
         finally:
-            if destination is not None:
-                destination.close()
             if source is not None:
                 source.close()
             with suppress(FileNotFoundError):
@@ -1300,7 +1335,7 @@ def _describe_affected(conn: sqlite3.Connection) -> dict:
             ).fetchone()[0]
             columns = {
                 name.casefold()
-                for name, in conn.execute(
+                for (name,) in conn.execute(
                     "SELECT name FROM pragma_table_xinfo(?, 'main')",
                     [table],
                 )
@@ -1513,13 +1548,12 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
         )
         return
 
-    only_album_artist = {
-        group["table"] for group in incident["groups"]
-    } == {_ALBUM_ARTIST_TABLE}
-    auto_repair_enabled = (
-        os.environ.get("FLOPPY_SQLITE_AUTO_REPAIR", "true").strip().lower()
-        not in {"0", "false", "no", "off"}
-    )
+    only_album_artist = {group["table"] for group in incident["groups"]} == {
+        _ALBUM_ARTIST_TABLE
+    }
+    auto_repair_enabled = os.environ.get(
+        "FLOPPY_SQLITE_AUTO_REPAIR", "true"
+    ).strip().lower() not in {"0", "false", "no", "off"}
     should_quarantine = (
         action == "quarantine"
         or (auto_repair_enabled and incident["can_quarantine"])
@@ -1544,9 +1578,7 @@ def _check_foreign_keys(conn: sqlite3.Connection, db_path: str) -> None:
             deleted = _delete_orphaned_rows(conn)
             remaining = _inspect_foreign_keys(conn)
             if remaining["total_conflicts"]:
-                message = (
-                    f"{remaining['total_conflicts']} conflict(s) remain after quarantine"
-                )
+                message = f"{remaining['total_conflicts']} conflict(s) remain after quarantine"
                 raise sqlite3.IntegrityError(message)
             if only_album_artist and action != "quarantine" and not auto_repair_enabled:
                 resolution = "automatic-album-artist"

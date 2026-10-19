@@ -2,12 +2,7 @@ name: Lint
 
 on:
   pull_request:
-    paths-ignore:
-      - ".github/workflows/**"
-  push:
-    branches:
-      - latest
-      - release
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -16,14 +11,16 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
 
@@ -39,73 +36,10 @@ jobs:
         run: uv sync --locked --only-group lint
 
       - name: Ruff
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          IS_PR: ${{ github.event_name == 'pull_request' }}
-        run: |
-          if [ "$IS_PR" != "true" ]; then
-            echo "Not a pull request - running full check."
-            uv run --no-sync ruff check src
-            exit $?
-          fi
-          uv run --no-sync python - <<'PY'
-          import json, os, re, subprocess, sys
+        run: uv run --no-sync ruff check src mcp_server
 
-          base, head = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
+      - name: Dependency vulnerabilities
+        run: scripts/audit_dependencies.sh
 
-          # Lines added/modified by this PR, per file.
-          diff = subprocess.run(
-              ["git", "diff", "--unified=0", f"{base}...{head}", "--", "src"],
-              capture_output=True, text=True, check=True,
-          ).stdout
-
-          changed: dict[str, set[int]] = {}
-          path = None
-          hunk = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
-          for line in diff.splitlines():
-              if line.startswith("+++ b/"):
-                  path = line[6:]
-              elif line.startswith("@@") and path:
-                  m = hunk.match(line)
-                  if m:
-                      start = int(m.group(1))
-                      count = int(m.group(2) or 1)
-                      changed.setdefault(path, set()).update(
-                          range(start, start + count)
-                      )
-
-          changed = {p: lines for p, lines in changed.items() if p.endswith(".py")}
-
-          if not changed:
-              print("No changed Python lines under src/ - nothing to lint.")
-              sys.exit(0)
-
-          proc = subprocess.run(
-              ["ruff", "check", "src", "--output-format=json", "--no-cache"],
-              capture_output=True, text=True,
-          )
-          if proc.returncode not in (0, 1):
-              sys.stderr.write(proc.stderr)
-              sys.exit(proc.returncode)
-          diagnostics = json.loads(proc.stdout or "[]")
-
-          repo = os.getcwd()
-          offending = []
-          for d in diagnostics:
-              rel = os.path.relpath(d["filename"], repo)
-              row = (d.get("location") or {}).get("row")
-              if row is not None and row in changed.get(rel, ()):
-                  offending.append((rel, row, d["code"], d["message"]))
-
-          total = len(diagnostics)
-          print(f"{total} violations exist in src/; gating on changed lines only.")
-
-          if offending:
-              print(f"\n{len(offending)} violation(s) on lines this PR changed:\n")
-              for rel, row, code, msg in sorted(offending):
-                  print(f"  {rel}:{row}: {code} {msg}")
-              sys.exit(1)
-
-          print("No violations on changed lines.")
-          PY
+      - name: Audit frontend build dependencies
+        run: npm audit --ignore-scripts

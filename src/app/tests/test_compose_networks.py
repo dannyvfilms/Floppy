@@ -8,7 +8,8 @@ where no name resolves and every import fails to queue (#1166, #1229, #1263).
 Declaring the network explicitly removes that dependence on the tool.
 
 These tests read the stacks people actually copy: the checked-in compose files,
-the guided installer's template, and the compose blocks in the README.
+the guided installers' templates, and the compose blocks in the deployment
+guide.
 """
 
 import re
@@ -23,7 +24,11 @@ COMPOSE_FILES = (
     ROOT / "docker-compose.postgres.yml",
     ROOT / "scripts" / "install" / "templates" / "docker-compose.install.yml.tmpl",
 )
-README = ROOT / "README.md"
+DEPLOYMENT_GUIDE = ROOT / "docs" / "deployment.md"
+WINDOWS_INSTALLER = ROOT / "scripts" / "install.ps1"
+# The Windows installer writes its Compose file from a PowerShell here-string.
+PS_COMPOSE = re.compile(r'WriteText \$script:ComposeFile @"\n(.*?)\n"@', re.DOTALL)
+PS_VARIABLE = re.compile(r"\$\{?\w+\}?")
 YAML_BLOCK = re.compile(r"```ya?ml\n(.*?)```", re.DOTALL)
 # The installer template's @@NAME@@ placeholders are not valid YAML scalars.
 TEMPLATE_PLACEHOLDER = re.compile(r"@@\w+@@")
@@ -36,13 +41,16 @@ def _load(text):
 def _published_stacks():
     """Yield (label, parsed compose) for every stack with more than one service.
 
-    Single-service README snippets are fragments that show one setting, not a
+    Single-service guide snippets are fragments that show one setting, not a
     stack someone deploys on its own, and have no second container to reach.
     """
     for path in COMPOSE_FILES:
         yield path.name, _load(path.read_text(encoding="utf-8"))
 
-    text = README.read_text(encoding="utf-8")
+    windows = PS_COMPOSE.search(WINDOWS_INSTALLER.read_text(encoding="utf-8"))
+    yield "install.ps1", _load(PS_VARIABLE.sub("placeholder", windows.group(1)))
+
+    text = DEPLOYMENT_GUIDE.read_text(encoding="utf-8")
     for match in YAML_BLOCK.finditer(text):
         parsed = _load(match.group(1))
         if not isinstance(parsed, dict):
@@ -50,7 +58,7 @@ def _published_stacks():
         if len(parsed.get("services") or {}) < 2:
             continue
         line = text[: match.start()].count("\n") + 1
-        yield f"README.md:{line}", parsed
+        yield f"deployment.md:{line}", parsed
 
 
 def _service_networks(service):
@@ -59,11 +67,44 @@ def _service_networks(service):
 
 
 class PublishedComposeNetworkTests(SimpleTestCase):
-    def test_the_readme_stacks_are_found(self):
+    def test_every_stack_persists_app_data_and_backups(self):
+        for label, stack in _published_stacks():
+            mounts = stack["services"]["floppy"].get("volumes", [])
+            targets = {mount.split(":")[1] for mount in mounts}
+            with self.subTest(stack=label):
+                self.assertIn("/floppy/db", targets)
+                self.assertIn("/floppy/backups", targets)
+
+    def test_example_stacks_do_not_ship_a_shared_signing_key(self):
+        for label, stack in _published_stacks():
+            environment = stack["services"]["floppy"].get("environment", {})
+            if isinstance(environment, list):
+                environment = dict(entry.partition("=")[::2] for entry in environment)
+            with self.subTest(stack=label):
+                value = environment.get("SECRET", "")
+                self.assertTrue(
+                    not value or value.startswith("${"),
+                    f"{label} ships a fixed Django signing key",
+                )
+
+    def test_datastores_are_not_published_or_on_external_networks(self):
+        for label, stack in _published_stacks():
+            for name in ("redis", "db"):
+                service = stack["services"].get(name)
+                if service is None:
+                    continue
+                with self.subTest(stack=label, service=name):
+                    self.assertFalse(service.get("ports"))
+                    self.assertNotEqual(service.get("network_mode"), "host")
+                    for network in _service_networks(service):
+                        self.assertFalse((stack["networks"][network] or {}).get("external"))
+
+    def test_the_guide_stacks_are_found(self):
         """Guard the guard: a regex change must not silently check nothing."""
         labels = [label for label, _stack in _published_stacks()]
-        readme_stacks = [label for label in labels if label.startswith("README")]
-        self.assertGreaterEqual(len(readme_stacks), 2, labels)
+        guide_stacks = [label for label in labels if label.startswith("deployment")]
+        self.assertGreaterEqual(len(guide_stacks), 2, labels)
+        self.assertIn("install.ps1", labels)
 
     def test_every_service_joins_a_declared_network(self):
         for label, stack in _published_stacks():

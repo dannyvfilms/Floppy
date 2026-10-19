@@ -10,12 +10,11 @@
         <a href="{{ album|music_album_url }}">
           {# Cover art #}
           {% if album.image and album.image != IMG_NONE %}
-            <img id="album-cover-{{ album.id }}"
+            <img loading="lazy" decoding="sync" id="album-cover-{{ album.id }}"
                  hx-preserve
                  alt="{{ album.title }}"
-                 class="media-card-poster lazyload w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
-                 data-src="{{ album.image|image_url }}"
-                 src="{{ IMG_NONE }}">
+                 class="media-card-poster w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
+                 src="{{ album.image|image_url }}">
           {% else %}
             <div class="w-full aspect-[1/1] bg-[var(--color-surface-alt)] flex items-center justify-center">
               {% icon 'music' is_active=False extra_classes="w-12 h-12 text-gray-600" %}

@@ -702,14 +702,15 @@ def paginate_list_items(
     items_page = Paginator(range(total), page_size).get_page(page)
     offset = (items_page.number - 1) * page_size
     items = executor.page(offset, page_size, total=total).items
-    added = dict(
-        CustomListItem.objects.filter(
+    added = {
+        item_id: (date_added, rank)
+        for item_id, date_added, rank in CustomListItem.objects.filter(
             custom_list=custom_list,
             item_id__in=[item.pk for item in items],
-        ).values_list("item_id", "date_added"),
-    )
+        ).values_list("item_id", "date_added", "rank")
+    }
     for item in items:
-        item.list_date_added = added.get(item.pk)
+        item.list_date_added, item.list_rank = added.get(item.pk, (None, None))
     items_page.object_list = items
     _attach_media_with_aggregation(items_page, media_user)
     return items_page, total

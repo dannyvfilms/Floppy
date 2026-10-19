@@ -232,8 +232,8 @@ class ProcessWebhookTaskTests(TestCase):
         self.assertIsNotNone(self.user.plex_webhook_last_received_at)
 
     @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
-    def test_plex_payload_log_redacts_identity_fields(self, _mock_process):
-        """The logged payload censors the user, server and device, not the media."""
+    def test_plex_payload_log_omits_identity_and_activity_values(self, _mock_process):
+        """Worker diagnostics retain structure without copying private values."""
         payload = {
             "event": "media.play",
             "Account": {"id": 1234, "thumb": "https://plex.tv/a", "title": "alice"},
@@ -246,10 +246,11 @@ class ProcessWebhookTaskTests(TestCase):
             tasks.process_webhook("plex", payload, self.user.id)
 
         output = "\n".join(logs.output)
-        for value in ("alice", "203.0.113.9", "server-abc", "Movies"):
+        for value in ("alice", "203.0.113.9", "server-abc", "Movies", "Jumanji"):
             with self.subTest(value=value):
                 self.assertNotIn(value, output)
-        self.assertIn("Jumanji", output)
+        self.assertIn("Metadata", output)
+        self.assertIn("provider=plex", output)
 
     @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
     def test_shared_plex_task_uses_owner_account_and_recipient(self, mock_process):
@@ -302,7 +303,9 @@ class ProcessWebhookTaskTests(TestCase):
             recipient_enabled=False,
         )
 
-        tasks.process_webhook("plex", {"event": "media.scrobble"}, recipient.id, share_id=share.id)
+        tasks.process_webhook(
+            "plex", {"event": "media.scrobble"}, recipient.id, share_id=share.id
+        )
 
         mock_process.assert_not_called()
 

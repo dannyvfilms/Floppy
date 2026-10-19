@@ -30,6 +30,34 @@ FUZZY_MATCH_SIMILARITY_THRESHOLD = 0.8
 FEW_CANDIDATES_AUTO_TRUST_MAX = 3
 
 
+def album_for_media_id(media_id, user=None):
+    """Return the Album behind an album page's media id, or None.
+
+    The album page identifies its Item with the release id, else the release
+    group id, else ``album-<pk>`` for an album with no MusicBrainz id. Duplicate
+    rows for one MusicBrainz identity resolve to the canonical one for ``user``.
+    """
+    media_id = str(media_id or "")
+    albums = Album.objects.select_related("artist")
+    if media_id.startswith("album-"):
+        album_pk = media_id.removeprefix("album-")
+        matches = list(albums.filter(pk=album_pk)) if album_pk.isdigit() else []
+    elif media_id:
+        matches = list(
+            albums.filter(
+                models.Q(musicbrainz_release_id=media_id)
+                | models.Q(musicbrainz_release_group_id=media_id),
+            ),
+        )
+    else:
+        matches = []
+    if not matches:
+        return None
+    # Rank every exact match first: the seed row's own group id would otherwise
+    # hide a duplicate that has the same release id but no group id.
+    return find_canonical_album(_preferred_album(matches, user), user=user)
+
+
 def _parse_partial_date(date_str):
     """Parse a MusicBrainz partial date string (YYYY, YYYY-MM, or YYYY-MM-DD)."""
     if not date_str:
@@ -1237,11 +1265,16 @@ def find_canonical_album(album: Album, user=None) -> Album:
     if identity_filter is None:
         return album
 
-    from app.models import AlbumTracker, Music
-
     candidates = list(Album.objects.filter(identity_filter).select_related("artist"))
     if len(candidates) <= 1:
         return album
+
+    return _preferred_album(candidates, user)
+
+
+def _preferred_album(candidates: list[Album], user=None) -> Album:
+    """Return the candidate a user is most likely to mean."""
+    from app.models import AlbumTracker, Music
 
     def score(candidate: Album) -> tuple:
         user_tracker = 0

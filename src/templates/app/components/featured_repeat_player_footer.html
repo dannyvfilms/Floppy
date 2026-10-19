@@ -1,13 +1,13 @@
 
 {% load i18n %}
 {% load app_tags %}
-<div class="mt-4 flex flex-col gap-3 border-t border-[var(--color-surface-border)] pt-4 sm:flex-row sm:items-center sm:justify-between">
-  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-1 sm:min-w-0">
+<div class="mt-4 flex flex-wrap items-center gap-3 border-t border-[var(--color-surface-border)] pt-4 justify-between">
+  <div class="flex flex-wrap items-center gap-2 min-w-0">
     <span class="text-sm text-[var(--color-text-muted)] shrink-0">{% translate "Known For:" %}</span>
     {% if featured_person and featured_person.known_for_pills %}
       <div class="flex flex-wrap gap-1.5 min-w-0">
         {% for pill in featured_person.known_for_pills %}
-          <span class="text-xs px-2 py-1 rounded-md font-medium {{ pill.classes }}">{{ pill.label }}</span>
+          <span class="text-xs px-2 py-1 rounded-md font-medium whitespace-nowrap {{ pill.classes }}">{{ pill.label }}</span>
         {% endfor %}
       </div>
     {% else %}

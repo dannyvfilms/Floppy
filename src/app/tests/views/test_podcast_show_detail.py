@@ -1,4 +1,6 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.shortcuts import resolve_url
 from django.test import TestCase
 from django.urls import reverse
 
@@ -12,6 +14,23 @@ class PodcastShowDetailWebsiteLinkTests(TestCase):
         self.credentials = {"username": "test", "password": "12345"}
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
+
+    def test_anonymous_show_requests_require_login(self):
+        show = PodcastShow.objects.create(
+            podcast_uuid="private-tracker-show",
+            title="Private Tracker Show",
+        )
+        self.client.logout()
+
+        for show_id in (show.id, show.id + 1):
+            with self.subTest(show_id=show_id):
+                url = reverse("podcast_show_detail", args=[show_id])
+                response = self.client.get(url)
+                self.assertRedirects(
+                    response,
+                    f"{resolve_url(settings.LOGIN_URL)}?next={url}",
+                    fetch_redirect_response=False,
+                )
 
     def test_renders_show_and_episode_website_links(self):
         show = PodcastShow.objects.create(

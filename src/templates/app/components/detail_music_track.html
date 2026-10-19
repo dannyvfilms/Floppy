@@ -88,6 +88,10 @@
   </div>
 
   <div class="w-full md:w-3/4">
+    <div class="mb-4">
+      {% include "app/components/music_track_notes_button.html" with track=track %}
+    </div>
+    {% include "app/components/detail_notes_section.html" %}
     <section class="mb-8">
       <h2 class="text-xl font-bold mb-4">{% translate "Play history" %}</h2>
       {% if track_history %}

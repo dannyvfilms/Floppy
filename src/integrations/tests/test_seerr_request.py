@@ -188,6 +188,17 @@ class SeerrRequestViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Could not reach Seerr")
 
+    def test_unreadable_key_shows_a_short_theme_aware_banner(self):
+        self.user.seerr_api_key = "not-a-fernet-token"
+        self.user.save()
+        response = self.client.get(reverse("seerr_request", args=["movie", 603]))
+        self.assertContains(
+            response,
+            "Saved credentials can&#x27;t be read. Reconnect this integration.",
+        )
+        self.assertContains(response, "text-[var(--color-error-text)]")
+        self.assertNotContains(response, "text-red-300")
+
     def test_not_found_without_settings_or_for_other_types(self):
         self.assertEqual(
             self.client.get(reverse("seerr_request", args=["anime", 1])).status_code,

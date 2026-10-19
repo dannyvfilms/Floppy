@@ -756,13 +756,140 @@ class MediaListViewTests(TestCase):
         )
 
         with mock.patch("app.tasks.prefetch_album_covers_batch.delay") as mock_delay:
-            response = self.client.get(reverse("medialist", args=[MediaTypes.MUSIC.value]))
+            response = self.client.get(
+                reverse("medialist", args=[MediaTypes.MUSIC.value])
+            )
 
         self.assertEqual(response.status_code, 200)
         mock_delay.assert_called_once_with([artist.id], limit_per_artist=5)
 
         artist.refresh_from_db()
         self.assertEqual(artist.image, "")
+
+    def test_artist_list_filters_keep_facets_before_genre_and_origin_selection(self):
+        today = timezone.localdate()
+        for name, genre, country, score, status, released in [
+            ("Match A", "Rock", "gb", 8, Status.COMPLETED.value, today),
+            ("Match B", "Jazz", "jp", 7, Status.COMPLETED.value, today),
+            ("Match C", "Rock", "gb", None, Status.COMPLETED.value, today),
+            ("Match D", "Rock", "gb", 9, Status.PLANNING.value, today),
+            ("Other", "Pop", "us", 8, Status.COMPLETED.value, today),
+            (
+                "Match Future",
+                "Pop",
+                "us",
+                8,
+                Status.COMPLETED.value,
+                today + timedelta(days=30),
+            ),
+        ]:
+            artist = Artist.objects.create(
+                name=name, genres=[genre], country=country, image="/artist.jpg"
+            )
+            Album.objects.create(title=name, artist=artist, release_date=released)
+            ArtistTracker.objects.create(
+                user=self.user, artist=artist, score=score, status=status
+            )
+
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MUSIC.value]),
+            {
+                "status": Status.COMPLETED.value,
+                "search": "Match",
+                "rating": "rated",
+                "release": "released",
+                "genre": " rock ",
+                "origin": "GB",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [tracker.artist.name for tracker in response.context["media_list"]],
+            ["Match A"],
+        )
+        self.assertEqual(response.context["filter_data"]["genres"], ["Jazz", "Rock"])
+        self.assertEqual(
+            response.context["filter_data"]["origins"],
+            [
+                {
+                    "value": "gb",
+                    "label": "United Kingdom of Great Britain and Northern Ireland",
+                },
+                {"value": "jp", "label": "Japan"},
+            ],
+        )
+
+    def test_artist_list_release_sort_uses_earliest_album_in_table(self):
+        today = timezone.localdate()
+        for name, release_dates in [
+            ("Later", [today]),
+            ("Earlier", [today, today - timedelta(days=30)]),
+            ("Unknown", []),
+        ]:
+            artist = Artist.objects.create(name=name, image="/artist.jpg")
+            ArtistTracker.objects.create(user=self.user, artist=artist)
+            for release_date in release_dates:
+                Album.objects.create(
+                    title=name, artist=artist, release_date=release_date
+                )
+
+        response = self.client.get(
+            reverse("medialist", args=[MediaTypes.MUSIC.value]),
+            {"layout": "table", "sort": "release_date", "direction": "asc"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["table_type"], "artist")
+        self.assertEqual(
+            [tracker.artist.name for tracker in response.context["media_list"]],
+            ["Earlier", "Later", "Unknown"],
+        )
+        self.assertEqual(
+            response.context["media_list"][0].first_release_date,
+            today - timedelta(days=30),
+        )
+
+    def test_artist_list_htmx_pagination_only_backfills_visible_artists(self):
+        artists = [
+            Artist.objects.create(name=f"Artist {i:02d}", image="") for i in range(33)
+        ]
+        ArtistTracker.objects.bulk_create(
+            [ArtistTracker(user=self.user, artist=artist) for artist in artists]
+        )
+        url = reverse("medialist", args=[MediaTypes.MUSIC.value])
+        params = {"sort": "title", "direction": "asc", "page": 2, "layout": "grid"}
+        with mock.patch("app.tasks.prefetch_album_covers_batch.delay") as delay:
+            response = self.client.get(url, params, HTTP_HX_REQUEST="true")
+            repeated = self.client.get(url, params, HTTP_HX_REQUEST="true")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(repeated.status_code, 200)
+        self.assertTemplateUsed(response, "app/components/artist_grid_items.html")
+        self.assertEqual(response.context["media_list"].number, 2)
+        self.assertEqual(response.context["media_list"].paginator.count, 33)
+        self.assertEqual(
+            [tracker.artist.id for tracker in response.context["media_list"]],
+            [artists[-1].id],
+        )
+        delay.assert_called_once_with([artists[-1].id], limit_per_artist=5)
+        self.assertEqual(
+            json.loads(response["HX-Trigger"]), {"resultCountUpdated": {"count": 33}}
+        )
+        boosted = self.client.get(
+            url, params, HTTP_HX_REQUEST="true", HTTP_HX_BOOSTED="true"
+        )
+        self.assertTemplateUsed(boosted, "app/media_list.html")
+
+    def test_artist_list_empty_htmx_target_preserves_redirect_contract(self):
+        url = reverse("medialist", args=[MediaTypes.MUSIC.value])
+        headers = {"HTTP_HX_REQUEST": "true", "HTTP_HX_TARGET": "empty_list"}
+        self.assertEqual(self.client.get(url, **headers).status_code, 204)
+        artist = Artist.objects.create(name="New Artist", image="/artist.jpg")
+        ArtistTracker.objects.create(user=self.user, artist=artist)
+        response = self.client.get(url, **headers)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["HX-Redirect"], url)
 
     def test_movie_grid_aggregates_duplicate_completed_plays(self):
         """Grid cards should show total plays across duplicate completed movie entries."""
@@ -830,7 +957,9 @@ class MediaListViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "if (selectMode) { $event.preventDefault(); toggleItemSelected(")
+        self.assertContains(
+            response, "if (selectMode) { $event.preventDefault(); toggleItemSelected("
+        )
 
     def test_table_layout_shows_notes_on_main_media_list(self):
         """Notes must render in Table View on the main media list (issue #1010)."""
@@ -856,7 +985,9 @@ class MediaListViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("entry_source", [c.key for c in response.context["resolved_columns"]])
+        self.assertIn(
+            "entry_source", [c.key for c in response.context["resolved_columns"]]
+        )
         self.assertContains(response, ">Plex</div>")
         self.assertNotContains(response, ">plex</div>")
 
@@ -2009,7 +2140,8 @@ class MediaListViewTests(TestCase):
         all_response = self.client.get(url)
         self.assertEqual(all_response.context["media_list"].paginator.count, 5)
         media_statuses = [
-            option["value"] for option in all_response.context["filter_data"]["media_statuses"]
+            option["value"]
+            for option in all_response.context["filter_data"]["media_statuses"]
         ]
         self.assertEqual(media_statuses, ["Ended"])
 
@@ -3140,7 +3272,9 @@ class MediaListViewTests(TestCase):
             "layoutHref(nextLayout) { return buildMediaListHref(this.mediaListUrl, document.getElementById('filter-form'), { layout: nextLayout }); }",
         )
         self.assertContains(response, '@click="open = false"')
-        self.assertNotContains(response, "layout = layout === 'grid' ? 'table' : 'grid'")
+        self.assertNotContains(
+            response, "layout = layout === 'grid' ? 'table' : 'grid'"
+        )
 
     def test_comic_media_list_can_switch_to_issue_subview(self):
         """Comic media list should reuse the music-style subview switch for issues."""
@@ -3260,8 +3394,7 @@ class MediaListViewTests(TestCase):
 
         headers = {"HTTP_HX_REQUEST": "true"}
         grid_page = self.client.get(
-            reverse("medialist", args=[MediaTypes.MOVIE.value])
-            + "?layout=grid&page=1",
+            reverse("medialist", args=[MediaTypes.MOVIE.value]) + "?layout=grid&page=1",
             **headers,
         )
         self.assertContains(
@@ -3775,7 +3908,7 @@ class MediaListViewTests(TestCase):
 
 
 class MediaListRelativeCompletedDateTests(TestCase):
-    """"Completed in the last N units" on the library filter toolbar."""
+    """ "Completed in the last N units" on the library filter toolbar."""
 
     def setUp(self):
         """Log in with two movies completed at known distances from today."""
@@ -3818,9 +3951,7 @@ class MediaListRelativeCompletedDateTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
-        return [
-            title for title in ("Recent Movie", "Old Movie") if title in content
-        ]
+        return [title for title in ("Recent Movie", "Old Movie") if title in content]
 
     def test_window_narrows_the_list(self):
         """A 7-day window keeps only the recently completed movie."""

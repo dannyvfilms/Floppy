@@ -2,8 +2,7 @@
 #
 # Floppy guided installer - bootstrap.
 #
-#   curl -fsSL https://raw.githubusercontent.com/dannyvfilms/Floppy/latest/scripts/install.sh -o /tmp/floppy-install.sh
-#   bash /tmp/floppy-install.sh
+# Start with the universal command in docs/install.md. This is its Unix branch.
 #
 # This file runs before the repository exists on the host, so it stays small
 # and self-contained: it looks at the machine, asks where Floppy should live,

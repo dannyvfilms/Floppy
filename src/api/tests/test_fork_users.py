@@ -30,6 +30,9 @@ class PreferencesTests(FloppyApiTestCase):
         # Stored encrypted, so the column is not the plaintext.
         self.assertNotEqual(self.user1.playback_webhook_secret, "s3cret")
         self.assertEqual(self.user1.get_playback_webhook_secret(), "s3cret")
+        self.assertNotIn("playback_webhook_url", response.json()["preferences"])
+        self.assertNotIn("abc123", response.content.decode())
+        self.assertTrue(response.json()["preferences"]["playback_webhook_configured"])
 
     def test_playback_webhook_secret_is_never_read_back(self):
         """Writable, never returned — GET must not hand it to any token holder.
@@ -51,12 +54,47 @@ class PreferencesTests(FloppyApiTestCase):
         preferences = response.json()["preferences"]
         self.assertNotIn("playback_webhook_secret", preferences)
         self.assertNotIn("s3cret", response.content.decode())
-        # The URL is readable: it already shows on the settings page, and a
-        # client needs it to tell whether delivery is configured.
-        self.assertEqual(
-            preferences["playback_webhook_url"],
-            "https://relay.example.com/playback/abc",
+        self.assertNotIn("playback_webhook_url", preferences)
+        self.assertTrue(preferences["playback_webhook_configured"])
+
+    def test_playback_webhook_url_credentials_are_hidden_from_read_scope(self):
+        """Basic-auth, path and query credentials must not leak to read clients."""
+        from integrations.models import IntegrationToken
+
+        _token, raw = IntegrationToken.generate(
+            user=self.user1,
+            name="settings reader",
+            scopes=["user:read"],
         )
+        webhook_url = (
+            "https://user:url-password@relay.example.com/path-secret?key=query-secret"
+        )
+        response = self.call_api(
+            "patch",
+            "api_user_preferences",
+            payload={"playback_webhook_url": webhook_url},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.user1.refresh_from_db()
+        self.assertEqual(self.user1.playback_webhook_url, webhook_url)
+        for method, headers, payload in (
+            ("get", {"HTTP_X_API_KEY": raw}, None),
+            ("patch", self.auth_headers, {"hide_completed_recommendations": True}),
+        ):
+            response = self.call_api(
+                method,
+                "api_user_preferences",
+                headers=headers,
+                payload=payload,
+            )
+            self.assertEqual(response.status_code, HTTP.OK)
+            self.assertTrue(
+                response.json()["preferences"]["playback_webhook_configured"]
+            )
+            self.assertNotIn("playback_webhook_url", response.json()["preferences"])
+            for secret in ("url-password", "path-secret", "query-secret"):
+                self.assertNotIn(secret, response.content.decode())
 
     def test_playback_webhook_can_be_cleared_with_null(self):
         """Null clears it, which is how a client turns delivery off."""
@@ -71,6 +109,7 @@ class PreferencesTests(FloppyApiTestCase):
         self.assertEqual(response.status_code, HTTP.OK)
         self.user1.refresh_from_db()
         self.assertEqual(self.user1.playback_webhook_url, "")
+        self.assertFalse(response.json()["preferences"]["playback_webhook_configured"])
 
     def test_playback_webhook_url_rejects_a_non_url(self):
         """The API must reject what the settings form rejects.
@@ -206,6 +245,60 @@ class SidebarTests(FloppyApiTestCase):
 
 class NotificationsTests(FloppyApiTestCase):
     """Notification settings, exclusions, and test send."""
+
+    def test_notification_urls_are_write_only_on_get_and_patch(self):
+        """Reading or changing a setting must not disclose Apprise credentials."""
+        from integrations.models import IntegrationToken
+
+        self.user1.notification_urls = (
+            "json://user:notification-secret@example.com/webhook"
+        )
+        self.user1.save(update_fields=["notification_urls"])
+        _token, raw = IntegrationToken.generate(
+            user=self.user1,
+            name="settings reader",
+            scopes=["user:read"],
+        )
+        response = self.call_api(
+            "get",
+            "api_user_notifications",
+            headers={"HTTP_X_API_KEY": raw},
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertTrue(response.json()["notification_urls_configured"])
+        self.assertNotIn("notification_urls", response.json())
+        self.assertNotIn("notification-secret", response.content.decode())
+
+        response = self.call_api(
+            "patch",
+            "api_user_notifications",
+            payload={"daily_digest_enabled": True},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertNotIn("notification_urls", response.json())
+        self.assertNotIn("notification-secret", response.content.decode())
+        self.user1.refresh_from_db()
+        self.assertIn("notification-secret", self.user1.notification_urls)
+
+        # A legacy invalid URL must not be quoted by form validation errors
+        # when a client changes an unrelated setting.
+        self.user1.notification_urls = self.user1.notification_urls.replace(
+            "json:", "unsupported:"
+        )
+        self.user1.save(update_fields=["notification_urls"])
+        response = self.call_api(
+            "patch",
+            "api_user_notifications",
+            payload={"daily_digest_enabled": False},
+            headers=self.auth_headers,
+        )
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertNotIn("notification-secret", response.content.decode())
+        self.assertEqual(
+            response.json()["errors"]["notification_urls"],
+            ["Invalid notification URL."],
+        )
 
     def test_patch_notification_settings(self):
         """Settings persist through the web form's validation."""

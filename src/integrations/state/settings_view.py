@@ -117,7 +117,11 @@ def binding_rows(user):
     from integrations.state.outbound import get_adapter
 
     rows = []
-    for binding in SyncBinding.objects.filter(user=user).order_by("client_kind"):
+    for binding in (
+        SyncBinding.objects.filter(user=user)
+        .exclude(client_kind="tmdb")
+        .order_by("client_kind")
+    ):
         adapter = get_adapter(binding)
         supported = set(adapter.CAPABILITIES) if adapter is not None else set()
         approved = set(binding.approved_capabilities or [])

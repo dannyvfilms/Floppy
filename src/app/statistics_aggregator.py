@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from django.apps import apps
 from django.core.cache import cache
 from django.utils import timezone
+from django.utils.translation import gettext_noop
 
 from app import config, helpers
 from app import statistics as stats
@@ -57,15 +58,15 @@ def _build_today_card(
         return {
             "entry": today_in_user_history,
             "year": today_in_user_history_year,
-            "label": "TODAY IN YOUR HISTORY",
-            "date_prefix": "Played in",
+            "label": gettext_noop("TODAY IN YOUR HISTORY"),
+            "date_prefix": gettext_noop("Played in"),
             "use_release_url": False,
         }
     return {
         "entry": today_in_history,
         "year": today_in_history_year,
-        "label": "TODAY IN HISTORY",
-        "date_prefix": "Released in",
+        "label": gettext_noop("TODAY IN HISTORY"),
+        "date_prefix": gettext_noop("Released in"),
         "use_release_url": True,
     }
 

@@ -1,3 +1,4 @@
+import json
 import logging
 import threading
 import time
@@ -5,6 +6,7 @@ from http import HTTPStatus
 from urllib.parse import urlparse
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth import get_user_model, login
 from django.contrib.sessions.exceptions import SessionInterrupted
 from django.db import DatabaseError, connection
@@ -572,3 +574,67 @@ class ProviderCredentialUserMiddleware:
 
         with credentials.current_user_scope(getattr(request, "user", None)):
             return self.get_response(request)
+
+
+class DemoAccountGuardMiddleware:
+    """Refuse account, credential and library-wide changes from the demo user.
+
+    The demo login is public, so whatever it can change every visitor can. The
+    preference pages and the account page guard themselves; this list covers
+    the routes where one visitor could lock the rest out (tokens),
+    attach credentials or external logins, or wipe the shared library. Reads
+    are untouched.
+    """
+
+    MESSAGE = "This section is view-only for demo accounts."
+    BLOCKED_ROUTES = frozenset(
+        {
+            "regenerate_token",
+            "create_integration_token",
+            "revoke_integration_token",
+            "create_catalog_grant",
+            "revoke_catalog_grant",
+            "save_provider_credential",
+            "save_personal_credential",
+            "clear_provider_credential",
+            "socialaccount_connections",
+            "notifications",
+            "update_tmdb_proxy",
+            "plex_connect",
+            "jellyfin_connect",
+            "jellyfin_settings",
+            "update_jellyseerr_settings",
+            "update_plex_usernames",
+            "bulk_delete_by_import_source",
+            "bulk_delete_by_media_type",
+            "rollback_import_run",
+            "convert_anime_library",
+            "convert_tv_library",
+        },
+    )
+
+    def __init__(self, get_response):
+        """Initialize the middleware."""
+        self.get_response = get_response
+
+    def __call__(self, request):
+        """Pass the request through; refusals happen in process_view."""
+        return self.get_response(request)
+
+    def process_view(self, request, _view_func, _view_args, _view_kwargs):
+        """Refuse a blocked route's writes for the demo user."""
+        if request.method in {"GET", "HEAD", "OPTIONS"}:
+            return None
+        if not getattr(getattr(request, "user", None), "is_demo", False):
+            return None
+        match = request.resolver_match
+        if match is None or match.url_name not in self.BLOCKED_ROUTES:
+            return None
+        if request.headers.get("HX-Request"):
+            response = HttpResponse(status=HTTPStatus.FORBIDDEN)
+            response["HX-Trigger"] = json.dumps(
+                {"showToast": {"message": self.MESSAGE, "type": "error"}},
+            )
+            return response
+        messages.error(request, self.MESSAGE)
+        return redirect(request.path)

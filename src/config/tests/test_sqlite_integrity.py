@@ -22,22 +22,18 @@ from config.sqlite_integrity import check_database_integrity
 ENTRYPOINT = Path(__file__).resolve().parents[3] / "entrypoint.sh"
 _ACTION_ENV = "FLOPPY_SQLITE_CONFLICT_ACTION"
 
-# _create_verified_backup() re-opens a dir_fd-created staging file through
-# /proc/self/fd/<fd>/<name> to avoid a TOCTOU race on the path lookup - a
-# Linux-only mechanism. Production only ever runs in the Linux container
-# (see docs/agents/sqlite_integrity_recovery_handoff.md), and CI runs on
-# ubuntu-latest, so the hardened path is exercised there; skip it here so a
-# native macOS/BSD `scripts/test.sh` run doesn't report unrelated failures.
+# Linux page-cache advice is separate from portable backup publication.
 requires_proc_fd_backup = skipUnless(
-    sys.platform.startswith("linux"),
-    "verified-backup path requires /proc/self/fd (Linux-only)",
+    sys.platform.startswith("linux"), "page-cache advice requires Linux"
 )
 
 
 class SqliteIntegrityTests(SimpleTestCase):
     def setUp(self):
         super().setUp()
-        self.env_patcher = mock.patch.dict(os.environ, {"FLOPPY_SQLITE_AUTO_REPAIR": "false"})
+        self.env_patcher = mock.patch.dict(
+            os.environ, {"FLOPPY_SQLITE_AUTO_REPAIR": "false"}
+        )
         self.env_patcher.start()
 
     def tearDown(self):
@@ -94,7 +90,6 @@ class SqliteIntegrityTests(SimpleTestCase):
         """Read the bounded recovery report written beside the database."""
         return json.loads(Path(f"{db_path}.integrity.json").read_text())
 
-    @requires_proc_fd_backup
     def test_orphaned_album_artist_credit_is_removed(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "db.sqlite3")
@@ -139,7 +134,9 @@ class SqliteIntegrityTests(SimpleTestCase):
                 backup.execute("SELECT COUNT(*) FROM app_albumartist").fetchone()[0],
                 1,
             )
-            self.assertEqual(len(backup.execute("PRAGMA foreign_key_check").fetchall()), 1)
+            self.assertEqual(
+                len(backup.execute("PRAGMA foreign_key_check").fetchall()), 1
+            )
             backup.close()
 
     def test_unknown_foreign_key_violation_writes_bounded_report(self):
@@ -204,7 +201,9 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertIn("Accepted 3 foreign key conflict(s)", stderr.getvalue())
             self.assertEqual(self.read_incident_report(db_path)["status"], "accepted")
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 3)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 3
+            )
             conn.close()
 
     def test_mismatched_accept_token_stops_startup(self):
@@ -228,7 +227,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertIn(f"accept:{report['incident_token']}", output)
             self.assertNotIn(f"accept:{report['fingerprint']}", output)
 
-    @requires_proc_fd_backup
     def test_quarantine_action_backs_up_then_deletes_orphans(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir, rows=3)
@@ -255,13 +253,19 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertIn("Quarantined 3 orphaned row(s)", stderr.getvalue())
 
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0
+            )
             self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
             conn.close()
 
             backup = sqlite3.connect(backup_path)
-            self.assertEqual(backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 3)
-            self.assertEqual(len(backup.execute("PRAGMA foreign_key_check").fetchall()), 3)
+            self.assertEqual(
+                backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 3
+            )
+            self.assertEqual(
+                len(backup.execute("PRAGMA foreign_key_check").fetchall()), 3
+            )
             backup.close()
 
     def test_quarantine_refuses_rows_without_a_rowid(self):
@@ -289,7 +293,9 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(ctx.exception.code, 1)
             self.assertIn("cannot be quarantined automatically", stderr.getvalue())
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
             conn.close()
 
     def test_foreign_key_groups_include_constraint_identity(self):
@@ -332,7 +338,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(second["incident_token"], first["incident_token"])
             self.assertNotEqual(second["incident_token"], second["fingerprint"])
 
-    @requires_proc_fd_backup
     def test_special_database_paths_backup_the_exact_live_database(self):
         names_and_decoys = {
             "db?real.sqlite3": "db",
@@ -341,7 +346,10 @@ class SqliteIntegrityTests(SimpleTestCase):
             "db space ☃.sqlite3": None,
         }
         for db_name, decoy_name in names_and_decoys.items():
-            with self.subTest(db_name=db_name), tempfile.TemporaryDirectory() as tmp_dir:
+            with (
+                self.subTest(db_name=db_name),
+                tempfile.TemporaryDirectory() as tmp_dir,
+            ):
                 db_path = self.create_orphan_database(tmp_dir, db_name=db_name)
                 live = sqlite3.connect(db_path)
                 live.execute("CREATE TABLE marker (value TEXT)")
@@ -378,7 +386,9 @@ class SqliteIntegrityTests(SimpleTestCase):
                     backup.execute("SELECT value FROM marker").fetchone()[0],
                     "live",
                 )
-                self.assertEqual(backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+                self.assertEqual(
+                    backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+                )
                 backup.close()
 
     def test_report_publication_does_not_follow_predictable_symlink(self):
@@ -409,7 +419,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertFalse(report_path.is_symlink())
             self.assertEqual(json.loads(report_path.read_text())["status"], "blocked")
 
-    @requires_proc_fd_backup
     def test_resolved_quarantine_token_cannot_delete_a_recreated_conflict(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
@@ -417,8 +426,9 @@ class SqliteIntegrityTests(SimpleTestCase):
                 check_database_integrity(db_path)
             old_token = self.read_incident_report(db_path)["incident_token"]
             action = f"quarantine:{old_token}"
-            with mock.patch.dict(os.environ, {_ACTION_ENV: action}), mock.patch(
-                "sys.stderr"
+            with (
+                mock.patch.dict(os.environ, {_ACTION_ENV: action}),
+                mock.patch("sys.stderr"),
             ):
                 check_database_integrity(db_path)
 
@@ -437,7 +447,9 @@ class SqliteIntegrityTests(SimpleTestCase):
             report = self.read_incident_report(db_path)
             self.assertNotEqual(report["incident_token"], old_token)
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
             conn.close()
 
     def test_quarantine_refuses_delete_triggers_before_changing_rows(self):
@@ -474,11 +486,17 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             self.assertIn("DELETE trigger", stderr.getvalue())
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1
+            )
             conn.close()
 
-    def test_quarantine_refuses_commented_delete_trigger_without_collateral_deletion(self):
+    def test_quarantine_refuses_commented_delete_trigger_without_collateral_deletion(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
             conn = sqlite3.connect(db_path)
@@ -501,8 +519,12 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertFalse(report["can_quarantine"])
             self.assertNotIn("quarantine", report["actions"])
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1
+            )
             conn.close()
 
     def test_quarantine_refuses_case_mismatched_delete_trigger(self):
@@ -541,8 +563,12 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             self.assertIn("DELETE trigger", stderr.getvalue())
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM unrelated").fetchone()[0], 1
+            )
             conn.close()
 
     def test_quarantine_refuses_declared_rowid_without_deleting_duplicate_values(self):
@@ -571,11 +597,16 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertFalse(report["can_quarantine"])
             self.assertNotIn("quarantine", report["actions"])
             self.assertTrue(
-                any("shadows hidden row identity" in reason for reason in report["unsafe_reasons"])
+                any(
+                    "shadows hidden row identity" in reason
+                    for reason in report["unsafe_reasons"]
+                )
             )
             conn = sqlite3.connect(db_path)
             self.assertEqual(
-                conn.execute("SELECT rowid, parent_id FROM child ORDER BY parent_id").fetchall(),
+                conn.execute(
+                    "SELECT rowid, parent_id FROM child ORDER BY parent_id"
+                ).fetchall(),
                 [(1, 1), (1, 42)],
             )
             conn.close()
@@ -603,7 +634,9 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertIn("recovery directory", stderr.getvalue())
             self.assertEqual(list(victim_dir.iterdir()), [])
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
             conn.close()
 
     def test_failed_backup_verification_leaves_no_official_or_staging_file(self):
@@ -641,7 +674,9 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             self.assertEqual(list((Path(tmp_dir) / "sqlite-recovery").iterdir()), [])
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
             conn.close()
 
     def test_backup_publication_collision_fails_closed_and_cleans_staging(self):
@@ -667,10 +702,11 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             self.assertEqual(list((Path(tmp_dir) / "sqlite-recovery").iterdir()), [])
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
             conn.close()
 
-    @requires_proc_fd_backup
     def test_verified_backup_survives_call_during_exception_handling(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
@@ -690,7 +726,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(backup.execute("PRAGMA quick_check").fetchone(), ("ok",))
             backup.close()
 
-    @requires_proc_fd_backup
     def test_prepared_report_survives_resolved_report_failure_and_reconciles(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
@@ -723,7 +758,9 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(prepared["status"], "prepared")
             self.assertTrue(Path(prepared["backup_path"]).is_file())
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0
+            )
             conn.close()
 
             check_database_integrity(db_path)
@@ -731,7 +768,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(resolved["status"], "resolved")
             self.assertEqual(resolved["resolution"], "quarantine")
 
-    @requires_proc_fd_backup
     def test_resolved_directory_fsync_failure_restores_prepared_report(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
@@ -771,10 +807,14 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertTrue(backup_path.is_file())
             backup = sqlite3.connect(backup_path)
             self.assertEqual(backup.execute("PRAGMA quick_check").fetchone(), ("ok",))
-            self.assertEqual(backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(
+                backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
             backup.close()
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0
+            )
             conn.close()
 
             check_database_integrity(db_path)
@@ -782,7 +822,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(resolved["status"], "resolved")
             self.assertEqual(resolved["resolution"], "quarantine")
 
-    @requires_proc_fd_backup
     def test_resolved_report_restoration_failure_does_not_claim_success(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
@@ -821,10 +860,11 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertIn("restoration could not be confirmed", output)
             self.assertNotIn("prepared report was restored", output)
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0
+            )
             conn.close()
 
-    @requires_proc_fd_backup
     def test_unverifiable_prepared_backup_does_not_block_a_healthy_database(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
@@ -866,7 +906,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertIn("could not be finalized", stderr.getvalue())
             self.assertEqual(self.read_incident_report(db_path)["status"], "prepared")
 
-    @requires_proc_fd_backup
     def test_main_table_named_like_conflict_staging_table_is_quarantined(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "db.sqlite3")
@@ -898,12 +937,13 @@ class SqliteIntegrityTests(SimpleTestCase):
 
             conn = sqlite3.connect(db_path)
             self.assertEqual(
-                conn.execute("SELECT COUNT(*) FROM main.floppy_fk_conflicts").fetchone()[0],
+                conn.execute(
+                    "SELECT COUNT(*) FROM main.floppy_fk_conflicts"
+                ).fetchone()[0],
                 0,
             )
             conn.close()
 
-    @requires_proc_fd_backup
     def test_wal_backup_is_complete_and_restorable(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "db.sqlite3")
@@ -944,8 +984,12 @@ class SqliteIntegrityTests(SimpleTestCase):
             backup.backup(restored)
             backup.close()
             self.assertEqual(restored.execute("PRAGMA quick_check").fetchone(), ("ok",))
-            self.assertEqual(restored.execute("SELECT value FROM marker").fetchone(), ("in wal",))
-            self.assertEqual(restored.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1)
+            self.assertEqual(
+                restored.execute("SELECT value FROM marker").fetchone(), ("in wal",)
+            )
+            self.assertEqual(
+                restored.execute("SELECT COUNT(*) FROM child").fetchone()[0], 1
+            )
             restored.close()
 
     def test_entrypoint_parks_once_instead_of_polling_exited_checker(self):
@@ -1010,12 +1054,9 @@ class SqliteIntegrityTests(SimpleTestCase):
                 started_waiting = time.monotonic()
                 deadline = started_waiting + 5
                 while (
-                    (
-                        "SQLite startup is paused" not in output_path.read_text()
-                        or not (tmp_path / "parking.pid").is_file()
-                    )
-                    and time.monotonic() < deadline
-                ):
+                    "SQLite startup is paused" not in output_path.read_text()
+                    or not (tmp_path / "parking.pid").is_file()
+                ) and time.monotonic() < deadline:
                     time.sleep(0.02)
                 # Two faults leave parking_child_before_term False and they need
                 # opposite fixes: the wait ran out before the pid file appeared,
@@ -1121,7 +1162,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             with self.assertRaises(ProcessLookupError):
                 os.kill(checker_pid, 0)
 
-    @requires_proc_fd_backup
     def test_repair_holds_write_lock_from_check_through_delete(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "db.sqlite3")
@@ -1178,7 +1218,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(competing_result, ["database is locked"])
             competing_conn.close()
 
-    @requires_proc_fd_backup
     def test_repair_stays_below_sqlite_variable_limit(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "db.sqlite3")
@@ -1383,9 +1422,7 @@ class SqliteIntegrityTests(SimpleTestCase):
         """
         db_path = self.create_orphan_database(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, str(Path(db_path).parent), ignore_errors=True)
-        started_at = (
-            datetime.now(UTC) - timedelta(seconds=185)
-        ).isoformat()
+        started_at = (datetime.now(UTC) - timedelta(seconds=185)).isoformat()
         sqlite_integrity.write_startup_status(
             db_path,
             status="running",
@@ -1547,8 +1584,8 @@ class SqliteIntegrityTests(SimpleTestCase):
         self.assertNotIn("Still checking SQLite integrity", script)
         launch = script.index(check)
         cleanup_trap = script.index(
-            "trap 'kill \"$integrity_pid\" 2>/dev/null || :; "
-            "wait \"$integrity_pid\" 2>/dev/null || :; exit 0' TERM INT"
+            'trap \'kill "$integrity_pid" 2>/dev/null || :; '
+            'wait "$integrity_pid" 2>/dev/null || :; exit 0\' TERM INT'
         )
         wait = script.index('wait "$integrity_pid"', launch)
         reset_trap = script.index("trap - TERM INT", wait)
@@ -1560,8 +1597,8 @@ class SqliteIntegrityTests(SimpleTestCase):
         self.assertIn("stopped making progress", script[timeout_case:failure_case])
         self.assertIn("integrity check failed", script[failure_case:])
         self.assertIn(
-            "trap 'kill \"$parking_pid\" 2>/dev/null || :; "
-            "wait \"$parking_pid\" 2>/dev/null || :; exit 0' TERM INT",
+            'trap \'kill "$parking_pid" 2>/dev/null || :; '
+            'wait "$parking_pid" 2>/dev/null || :; exit 0\' TERM INT',
             script,
         )
         self.assertIn("sleep 86400 &", script)
@@ -1598,7 +1635,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertIn(f"accept:{report['incident_token']}", output)
             self.assertEqual(report["affected"], [])
 
-    @requires_proc_fd_backup
     def test_default_auto_repair_removes_orphans_and_boots(self):
         """When auto-repair is enabled (default), startup cleans safe orphans and continues."""
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1614,7 +1650,9 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertIn("Auto-repaired 5 orphaned child row(s)", output)
 
             conn = sqlite3.connect(db_path)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+            self.assertEqual(
+                conn.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0
+            )
             self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
             conn.close()
 
@@ -1626,10 +1664,11 @@ class SqliteIntegrityTests(SimpleTestCase):
             backup_path = Path(report["backup_path"])
             self.assertTrue(backup_path.is_file())
             backup = sqlite3.connect(backup_path)
-            self.assertEqual(backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 5)
+            self.assertEqual(
+                backup.execute("SELECT COUNT(*) FROM child").fetchone()[0], 5
+            )
             backup.close()
 
-    @requires_proc_fd_backup
     def test_auto_repair_handles_multiple_arbitrary_tables(self):
         """Auto-repair cleans multiple damaged child tables atomically."""
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1691,7 +1730,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertIn("db-backup-14.sqlite3", remaining)
             self.assertIn("db-backup-05.sqlite3", remaining)
 
-    @requires_proc_fd_backup
     def test_repeated_repairs_do_not_grow_the_recovery_folder(self):
         """Retention must run during a repair, not only when called by hand."""
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -1735,7 +1773,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertEqual(ctx.exception.code, 1)
             self.assertFalse(decision.exists())
 
-    @requires_proc_fd_backup
     def test_live_snapshot_writes_a_valid_verified_copy(self):
         """create_live_database_snapshot (#1053) mirrors _create_verified_backup.
 
@@ -1758,7 +1795,9 @@ class SqliteIntegrityTests(SimpleTestCase):
             self.assertTrue(snapshot_path.is_file())
             snapshot = sqlite3.connect(f"file:{snapshot_path}?mode=ro", uri=True)
             self.assertEqual(snapshot.execute("PRAGMA quick_check").fetchone(), ("ok",))
-            self.assertEqual(snapshot.execute("SELECT COUNT(*) FROM child").fetchone()[0], 3)
+            self.assertEqual(
+                snapshot.execute("SELECT COUNT(*) FROM child").fetchone()[0], 3
+            )
             snapshot.close()
             # No staging leftovers beside the published file.
             self.assertEqual(
@@ -1766,7 +1805,6 @@ class SqliteIntegrityTests(SimpleTestCase):
                 [snapshot_path.name],
             )
 
-    @requires_proc_fd_backup
     def test_live_snapshot_retention_prunes_to_max_keep(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = self.create_orphan_database(tmp_dir)
@@ -1807,7 +1845,6 @@ class SqliteIntegrityTests(SimpleTestCase):
             if dest_dir.exists():
                 self.assertEqual(list(dest_dir.iterdir()), [])
 
-    @requires_proc_fd_backup
     def test_live_snapshot_corrupt_source_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             db_path = str(Path(tmp_dir) / "db.sqlite3")
@@ -1893,7 +1930,10 @@ class SnapshotPageCacheReleaseTests(SimpleTestCase):
         with (
             tempfile.TemporaryDirectory() as tmp_dir,
             mock.patch.object(
-                sqlite_integrity.os, "posix_fadvise", None, create=True,
+                sqlite_integrity.os,
+                "posix_fadvise",
+                None,
+                create=True,
             ),
         ):
             db_path = _small_database(tmp_dir)

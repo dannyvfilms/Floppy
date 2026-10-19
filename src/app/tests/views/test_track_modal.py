@@ -141,6 +141,59 @@ class TrackModalViewTests(TestCase):
             count,
         )
 
+    def test_focus_notes_opens_and_focuses_the_notes_field(self):
+        """focus=notes (the detail-page Notes button) opens the collapsed notes field."""
+        url = reverse(
+            "track_modal",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "238",
+            },
+        )
+
+        focused = self.client.get(
+            url,
+            {"instance_id": self.movie.id, "focus": "notes"},
+            HTTP_HX_REQUEST="true",
+        )
+        plain = self.client.get(
+            url,
+            {"instance_id": self.movie.id},
+            HTTP_HX_REQUEST="true",
+        )
+
+        self.assertTrue(focused.context["notes_focus"])
+        self.assertContains(focused, "notesOpen: true")
+        self.assertContains(focused, "textarea[name=notes]")
+        self.assertFalse(plain.context["notes_focus"])
+        self.assertContains(plain, "notesOpen: false")
+        self.assertNotContains(plain, "textarea[name=notes]")
+
+    def test_focus_notes_without_instance_resolves_the_latest_entry_now(self):
+        """A new entry made after the page loaded is what the Notes button edits."""
+        url = reverse(
+            "track_modal",
+            kwargs={
+                "source": Sources.TMDB.value,
+                "media_type": MediaTypes.MOVIE.value,
+                "media_id": "238",
+            },
+        )
+        self.movie.end_date = datetime(2024, 1, 1, tzinfo=UTC)
+        self.movie.save()
+        newer = Movie.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            progress=1,
+            end_date=datetime(2025, 6, 1, tzinfo=UTC),
+        )
+
+        response = self.client.get(url, {"focus": "notes"}, HTTP_HX_REQUEST="true")
+
+        self.assertEqual(response.context["current_instance"].id, newer.id)
+
     @patch("app.services.metadata_resolution.ItemProviderLink.objects.update_or_create")
     def test_existing_tv_modal_does_not_write_provider_links(self, upsert):
         """Opening a home card editor must not wait on optional persistence."""
@@ -551,6 +604,48 @@ class TrackModalViewTests(TestCase):
     ):
         """An untracked episode used to render the bare show title. Issue #1070."""
         mock_get_metadata.return_value = self._episode_metadata_payload()
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.EPISODE.value,
+                    "media_id": "titled-show-1",
+                    "season_number": 1,
+                },
+            )
+            + "?is_create=1&episode_number=2",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["title"], "Failure's Contagious")
+        self.assertEqual(response.context["title_subtitle"], "Titled Show · S1E2")
+
+    @patch("app.providers.services.get_media_metadata")
+    def test_track_modal_untracked_episode_survives_episode_lookup_404(
+        self,
+        mock_get_metadata,
+    ):
+        """A season can list an episode its own endpoint 404s; the modal opens."""
+        season_payload = {
+            "title": "Titled Show",
+            "season_title": "Season 1",
+            "episodes": [{"episode_number": 2, "name": "Failure's Contagious"}],
+        }
+
+        def get_metadata(media_type, *args, **kwargs):
+            if media_type == MediaTypes.EPISODE.value:
+                raise services.ProviderAPIError(
+                    Sources.TMDB.value,
+                    SimpleNamespace(
+                        response=SimpleNamespace(status_code=404, headers={}),
+                    ),
+                    "cached episode lookup failure",
+                )
+            return season_payload
+
+        mock_get_metadata.side_effect = get_metadata
 
         response = self.client.get(
             reverse(

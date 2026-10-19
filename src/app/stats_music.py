@@ -3,7 +3,7 @@ from collections import defaultdict
 
 from app import config
 from app.models import MediaTypes
-from app.statistics_cache import STATISTICS_TOP_N
+from app.statistics_talent import STATISTICS_TOP_N
 
 SECONDS_PER_DAY = 86400
 

@@ -9,11 +9,10 @@
 
   <div id="detail-secondary-content" class="detail-secondary-content">
     {% include "app/components/detail_promoted_content.html" %}
-    <div class="detail-secondary-layout flex flex-col-reverse md:flex-row gap-0 md:gap-10">
+    <div class="detail-secondary-layout flex flex-col md:flex-row gap-6 md:gap-10">
     {# Details Column #}
 
-    <div class="w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0"
-         style="display: flex; flex-direction: column;">
+    <div class="detail-secondary-sidebar w-full md:w-1/4 md:max-w-[250px] mx-auto lg:mx-0 flex flex-col">
       {# Your History #}
       <div {% detail_section_attrs user detail_family "sidebar" "history" %}>
       {% if not public_view|default:False and current_instance and user_medias %}
@@ -581,12 +580,12 @@
     {% endif %}
 
     {% if media_type == MediaTypes.PODCAST.value and show_notes|default:False and notes_entry %}
-      <div class="w-full" {% detail_section_attrs user detail_family "content" "notes" %}>
+      <div class="w-full -order-1 md:order-none" {% detail_section_attrs user detail_family "content" "notes" %}>
         {% include "app/components/detail_notes_section.html" %}
       </div>
     {% endif %}
 
-    <div class="md:hidden">
+    <div class="md:hidden -order-2">
       {% include "app/components/detail_watch_providers.html" with placement="mobile" %}
     </div>
 

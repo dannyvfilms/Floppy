@@ -48,6 +48,18 @@ class SearchSuggestionsViewTests(TestCase):
         # The footer offers the full online search.
         self.assertContains(response, "Search online for")
 
+    def test_search_matches_both_localized_and_original_titles(self):
+        self.item.original_title = "The Godfather"
+        self.item.localized_title = "El padrino"
+        self.item.save(update_fields=["original_title", "localized_title"])
+        for query in ("padrino", "godfather"):
+            with self.subTest(query=query):
+                response = self._get(query)
+                self.assertEqual(len(response.context["suggestions"]), 1)
+                self.assertEqual(
+                    response.context["suggestions"][0]["title"], "El padrino"
+                )
+
     def test_short_query_returns_empty(self):
         """A single-character query renders nothing (below the min length)."""
         response = self._get("g")

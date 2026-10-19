@@ -19,7 +19,7 @@ from django.utils import timezone
 
 from app.models import Item, Sources, Status
 from app.services.synced_status import keep_held_status
-from integrations import connection_health
+from integrations import connection_health, import_progress
 from integrations.imports.helpers import (
     ConnectionAuthError,
     MediaImportError,
@@ -88,6 +88,7 @@ def write_reading_progress(
     read_at,
     started_at,
     entry_source,
+    update_end_date=False,
 ):
     """Save reading progress; return True if created, False if updated.
 
@@ -95,9 +96,10 @@ def write_reading_progress(
     """
     existing = (
         model.objects.filter(user=user, item=item)
-        .only("progress", "status", "start_date", "end_date")
+        .only("progress", "status", "start_date", "end_date", "import_run")
         .first()
     )
+    import_run_id = import_progress.get_current_import_run_id()
     defaults = {
         "progress": progress,
         "status": Status.COMPLETED.value if completed else Status.IN_PROGRESS.value,
@@ -105,11 +107,17 @@ def write_reading_progress(
         or started_at
         or read_at,
         "end_date": (
-            ((existing.end_date if existing else None) or read_at)
+            (
+                read_at
+                if update_end_date
+                else ((existing.end_date if existing else None) or read_at)
+            )
             if completed
             else None
         ),
     }
+    if import_run_id:
+        defaults["import_run_id"] = import_run_id
     defaults = keep_held_status(existing, defaults, read_at)
 
     if existing and all(
@@ -179,6 +187,7 @@ class ReadingServerImporter(KoreaderImporter):
             else None
         )
         counts = defaultdict(int)
+        self._retry_entries = []
         self._library_items = self._build_library_index()
         links = {
             getattr(link, self.link_field): link
@@ -189,6 +198,11 @@ class ReadingServerImporter(KoreaderImporter):
 
         try:
             self.sync(cutoff, counts, links)
+            if self._retry_entries:
+                self._retrying = True
+                for entry in self._retry_entries:
+                    self.import_entry(*entry, force_resolve=True)
+                self._retrying = False
         except MediaImportError as error:
             connection_health.record_failure(
                 self.account,
@@ -210,6 +224,7 @@ class ReadingServerImporter(KoreaderImporter):
         media_type,
         resolve_item,
         write,
+        force_resolve=False,
     ):
         """Match one server entry to an item, write it and count the outcome.
 
@@ -217,11 +232,14 @@ class ReadingServerImporter(KoreaderImporter):
         ``write(item)`` returns what ``write_reading_progress`` returns.
         """
         link = links.get(key)
-        item = link.item if link else resolve_item()
+        item = resolve_item() if force_resolve else (link.item if link else resolve_item())
         if item is None:
             self.warnings.append(f"Could not match {self.service} item {label}")
             counts["skipped"] += 1
             return
+        if link and link.item_id != item.id:
+            link.item = item
+            link.save(update_fields=["item"])
         if link is None and key:
             links[key] = self.link_model.objects.update_or_create(
                 user=self.user,
@@ -256,4 +274,3 @@ class ReadingServerImporter(KoreaderImporter):
             title=title,
             image="",
         )
-

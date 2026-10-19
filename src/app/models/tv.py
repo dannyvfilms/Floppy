@@ -1154,42 +1154,12 @@ class Season(Media):
 
     @property
     def progress(self):
-        """Return the current episode number of the season.
-
-        For rewatching: only considers it a rewatch if a strict majority of watched
-        episodes have reached the same repeat count. This tolerates a minority of
-        skipped/out-of-order episodes during a genuine rewatch pass (issue #327),
-        while still ignoring a single errant repeat during normal watching.
-        """
+        """Return the furthest episode reached in the current explicit watch pass."""
         stats = self._get_episode_stats()
-        episode_counts = stats["episode_counts"]
-        if not episode_counts:
+        if not stats["completed_episode_numbers"]:
             return 0
-
-        if self.status == Status.IN_PROGRESS.value:
-            total_episodes = len(episode_counts)
-
-            # Find the highest repeat level reached by a strict majority of
-            # episodes. Vote counts are monotonically non-increasing as the
-            # level rises, so the last level clearing the bar is the deepest
-            # confirmed rewatch pass.
-            # The middle descending count is the deepest level held by a
-            # strict majority. Avoid visiting every repeat level of a heavily
-            # rewatched episode (counts can exceed the distinct episode count).
-            best_level = sorted(episode_counts.values(), reverse=True)[total_episodes // 2]
-
-            if best_level > 1:
-                # Report the highest episode number that reached this level,
-                # tolerating any episodes that didn't (the minority gaps).
-                qualifying = [
-                    ep_num
-                    for ep_num, count in episode_counts.items()
-                    if count >= best_level
-                ]
-                return max(qualifying)
-
-        # Otherwise, use the maximum episode number watched (at least once)
-        # This handles normal watching and errant repeats
+        # _get_episode_stats already limits explicit rewatches by their start
+        # date. Uneven lifetime repeat counts do not define another pass (#1584).
         return stats["max_episode_number"]
 
     @property
@@ -1467,7 +1437,6 @@ class Season(Media):
         # queryset filter here would bypass that cache and turn every list
         # page into an N+1.
         episodes = [ep for ep in self.episodes.all() if self.play_counts_for_pass(ep)]
-        episode_counts = {}
         completed_episode_numbers = set()
         max_episode_number = 0
 
@@ -1479,7 +1448,6 @@ class Season(Media):
                 else int(ep.status == Status.COMPLETED.value)
             )
             if count:
-                episode_counts[ep_num] = episode_counts.get(ep_num, 0) + count
                 completed_episode_numbers.add(ep_num)
             if (
                 (
@@ -1493,7 +1461,6 @@ class Season(Media):
                 max_episode_number = ep_num
 
         cached = {
-            "episode_counts": episode_counts,
             "completed_episode_numbers": completed_episode_numbers,
             "max_episode_number": max_episode_number,
         }

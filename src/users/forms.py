@@ -266,7 +266,9 @@ class PasswordRecoveryForm(SetPasswordForm):
         authenticator_code = cleaned_data.get("authenticator_code", "").strip()
 
         user = User.objects.filter(username__iexact=username).first()
-        if user is None:
+        # The demo password is public, so an authenticator someone attached to
+        # it must not become a way to reset it.
+        if user is None or user.is_demo:
             raise ValidationError(self.error_messages["invalid_recovery"])
 
         has_valid_authenticator_code = (

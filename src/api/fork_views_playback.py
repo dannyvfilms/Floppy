@@ -26,6 +26,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.models.episode_runtimes import usable_runtime_minutes
 from app.services.progress_changes import (
     record_progress_change,
     record_progress_deletion,
@@ -302,8 +303,8 @@ def _serialize_podcast(podcast):
     duration_seconds = None
     if episode and episode.duration:
         duration_seconds = episode.duration
-    elif item and item.runtime_minutes:
-        duration_seconds = item.runtime_minutes * 60
+    elif item and (minutes := usable_runtime_minutes(item.runtime_minutes)):
+        duration_seconds = minutes * 60
 
     return {
         "media_type": MediaTypes.PODCAST.value,

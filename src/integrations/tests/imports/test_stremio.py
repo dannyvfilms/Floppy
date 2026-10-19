@@ -50,16 +50,55 @@ class DecodeWatchedBitfieldTests(TestCase):
         self.assertEqual(watched, watched_ids)
 
     def test_anchor_mismatch_flagged(self):
-        """A shifted video list is reported so callers can fall back."""
+        """A shifted video list is realigned rather than discarded.
+
+        The bitfield is positional, but the anchor pins bit ``length - 1`` to
+        a known video, so the offset is recoverable. Two episodes inserted
+        ahead of the anchor shift every original index by two.
+        """
+        video_ids = [f"tt1:1:{episode}" for episode in range(1, 6)]
+        serialized = encode_watched_bitfield(video_ids, {"tt1:1:1", "tt1:1:3"})
+
+        shifted = ["tt1:0:1", "tt1:0:2", *video_ids]
+        watched, anchored = stremio.decode_watched_bitfield(serialized, shifted)
+
+        self.assertTrue(anchored)
+        self.assertEqual(watched, {"tt1:1:1", "tt1:1:3"})
+
+    def test_absent_anchor_is_reported_unaligned(self):
+        """With no anchor in the list there is no reference point at all.
+
+        ``anchored`` is False so the caller falls back to the last-watched
+        video instead of trusting positions it cannot verify.
+        """
         video_ids = [f"tt1:1:{episode}" for episode in range(1, 6)]
         serialized = encode_watched_bitfield(video_ids, {"tt1:1:1"})
 
-        # Episode inserted before the anchor after the bitfield was written,
-        # shifting every index.
-        shifted = ["tt1:0:1", *video_ids]
-        _, anchor_ok = stremio.decode_watched_bitfield(serialized, shifted)
+        other_show = [f"tt2:1:{episode}" for episode in range(1, 6)]
+        watched, anchored = stremio.decode_watched_bitfield(serialized, other_show)
 
-        self.assertFalse(anchor_ok)
+        self.assertFalse(anchored)
+        self.assertEqual(watched, {"tt2:1:1"})
+
+    def test_bits_aligned_before_the_list_are_dropped(self):
+        """An alignment that pushes a bit past the start drops it.
+
+        The leading episodes can leave the list while the anchor stays, so the
+        offset is negative; those bits describe videos the list no longer
+        has.
+        """
+        video_ids = [f"tt1:1:{episode}" for episode in range(1, 6)]
+        serialized = encode_watched_bitfield(
+            video_ids,
+            {"tt1:1:1", "tt1:1:3", "tt1:1:5"},
+        )
+
+        # The first two episodes are gone; the anchor keeps its place.
+        trimmed = video_ids[2:]
+        watched, anchored = stremio.decode_watched_bitfield(serialized, trimmed)
+
+        self.assertTrue(anchored)
+        self.assertEqual(watched, {"tt1:1:3", "tt1:1:5"})
 
     def test_invalid_serialization_raises(self):
         """Malformed bitfields raise ValueError."""
@@ -462,6 +501,94 @@ class ImportStremioTests(TestCase):
         )
         self.assertEqual(episode_numbers, {1, 2})
 
+    def test_series_bitfield_realigns_when_cinemeta_inserts_an_episode(self):
+        """Episodes added ahead of the anchor do not shift watched state.
+
+        The bitfield indexes the video list as it stood when it was written.
+        Reading bit *i* as video *i* after an insertion credits the wrong
+        episodes — here the special that Cinemeta now lists first, instead of
+        the two the user watched.
+        """
+        original = [f"tt0903747:1:{episode}" for episode in range(1, 4)]
+        serialized = encode_watched_bitfield(
+            original,
+            {"tt0903747:1:1", "tt0903747:1:2"},
+        )
+        current = ["tt0903747:0:1", *original]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "removed": False,
+                "temp": False,
+                "state": {
+                    "watched": serialized,
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                    "video_id": "tt0903747:1:2",
+                },
+            },
+        ]
+
+        imported_counts, warnings = self._run_import(
+            library_items,
+            cinemeta_videos={"tt0903747": current},
+        )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 2)
+        self.assertEqual(
+            set(
+                Episode.objects.filter(item__media_id="1396").values_list(
+                    "item__episode_number",
+                    flat=True,
+                ),
+            ),
+            {1, 2},
+        )
+
+    def test_series_with_an_empty_bitfield_keeps_the_last_watched_episode(self):
+        """An empty bitfield asserts nothing, so the fallback still applies.
+
+        Stremio writes one for a series whose state carries a `video_id` and
+        `timesWatched` but no per-episode bits — Dexter and Naked Attraction
+        are live examples. The anchor resolves, so a decoder that returned the
+        empty set would silently drop the only episode the state names.
+        """
+        video_ids = [f"tt0903747:1:{episode}" for episode in range(1, 4)]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Breaking Bad",
+                "removed": False,
+                "temp": False,
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, set()),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                    "video_id": "tt0903747:1:3",
+                    "timesWatched": 1,
+                },
+            },
+        ]
+
+        imported_counts, warnings = self._run_import(
+            library_items,
+            cinemeta_videos={"tt0903747": video_ids},
+        )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 1)
+        self.assertEqual(
+            set(
+                Episode.objects.filter(item__media_id="1396").values_list(
+                    "item__episode_number",
+                    flat=True,
+                ),
+            ),
+            {3},
+        )
+
     def test_series_bitfield_gaps_do_not_complete_season(self):
         """A final watched episode does not hide gaps in the season."""
         video_ids = [f"tt0903747:1:{episode}" for episode in range(1, 4)]
@@ -613,6 +740,268 @@ class ImportStremioTests(TestCase):
             ).library_media_type,
             MediaTypes.ANIME.value,
         )
+
+    def test_anime_episode_mapping_uses_canonical_tmdb_season(self):
+        """Stremio anime imports remap source seasons without false completion."""
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["anime_enabled"])
+        video_ids = ["tt0903747:4:1", "tt0903747:4:19"]
+        watched_ids = {"tt0903747:4:19"}
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Re:ZERO",
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, watched_ids),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                },
+            },
+        ]
+
+        def fake_rezero_metadata(media_id, season_numbers):
+            metadata = {
+                "title": "Re:ZERO",
+                "image": "http://example.com/rezero.jpg",
+                "tvdb_id": "305089",
+            }
+            if 1 in season_numbers:
+                metadata["season/1"] = {
+                    "image": "http://example.com/season.jpg",
+                    "max_progress": 85,
+                    "episodes": [
+                        {"episode_number": number}
+                        for number in range(1, 86)
+                    ],
+                }
+            return metadata
+
+        match = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_and_animation_genre",
+            tmdb_id="1396",
+            tvdb_id="305089",
+            mal_ids=("31240",),
+        )
+        mapping_data = {
+            "tvdb_show:305089:s4": {
+                "tmdb_show:1396:s1": {"1-19": "67-85"},
+            },
+        }
+
+        with (
+            patch(
+                "integrations.imports.stremio.anime_mapping.load_mapping_snapshot",
+                return_value=object(),
+            ),
+            patch(
+                "integrations.imports.stremio.anime_mappings.fetch_mapping_data",
+                return_value=mapping_data,
+            ),
+            patch(
+                "app.services.grouped_anime.classify_tv_metadata",
+                return_value=match,
+            ),
+        ):
+            imported_counts, warnings = self._run_import(
+                library_items,
+                cinemeta_videos={"tt0903747": video_ids},
+                tmdb_tv_with_seasons=fake_rezero_metadata,
+            )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 1)
+        episode = Episode.objects.get(item__media_id="1396")
+        self.assertEqual(episode.item.season_number, 1)
+        self.assertEqual(episode.item.episode_number, 85)
+        season = Season.objects.get(item__media_id="1396")
+        self.assertEqual(season.status, Status.IN_PROGRESS.value)
+
+    def test_anime_episode_mapping_ignored_when_tmdb_lacks_the_episode(self):
+        """A stale AniBridge target TMDB does not list keeps the source episode."""
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["anime_enabled"])
+        video_ids = ["tt0903747:4:1", "tt0903747:4:19"]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Re:ZERO",
+                "state": {
+                    "watched": encode_watched_bitfield(
+                        video_ids,
+                        {"tt0903747:4:19"},
+                    ),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                },
+            },
+        ]
+
+        def fake_metadata(media_id, season_numbers):
+            metadata = {
+                "title": "Re:ZERO",
+                "image": "http://example.com/rezero.jpg",
+                "tvdb_id": "305089",
+            }
+            for number, count in ((1, 85), (4, 20)):
+                if number in season_numbers:
+                    metadata[f"season/{number}"] = {
+                        "image": "http://example.com/season.jpg",
+                        "max_progress": count,
+                        "episodes": [
+                            {"episode_number": episode}
+                            for episode in range(1, count + 1)
+                        ],
+                    }
+            return metadata
+
+        match = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_and_animation_genre",
+            tmdb_id="1396",
+            tvdb_id="305089",
+            mal_ids=("31240",),
+        )
+        mapping_data = {
+            "tvdb_show:305089:s4": {
+                "tmdb_show:1396:s1": {"1-19": "90-108"},
+            },
+        }
+
+        with (
+            patch(
+                "integrations.imports.stremio.anime_mapping.load_mapping_snapshot",
+                return_value=object(),
+            ),
+            patch(
+                "integrations.imports.stremio.anime_mappings.fetch_mapping_data",
+                return_value=mapping_data,
+            ),
+            patch(
+                "app.services.grouped_anime.classify_tv_metadata",
+                return_value=match,
+            ),
+        ):
+            self._run_import(
+                library_items,
+                cinemeta_videos={"tt0903747": video_ids},
+                tmdb_tv_with_seasons=fake_metadata,
+            )
+
+        episode = Episode.objects.get(item__media_id="1396")
+        self.assertEqual(
+            (episode.item.season_number, episode.item.episode_number),
+            (4, 19),
+        )
+
+    def test_remapped_anime_season_completes_when_all_its_episodes_watched(self):
+        """Every episode of the remapped canonical season watched is Completed."""
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["anime_enabled"])
+        video_ids = [f"tt0903747:6:{number}" for number in range(1, 5)]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Split Anime",
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, set(video_ids)),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                },
+            },
+        ]
+
+        def fake_split_anime_metadata(media_id, season_numbers):
+            metadata = {
+                "title": "Split Anime",
+                "image": "http://example.com/anime.jpg",
+                "tvdb_id": "70900",
+            }
+            if 5 in season_numbers:
+                metadata["season/5"] = {
+                    "image": "http://example.com/season.jpg",
+                    "max_progress": 4,
+                    "episodes": [
+                        {"episode_number": number} for number in range(1, 5)
+                    ],
+                }
+            return metadata
+
+        match = GroupedAnimeMatch(
+            decision="move",
+            reason="exact_external_id_and_animation_genre",
+            tmdb_id="1396",
+            tvdb_id="70900",
+            mal_ids=("31240",),
+        )
+        mapping_data = {
+            "tvdb_show:70900:s6": {
+                "tmdb_show:1396:s5": {"1-4": "1-4"},
+            },
+        }
+
+        with (
+            patch(
+                "integrations.imports.stremio.anime_mapping.load_mapping_snapshot",
+                return_value=object(),
+            ),
+            patch(
+                "integrations.imports.stremio.anime_mappings.fetch_mapping_data",
+                return_value=mapping_data,
+            ),
+            patch(
+                "app.services.grouped_anime.classify_tv_metadata",
+                return_value=match,
+            ),
+        ):
+            imported_counts, warnings = self._run_import(
+                library_items,
+                cinemeta_videos={"tt0903747": video_ids},
+                tmdb_tv_with_seasons=fake_split_anime_metadata,
+            )
+
+        self.assertEqual(warnings, "")
+        self.assertEqual(imported_counts[MediaTypes.EPISODE.value], 4)
+        season = Season.objects.get(item__media_id="1396")
+        self.assertEqual(season.item.season_number, 5)
+        self.assertEqual(season.status, Status.COMPLETED.value)
+
+    def test_anibridge_mapping_fetched_only_when_a_grouped_anime_needs_it(self):
+        """A plain TV series never pays for the AniBridge blob."""
+        self.user.anime_enabled = True
+        self.user.save(update_fields=["anime_enabled"])
+        video_ids = ["tt0903747:1:1"]
+        library_items = [
+            {
+                "_id": "tt0903747",
+                "type": "series",
+                "name": "Not Anime",
+                "state": {
+                    "watched": encode_watched_bitfield(video_ids, set(video_ids)),
+                    "lastWatched": "2023-01-02T00:00:00Z",
+                },
+            },
+        ]
+
+        with (
+            patch(
+                "integrations.imports.stremio.anime_mapping.load_mapping_snapshot",
+                return_value=object(),
+            ),
+            patch(
+                "app.services.grouped_anime.classify_tv_metadata",
+                return_value=None,
+            ),
+            patch(
+                "integrations.imports.stremio.anime_mappings.fetch_mapping_data",
+            ) as mock_fetch,
+        ):
+            self._run_import(
+                library_items,
+                cinemeta_videos={"tt0903747": video_ids},
+            )
+
+        mock_fetch.assert_not_called()
 
     def test_mal_preferring_user_skips_the_series_rather_than_importing_to_tv(self):
         """A TMDB series cannot populate a flat MAL library, so skip it.

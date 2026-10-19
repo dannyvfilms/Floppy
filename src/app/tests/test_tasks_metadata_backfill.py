@@ -25,6 +25,7 @@ from app.models import (
     MediaTypes,
     MetadataBackfillField,
     MetadataBackfillState,
+    Movie,
     Person,
     PersonGender,
     Season,
@@ -47,6 +48,57 @@ class MetadataBackfillTaskTests(TestCase):
     def tearDown(self):
         cache.delete(INTERACTIVE_REQUEST_CACHE_KEY)
         super().tearDown()
+
+    @patch("app.tasks._fetch_item_metadata")
+    @patch("app.tasks_metadata_language.services.get_media_metadata")
+    def test_periodic_backfill_repairs_existing_language_within_its_budget(
+        self, mock_language_metadata, mock_other_metadata,
+    ):
+        user = User.objects.create_user(username="spanish", metadata_language="es-ES")
+        item = Item.objects.create(
+            media_id="238", source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value, title="The Godfather",
+            synopsis="An English overview.", metadata_fetched_at=timezone.now(),
+        )
+        Movie.objects.bulk_create([
+            Movie(item=item, user=user, status=Status.PLANNING.value),
+        ])
+        mock_language_metadata.return_value = {
+            "title": "El padrino", "synopsis": "La historia de una familia.",
+        }
+
+        result = tasks.backfill_item_metadata_task(batch_size=1)
+
+        self.assertEqual(result["success_count"], 1)
+        self.assertEqual(result["metadata_language_repair"]["attempted"], 1)
+        mock_other_metadata.assert_not_called()
+        item.refresh_from_db()
+        self.assertEqual(item.localized_title, "El padrino")
+        self.assertEqual(item.synopsis, "La historia de una familia.")
+
+    @patch("app.tasks._fetch_item_metadata")
+    def test_status_backfill_preserves_existing_localized_synopsis(self, mock_metadata):
+        item = Item.objects.create(
+            media_id="238",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="El padrino",
+            localized_title="El padrino",
+            synopsis="La historia de una familia.",
+            metadata_fetched_at=timezone.now(),
+        )
+        mock_metadata.return_value = {
+            "title": "The Godfather",
+            "synopsis": "An English overview.",
+            "details": {"status": "Released"},
+            "related": {},
+        }
+        result = tasks.backfill_item_metadata_task(batch_size=1)
+        self.assertEqual(result["success_count"], 1)
+        item.refresh_from_db()
+        self.assertEqual(item.status, "Released")
+        self.assertEqual(item.synopsis, "La historia de una familia.")
+        self.assertEqual(item.localized_title, "El padrino")
 
     @patch("app.tasks._fetch_item_metadata")
     def test_backfill_item_metadata_task_skips_when_interactive_request_active(

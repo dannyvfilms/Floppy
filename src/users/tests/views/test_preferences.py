@@ -1,7 +1,12 @@
+from unittest.mock import patch
+
 from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
+
+from app.models import BackfillReconcileState
 
 
 class PreferencesViewTests(TestCase):
@@ -23,6 +28,41 @@ class PreferencesViewTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.date_format, "m_d_yyyy")
         self.assertEqual(self.user.time_format, "hh_mm")
+
+    @patch("users.views.tmdb.metadata_languages")
+    @patch("app.tasks.backfill_item_metadata_task.apply_async")
+    def test_language_changes_restart_and_schedule_automatic_metadata_repair(
+        self, mock_schedule, mock_languages,
+    ):
+        mock_languages.return_value = [
+            ("", "Server default"), ("es-ES", "Spanish"), ("fr", "French"),
+        ]
+        for language in ("es-ES", "fr", "es-ES", ""):
+            with self.subTest(language=language):
+                BackfillReconcileState.objects.filter(
+                    key__startswith=f"metadata_language:{self.user.pk}:",
+                ).update(completed_at=timezone.now(), last_cursor_item_id=100)
+                with self.captureOnCommitCallbacks(execute=True):
+                    response = self.client.post(
+                        reverse("preferences"), {"metadata_language": language},
+                    )
+                self.assertEqual(response.status_code, 302)
+                self.user.refresh_from_db()
+                self.assertEqual(self.user.metadata_language, language)
+                state = BackfillReconcileState.objects.get(
+                    key__startswith=f"metadata_language:{self.user.pk}:",
+                )
+                self.assertIsNone(state.completed_at)
+                self.assertEqual(state.last_cursor_item_id, 0)
+        self.assertEqual(mock_schedule.call_count, 4)
+
+        state.completed_at = timezone.now()
+        state.save(update_fields=["completed_at"])
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("preferences"), {"metadata_language": ""})
+        state.refresh_from_db()
+        self.assertIsNotNone(state.completed_at)
+        self.assertEqual(mock_schedule.call_count, 4)
 
     def test_preferences_post_can_disable_ratings(self):
         """Disabled is a rating scale choice and does not change the max used for stored scores."""

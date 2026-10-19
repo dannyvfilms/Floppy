@@ -1,81 +1,94 @@
 {% extends "users/base.html" %}
 {% load i18n %}
 
+{% block title %}{% translate "Media Cards" %} - Floppy{% endblock title %}
+
 {% block settings_content %}
   <style>
+    .cards-section {
+      container: card-settings / inline-size;
+    }
     .cards-layout {
       display: grid;
-      gap: 2rem;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 1.5rem;
       align-items: start;
     }
-    @media (min-width: 768px) {
-      .cards-layout {
-        grid-template-columns: minmax(0, 1fr) 20rem;
-      }
+    .cards-layout > * {
+      min-width: 0;
     }
     .cards-preview-slot {
       width: 100%;
-      max-width: 18rem;
+      max-width: 12rem;
       justify-self: center;
-      order: -1;
     }
-    @media (min-width: 768px) {
-      .cards-preview-slot {
-        justify-self: end;
-        order: 0;
-        position: sticky;
-        top: 5rem;
+    @container card-settings (min-width: 28rem) {
+      .cards-layout {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
+      .cards-opts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .cards-preview-slot {
+        container-type: size;
+        align-self: stretch;
+        max-width: none;
+      }
+      #card-preview {
+        width: min(100%, calc((100cqh - 1.5rem) * 2 / 3));
+        margin-inline: auto;
+      }
+      #card-preview:has(.search-result-card-square) {
+        width: min(100%, calc(100cqh - 1.5rem));
+      }
+    }
+    .cards-toolbar {
+      display: grid;
+      gap: 1rem;
     }
     .cards-type-wrap {
-      flex: 1 1 0;
       min-width: 0;
-    }
-    .cards-type-btn {
-      width: 100%;
-    }
-    .cards-menu-right {
-      right: 0;
-      left: auto;
-    }
-    @media (min-width: 768px) {
-      .cards-type-wrap {
-        flex: none;
-      }
-      .cards-type-btn {
-        width: 12rem;
-      }
     }
     .cards-opts {
       display: grid;
-      grid-template-columns: 5.5rem minmax(0, 1fr);
-      align-items: center;
-      gap: 0.625rem 0.75rem;
+      gap: 1rem;
     }
     .cards-opt-label {
-      font-size: 0.75rem;
+      display: block;
+      margin-bottom: 0.375rem;
+      font-size: 0.875rem;
       font-weight: 500;
+      color: var(--color-text-secondary);
+    }
+    .cards-select-wrap {
+      display: block;
+      position: relative;
+      min-width: 0;
+    }
+    .cards-select-arrow {
+      position: absolute;
+      right: 0.875rem;
+      top: 50%;
+      width: 1rem;
+      height: 1rem;
+      transform: translateY(-50%);
       color: var(--color-text-muted);
+      pointer-events: none;
     }
-    .cards-seg {
-      display: inline-flex;
-      border: 1px solid var(--color-border, #444);
-      border-radius: 0.375rem;
-      overflow: hidden;
-    }
-    .cards-seg button {
-      padding: 0.25rem 0.625rem;
-      font-size: 0.75rem;
-      line-height: 1.25rem;
-      color: var(--color-text-muted);
-    }
-    .cards-seg button + button {
-      border-left: 1px solid var(--color-border, #444);
-    }
-    .cards-seg button.is-on {
-      background: var(--color-surface-strong);
+    .cards-select {
+      appearance: none;
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--color-surface-border);
+      border-radius: 0.5rem;
+      background: var(--color-surface);
+      padding: 0.625rem 2.5rem 0.625rem 0.75rem;
+      font-size: 0.875rem;
       color: var(--color-text);
-      font-weight: 500;
+    }
+    .cards-select:focus-visible {
+      outline: 2px solid var(--color-link);
+      outline-offset: 2px;
     }
     .cards-pool,
     .cards-active {
@@ -117,154 +130,157 @@
     {{ card_catalog_json|json_script:"card-catalog" }}
     {{ card_saved_json|json_script:"card-saved" }}
 
-    <div class="preferences-section">
-      <h2 class="text-lg font-semibold text-[var(--color-text)] mb-1">{% translate "Media Cards" %}</h2>
-      <p class="text-sm text-[var(--color-text-muted)] mb-4">{% translate "Choose what shows under each poster. Drag properties onto the card; up to three share a line." %}</p>
+    <section class="preferences-section mb-6">
+      <h2 class="text-lg font-semibold text-[var(--color-text)] mb-1">{% translate "Card actions" %}</h2>
+      <p class="text-sm text-[var(--color-text-muted)] mb-4">{% translate "Applies to every media type. Desktop hover actions stay available." %}</p>
+      <label class="block">
+        <span class="cards-opt-label">{% translate "Hover actions on mobile" %}</span>
+        <span class="cards-select-wrap">
+          <select class="cards-select" name="clickable_media_cards" x-model="touchActions" @change="refreshPreview()">
+            <option value="off">{% translate "Show actions on touch devices" %}</option>
+            <option value="on">{% translate "Hide actions on touch devices" %}</option>
+          </select>
+          {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+        </span>
+      </label>
+    </section>
 
-      <div class="flex items-center gap-2 mb-5">
-        <div class="relative cards-type-wrap" @click.outside="typeOpen = false">
-          <button type="button"
-                  class="inline-flex cards-type-btn items-center justify-between gap-2 px-3 py-1.5 bg-[var(--color-panel)] border border-gray-600 rounded-md text-sm text-[var(--color-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-link)]"
-                  @click="typeOpen = !typeOpen"
-                  :aria-expanded="typeOpen"
-                  aria-label="{% translate 'Media type' %}">
-            <span class="truncate" x-text="current ? current.label : ''"></span>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 shrink-0"><path d="m6 9 6 6 6-6"></path></svg>
-          </button>
-          <div x-show="typeOpen" x-cloak style="max-height: min(26rem, 60vh)" class="absolute left-0 top-full z-20 mt-1 min-w-full py-1 bg-[var(--color-panel)] rounded-md shadow-lg border border-gray-600 max-h-64 overflow-y-auto">
-            <template x-for="entry in catalog" :key="'type-' + entry.id">
-              <button type="button"
-                      class="block w-full px-3 py-2 text-left text-sm whitespace-nowrap text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
-                      :class="active === entry.id && 'bg-[var(--color-surface-strong)] text-[var(--color-text)]'"
-                      @click="switchType(entry.id); typeOpen = false"
-                      x-text="entry.label"></button>
-            </template>
-          </div>
+    <div class="preferences-section cards-section">
+      <h2 class="text-lg font-semibold text-[var(--color-text)] mb-1">{% translate "Media Cards" %}</h2>
+      <p class="text-sm text-[var(--color-text-muted)] mb-4">{% translate "Choose how cards look for each media type. Add properties below; up to three can share a line." %}</p>
+
+      <div class="cards-layout mb-6">
+        <div class="cards-toolbar">
+          <label class="cards-type-wrap">
+            <span class="cards-opt-label">{% translate "Media type" %}</span>
+            <span class="cards-select-wrap">
+              <select class="cards-select" x-model="active" @change="switchType(active)">
+                <template x-for="entry in catalog" :key="'type-' + entry.id">
+                  <option :value="entry.id" :selected="entry.id === active" x-text="entry.label"></option>
+                </template>
+              </select>
+              {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+            </span>
+          </label>
+          <label class="cards-type-wrap">
+            <span class="cards-opt-label">{% translate "Copy settings from" %}</span>
+            <span class="cards-select-wrap">
+              <select class="cards-select" @change="copyFrom($event.target.value); $event.target.value = ''">
+                <option value="">{% translate "Choose a media type" %}</option>
+                <template x-for="entry in copySources()" :key="'copy-' + entry.id">
+                  <option :value="entry.id" x-text="entry.label"></option>
+                </template>
+              </select>
+              {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+            </span>
+          </label>
+          <label class="cards-type-wrap">
+            <span class="cards-opt-label">{% translate "Settings actions" %}</span>
+            <span class="cards-select-wrap">
+              <select class="cards-select" @change="if ($event.target.value === 'reset') resetType(); else if ($event.target.value === 'defaults') useDefaults(); else if ($event.target.value) setAllLinesMode($event.target.value); $event.target.value = ''">
+                <option value="">{% translate "Choose an action" %}</option>
+                <option value="reset">{% translate "Reset type" %}</option>
+                <option value="defaults">{% translate "Use defaults" %}</option>
+                <option value="hover">{% translate "Show all lines on hover" %}</option>
+                <option value="dormant">{% translate "Always show all lines" %}</option>
+              </select>
+              {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+            </span>
+          </label>
         </div>
-        <div class="relative shrink-0" @click.outside="copyOpen = false">
-          <button type="button"
-                  class="inline-flex items-center gap-2 px-3 py-1.5 bg-[var(--color-panel)] border border-gray-600 rounded-md text-sm text-[var(--color-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-link)]"
-                  @click="copyOpen = !copyOpen"
-                  :aria-expanded="copyOpen">
-            <span>{% translate "Copy from" %}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 shrink-0"><path d="m6 9 6 6 6-6"></path></svg>
-          </button>
-          <div x-show="copyOpen" x-cloak class="absolute left-0 top-full z-20 mt-1 min-w-full py-1 bg-[var(--color-panel)] rounded-md shadow-lg border border-gray-600 max-h-64 overflow-y-auto cards-menu-right">
-            <template x-for="entry in copySources()" :key="'copy-' + entry.id">
-              <button type="button"
-                      class="block w-full px-3 py-2 text-left text-sm whitespace-nowrap text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]"
-                      @click="copyFrom(entry.id); copyOpen = false"
-                      x-text="entry.label"></button>
-            </template>
-          </div>
-        </div>
-        <div class="relative shrink-0" @click.outside="actionsOpen = false">
-          <button type="button"
-                  class="inline-flex items-center justify-center w-9 h-9 bg-[var(--color-panel)] border border-gray-600 rounded-md text-sm text-[var(--color-text-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-link)]"
-                  @click="actionsOpen = !actionsOpen"
-                  :aria-expanded="actionsOpen"
-                  aria-label="{% translate 'More actions' %}">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg>
-          </button>
-          <div x-show="actionsOpen" x-cloak class="absolute left-0 top-full z-20 mt-1 min-w-full py-1 bg-[var(--color-panel)] rounded-md shadow-lg border border-gray-600 max-h-64 overflow-y-auto cards-menu-right">
-            <button type="button" class="block w-full px-3 py-2 text-left text-sm whitespace-nowrap text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]" @click="resetType(); actionsOpen = false">{% translate "Reset type" %}</button>
-            <button type="button" class="block w-full px-3 py-2 text-left text-sm whitespace-nowrap text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]" @click="useDefaults(); actionsOpen = false">{% translate "Use defaults" %}</button>
-            <button type="button" class="block w-full px-3 py-2 text-left text-sm whitespace-nowrap text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]" @click="setAllLinesMode('hover'); actionsOpen = false">{% translate "All hover" %}</button>
-            <button type="button" class="block w-full px-3 py-2 text-left text-sm whitespace-nowrap text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)]" @click="setAllLinesMode('dormant'); actionsOpen = false">{% translate "All dormant" %}</button>
-          </div>
+        <div class="cards-preview-slot">
+          <p class="text-xs text-[var(--color-text-muted)] mb-2">{% translate "Preview" %}</p>
+          <div id="card-preview" x-html="previewHtml"></div>
         </div>
       </div>
 
       <template x-if="current">
-        <div class="cards-layout">
-          <div class="space-y-4">
+        <div class="space-y-4">
             <div class="cards-opts">
-              <span class="cards-opt-label">{% translate "Score" %}</span>
-              <div>
-                <div class="cards-seg" role="group">
-                  <button type="button" :class="saved[active].options.rating.show !== false && 'is-on'" @click="setScoreShow(true)">{% translate "Show" %}</button>
-                  <button type="button" :class="saved[active].options.rating.show === false && 'is-on'" @click="setScoreShow(false)">{% translate "Hide" %}</button>
-                </div>
-              </div>
-
-              <div class="contents" x-show="saved[active].options.rating.show !== false">
-                <span></span>
-                <label class="flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
-                  <input type="checkbox" x-model="saved[active].options.rating.hide_zero" @change="refreshPreview()">
-                  {% translate "Hide zero ratings" %}
-                </label>
-              </div>
-
-              <span class="cards-opt-label">{% translate "Title" %}</span>
-              <div>
-                <div class="cards-seg" role="group">
-                  <button type="button" :class="saved[active].options.title.overflow === 'ellipsis' && 'is-on'" @click="setTitleOverflow('ellipsis')">{% translate "Ellipsis" %}</button>
-                  <button type="button" :class="saved[active].options.title.overflow === 'wrap' && 'is-on'" @click="setTitleOverflow('wrap')">{% translate "Wrap" %}</button>
-                  <button type="button" :class="saved[active].options.title.overflow === 'clip' && 'is-on'" @click="setTitleOverflow('clip')">{% translate "Clip" %}</button>
-                </div>
-              </div>
-
-              <span class="cards-opt-label">{% translate "Lines" %}</span>
-              <div>
-                <div class="cards-seg" role="group">
-                  <template x-for="count in [1, 2, 3, 'all']" :key="'lines-' + count">
-                    <button type="button"
-                            :class="saved[active].options.title.lines === count && 'is-on'"
-                            @click="setTitleLines('lines', count)"
-                            x-text="count === 'all' ? '{% translate "All" %}' : count"></button>
-                  </template>
-                </div>
-              </div>
-
-              <span class="cards-opt-label">{% translate "On hover" %}</span>
-              <div>
-                <div class="cards-seg" role="group">
-                  <button type="button" :class="saved[active].options.title.hover === 'bleed' && 'is-on'" @click="setTitleHover('bleed')">{% translate "Expand" %}</button>
-                  <button type="button" :class="saved[active].options.title.hover === 'stay' && 'is-on'" @click="setTitleHover('stay')">{% translate "Stay put" %}</button>
-                </div>
-              </div>
-
-              <div class="contents" x-show="saved[active].options.title.hover === 'bleed'">
-                <span class="cards-opt-label">{% translate "Hover lines" %}</span>
-                <div>
-                  <div class="cards-seg" role="group">
-                  <template x-for="count in [1, 2, 3, 'all']" :key="'hover_lines-' + count">
-                    <button type="button" x-show="titleLineVisible(count)"
-                            :class="saved[active].options.title.hover_lines === count && 'is-on'"
-                            @click="setTitleLines('hover_lines', count)"
-                            x-text="count === 'all' ? '{% translate "All" %}' : count"></button>
-                  </template>
-                </div>
-                </div>
-              </div>
+              <label>
+                <span class="cards-opt-label">{% translate "Rating display" %}</span>
+                <span class="cards-select-wrap">
+                  <select class="cards-select"
+                          :value="saved[active].options.rating.show === false ? 'hide' : 'show'"
+                          @change="setScoreShow($event.target.value === 'show')">
+                    <option value="show">{% translate "Show rating" %}</option>
+                    <option value="hide">{% translate "Hide rating" %}</option>
+                  </select>
+                  {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+                </span>
+              </label>
+              <label>
+                <span class="cards-opt-label">{% translate "Zero ratings" %}</span>
+                <span class="cards-select-wrap">
+                  <select class="cards-select"
+                          :value="saved[active].options.rating.hide_zero ? 'hide' : 'show'"
+                          :disabled="saved[active].options.rating.show === false"
+                          @change="saved[active].options.rating.hide_zero = $event.target.value === 'hide'; refreshPreview()">
+                    <option value="show">{% translate "Show zero ratings" %}</option>
+                    <option value="hide">{% translate "Hide zero ratings" %}</option>
+                  </select>
+                  {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+                </span>
+              </label>
+              <label>
+                <span class="cards-opt-label">{% translate "Title overflow" %}</span>
+                <span class="cards-select-wrap">
+                  <select class="cards-select" :value="saved[active].options.title.overflow" @change="setTitleOverflow($event.target.value)">
+                    <option value="ellipsis">{% translate "Shorten with ellipsis" %}</option>
+                    <option value="wrap">{% translate "Wrap onto multiple lines" %}</option>
+                    <option value="clip">{% translate "Clip at the edge" %}</option>
+                  </select>
+                  {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+                </span>
+              </label>
+              <label>
+                <span class="cards-opt-label">{% translate "Title lines" %}</span>
+                <span class="cards-select-wrap">
+                  <select class="cards-select" :value="saved[active].options.title.lines" @change="setTitleLines('lines', clampTitleLines($event.target.value))">
+                    <option value="1">{% translate "1 line" %}</option>
+                    <option value="2">{% translate "2 lines" %}</option>
+                    <option value="3">{% translate "3 lines" %}</option>
+                    <option value="all">{% translate "All lines" %}</option>
+                  </select>
+                  {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+                </span>
+              </label>
+              <label>
+                <span class="cards-opt-label">{% translate "Title on hover" %}</span>
+                <span class="cards-select-wrap">
+                  <select class="cards-select" :value="saved[active].options.title.hover" @change="setTitleHover($event.target.value)">
+                    <option value="bleed">{% translate "Expand title" %}</option>
+                    <option value="stay">{% translate "Keep title unchanged" %}</option>
+                  </select>
+                  {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+                </span>
+              </label>
+              <label x-show="saved[active].options.title.hover === 'bleed'">
+                <span class="cards-opt-label">{% translate "Title lines on hover" %}</span>
+                <span class="cards-select-wrap">
+                  <select class="cards-select" :value="saved[active].options.title.hover_lines" @change="setTitleLines('hover_lines', clampTitleLines($event.target.value))">
+                    <option value="1" :disabled="!titleLineVisible(1)">{% translate "1 line" %}</option>
+                    <option value="2" :disabled="!titleLineVisible(2)">{% translate "2 lines" %}</option>
+                    <option value="3" :disabled="!titleLineVisible(3)">{% translate "3 lines" %}</option>
+                    <option value="all">{% translate "All lines" %}</option>
+                  </select>
+                  {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+                </span>
+              </label>
             </div>
 
-            <div>
-              <div class="flex flex-wrap items-center gap-2 mb-2">
-                <p class="text-xs font-medium text-[var(--color-text-muted)]">{% translate "Available" %}</p>
-                <button type="button"
-                        class="text-sm text-[var(--color-link)]"
-                        x-show="poolFields().length"
-                        @click="addAllAvailable()">{% translate "Add all available" %}</button>
-              </div>
-              <div class="cards-pool flex flex-wrap gap-2"
-                   :class="poolOver ? 'is-over' : ''"
-                   @dragover.prevent="poolOver = true"
-                   @dragleave="poolOver = false"
-                   @drop.prevent="dropOnPool()">
-                <template x-for="field in poolFields()" :key="field.id">
-                  <span class="card-chip inline-flex items-center gap-1 px-2 py-1 rounded text-sm border text-[var(--color-text-secondary)]"
-                        :class="field.unmatched ? 'bg-orange-400/20 border-orange-300/70' : 'bg-[var(--color-surface)] border-[var(--color-border,#444)]'"
-                        draggable="true"
-                        @dragstart="startFieldDrag($event, field.id, null)"
-                        @dragend="clearDrag()">
-                    <span x-text="field.label"></span>
-                    <span x-show="field.extra" class="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">{% translate "extra" %}</span>
-                  </span>
-                </template>
-                <span x-show="!poolFields().length" class="text-sm text-[var(--color-text-muted)]">{% translate "Everything is on the card." %}</span>
-              </div>
-            </div>
+            <label class="block" x-show="poolFields().some(field => !field.unmatched)">
+              <span class="cards-opt-label">{% translate "Add a line" %}</span>
+              <span class="cards-select-wrap">
+                <select class="cards-select" @change="addField($event.target.value); $event.target.value = ''">
+                  <option value="">{% translate "Choose a property" %}</option>
+                  <template x-for="field in poolFields().filter(field => !field.unmatched)" :key="field.id">
+                    <option :value="field.id" x-text="field.label"></option>
+                  </template>
+                </select>
+                {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+              </span>
+            </label>
 
             <div>
               <p class="text-xs font-medium text-[var(--color-text-muted)] mb-2">{% translate "On card" %}</p>
@@ -277,12 +293,16 @@
                        @dragleave="onRowDragLeave(lineIndex)"
                        @drop.prevent="dropOnLine(lineIndex, $event)">
                     <div class="flex items-start gap-2">
-                      <button type="button"
-                              draggable="true"
-                              class="cursor-grab px-1 text-[var(--color-text-muted)] shrink-0"
-                              aria-label="{% translate 'Reorder line' %}"
-                              @dragstart="startLineDrag($event, lineIndex)"
-                              @dragend="clearDrag()">⋮⋮</button>
+                      <div class="flex flex-col gap-1 shrink-0">
+                        <button type="button" class="p-1 rounded text-[var(--color-text-muted)] hover:bg-[var(--color-surface-strong)] disabled:opacity-50"
+                                aria-label="{% translate 'Move line up' %}" :disabled="lineIndex === 0" @click="reorderLine(lineIndex, lineIndex - 1); refreshPreview()">
+                          {% include "app/icons/chevron-up.svg" with classes="w-4 h-4" %}
+                        </button>
+                        <button type="button" class="p-1 rounded text-[var(--color-text-muted)] hover:bg-[var(--color-surface-strong)] disabled:opacity-50"
+                                aria-label="{% translate 'Move line down' %}" :disabled="lineIndex === saved[active].lines.length - 1" @click="reorderLine(lineIndex, lineIndex + 1); refreshPreview()">
+                          {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
+                        </button>
+                      </div>
                       <div class="flex-1 min-w-0">
                         <div class="cards-line-slot flex flex-wrap gap-1 p-1"
                              :class="lineOverIndex === lineIndex && dragKind === 'field' ? 'is-over' : ''"
@@ -308,33 +328,38 @@
                           </template>
                           <span x-show="!line.fields.length" class="text-xs text-[var(--color-text-muted)] py-1">{% translate "Drop properties here" %}</span>
                         </div>
-                        <div class="mt-1 cards-seg" role="group">
-                          <button type="button" :class="line.display === 'hover' && 'is-on'" @click="setLineMode(lineIndex, 'hover')">{% translate "Hover" %}</button>
-                          <button type="button" :class="line.display === 'dormant' && 'is-on'" @click="setLineMode(lineIndex, 'dormant')">{% translate "Dormant" %}</button>
-                        </div>
+                        <label class="block mt-2">
+                          <span class="cards-opt-label">{% translate "Line visibility" %}</span>
+                          <span class="cards-select-wrap">
+                            <select class="cards-select" :value="line.display" @change="setLineMode(lineIndex, $event.target.value)">
+                              <option value="hover">{% translate "Show on hover" %}</option>
+                              <option value="dormant">{% translate "Always show" %}</option>
+                            </select>
+                            {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+                          </span>
+                        </label>
+                        <label class="block mt-2" x-show="line.fields.length < 3 && !line.fields.includes('progress') && poolFields().some(field => field.id !== 'progress' && !field.unmatched)">
+                          <span class="cards-opt-label">{% translate "Add to this line" %}</span>
+                          <span class="cards-select-wrap">
+                            <select class="cards-select" @change="addField($event.target.value, lineIndex); $event.target.value = ''">
+                              <option value="">{% translate "Choose a property" %}</option>
+                              <template x-for="field in poolFields().filter(field => field.id !== 'progress' && !field.unmatched)" :key="field.id">
+                                <option :value="field.id" x-text="field.label"></option>
+                              </template>
+                            </select>
+                            {% include "app/icons/chevron-down.svg" with classes="cards-select-arrow" %}
+                          </span>
+                        </label>
                       </div>
                     </div>
                   </div>
                 </template>
-                <div class="cards-line-slot p-3 text-center text-sm text-[var(--color-text-muted)]"
-                     :class="newLineOver ? 'is-over' : ''"
-                     @dragover.prevent="newLineOver = true"
-                     @dragleave="newLineOver = false"
-                     @drop.prevent="dropNewLine($event)"
-                     x-show="poolFields().length">
-                  {% translate "Drop here to start a new line" %}
-                </div>
                 <p x-show="!saved[active].lines.length" class="text-sm text-[var(--color-text-muted)] text-center py-4">
-                  {% translate "Nothing on the card yet. Drag properties from Available." %}
+                  {% translate "No properties yet. Choose a property above to add a line." %}
                 </p>
               </div>
             </div>
           </div>
-          <div class="cards-preview-slot">
-            <p class="text-xs text-[var(--color-text-muted)] mb-2">{% translate "Preview" %}</p>
-            <div id="card-preview" x-html="previewHtml"></div>
-          </div>
-        </div>
       </template>
 
       <p class="text-sm text-[var(--color-text-muted)] mt-4">
@@ -354,6 +379,7 @@
         defaults: {},
         active: "{{ card_active_type|escapejs }}",
         previewHtml: "",
+        previewController: null,
         dragKind: "",
         dragFieldId: "",
         dragFromLine: null,
@@ -363,9 +389,7 @@
         poolOver: false,
         newLineOver: false,
         unmatched: {},
-        copyOpen: false,
-        typeOpen: false,
-        actionsOpen: false,
+        touchActions: "{{ user.clickable_media_cards|yesno:'on,off' }}",
         csrfToken: "",
         init() {
           this.catalog = JSON.parse(document.getElementById("card-catalog").textContent);
@@ -524,6 +548,13 @@
           }
           this.pruneEmptyLines();
           this.flatten(this.active);
+          this.refreshPreview();
+        },
+        addField(fieldId, lineIndex = null) {
+          if (!fieldId || !this.fieldAllowed(fieldId)) return;
+          if (fieldId === "progress") this.placeProgress(null);
+          else if (lineIndex !== null) this.moveField(fieldId, null, lineIndex, null);
+          else this.saved[this.active].lines.push({ fields: [fieldId], display: "hover" });
           this.refreshPreview();
         },
         setLineMode(lineIndex, mode) {
@@ -845,8 +876,11 @@
         },
         refreshPreview() {
           this.flatten(this.active);
+          this.previewController?.abort();
+          this.previewController = new AbortController();
           fetch("{% url 'cards_preview' %}", {
             method: "POST",
+            signal: this.previewController.signal,
             credentials: "same-origin",
             headers: {
               "Content-Type": "application/json",
@@ -854,11 +888,13 @@
             },
             body: JSON.stringify({
               type: this.active,
+              clickable_media_cards: this.touchActions === "on",
               draft: { version: 1, types: { [this.active]: this.saved[this.active] } },
             }),
           })
             .then((response) => response.text())
-            .then((html) => { this.previewHtml = html; });
+            .then((html) => { this.previewHtml = html; })
+            .catch((error) => { if (error.name !== "AbortError") console.error("Card preview failed", error); });
         },
       };
     }

@@ -11,7 +11,6 @@ from django.core.cache import cache
 from django.db.models import Q
 from django.utils import timezone
 
-from app import statistics as stats
 from app.metadata_utils import ANIME_SUPPLEMENT_GENRE, genre_list_has_name
 from app.models import MediaTypes, Sources
 from app.statistics_day_cache import (
@@ -23,6 +22,14 @@ from app.statistics_day_cache import (
 from app.statistics_talent import (
     _resolve_missing_credit_item_ids,
     _safe_runtime_minutes,
+)
+from app.stats_music import _country_name_from_code
+from app.stats_podcast import _get_podcast_runtime_minutes
+from app.stats_time import _get_music_runtime_minutes
+from app.stats_utils import (
+    _coerce_genre_list,
+    _get_entry_play_dates,
+    _localize_datetime,
 )
 
 logger = logging.getLogger(__name__)
@@ -475,6 +482,23 @@ def build_stats_for_day(
     of sets — `runtime_item_ids`, `genre_item_ids`, `episode_runtime_keys`,
     `credit_item_ids` — accumulated across days and enqueued once instead of
     per day).
+
+    Cache contract consumed by `statistics_aggregator`:
+    - `day` and all activity/score timestamps are ISO strings in the current
+      timezone; item mapping keys and hour keys are strings at the cache boundary.
+    - `items` keeps the latest status/activity and latest scored activity per
+      catalog item and media bucket; `top_played` adds plays, minutes and
+      episode counts. These are distinct from tracker-row counts.
+    - `totals`, `daily_minutes_by_type`, `hour_counts` and `hour_minutes` are
+      additive across days. Exact-midnight date placeholders omit hour buckets.
+    - `genres`/`decades` and `music`/`podcast`/`game` contain family-specific
+      rollups. Reading genres use units/title counts, not elapsed minutes;
+      game genre/decade IDs remain lists so aggregation can deduplicate them.
+    - `activity.count` drives the activity calendar, while `backfill` carries
+      credit-repair hints. `history_version` fences stale cached projections.
+
+    Empty families remain present. This is a cached projection, not the public
+    statistics response; keep its shape compatible with the range aggregator.
     """
     if user is None:
         user_model = get_user_model()
@@ -602,7 +626,7 @@ def build_stats_for_day(
     ):
         if not item_id:
             return
-        activity_dt = stats._localize_datetime(activity_dt) if activity_dt else None
+        activity_dt = _localize_datetime(activity_dt) if activity_dt else None
         score_dt = activity_dt if score is not None else None
         existing = items_by_type[media_type].get(item_id)
         if not existing:
@@ -656,7 +680,7 @@ def build_stats_for_day(
         entry["minutes"] += minutes or 0
         entry["plays"] += plays or 0
         entry["episode_count"] += episode_count or 0
-        activity_dt = stats._localize_datetime(activity_dt) if activity_dt else None
+        activity_dt = _localize_datetime(activity_dt) if activity_dt else None
         if activity_dt and (
             entry["activity_dt"] is None or activity_dt > entry["activity_dt"]
         ):
@@ -667,7 +691,7 @@ def build_stats_for_day(
     def _add_hour(media_type: str, activity_dt, minutes: float = 0):
         if not activity_dt:
             return
-        localized = stats._localize_datetime(activity_dt)
+        localized = _localize_datetime(activity_dt)
         if not localized:
             return
         # Exact midnight is the date-only placeholder used when no time is known.
@@ -680,7 +704,7 @@ def build_stats_for_day(
         if not genres or not minutes:
             return False
         added = False
-        for genre in stats._coerce_genre_list(genres):
+        for genre in _coerce_genre_list(genres):
             key = str(genre).title()
             genre_map[key]["minutes"] += minutes
             genre_map[key]["plays"] += 1
@@ -990,20 +1014,18 @@ def build_stats_for_day(
                 start_dt = row.get("start_date")
                 end_dt = row.get("end_date")
                 if start_dt and end_dt:
-                    start_local = stats._localize_datetime(start_dt).date()
-                    end_local = stats._localize_datetime(end_dt).date()
+                    start_local = _localize_datetime(start_dt).date()
+                    end_local = _localize_datetime(end_dt).date()
                     if start_local <= day <= end_local:
                         days = (end_local - start_local).days + 1
                         per_day = total_minutes / days if days else total_minutes
                         daily_minutes_by_type[MediaTypes.ANIME.value] += per_day
                 else:
-                    activity_local = stats._localize_datetime(activity_dt)
+                    activity_local = _localize_datetime(activity_dt)
                     if activity_local and activity_local.date() == day:
                         daily_minutes_by_type[MediaTypes.ANIME.value] += total_minutes
 
-            if total_minutes > 0 and not stats._coerce_genre_list(
-                row.get("item__genres")
-            ):
+            if total_minutes > 0 and not _coerce_genre_list(row.get("item__genres")):
                 missing_genres += 1
                 item_id = row.get("item_id")
                 if item_id:
@@ -1056,11 +1078,9 @@ def build_stats_for_day(
                 minutes_by_type[MediaTypes.GAME.value] += total_minutes
 
             start_dt = row.get("start_date")
-            start_local = (
-                stats._localize_datetime(start_dt).date() if start_dt else None
-            )
-            end_local = stats._localize_datetime(end_dt).date() if end_dt else None
-            entry_days = stats._get_entry_play_dates(
+            start_local = _localize_datetime(start_dt).date() if start_dt else None
+            end_local = _localize_datetime(end_dt).date() if end_dt else None
+            entry_days = _get_entry_play_dates(
                 SimpleNamespace(
                     start_date=start_dt,
                     end_date=end_dt,
@@ -1091,13 +1111,12 @@ def build_stats_for_day(
                     row.get("id"),
                     minutes=per_day,
                     plays=1
-                    if activity_dt
-                    and stats._localize_datetime(activity_dt).date() == day
+                    if activity_dt and _localize_datetime(activity_dt).date() == day
                     else 0,
                     episode_count=0,
                     activity_dt=activity_dt,
                 )
-                if activity_dt and stats._localize_datetime(activity_dt).date() == day:
+                if activity_dt and _localize_datetime(activity_dt).date() == day:
                     rollup = game_rollups.setdefault(
                         row.get("item_id"),
                         {
@@ -1119,7 +1138,7 @@ def build_stats_for_day(
                             missing_genre_item_ids.add(item_id)
                     game_id = row.get("item_id")
                     if game_id:
-                        for genre in stats._coerce_genre_list(row.get("item__genres")):
+                        for genre in _coerce_genre_list(row.get("item__genres")):
                             key = str(genre).title()
                             game_genres[key]["game_ids"].add(game_id)
                     _add_game_decade(
@@ -1130,7 +1149,7 @@ def build_stats_for_day(
                     )
                 continue
 
-            activity_local = stats._localize_datetime(activity_dt)
+            activity_local = _localize_datetime(activity_dt)
             if activity_local and activity_local.date() == day:
                 daily_minutes_by_type[MediaTypes.GAME.value] += total_minutes
                 _update_top_played(
@@ -1161,7 +1180,7 @@ def build_stats_for_day(
                         missing_genre_item_ids.add(item_id)
                 game_id = row.get("item_id")
                 if game_id:
-                    for genre in stats._coerce_genre_list(row.get("item__genres")):
+                    for genre in _coerce_genre_list(row.get("item__genres")):
                         key = str(genre).title()
                         game_genres[key]["game_ids"].add(game_id)
                 _add_game_decade(
@@ -1225,16 +1244,14 @@ def build_stats_for_day(
 
             start_dt = row.get("start_date")
             end_dt = row.get("end_date")
-            start_local = (
-                stats._localize_datetime(start_dt).date() if start_dt else None
-            )
-            end_local = stats._localize_datetime(end_dt).date() if end_dt else None
+            start_local = _localize_datetime(start_dt).date() if start_dt else None
+            end_local = _localize_datetime(end_dt).date() if end_dt else None
             if start_local and end_local and start_local <= day <= end_local:
                 total_days = (end_local - start_local).days + 1
                 per_day = total_minutes / total_days if total_days else total_minutes
                 daily_minutes_by_type[MediaTypes.BOARDGAME.value] += per_day
             else:
-                activity_local = stats._localize_datetime(activity_dt)
+                activity_local = _localize_datetime(activity_dt)
                 if activity_local and activity_local.date() == day:
                     daily_minutes_by_type[MediaTypes.BOARDGAME.value] += total_minutes
 
@@ -1314,14 +1331,14 @@ def build_stats_for_day(
             music = music_map.get(music_id)
             if not music:
                 continue
-            runtime_minutes = stats._get_music_runtime_minutes(
+            runtime_minutes = _get_music_runtime_minutes(
                 music,
                 track_duration_cache=track_duration_cache,
             )
             if runtime_minutes <= 0:
                 missing_runtime += 1
                 runtime_minutes = 0
-            localized = stats._localize_datetime(play_end)
+            localized = _localize_datetime(play_end)
             plays_by_type[MediaTypes.MUSIC.value] += 1
             play_count += 1
             _add_hour(MediaTypes.MUSIC.value, localized, runtime_minutes)
@@ -1386,11 +1403,11 @@ def build_stats_for_day(
 
             genres = []
             if album and album.genres:
-                genres = stats._coerce_genre_list(album.genres)
+                genres = _coerce_genre_list(album.genres)
             elif artist and artist.genres:
-                genres = stats._coerce_genre_list(artist.genres)
+                genres = _coerce_genre_list(artist.genres)
             elif getattr(music, "track", None) and music.track.genres:
-                genres = stats._coerce_genre_list(music.track.genres)
+                genres = _coerce_genre_list(music.track.genres)
 
             if runtime_minutes > 0 and not genres:
                 missing_genres += 1
@@ -1417,7 +1434,7 @@ def build_stats_for_day(
                 country_stats["minutes"] += runtime_minutes
                 country_stats["plays"] += 1
                 country_stats["code"] = code_upper
-                country_stats["name"] = stats._country_name_from_code(code_upper)
+                country_stats["name"] = _country_name_from_code(code_upper)
 
     if MediaTypes.PODCAST.value in active_media_types:
         if prefetch is not None:
@@ -1471,13 +1488,13 @@ def build_stats_for_day(
             if not podcast:
                 continue
             for play_end, (_, history_progress) in plays_for_podcast.items():
-                runtime_minutes = stats._get_podcast_runtime_minutes(podcast)
+                runtime_minutes = _get_podcast_runtime_minutes(podcast)
                 if runtime_minutes <= 0 and history_progress and history_progress > 0:
                     runtime_minutes = history_progress
                 if runtime_minutes <= 0:
                     missing_runtime += 1
                     continue
-                localized = stats._localize_datetime(play_end)
+                localized = _localize_datetime(play_end)
                 plays_by_type[MediaTypes.PODCAST.value] += 1
                 play_count += 1
                 _add_hour(MediaTypes.PODCAST.value, localized, runtime_minutes)
@@ -1587,7 +1604,7 @@ def build_stats_for_day(
             runtime_minutes = seconds / 60
             if runtime_minutes <= 0:
                 missing_runtime += 1
-            localized = stats._localize_datetime(play["end_date"])
+            localized = _localize_datetime(play["end_date"])
             plays_by_type[MediaTypes.VIDEO.value] += 1
             play_count += 1
             _add_hour(MediaTypes.VIDEO.value, localized, runtime_minutes)
@@ -1650,7 +1667,7 @@ def build_stats_for_day(
             total_minutes = row.get("progress") or 0
             if total_minutes <= 0:
                 continue
-            genres = stats._coerce_genre_list(row.get("item__genres"))
+            genres = _coerce_genre_list(row.get("item__genres"))
             if not genres:
                 missing_genres += 1
                 item_id = row.get("item_id")
@@ -1658,10 +1675,8 @@ def build_stats_for_day(
                     missing_genre_item_ids.add(item_id)
             start_dt = row.get("start_date")
             end_dt = row.get("end_date")
-            start_local = (
-                stats._localize_datetime(start_dt).date() if start_dt else None
-            )
-            end_local = stats._localize_datetime(end_dt).date() if end_dt else None
+            start_local = _localize_datetime(start_dt).date() if start_dt else None
+            end_local = _localize_datetime(end_dt).date() if end_dt else None
             if start_local and end_local and start_local <= day <= end_local:
                 total_days = (end_local - start_local).days + 1
                 per_day = total_minutes / total_days if total_days else total_minutes
@@ -1683,7 +1698,7 @@ def build_stats_for_day(
                             row.get("item_id")
                         )
             else:
-                activity_local = stats._localize_datetime(activity_dt)
+                activity_local = _localize_datetime(activity_dt)
                 if activity_local and activity_local.date() == day:
                     daily_minutes_by_type[media_type] += total_minutes
                     _update_top_played(

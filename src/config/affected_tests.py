@@ -159,13 +159,15 @@ def select(
                 labels.update(hit)
             elif not _is_test_module(path):
                 quiet.append(path)
+                fallback.append(path)
         imported, unmapped = _labels_from_imports(fallback, repo)
         labels.update(imported)
         if missed:
             notes.append("no coverage for: " + ", ".join(missed))
         if quiet:
             notes.append(
-                "changed lines had no test in the map: " + ", ".join(quiet),
+                "changed lines had no test in the map; using imports: "
+                + ", ".join(quiet),
             )
 
     if unmapped:

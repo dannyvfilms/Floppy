@@ -18,6 +18,45 @@ Our bar is practical: **make changes clean, minimal, safe, and well-understood.*
 | **Faster Tests** | Skip the 141s migration replay while iterating (not for migration changes) | `FLOPPY_TEST_FAST_DB=1 SECRET=test-only scripts/test.sh <dotted.path>` |
 | **Lint / Style** | Ruff (line length 88, migrations excluded) | `uv run --no-sync ruff check src` |
 
+## Local development
+
+Running Floppy from source for development:
+
+```bash
+git clone https://github.com/dannyvfilms/Floppy.git
+cd Floppy
+docker run -d --name redis -p 127.0.0.1:6379:6379 --restart unless-stopped redis:8-alpine
+uv sync --locked
+```
+
+Django/manage.py commands require `SECRET`. Create a `.env` with at least `SECRET`, `DEBUG=True`, and whichever metadata API keys you need (names are listed in [Environment variables](docs/deployment.md#environment-variables)), then:
+
+```bash
+uv run --no-sync python src/manage.py migrate
+uv run --no-sync python src/manage.py createsuperuser
+uv run --no-sync python src/manage.py runserver
+```
+
+Celery and Tailwind run in separate terminals:
+
+```bash
+PYTHONPATH=src uv run --no-sync celery -A config worker --queues interactive --hostname celery-interactive@%h --loglevel DEBUG
+PYTHONPATH=src uv run --no-sync celery -A config worker --queues celery --beat --scheduler django --hostname celery@%h --loglevel DEBUG
+```
+
+```bash
+npx @tailwindcss/cli -i ./src/static/css/input.css -o ./src/static/css/main.css --watch
+```
+
+Visit `http://localhost:8000`. For a shared demo login, set `DEMO_ACCOUNT_ENABLED=True` before the first start; provisioning is otherwise off by default.
+
+`pyproject.toml` and `uv.lock` are the dependency source of truth for the app
+and bundled MCP workspace. Use uv 0.12.3 and keep the lockfile in sync; the
+removed requirements files are not maintained in parallel. The MCP package's
+`setuptools>=68` isolated build-backend range is the only build-time resolver
+exception to the runtime lock and is intentionally not pinned as an application
+dependency.
+
 ---
 
 ## 1. Core Engineering & Quality Standards
@@ -43,7 +82,7 @@ Every contribution should maintain and elevate our codebase baseline.
 Security is critical. Every change touching authentication, user data, or network integrations must prevent common security risks (including the OWASP Top 10):
 - **Injection Safety**: Use Django ORM parameterized queries. Never construct raw SQL queries with string formatting or pass unsanitized input to shell commands.
 - **Access Control & Tenancy (IDOR Prevention)**: Always scope database queries to the authenticated user (`MediaItem.objects.filter(user=request.user, ...)`). Never assume an identifier in a URL or request body belongs to the active session.
-- **Credential Storage & Secrets**: Never commit tokens, passwords, or API keys. Store secrets in environment variables or use encrypted database fields (`SecretBox` for external provider credentials).
+- **Credential Storage & Secrets**: Never commit private tokens, passwords, or API keys. Use environment variables or the existing Fernet credential helpers (`encrypt` / `decrypt` in `integrations/imports/helpers.py`). Their key derives from the instance signing key; not all stored credentials are encrypted. Preserve that key with database backups.
 - **Server-Side Request Forgery (SSRF)**: Validate and restrict URLs when fetching third-party provider metadata or processing webhook destinations.
 - **XSS & CSRF Prevention**: Rely on Django template auto-escaping. Never mark user-supplied data as `|safe`. Include `{% csrf_token %}` on all state-modifying POST/PUT forms.
 
@@ -140,7 +179,17 @@ Match validation depth to risk. Always run targeted tests before opening a PR:
 | **Python View / Business Logic** | `uv run --no-sync ruff check src` + targeted test (`scripts/test.sh <dotted.label>`) |
 | **API Endpoints / Serialization** | Targeted test + Spectacular OpenAPI regeneration + Contract tests |
 | **Database Models / Migrations** | `uv run --no-sync python src/manage.py check_migration_hygiene --strict` + full test suite |
-| **Upstream Sync (`upstream` → `latest`)** | Migration sync gate + `scripts/replay_upgrade_matrix.sh` |
+| **Upstream outcome port** | Classify in [UPSTREAM_PORTS.md](UPSTREAM_PORTS.md), adapt against the current graph, and run the migration sync gate + `scripts/replay_upgrade_matrix.sh` |
+
+`upstream` is an exact upstream mirror. Do not merge or rebase it into `latest`;
+port the accepted behavior through Floppy's existing boundaries. Keep targeted
+regressions and fix confirmed baseline failures. Record a large or risky repair
+that cannot safely be completed instead of silently treating it as green.
+
+The [release checklist](docs/releasing.md) defines the complete offline,
+browser/slow, MCP, dependency, migration, upgrade and built-image gates. A PR
+run and a published artifact are separate evidence. Record what ran at the
+actual source tree; do not reuse an older green run as a new commit's result.
 
 ---
 
@@ -161,7 +210,11 @@ Match validation depth to risk. Always run targeted tests before opening a PR:
 
 **Logging:** Call `logger.info("...", value)` as usual. A process-wide log record factory redacts credentials before any handler writes them, so you do not need a wrapper or a manual sanitizer. Two things still need care: a rule matches the *name* of a value, so give secrets a name that ends in `token`, `secret`, `password`, `api_key` or similar, and never log a raw response body or a full URL — use `safe_url()`. See [docs/architecture/log-redaction.md](docs/architecture/log-redaction.md); `src/app/tests/test_log_safety.py` enforces the rules that are easiest to break.
 
-**Lint cleanup:** If you spot pre-existing ruff/lint violations while working, do not fix them in the same PR. Either open a separate lint-only PR (welcome and easy to review) or leave a note. Fixing unrelated lint mid-feature PR inflates the diff and obscures the actual change.
+**Lint cleanup:** Keep the zero-failure baseline. Confirm whether a discovered
+failure predates the change, then fix it in a separate cleanup commit and,
+where practical, a separate PR. A large or risky repair may need a documented
+exception; state why and track the remaining work. Keep unrelated cleanup
+separate from behavior changes so each patch remains reviewable.
 
 ---
 

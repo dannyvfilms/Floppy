@@ -170,7 +170,9 @@ class SonarrPanelTests(TestCase):
         self.user = get_user_model().objects.create_user(username="arr")
         self.instance = SonarrInstance.objects.create(
             user=self.user,
-            base_url="https://sonarr.local:8989",
+            # HTTP is mocked, but the URL policy still resolves this host.
+            # A numeric address keeps cache assertions independent of mDNS.
+            base_url="https://127.0.0.1:8989",
             api_key=helpers.encrypt("key"),
         )
         past = (timezone.now() - timedelta(days=3)).isoformat()

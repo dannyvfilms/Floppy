@@ -8,7 +8,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_not_required
 from django.core.cache import cache
 from django.http import HttpResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -60,6 +60,7 @@ from app.media_list_views import _collect_reading_activity_day_keys
 from app.metadata_sync_views import _build_flat_anime_episode_preview
 from app.models import (
     Anime,
+    BackfillReconcileState,
     BasicMedia,
     ComicIssue,
     CreditRoleType,
@@ -267,6 +268,13 @@ def media_details(
         request.GET.get("fragment") == DETAIL_SECONDARY_FRAGMENT
         and media_type != MediaTypes.PODCAST.value
     )
+    initial_carousel = (
+        carousel_media.resolve_carousel_media(
+            media_type, source, media_id, cached_only=True
+        )
+        if carousel_supported and not render_secondary_only
+        else None
+    )
     defer_detail_secondary = (
         not render_secondary_only and media_type != MediaTypes.PODCAST.value
     )
@@ -345,6 +353,16 @@ def media_details(
             _mark_detail_persistence_deferred()
             return fallback
 
+    # A list can hold an album, saved under the album page's id. That id is not
+    # a recording, so the album page is the only place that can describe it.
+    if media_type == MediaTypes.MUSIC.value and source == Sources.MUSICBRAINZ.value:
+        from app.services.music import album_for_media_id
+        from app.templatetags.app_tags import music_album_url
+
+        album = album_for_media_id(media_id, user=request.user)
+        if album:
+            return redirect(music_album_url(album))
+
     # For podcast shows (identified by podcast_uuid), show show detail page
     if media_type == MediaTypes.PODCAST.value and source in {
         Sources.POCKETCASTS.value,
@@ -364,7 +382,6 @@ def media_details(
                 int(media_id)  # Will raise ValueError if not numeric
                 # This looks like an iTunes ID, try to enrich
                 from django.contrib import messages
-                from django.shortcuts import redirect
 
                 from app.services.podcast_import import (
                     PodcastImportError,
@@ -871,6 +888,21 @@ def media_details(
         and not render_secondary_only
         and detail_item is not None
         and detail_item.metadata_fetched_at is not None
+        # Stored text has no locale provenance. An explicit TMDB language must
+        # use its language-keyed provider cache while the upgrade repair runs.
+        and not (
+            source == Sources.TMDB.value
+            and (
+                getattr(request.user, "metadata_language", "")
+                or metadata_resolution.metadata_language_default(
+                    request.user, detail_item
+                ) != settings.TMDB_LANG
+                or BackfillReconcileState.objects.filter(
+                    key=f"metadata_language:{request.user.pk}:{settings.TMDB_LANG}",
+                    completed_at__isnull=True,
+                ).exists()
+            )
+        )
     )
 
     provider_metadata_unavailable = False
@@ -1021,6 +1053,9 @@ def media_details(
             if desired_value and getattr(detail_item, field_name) != desired_value:
                 setattr(detail_item, field_name, desired_value)
                 update_fields.append(field_name)
+        if media_metadata.get("synopsis") and detail_item.synopsis != media_metadata["synopsis"]:
+            detail_item.synopsis = media_metadata["synopsis"]
+            update_fields.append("synopsis")
         if update_fields:
             _best_effort_detail_db_work(
                 lambda: detail_item.save(update_fields=update_fields),
@@ -1510,17 +1545,7 @@ def media_details(
             ),
         )
         if user_medias:
-
-            def _activity_key(entry):
-                dates = [d for d in (entry.end_date, entry.start_date) if d]
-                primary_date = max(dates) if dates else entry.created_at
-                return (
-                    primary_date,
-                    entry.start_date or entry.created_at,
-                    entry.created_at,
-                )
-
-            user_medias.sort(key=_activity_key, reverse=True)
+            user_medias.sort(key=helpers.entry_activity_key, reverse=True)
         current_instance = user_medias[0] if user_medias else None
 
     if current_instance is not None:
@@ -2063,6 +2088,7 @@ def media_details(
         "defer_detail_secondary": defer_detail_secondary,
         "render_secondary_only": render_secondary_only,
         "carousel_supported": carousel_supported,
+        "initial_carousel": initial_carousel,
         "detail_carousel_fragment_url": detail_carousel_fragment_url,
         **_build_detail_person_rows(media_metadata, item=detail_item),
     }

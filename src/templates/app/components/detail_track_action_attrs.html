@@ -2,15 +2,17 @@
 {# htmx + Alpine attributes that open the track modal for one split-button action. The Alpine state names are read by mediaStatusDateHandler.js. #}
 {% if action.key == "create" %}
   hx-get="{% media_view_url 'track_modal' media %}"
-  hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}", "is_create": true}'
+  hx-vals='{"return_url": "{% if return_url %}{{ return_url }}{% else %}{{ detail_return_url|default:request.get_full_path|urlencode }}{% endif %}", "is_create": true}'
   hx-target="#{% component_id 'track' media %}"
   hx-trigger="click"
+  hx-swap="innerHTML"
   @click.stop="trackMenuOpen = false; createTrackOpen = true"
 {% elif action.key == "edit" %}
   hx-get="{% media_view_url 'track_modal' media %}"
-  hx-vals='{"return_url": "{{ request.get_full_path|urlencode }}", "instance_id": "{{ current_instance.id }}"}'
+  hx-vals='{"return_url": "{% if return_url %}{{ return_url }}{% else %}{{ detail_return_url|default:request.get_full_path|urlencode }}{% endif %}", "instance_id": "{{ current_instance.id }}"}'
   hx-target="#{% component_id 'track' media current_instance.id %}"
   hx-trigger="click"
+  hx-swap="innerHTML"
   x-ref="editButton"
   @click.stop="trackMenuOpen = false; editTrackOpen = true"
 {% else %}

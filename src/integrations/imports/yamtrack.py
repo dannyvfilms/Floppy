@@ -170,7 +170,7 @@ def _is_resolvable_media_id(row, media_type):
 
 
 def _find_item_after_integrity_error(lookup, original_exc):
-    """Return the Item that caused a UniqueViolation during update_or_create.
+    """Return the Item that caused a UniqueViolation during get_or_create.
 
     Two-stage search:
     1. Exact match on all lookup fields (covers PostgreSQL race-window case).
@@ -882,7 +882,7 @@ class YamtrackImporter:
         season_number,
         episode_number,
     ):
-        """Get or update the Item referenced by a CSV row."""
+        """Reuse shared metadata without letting a user's CSV overwrite it."""
         item_lookup = {
             "media_id": row["media_id"],
             "source": row["source"],
@@ -893,7 +893,7 @@ class YamtrackImporter:
         }
         try:
             item, _ = helpers.retry_on_lock(
-                lambda: app.models.Item.objects.update_or_create(
+                lambda: app.models.Item.objects.get_or_create(
                     **item_lookup,
                     defaults={"title": row["title"], "image": row["image"]},
                 ),

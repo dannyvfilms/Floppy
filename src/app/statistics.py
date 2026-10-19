@@ -1,4 +1,4 @@
-"""statistics.py — Core statistics orchestration for Cursor.
+"""statistics.py — Core statistics orchestration for Floppy.
 
 The heavy lifting has been extracted into focused submodules:
   - stats_utils.py    shared pure utilities (parse_runtime_to_minutes, etc.)

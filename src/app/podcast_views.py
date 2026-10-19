@@ -5,7 +5,6 @@ from datetime import UTC
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth.decorators import login_not_required
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext, ngettext
@@ -96,7 +95,6 @@ def completed_plays_by_podcast_id(podcast_ids, limit=None):
     return by_podcast
 
 
-@login_not_required
 @require_GET
 def podcast_show_detail(request, show_id):
     """Return the detail page for a podcast show."""
@@ -471,7 +469,7 @@ def podcast_show_save(request):
             % {"value_1": show.title, "value_2": form.errors},
         )
 
-    next_url = request.GET.get("next", "")
+    next_url = helpers.safe_return_url(request, request.GET.get("next", ""), "")
     if next_url:
         redirect_response = redirect(next_url)
     else:
@@ -501,7 +499,7 @@ def podcast_show_delete(request):
             gettext("Removed %(value_1)s from your library") % {"value_1": show.title},
         )
 
-    next_url = request.GET.get("next", "")
+    next_url = helpers.safe_return_url(request, request.GET.get("next", ""), "")
     if next_url:
         redirect_response = redirect(next_url)
     else:

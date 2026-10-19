@@ -247,7 +247,7 @@
           <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">{% translate "Selected edition" %}</p>
           <div class="flex items-center gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
             {% if hardcover_selected_edition.image %}
-              <img src="{{ hardcover_selected_edition.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+              <img data-media-artwork decoding="sync" src="{{ hardcover_selected_edition.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
             {% else %}
               <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
                 {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}
@@ -298,7 +298,7 @@
           <p class="text-xs font-medium text-[var(--color-text-muted)] mb-1">{% translate "Selected release" %}</p>
           <div class="flex items-start gap-3 px-3 py-2 text-sm bg-[var(--color-surface)] rounded-md border border-gray-600">
             {% if selected_music_release.image %}
-              <img src="{{ selected_music_release.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
+              <img data-media-artwork decoding="sync" src="{{ selected_music_release.image|image_url }}" alt="" loading="lazy" class="object-cover w-8 h-10 rounded bg-[var(--color-surface-alt)] shrink-0">
             {% else %}
               <span class="flex items-center justify-center w-8 h-10 text-gray-600 rounded bg-[var(--color-surface-alt)] shrink-0">
                 {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}

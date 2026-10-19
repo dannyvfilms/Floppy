@@ -11,6 +11,8 @@ from defusedxml import ElementTree as ET  # noqa: N817  # long-standing alias
 from django.core.cache import cache
 
 from app.log_safety import exception_summary, safe_url
+from integrations.podcast_rss import MAX_FEED_BYTES
+from integrations.safe_fetch import safe_fetch
 
 logger = logging.getLogger(__name__)
 
@@ -165,14 +167,19 @@ def _fetch_from_rss_feed(rss_feed_url: str) -> str | None:
         Image URL or None
     """
     try:
-        response = requests.get(
-            rss_feed_url, headers={"User-Agent": USER_AGENT}, timeout=10
+        response, body = safe_fetch(
+            rss_feed_url,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "application/rss+xml, application/atom+xml, application/xml",
+            },
+            max_bytes=MAX_FEED_BYTES,
         )
         response.raise_for_status()
 
         # Parse XML - handle both RSS and Atom feeds
         try:
-            root = ET.fromstring(response.content)
+            root = ET.fromstring(body)
         except ET.ParseError as e:
             logger.debug("Failed to parse RSS feed XML: %s", e)
             return None

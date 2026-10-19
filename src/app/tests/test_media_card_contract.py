@@ -78,6 +78,17 @@ class MediaCardSurfaceContractTest(TestCase):
             with self.subTest(surface=surface):
                 self.assertIn(">8.5</span>", self.render_card(surface))
 
+    def test_artwork_url_is_available_without_javascript_on_every_surface(self):
+        """Warm artwork can load from browser cache without a JS unveil step."""
+        self.item.image = "/static/test-poster.jpg"
+        for surface in SURFACES:
+            with self.subTest(surface=surface):
+                content = self.render_card(surface)
+                self.assertIn('src="/static/test-poster.jpg"', content)
+                self.assertIn('loading="lazy"', content)
+                self.assertNotIn("data-src=", content)
+                self.assertNotIn("lazyload", content)
+
     def test_credit_runtime_chip_stays_clear_of_the_next_episode_link(self):
         """The watched-runtime chip sits at the bottom, not under the top-right link."""
         content = self.render(
@@ -222,6 +233,15 @@ class MediaCardTemplateUsageTest(TestCase):
             name
             for name, source in self.template_sources()
             if re.search(r"\{%\s*include\s+[\"']" + re.escape(CARD_TEMPLATE), source)
+        ]
+        self.assertEqual(offenders, [])
+
+    def test_artwork_does_not_wait_for_a_javascript_src_swap(self):
+        """Rows and hand-built cards must share native loading with grid cards."""
+        offenders = [
+            name
+            for name, source in self.template_sources()
+            if re.search(r"<img\b[^>]*\bdata-src=", source, re.DOTALL)
         ]
         self.assertEqual(offenders, [])
 

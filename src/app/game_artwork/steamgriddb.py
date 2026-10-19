@@ -76,3 +76,23 @@ def find(query, wanted):
         if best:
             found[kind] = Art(best["url"], PROVIDER, str(best.get("id", "")))
     return found
+
+
+def gallery(query):
+    """Return the game's hero artwork, highest rated first."""
+    api_key = credentials.get(PROVIDER, "api_key")
+    if not api_key:
+        return []
+    headers = {"Authorization": f"Bearer {api_key}"}
+    game_id = _game_id(query, headers)
+    if game_id is None:
+        return []
+    images = _get(f"/heroes/game/{game_id}", headers, params={
+        "nsfw": "false", "humor": "false", "types": "static",
+    }) or []
+    return [
+        {"url": image["url"], "thumb_url": image.get("thumb") or image["url"],
+         "width": image.get("width"), "height": image.get("height")}
+        for image in sorted(images, key=lambda image: image.get("score") or 0, reverse=True)
+        if image.get("url")
+    ]

@@ -103,7 +103,7 @@
         </div>
         <h3 class="text-xl font-semibold mb-2">{% translate "No results found" %}</h3>
         <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">
-          {% blocktranslate trimmed with value_1=request.GET.q %}Nothing in your library matches &ldquo;{{ value_1 }}&rdquo;. Pick a media type to search online.{% endblocktranslate %}
+          {% blocktranslate trimmed with value_1=request.GET.q %}Nothing in your library matches “{{ value_1 }}”. Pick a media type to search online.{% endblocktranslate %}
         </p>
       </div>
     {% endfor %}
@@ -164,11 +164,10 @@
                      class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card hover:ring-2 hover:ring-indigo-500 transition-all group block{% card_subtitle_class 'music' %}{% card_title_classes 'music' %}">
                     <div class="relative">
                       {% if artist.image and artist.image != IMG_NONE %}
-                        <img alt="{{ artist.name }}"
-                             class="media-card-poster lazyload w-full aspect-[2/3] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ artist.image|image_url }}"
-                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';"
-                             src="{{ IMG_NONE }}">
+                        <img loading="lazy" decoding="sync" alt="{{ artist.name }}"
+                             class="media-card-poster w-full aspect-[2/3] object-cover bg-[var(--color-surface-alt)]"
+                             src="{{ artist.image|image_url }}"
+                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';">
                       {% else %}
                         <div class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] flex items-center justify-center">
                           {% include "app/icons/person.svg" with classes="w-16 h-16 text-gray-600" %}
@@ -191,11 +190,10 @@
                   <div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card{% card_subtitle_class 'music' %}{% card_title_classes 'music' %}">
                     <div class="relative">
                       {% if artist.image and artist.image != IMG_NONE %}
-                        <img alt="{{ artist.name }}"
-                             class="media-card-poster lazyload w-full aspect-[2/3] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ artist.image|image_url }}"
-                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';"
-                             src="{{ IMG_NONE }}">
+                        <img loading="lazy" decoding="sync" alt="{{ artist.name }}"
+                             class="media-card-poster w-full aspect-[2/3] object-cover bg-[var(--color-surface-alt)]"
+                             src="{{ artist.image|image_url }}"
+                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';">
                       {% else %}
                         <div class="w-full aspect-[2/3] bg-[var(--color-surface-alt)] flex items-center justify-center">
                           {% include "app/icons/person.svg" with classes="w-16 h-16 text-gray-600" %}
@@ -222,11 +220,10 @@
                      class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative search-result-card-square hover:ring-2 hover:ring-indigo-500 transition-all group block{% card_subtitle_class 'music' %}{% card_title_classes 'music' %}">
                     <div class="relative">
                       {% if release.image and release.image != IMG_NONE %}
-                        <img alt="{{ release.title }}"
-                             class="media-card-poster lazyload w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
-                             data-src="{{ release.image|image_url }}"
-                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';"
-                             src="{{ IMG_NONE }}">
+                        <img loading="lazy" decoding="sync" alt="{{ release.title }}"
+                             class="media-card-poster w-full aspect-[1/1] object-cover bg-[var(--color-surface-alt)]"
+                             src="{{ release.image|image_url }}"
+                             onerror="this.onerror=null;this.src='{{ IMG_NONE }}';">
                       {% else %}
                         <div class="w-full aspect-[1/1] bg-[var(--color-surface-alt)] flex items-center justify-center">
                           {% include "app/icons/speaker.svg" with classes="w-12 h-12 text-gray-600" %}

@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
@@ -674,6 +675,132 @@ class LastFMAccount(models.Model):
         self.history_import_started_at = None
         self.history_import_completed_at = None
         self.history_import_last_error_message = ""
+
+
+class MALFullSyncStatus(models.TextChoices):
+    """Lifecycle of a manual full sync to MyAnimeList."""
+
+    IDLE = "idle", "Not started"
+    QUEUED = "queued", "Queued"
+    RUNNING = "running", "Running"
+    COMPLETED = "completed", "Completed"
+    FAILED = "failed", "Failed"
+
+
+# Progress (full_sync_processed/results) is saved after every entry, so
+# updated_at is a live heartbeat while a sync genuinely runs. A queued/running
+# row this quiet means the worker died mid-sync (e.g. the container
+# restarted), not that the sync is merely slow.
+STALE_FULL_SYNC_AGE = timedelta(minutes=15)
+
+
+class MALAccount(models.Model):
+    """Store a user's MyAnimeList OAuth connection, used to sync watch status.
+
+    Floppy pushes status/progress/score to MyAnimeList. A full sync can also
+    adopt higher MAL progress and missing ratings locally, when enabled
+    (pull_higher_progress_enabled, pull_ratings_enabled).
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="mal_account",
+    )
+    mal_username = models.CharField(max_length=255, blank=True, default="")
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    token_expires_at = models.DateTimeField()
+    sync_enabled = models.BooleanField(default=True)
+    connection_broken = models.BooleanField(
+        default=False,
+        help_text="True once MyAnimeList rejects the refresh token, until reconnected",
+    )
+    last_error_message = models.TextField(blank=True, default="")
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    per_item_sync_enabled = models.BooleanField(
+        default=True,
+        help_text="Push status/progress/score to MyAnimeList as each entry is edited",
+    )
+    sync_filter_completed = models.BooleanField(
+        default=True,
+        help_text="Include Completed entries in a full sync to MyAnimeList",
+    )
+    sync_filter_in_progress = models.BooleanField(
+        default=True,
+        help_text="Include In Progress entries in a full sync to MyAnimeList",
+    )
+    sync_filter_dropped = models.BooleanField(
+        default=True,
+        help_text="Include Dropped entries in a full sync to MyAnimeList",
+    )
+    sync_filter_planning = models.BooleanField(
+        default=False,
+        help_text="Include Planning entries in a full sync to MyAnimeList",
+    )
+    sync_filter_paused = models.BooleanField(
+        default=False,
+        help_text="Include Paused entries in a full sync to MyAnimeList",
+    )
+    sync_filter_rated_only = models.BooleanField(
+        default=False,
+        help_text="Only include entries that have a score set in a full sync to MyAnimeList",
+    )
+    sync_ratings_enabled = models.BooleanField(
+        default=True,
+        help_text="Include the score/rating when pushing status to MyAnimeList",
+    )
+    pull_higher_progress_enabled = models.BooleanField(
+        default=True,
+        help_text="Adopt MyAnimeList's progress locally when it's ahead of Floppy's own record",
+    )
+    pull_ratings_enabled = models.BooleanField(
+        default=True,
+        help_text="Adopt a MyAnimeList rating locally when Floppy doesn't have one recorded",
+    )
+    full_sync_status = models.CharField(
+        max_length=16,
+        choices=MALFullSyncStatus,
+        default=MALFullSyncStatus.IDLE,
+    )
+    full_sync_total = models.PositiveIntegerField(default=0)
+    full_sync_processed = models.PositiveIntegerField(default=0)
+    full_sync_succeeded = models.PositiveIntegerField(default=0)
+    full_sync_failed = models.PositiveIntegerField(default=0)
+    full_sync_results = models.JSONField(default=list, blank=True)
+    full_sync_started_at = models.DateTimeField(null=True, blank=True)
+    full_sync_completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        """Meta options for MALAccount."""
+
+        verbose_name = "MyAnimeList account"
+
+    def __str__(self):
+        """Return a readable representation of the connection."""
+        return f"{self.user}'s MyAnimeList connection"
+
+    @property
+    def is_connected(self):
+        """Return True when we have a token stored and the connection isn't broken."""
+        return bool(self.access_token) and not self.connection_broken
+
+    @property
+    def full_sync_is_active(self):
+        """Return True while a manual full sync is queued or running."""
+        return self.full_sync_status in {
+            MALFullSyncStatus.QUEUED,
+            MALFullSyncStatus.RUNNING,
+        }
+
+    @property
+    def full_sync_is_stale(self):
+        """True once an active sync's heartbeat has gone quiet too long to be alive."""
+        if not self.full_sync_is_active:
+            return False
+        return self.updated_at < timezone.now() - STALE_FULL_SYNC_AGE
 
 
 class KoitoAccount(models.Model):
@@ -1509,11 +1636,14 @@ class ImportRun(models.Model):
 
         verbose_name = "import run"
         verbose_name_plural = "import runs"
-        constraints = [models.UniqueConstraint(
-            fields=["user", "source"],
-            condition=models.Q(source="trakt", status="running") & ~models.Q(phase=""),
-            name="one_active_durable_import",
-        )]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "source"],
+                condition=models.Q(source="trakt", status="running")
+                & ~models.Q(phase=""),
+                name="one_active_durable_import",
+            )
+        ]
         indexes = [
             models.Index(fields=["user", "-started_at"]),
             models.Index(fields=["user", "status"]),
@@ -1527,7 +1657,9 @@ class ImportRun(models.Model):
 class PreparedImportEntry(models.Model):
     """Sealed, ordered persistence decisions; never contains provider credentials."""
 
-    run = models.ForeignKey(ImportRun, on_delete=models.CASCADE, related_name="prepared_entries")
+    run = models.ForeignKey(
+        ImportRun, on_delete=models.CASCADE, related_name="prepared_entries"
+    )
     ordinal = models.PositiveIntegerField()
     model_label = models.CharField(max_length=100)
     operation = models.CharField(max_length=16)
@@ -1538,7 +1670,11 @@ class PreparedImportEntry(models.Model):
     class Meta:
         """Ordered cursor lookup and input identity."""
 
-        constraints = [models.UniqueConstraint(fields=["run", "ordinal"], name="import_entry_run_ordinal")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "ordinal"], name="import_entry_run_ordinal"
+            )
+        ]
         ordering = ["ordinal"]
 
     def __str__(self):
@@ -1549,7 +1685,9 @@ class PreparedImportEntry(models.Model):
 class ImportChunkReceipt(models.Model):
     """Media/history and this receipt commit together; publication is repeatable."""
 
-    run = models.ForeignKey(ImportRun, on_delete=models.CASCADE, related_name="chunk_receipts")
+    run = models.ForeignKey(
+        ImportRun, on_delete=models.CASCADE, related_name="chunk_receipts"
+    )
     phase = models.CharField(max_length=16, default="persist")
     start = models.PositiveIntegerField()
     end = models.PositiveIntegerField()
@@ -1563,7 +1701,11 @@ class ImportChunkReceipt(models.Model):
     class Meta:
         """Unique commit and bounded outbox lookup."""
 
-        constraints = [models.UniqueConstraint(fields=["run", "phase", "start"], name="import_chunk_run_start")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "phase", "start"], name="import_chunk_run_start"
+            )
+        ]
         indexes = [models.Index(fields=["publication_pending", "run"])]
 
     def __str__(self):
@@ -1574,7 +1716,9 @@ class ImportChunkReceipt(models.Model):
 class ImportOverwriteTarget(models.Model):
     """Original row identities: a resumed delete never targets replacements."""
 
-    run = models.ForeignKey(ImportRun, on_delete=models.CASCADE, related_name="overwrite_targets")
+    run = models.ForeignKey(
+        ImportRun, on_delete=models.CASCADE, related_name="overwrite_targets"
+    )
     ordinal = models.PositiveIntegerField()
     model_label = models.CharField(max_length=100)
     original_pk = models.PositiveBigIntegerField()
@@ -1584,7 +1728,12 @@ class ImportOverwriteTarget(models.Model):
     class Meta:
         """Stable deletion identity and cursor."""
 
-        constraints = [models.UniqueConstraint(fields=["run", "model_label", "original_pk"], name="import_overwrite_original")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "model_label", "original_pk"],
+                name="import_overwrite_original",
+            )
+        ]
         indexes = [models.Index(fields=["run", "deleted", "ordinal"])]
 
     def __str__(self):
@@ -1756,18 +1905,17 @@ class IntegrationEventReceipt(models.Model):
         return f"IntegrationEventReceipt({self.user.username}, {self.client_event_id})"
 
 
-
-
 class CatalogGrant(models.Model):
-    """A revocable, per-resource grant for published read-only catalogs.
+    """A revocable grant for catalogs and optional playback tracking.
 
     The Stremio add-on install URL carries its credential in the path, which
     means it lands in server logs, browser history and any screenshot of the
     settings page. Before this that credential was the account token: full
     API access, and revoking it broke every webhook and integration at once.
 
-    A grant reads the selected catalogs and nothing else, and revoking one
-    affects only the install it was minted for.
+    A grant reads selected catalogs and, when allow_playback_start is enabled,
+    permits the add-on's playback tracking. Revoking one affects only the
+    install it was minted for.
     """
 
     user = models.ForeignKey(
@@ -1776,10 +1924,9 @@ class CatalogGrant(models.Model):
         related_name="catalog_grants",
     )
     name = models.CharField(max_length=255)
-    # Stored in the clear, unlike IntegrationToken: Stremio replays the install
-    # URL on every request, so there is nothing to compare a digest against
-    # without indexing the digest anyway. Entropy is the control here, plus
-    # the narrow read-only scope and independent revocation.
+    # Stored in the clear, unlike IntegrationToken. Treat database copies as
+    # bearer-credential stores. A digest-based lookup is possible, but changing
+    # storage requires a compatibility plan for existing installs and token UI.
     token = models.CharField(max_length=64, unique=True, db_index=True)
     # Empty means every supported catalog. A populated list is an allowlist of
     # CatalogSpec.catalog_id values.
@@ -1903,6 +2050,7 @@ class SyncClientKind(models.TextChoices):
     STREMIO = "stremio", "Stremio"
     AUDIOBOOKSHELF = "audiobookshelf", "Audiobookshelf"
     GENERIC = "generic", "Generic client"
+    TMDB = "tmdb", "TMDb"
 
 
 class SyncDirection(models.TextChoices):
@@ -1930,6 +2078,7 @@ CAPABILITY_WATCHED_WRITE_UNPLAYED = "watched.write_unplayed"
 CAPABILITY_WATCHED_PUSH_PLAYED = "watched.push_played"
 CAPABILITY_WATCHED_PUSH_UNPLAYED = "watched.push_unplayed"
 CAPABILITY_LISTEN_READ = "listen.read"
+CAPABILITY_RATING_PUSH = "rating.push"
 
 
 class SyncBinding(models.Model):
@@ -2012,9 +2161,9 @@ class SyncBinding(models.Model):
         """
         if not self.is_operational():
             return False
-        return direction in (
-            self.approved_directions or []
-        ) and self.has_capability(capability)
+        return direction in (self.approved_directions or []) and self.has_capability(
+            capability
+        )
 
 
 class SyncCheckpoint(models.Model):
@@ -2384,6 +2533,12 @@ class OutboundStateDelivery(models.Model):
     # that revision describes. Both are needed: the revision orders the write,
     # the digest is what a read-back is compared against.
     target_revision = models.PositiveIntegerField(default=0)
+    operation = models.CharField(
+        max_length=16,
+        default="watched",
+        choices=[("watched", "Watched"), ("rating", "Rating")],
+    )
+    rating = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
     target_digest = models.CharField(max_length=64, blank=True, default="")
     intent = models.BooleanField(
         default=True,
@@ -2419,14 +2574,14 @@ class OutboundStateDelivery(models.Model):
         ordering = ["binding", "item", "target_revision"]
         constraints = [
             models.UniqueConstraint(
-                fields=["binding", "item", "target_revision"],
+                fields=["binding", "item", "operation", "target_revision"],
                 name="unique_delivery_per_revision",
             ),
             # Serialization primitive: at most one write per (destination, item)
             # can be in flight, enforced by the database rather than by a lock
             # that a crashed worker could hold forever.
             models.UniqueConstraint(
-                fields=["binding", "item"],
+                fields=["binding", "item", "operation"],
                 condition=models.Q(status="in_flight"),
                 name="unique_inflight_delivery_per_item",
             ),
@@ -2439,6 +2594,48 @@ class OutboundStateDelivery(models.Model):
     def __str__(self):
         """Readable representation."""
         return f"OutboundStateDelivery({self.binding_id}, item={self.item_id})"
+
+
+class RatingSyncEdit(models.Model):
+    """Latest explicit edit, including clears whose rating-only row was deleted."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    item = models.ForeignKey("app.Item", on_delete=models.CASCADE)
+    score = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
+    edited_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        """One latest explicit edit per user and item."""
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "item"], name="unique_rating_sync_edit"
+            )
+        ]
+
+    def __str__(self):
+        """Identify the edit without loading its related rows."""
+        return f"RatingSyncEdit(user={self.user_id}, item={self.item_id})"
+
+
+class TMDbAccount(models.Model):
+    """Personal TMDb authorization, separate from metadata API credentials."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tmdb_account"
+    )
+    account_id = models.CharField(max_length=64)
+    username = models.CharField(max_length=255, blank=True)
+    session_id = models.TextField(help_text="Encrypted TMDb session ID")
+    connection_broken = models.BooleanField(default=False)
+    last_error_message = models.TextField(blank=True, default="")
+    last_failed_at = models.DateTimeField(null=True, blank=True)
+    failure_count = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        """Readable identity without exposing the session credential."""
+        return f"TMDbAccount({self.username})"
 
 
 class EmbyAccount(models.Model):

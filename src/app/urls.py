@@ -400,6 +400,11 @@ urlpatterns = [
         name="album_delete",
     ),
     path(
+        "music/track/<int:track_id>/notes/",
+        views.music_track_notes,
+        name="music_track_notes",
+    ),
+    path(
         "music/song/save/",
         views.song_save,
         name="song_save",

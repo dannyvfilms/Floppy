@@ -96,6 +96,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     },
     "api.fork_views_lists.ListItemsReorderView": {"POST": "lists:write"},
     "api.fork_views_lists.ListItemsOrderView": {"PUT": "lists:write"},
+    "api.fork_views_lists.ListItemsRanksView": {"PUT": "lists:write"},
     "api.fork_views_lists.ListRecommendationsView": {
         "GET": "lists:read",
         "POST": "lists:write",

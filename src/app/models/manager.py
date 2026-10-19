@@ -776,6 +776,11 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             total_progress = sum(entry.progress for entry in all_media_entries)
         display_media.aggregated_progress = total_progress
 
+        # Date added is when the item was first tracked, not the latest entry
+        display_media.aggregated_created_at = min(
+            entry.created_at for entry in all_media_entries
+        )
+
         # Aggregate start date (earliest start date)
         start_dates = [
             entry.start_date for entry in all_media_entries if entry.start_date
@@ -1670,7 +1675,9 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                 select_related_fields.append("show")
                 select_related_fields.append("episode")
             elif media_type == MediaTypes.MUSIC.value:
-                select_related_fields.append("album")
+                select_related_fields.extend(
+                    ["album", "album__artist", "artist", "track"]
+                )
 
             queryset = (
                 queryset.annotate(

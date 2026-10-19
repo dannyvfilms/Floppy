@@ -4,14 +4,14 @@
 
 <div id="session-history-day-{{ day.day_key|default:'unknown' }}"
      class="history-day space-y-4">
-  <div class="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-[var(--color-border)] bg-[var(--color-page-bg)] pb-3 pt-2"
+  <div class="sticky top-0 z-10 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 border-b border-[var(--color-border)] bg-[var(--color-page-bg)] pb-3 pt-2"
        data-day-date="{% if day.date %}{{ day.date|date:'Y-m-d' }}{% endif %}">
     <div class="history-date-row">
-      <span class="text-xl font-semibold text-[var(--color-text)]">{{ day.weekday }}</span>
-      <span class="text-xl text-[var(--color-text)]">{{ day.date_display }}</span>
+      {% if day.date %}<span class="text-base font-semibold text-[var(--color-text)] sm:text-xl">{{ day.weekday }}</span>{% endif %}
+      <span class="text-base text-[var(--color-text)] sm:text-xl{% if not day.date %} font-semibold{% endif %}">{{ day.date_display }}</span>
     </div>
     <div class="text-right">
-      <p class="text-sm text-[var(--color-text-muted)]">
+      <p class="text-xs text-[var(--color-text-muted)] sm:text-sm">
         {% blocktranslate trimmed with value_1=day.entry_count value_3=day.total_runtime_display count count=day.entry_count %}{{ value_1 }} item &middot; {{ value_3 }}{% plural %}{{ value_1 }} items &middot; {{ value_3 }}{% endblocktranslate %}
       </p>
     </div>

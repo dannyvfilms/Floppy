@@ -150,7 +150,13 @@ def _tagged_untracked_items(user, media_type, query, library_ids):
         type_filter = Q(media_type=media_type)
 
     return (
-        Item.objects.filter(type_filter, tagged, title__icontains=query)
+        Item.objects.filter(
+            type_filter,
+            tagged,
+            Q(title__icontains=query)
+            | Q(original_title__icontains=query)
+            | Q(localized_title__icontains=query),
+        )
         .exclude(id__in=library_ids)
         .order_by("title", "id")
     )
@@ -371,7 +377,7 @@ def media_search(request):
     else:
         media_type = MediaTypes.TV.value
     query = request.GET["q"]
-    page = int(request.GET.get("page", 1))
+    page = helpers.get_page_number(request)
     layout = request.GET.get("layout", "grid")
 
     if media_type == ALL_SEARCH_TYPE:

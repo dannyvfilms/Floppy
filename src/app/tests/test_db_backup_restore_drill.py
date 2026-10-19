@@ -7,9 +7,7 @@ removes the newest usable backup, corruption refusal, and a documented
 PostgreSQL skip (this path is SQLite-only — a PostgreSQL deployment needs
 pg_dump, which Floppy does not orchestrate).
 
-The snapshot writer stages through ``/proc/self/fd`` (Linux-only), matching
-the existing convention in ``test_tasks_db_backup``: the writer-dependent
-drills skip on other platforms and run fully in CI's Linux containers.
+The real writer and restore drills run on Linux and native macOS.
 """
 
 import shutil
@@ -20,7 +18,6 @@ import tempfile
 import time
 from datetime import timedelta
 from pathlib import Path
-from unittest import skipUnless
 
 from django.contrib.auth import get_user_model
 from django.db import connection
@@ -41,11 +38,6 @@ from config.sqlite_integrity import create_live_database_snapshot
 from integrations.models import CatalogGrant, IntegrationToken
 from lists.models import CustomList, CustomListItem
 from users.demo import ensure_demo_user  # fixture variety only
-
-requires_proc_fd_backup = skipUnless(
-    sys.platform.startswith("linux"),
-    "verified-snapshot path requires /proc/self/fd (Linux-only)",
-)
 
 
 def _manage_py() -> Path:
@@ -92,9 +84,10 @@ class DatabaseBackupRestoreDrillTests(TestCase):
             media_type=MediaTypes.TV.value,
             title="Drill Show",
         )
-        show = TV.objects.create(
-            item=show_item, user=self.user, status=Status.IN_PROGRESS.value
-        )
+        show = TV(item=show_item, user=self.user, status=Status.IN_PROGRESS.value)
+        TV.objects.bulk_create([show])
+        season = Season(item=show_item, user=self.user, related_tv=show)
+        Season.objects.bulk_create([season])
         episode_item = Item.objects.create(
             media_id="drill-show",
             source=Sources.TMDB.value,
@@ -103,13 +96,12 @@ class DatabaseBackupRestoreDrillTests(TestCase):
             season_number=1,
             episode_number=1,
         )
-        Episode.objects.create(
+        episode = Episode(
             item=episode_item,
-            related_season=Season.objects.create(
-                item=show_item, user=self.user, related_tv=show
-            ),
+            related_season=season,
             end_date=now - timedelta(days=1),
         )
+        Episode.objects.bulk_create([episode])
         IntegrationToken.generate(user=self.user, name="Drill client")
         CatalogGrant.generate(self.user, "Drill living room")
         media_list = CustomList.objects.create(name="Drill list", owner=self.user)
@@ -133,7 +125,6 @@ class DatabaseBackupRestoreDrillTests(TestCase):
         finally:
             destination.close()
 
-    @requires_proc_fd_backup
     def test_backup_restore_and_semantic_equivalence(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
@@ -236,7 +227,6 @@ class DatabaseBackupRestoreDrillTests(TestCase):
                 f"tables={len(tables)}"
             )
 
-    @requires_proc_fd_backup
     def test_a_corrupted_source_is_refused_not_archived(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
@@ -256,7 +246,6 @@ class DatabaseBackupRestoreDrillTests(TestCase):
             )
             self.assertIsNone(snapshot, "a corrupt source must not produce an archive")
 
-    @requires_proc_fd_backup
     def test_retention_never_removes_the_newest_snapshot(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

@@ -22,7 +22,7 @@
       {# Episode preview data #}
       <div class="bg-[var(--color-surface-muted)] rounded-lg p-4 mb-6">
         <div class="flex items-start gap-4">
-          <img alt="{{ episode.title }}"
+          <img data-media-artwork loading="lazy" decoding="sync" alt="{{ episode.title }}"
                class="w-20 h-20 rounded object-cover shrink-0"
                data-image-source="{{ episode.image_source|default:'primary' }}"
                src="{{ episode.image|image_url }}">

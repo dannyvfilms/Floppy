@@ -1,7 +1,6 @@
 {% extends "users/base.html" %}
 {% load i18n %}
 
-
 {% load app_tags %}
 {% load socialaccount %}
 {% load static %}
@@ -26,8 +25,7 @@
           <h3 class="text-base font-medium">{% translate "Logs & Bug Reports" %}</h3>
         </div>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-          {% translate "Recent logs with secrets removed, safe to attach to a bug report." %}
-          {% translate "On a shared instance they may show other users' activity." %}
+          {% translate "Logs may contain private activity. Administrators can download redacted logs and should review them before sharing." %}
           {% if logs_since or last_unclean_exit %}
             <br>
             {% if logs_since %}{% blocktranslate %}Covers {{ logs_since }} onward.{% endblocktranslate %}{% endif %}
@@ -35,11 +33,13 @@
           {% endif %}
         </p>
         <div class="flex flex-wrap gap-3">
+          {% if user.is_superuser %}
           <a href="{% url 'export_logs' %}"
              class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm">
             {% include "app/icons/vertical-sliders.svg" with classes="w-4 h-4 mr-2" %}
             {% translate "Download Sanitized Logs" %}
           </a>
+          {% endif %}
           <a href="https://github.com/dannyvfilms/Floppy/issues/new?title={{ bug_report_title|urlencode }}&body={{ bug_report_body|urlencode }}"
              target="_blank"
              rel="noopener noreferrer"

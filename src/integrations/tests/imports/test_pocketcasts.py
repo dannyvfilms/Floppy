@@ -7,12 +7,15 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from app.models import (
+    TV,
+    Episode,
     Item,
     MediaTypes,
     Podcast,
     PodcastEpisode,
     PodcastShow,
     PodcastShowTracker,
+    Season,
     Sources,
     Status,
 )
@@ -66,6 +69,61 @@ class PocketCastsInferenceTests(TestCase):
         history_record.history_date = history_date
         history_record.save()
         return podcast
+
+    def test_history_durations_ignore_unknown_runtimes_and_missing_items(self):
+        """A 999998 runtime is not a duration, and an episode may have no item."""
+        show_item = Item.objects.create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Show",
+            image="http://example.com/show.jpg",
+        )
+        show = TV.objects.create(item=show_item, user=self.user)
+        season_item = Item.objects.create(
+            media_id="900",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Show",
+            image="",
+            season_number=1,
+        )
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=show,
+        )
+        episodes = {}
+        for number, runtime in ((1, 999998), (2, 45)):
+            episodes[number] = Item.objects.create(
+                media_id="900",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                title="Show",
+                image="",
+                season_number=1,
+                episode_number=number,
+                runtime_minutes=runtime,
+            )
+        ended = self.sync_start + timedelta(minutes=30)
+        for number in (1, 2, 3):
+            Episode.objects.create(
+                item=episodes.get(number, episodes[2]),
+                related_season=season,
+                end_date=ended + timedelta(minutes=number),
+            )
+        # The column is nullable, though save() cannot write a null itself.
+        Episode.objects.filter(end_date=ended + timedelta(minutes=3)).update(
+            item=None,
+        )
+
+        rows = self.importer._get_history_items_in_range(
+            self.sync_start,
+            self.sync_end,
+        )
+
+        durations = [row[1] for row in rows if row[2] == "episode"]
+        self.assertEqual(durations, [None, 45 * 60, None])
 
     def test_infer_completion_with_anchor(self):
         """Anchored completion uses remaining time."""
@@ -595,15 +653,11 @@ class PocketCastsImportFlowTests(TestCase):
             importer.import_data()
 
         show = PodcastShow.objects.get(podcast_uuid="show-1")
-        moved_episode = PodcastEpisode.objects.get(
-            show=show, episode_uuid="uuid-moved"
-        )
+        moved_episode = PodcastEpisode.objects.get(show=show, episode_uuid="uuid-moved")
         self.assertIsNone(moved_episode.season_number)
         self.assertIsNone(moved_episode.episode_number)
         self.assertTrue(
-            Podcast.objects.filter(
-                user=self.user, item__media_id="uuid-valid"
-            ).exists()
+            Podcast.objects.filter(user=self.user, item__media_id="uuid-valid").exists()
         )
 
     def test_ensure_show_repairs_authenticated_image_url(self):
@@ -978,10 +1032,14 @@ class PocketCastsIdentityAmbiguityTests(TestCase):
         self.assertEqual(result["episode"].episode_uuid, "uuid-c")
         self.assertEqual(PodcastEpisode.objects.filter(show=self.show).count(), 3)
         self.assertTrue(
-            PodcastEpisode.objects.filter(show=self.show, episode_uuid="uuid-a").exists()
+            PodcastEpisode.objects.filter(
+                show=self.show, episode_uuid="uuid-a"
+            ).exists()
         )
         self.assertTrue(
-            PodcastEpisode.objects.filter(show=self.show, episode_uuid="uuid-b").exists()
+            PodcastEpisode.objects.filter(
+                show=self.show, episode_uuid="uuid-b"
+            ).exists()
         )
 
     def test_sync_catalog_episode_still_matches_unique_title_date(self):
@@ -1219,3 +1277,48 @@ class PocketCastsRefreshTokenApiTests(TestCase):
 
         self.assertNotIsInstance(ctx.exception, pocketcasts_api.PocketCastsAuthError)
         self.assertIn("503", str(ctx.exception))
+
+    @patch("integrations.pocketcasts_api.requests.post")
+    def test_refresh_error_does_not_log_response_body(self, mock_post):
+        response = self._response(401)
+        response._content = b"private@example.test unlabelled-refresh-credential"
+        mock_post.return_value = response
+
+        with self.assertLogs(pocketcasts_api.logger, level="WARNING") as logs:
+            with self.assertRaises(pocketcasts_api.PocketCastsAuthError):
+                pocketcasts_api.refresh_token("stale")
+
+        output = " ".join(logs.output)
+        self.assertIn("401", output)
+        self.assertNotIn("private@example.test", output)
+        self.assertNotIn("unlabelled-refresh-credential", output)
+
+
+class PocketCastsLoginPrivacyTests(TestCase):
+    """Authentication diagnostics must not retain remote account values."""
+
+    @patch("integrations.pocketcasts_api.requests.post")
+    def test_login_logs_structure_without_account_or_credential_values(self, mock_post):
+        credential = "unlabelled-credential-" * 4
+        for data in (
+            {"accessToken": "access", "email": "private@example.test"},
+            {"session": credential},
+            {"message": "private@example.test " + credential, "status": "error"},
+            credential,
+        ):
+            with self.subTest(data_type=type(data).__name__):
+                mock_post.return_value.json.return_value = data
+                with self.assertLogs(pocketcasts_api.logger, level="DEBUG") as logs:
+                    try:
+                        result = pocketcasts_api.login(
+                            "private@example.test", "password"
+                        )
+                    except pocketcasts_api.PocketCastsAuthError as error:
+                        self.assertNotIn(credential, str(error))
+                        self.assertNotIn("private@example.test", str(error))
+                    else:
+                        self.assertIn(result["accessToken"], ("access", credential))
+
+                output = " ".join(logs.output)
+                self.assertNotIn("private@example.test", output)
+                self.assertNotIn(credential, output)

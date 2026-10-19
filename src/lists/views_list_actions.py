@@ -33,10 +33,11 @@ from app.library_query.adapters import (
     SMART_RULES_CURRENT_SEMANTICS,
     SMART_RULES_SEMANTICS_KEY,
 )
-from app.models import Item, MediaTypes, Status
+from app.models import Item, MediaTypes, Sources, Status
 from app.providers import services
 from app.redis_diagnosis import queue_failure_message
 from app.services import metadata_resolution
+from app.services import music as music_services
 from app.templatetags.app_tags import media_type_readable_plural
 from integrations.upload_staging import (
     enqueue_staged_task,
@@ -402,13 +403,27 @@ def lists_modal(
     except Item.MultipleObjectsReturned:
         item = Item.objects.filter(**lookup).first()
     except Item.DoesNotExist:
-        metadata = services.get_media_metadata(
-            media_type,
-            media_id,
-            source,
-            [season_number],
-            episode_number,
+        # An album page's id is not a MusicBrainz recording, so the provider
+        # cannot describe it; the album row we already hold can.
+        album = (
+            music_services.album_for_media_id(media_id, user=request.user)
+            if tracking_media_type == MediaTypes.MUSIC.value
+            and source == Sources.MUSICBRAINZ.value
+            else None
         )
+        if album:
+            metadata = {
+                "title": album.title,
+                "image": album.image or settings.IMG_NONE,
+            }
+        else:
+            metadata = services.get_media_metadata(
+                media_type,
+                media_id,
+                source,
+                [season_number],
+                episode_number,
+            )
         item = Item.objects.create(
             media_id=media_id,
             source=source,

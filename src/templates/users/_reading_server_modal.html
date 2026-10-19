@@ -45,6 +45,17 @@
           {% translate "Sync now" %}
         </button>
       </form>
+      {% if slug == "kavita" %}
+        <p class="text-xs text-[var(--color-text-muted)]">
+          {% translate "Refresh metadata and progress scans your full Kavita library and retries unresolved items. It may take longer and use more server resources than a regular sync." %}
+        </p>
+        <form method="post" action="{% url "refresh_kavita" %}">
+          {% csrf_token %}
+          <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
+            {% translate "Refresh metadata and progress" %}
+          </button>
+        </form>
+      {% endif %}
       <form method="post" action="{% url disconnect_url %}">
         {% csrf_token %}
         <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">

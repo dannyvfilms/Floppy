@@ -23,8 +23,9 @@ the thread that would deliver them is gone".
 
 It survives ``spawn``, the results pickle fine (188 KB for a whole run), and it
 is intermittent and load-dependent. Nobody has root-caused it. What makes it
-expensive is that the CI job has no ``timeout-minutes``, so a hung run holds a
-runner for GitHub's six-hour default and reports nothing.
+expensive was that the CI job had no ``timeout-minutes``, so a hung run could
+hold a runner for GitHub's six-hour default and report nothing. The current
+application job also has a 120-minute timeout as an outer bound.
 
 So this subclass does not try to fix the race. It makes the *collection* side
 unable to hang on it:

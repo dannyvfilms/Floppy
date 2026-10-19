@@ -165,5 +165,8 @@ floppy_commands_help() {
   Logs:    docker compose -f "$COMPOSE_FILE" logs -f
   Resume:  bash "$REPO_DIR/scripts/install/main.sh"
   Upgrade: docker compose -f "$COMPOSE_FILE" pull && docker compose -f "$COMPOSE_FILE" up -d
+  Before upgrading a pickle-era installation, drain old Celery workers and all
+  queues first. The command above does not drain jobs; undrained jobs can be lost.
+  See docs/security-hardening.md (Celery JSON transition).
 EOF
 }

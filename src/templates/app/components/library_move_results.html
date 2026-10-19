@@ -28,7 +28,7 @@
                 :disabled="moving"
                 class="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-[var(--color-surface-strong)] disabled:cursor-wait disabled:opacity-60">
           {% if result.image %}
-            <img src="{{ result.image|image_url }}" alt="" loading="lazy" class="h-12 w-9 rounded object-cover bg-[var(--color-surface-alt)] shrink-0">
+            <img data-media-artwork decoding="sync" src="{{ result.image|image_url }}" alt="" loading="lazy" class="h-12 w-9 rounded object-cover bg-[var(--color-surface-alt)] shrink-0">
           {% else %}
             <span class="flex h-12 w-9 items-center justify-center rounded bg-[var(--color-surface-alt)] text-gray-600 shrink-0">
               {% include "app/icons/magnifying-glass.svg" with classes="w-4 h-4" %}

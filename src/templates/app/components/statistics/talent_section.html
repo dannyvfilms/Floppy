@@ -10,7 +10,9 @@
               <h2 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Featured Repeat Player" %}</h2>
               <p class="text-sm text-[var(--color-text-muted)]">{% translate "The most recurring talent in your library." %}</p>
             </div>
-            <div x-ref="featuredPlayer">
+            <div x-ref="featuredPlayer"
+                 x-init="$nextTick(() => { const pct = document.getElementById('featured_person_pct'); if (pct && window.renderFeaturedPersonRing) window.renderFeaturedPersonRing(JSON.parse(pct.textContent)); })"
+                 @stats-charts-initialized.window="const pct = document.getElementById('featured_person_pct'); if (pct && window.renderFeaturedPersonRing) window.renderFeaturedPersonRing(JSON.parse(pct.textContent));">
               {% include "app/components/featured_repeat_player_content.html" %}
             </div>
             <div x-ref="featuredPlayerFooter">

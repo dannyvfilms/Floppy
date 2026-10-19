@@ -82,6 +82,27 @@ class ServicesTests(TestCase):
         self.assertEqual(kwargs["data"], {"form_data": "value"})
         self.assertIn("timeout", kwargs)
 
+    @patch("app.providers.services.session.put")
+    def test_api_request_put(self, mock_put):
+        """Test the api_request function with PUT method."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_put.return_value = mock_response
+
+        result = services.api_request(
+            "TEST",
+            "PUT",
+            "https://example.com/api",
+            data={"form_data": "value"},
+        )
+
+        self.assertEqual(result, {"data": "test"})
+        mock_put.assert_called_once()
+        _, kwargs = mock_put.call_args
+        self.assertEqual(kwargs["url"], "https://example.com/api")
+        self.assertEqual(kwargs["data"], {"form_data": "value"})
+        self.assertIn("timeout", kwargs)
+
     def tearDown(self):
         """Avoid leaking the tmdb proxy cache key between tests."""
         cache.delete("tmdb_proxy_url")
@@ -1025,7 +1046,7 @@ class ServicesTests(TestCase):
 
         self.assertEqual(result, [{"title": "Test Game"}])
 
-        mock_search.assert_called_once_with("test", 1)
+        mock_search.assert_called_once_with("test", 1, user=None)
 
     @patch("app.providers.hardcover.search")
     def test_search_hardcover_book(self, mock_search):

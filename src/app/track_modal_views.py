@@ -364,7 +364,12 @@ def _render_standard_track_modal(
                 season_number=season_number,
                 episode_number=episode_number,
             )
-            media = user_medias.first()
+            if request.GET.get("focus") == "notes":
+                # The Notes shortcut edits the entry the detail page treats as
+                # current, resolved now so it stays right after a new entry.
+                media = max(user_medias, key=helpers.entry_activity_key, default=None)
+            else:
+                media = user_medias.first()
         if media:
             instance_id = media.id
 
@@ -444,14 +449,46 @@ def _render_standard_track_modal(
                 percentage = round((media.progress / max_progress) * 100, 1)
                 initial_data["progress"] = percentage
     else:
-        with services.interactive_request_scope():
-            metadata = services.get_media_metadata(
-                media_type,
+        language = metadata_resolution.metadata_language_default(request.user)
+        try:
+            with services.interactive_request_scope():
+                metadata = services.get_media_metadata(
+                    media_type,
+                    media_id,
+                    source,
+                    [season_number],
+                    episode_number=episode_number,
+                    language=language,
+                )
+        except services.ProviderAPIError:
+            if media_type != MediaTypes.EPISODE.value:
+                raise
+            # The provider can list an episode in its season yet 404 the
+            # episode itself; the season payload still names it.
+            logger.warning(
+                "Falling back to season metadata for media_id=%s S%sE%s",
                 media_id,
-                source,
-                [season_number],
-                episode_number=episode_number,
-                language=metadata_resolution.metadata_language_default(request.user),
+                season_number,
+                episode_number,
+            )
+            with services.interactive_request_scope():
+                metadata = dict(
+                    services.get_media_metadata(
+                        MediaTypes.SEASON.value,
+                        media_id,
+                        source,
+                        [season_number],
+                        language=language,
+                    ),
+                )
+            metadata["episode_title"] = next(
+                (
+                    episode.get("name") or episode.get("title")
+                    for episode in metadata.get("episodes") or []
+                    if isinstance(episode, dict)
+                    and str(episode.get("episode_number")) == str(episode_number)
+                ),
+                None,
             )
         base_metadata = metadata
         title = metadata["title"]
@@ -931,6 +968,7 @@ def _render_standard_track_modal(
         "track_action_update": track_action_update,
         "initial_active_tab": initial_active_tab,
         "notes_count": notes_count,
+        "notes_focus": request.GET.get("focus") == "notes",
         "episode_plays_tab_available": episode_plays_tab_available,
         "episode_plays_form": episode_plays_form,
         "episode_plays_formaction": reverse("episode_bulk_save"),
@@ -1141,6 +1179,16 @@ def track_modal(
             episode_number = int(episode_number)
         except (TypeError, ValueError):
             episode_number = None
+
+    # A list card for an album carries the album page's id, which is not a
+    # recording; the album has its own tracking form.
+    if media_type == MediaTypes.MUSIC.value and source == Sources.MUSICBRAINZ.value:
+        from app.music_album_views import album_track_modal
+        from app.services.music import album_for_media_id
+
+        album = album_for_media_id(media_id, user=request.user)
+        if album:
+            return album_track_modal(request, album.id)
 
     # Handle podcast shows (identified by podcast_uuid)
     if (

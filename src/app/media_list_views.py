@@ -21,7 +21,6 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from app import cache_utils, helpers, history_cache
-from app import statistics as stats
 from app.bulk_actions import build_bulk_action_data
 from app.columns import (
     resolve_column_config,
@@ -55,6 +54,7 @@ from app.providers import tmdb
 from app.release_years import prefill_display_release_years
 from app.search_views import _mark_grouped_anime_route
 from app.services import metadata_resolution
+from app.stats_music import _country_name_from_code
 from app.templatetags import app_tags
 from app.tv_sort import _sort_tv_media_by_time_left
 from lists import smart_rules
@@ -1025,6 +1025,287 @@ def _resolve_media_list_preferences(request, route_media_type, comic_subview):
     return layout, sort_filter, direction, media_type, sorted_media_sort_choices
 
 
+def _release_date_from_value(value):
+    if value is None:
+        return None
+    if isinstance(value, date) and not hasattr(value, "hour"):
+        return value
+    if hasattr(value, "date"):
+        try:
+            if hasattr(value, "utcoffset") and timezone.is_aware(value):
+                return timezone.localtime(value).date()
+        except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
+            pass
+        try:
+            return value.date()
+        except Exception:
+            return None
+    return None
+
+
+def _matches_release_filter_value(release_value, filter_value, today):
+    if filter_value == "all":
+        return True
+    release_date = _release_date_from_value(release_value)
+    if not release_date:
+        return filter_value == "not_released"
+    if filter_value == "released":
+        return release_date <= today
+    if filter_value == "not_released":
+        return release_date > today
+    return True
+
+
+def _build_artist_list_context(
+    user,
+    *,
+    tracked_status_filter,
+    search_query,
+    rating_filter,
+    release_filter,
+    genre_filter,
+    origin_filter,
+    sort_filter,
+    direction,
+    layout,
+    page,
+    is_pagination_req,
+):
+    """Build the artist page and facets without mutating the route's context.
+
+    Status, search, rating and release constrain the facet universe; genre and
+    origin then narrow the page. Image refresh/backfill is limited to that page.
+    The route owns preferences, shared context, and full-page/HTMX rendering.
+    """
+    from app.models import Artist, ArtistTracker
+
+    artist_trackers = (
+        ArtistTracker.objects.filter(user=user)
+        .exclude(artist__name__isnull=True)
+        .exclude(artist__name__exact="")
+        .select_related("artist")
+    )
+
+    # Apply status filter to artists
+    if tracked_status_filter:
+        artist_trackers = artist_trackers.filter(status__in=tracked_status_filter)
+
+    # Apply search filter to artists
+    if search_query:
+        artist_trackers = artist_trackers.filter(artist__name__icontains=search_query)
+
+    # Apply rating filter to artists
+    if rating_filter == "rated":
+        artist_trackers = artist_trackers.filter(score__isnull=False)
+    elif rating_filter == "not_rated":
+        artist_trackers = artist_trackers.filter(score__isnull=True)
+
+    should_annotate_first_release_date = (
+        release_filter != "all" or sort_filter == "release_date" or layout == "table"
+    )
+    if should_annotate_first_release_date:
+        artist_trackers = artist_trackers.annotate(
+            first_release_date=Min("artist__albums__release_date")
+        )
+
+    # Apply sorting (limited to what makes sense for artists)
+    if sort_filter == "title":
+        order = "artist__name" if direction == "asc" else "-artist__name"
+        artist_trackers = artist_trackers.order_by(order)
+    elif sort_filter == "score":
+        order = "score" if direction == "asc" else "-score"
+        artist_trackers = artist_trackers.order_by(order, "artist__name")
+    elif sort_filter == "release_date":
+        order = (
+            F("first_release_date").asc(nulls_last=True)
+            if direction == "asc"
+            else F("first_release_date").desc(nulls_last=True)
+        )
+        artist_trackers = artist_trackers.order_by(order, "artist__name")
+    elif sort_filter == "date_added":
+        order = "created_at" if direction == "asc" else "-created_at"
+        artist_trackers = artist_trackers.order_by(order, "artist__name")
+    elif sort_filter == "start_date":
+        order = "start_date" if direction == "asc" else "-start_date"
+        artist_trackers = artist_trackers.order_by(order)
+    else:
+        # Default: most recently updated
+        artist_trackers = artist_trackers.order_by("-updated_at")
+
+    artist_trackers_list = list(artist_trackers)
+
+    if release_filter != "all":
+        today = timezone.localdate()
+        artist_trackers_list = [
+            tracker
+            for tracker in artist_trackers_list
+            if _matches_release_filter_value(
+                getattr(tracker, "first_release_date", None),
+                release_filter,
+                today,
+            )
+        ]
+
+    def _build_music_filter_data(trackers):
+        genres_set = set()
+        origins_set = set()
+        for tracker in trackers:
+            artist = tracker.artist
+            for genre in artist.genres or []:
+                genre_value = str(genre).strip()
+                if genre_value:
+                    genres_set.add(genre_value)
+            origin_value = (artist.country or "").strip()
+            if origin_value:
+                origins_set.add(origin_value)
+
+        genres = sorted(genres_set, key=lambda value: value.lower())
+        origins = []
+        for value in sorted(origins_set):
+            label = value.upper() if len(value) <= MAX_ISO_CODE_LENGTH else value
+            try:
+                if len(value) <= MAX_ISO_CODE_LENGTH:
+                    country_name = _country_name_from_code(value.upper())
+                    if country_name:
+                        label = country_name
+            except Exception:  # pragma: no cover - defensive  # noqa: S110  # deliberate best-effort; failure is non-fatal here
+                pass
+            origins.append({"value": value, "label": label})
+        return {
+            "genres": genres,
+            "years": [],
+            "sources": [],
+            "languages": [],
+            "countries": [],
+            "platforms": [],
+            "origins": origins,
+            "show_languages": False,
+            "show_countries": False,
+            "show_platforms": False,
+            "show_origins": True,
+        }
+
+    filter_data = _build_music_filter_data(artist_trackers_list)
+
+    if genre_filter:
+        target_genre = _normalize_filter_value(genre_filter)
+        artist_trackers_list = [
+            tracker
+            for tracker in artist_trackers_list
+            if any(
+                _normalize_filter_value(genre) == target_genre
+                for genre in (tracker.artist.genres or [])
+            )
+        ]
+
+    if origin_filter:
+        target_country = _normalize_filter_value(origin_filter)
+        artist_trackers_list = [
+            tracker
+            for tracker in artist_trackers_list
+            if _normalize_filter_value(tracker.artist.country) == target_country
+        ]
+
+    # Paginate artist trackers first
+    artist_paginator = Paginator(artist_trackers_list, 32)
+    artist_page = artist_paginator.get_page(page)
+
+    # Backfill missing artist images from album covers (no API calls - uses existing data)
+    # Similar to _fix_missing_season_images for TV seasons
+    # First, bulk fetch latest image data from DB for all artists on this page
+    # (images might have been set by background tasks, detail page visits, etc.)
+    # This is more efficient and reliable than individual refresh_from_db calls
+    artist_ids = [tracker.artist.id for tracker in artist_page.object_list]
+    artist_images_map = dict(
+        Artist.objects.filter(id__in=artist_ids).values_list("id", "image"),
+    )
+
+    refreshed_with_images = 0
+    images_in_db_count = 0
+    for tracker in artist_page.object_list:
+        artist_id = tracker.artist.id
+        old_image = tracker.artist.image
+        # Always update the in-memory object with the latest image from DB
+        # This ensures we have the most up-to-date data, even if it's None
+        if artist_id in artist_images_map:
+            # Get the actual value (could be None if DB has None)
+            actual_image = artist_images_map[artist_id]
+            tracker.artist.image = actual_image
+            # Count images that exist in DB (for logging)
+            if actual_image and actual_image not in (settings.IMG_NONE, ""):
+                images_in_db_count += 1
+            # Count if refresh found an image that wasn't there before
+            if (
+                actual_image
+                and actual_image not in (settings.IMG_NONE, "")
+                and (not old_image or old_image in (settings.IMG_NONE, ""))
+            ):
+                refreshed_with_images += 1
+
+    # Only check artists on the current page to avoid full queryset evaluation
+    # Use object_list to avoid consuming the page iterator (important for HTMX pagination)
+    seen_artist_ids = set()
+    artists_checked = 0
+    artists_with_images = 0
+    artists_missing_images = 0
+
+    # Partition artists into those with / without images in a single pass.
+    artists_missing_image_objects = []
+    for tracker in artist_page.object_list:
+        artist = tracker.artist
+        if artist.id not in seen_artist_ids:
+            seen_artist_ids.add(artist.id)
+            artists_checked += 1
+            has_image = artist.image and artist.image not in (
+                settings.IMG_NONE,
+                "",
+            )
+            if has_image:
+                artists_with_images += 1
+            else:
+                artists_missing_images += 1
+                artists_missing_image_objects.append(artist)
+
+    # Queue a background backfill for artists missing images instead of writing
+    # synchronously during this GET request (avoids racing concurrent importers'
+    # writes and 503s from SQLite lock contention). The Celery task performs the
+    # same "hero image from earliest album cover" lookup and single-row save.
+    queued_for_backfill = 0
+    if artists_missing_image_objects:
+        from app.tasks import prefetch_album_covers_batch
+
+        for artist in artists_missing_image_objects:
+            cache_key = f"music:cover-prefetch:{artist.id}"
+            if cache.add(cache_key, True, 60 * 10):
+                prefetch_album_covers_batch.delay([artist.id], limit_per_artist=5)
+                queued_for_backfill += 1
+
+    logger.debug(
+        "Artist image backfill check (page %d, pagination=%s): checked %d artists, %d had images in DB, %d had images after refresh, %d missing, %d queued for backfill",
+        page,
+        is_pagination_req,
+        artists_checked,
+        images_in_db_count,
+        artists_with_images,
+        artists_missing_images,
+        queued_for_backfill,
+    )
+
+    if refreshed_with_images > 0:
+        logger.info(
+            "Refreshed %d artists from DB that now have images (page %d, pagination=%s)",
+            refreshed_with_images,
+            page,
+            is_pagination_req,
+        )
+
+    return {
+        "media_list": artist_page,
+        "is_artist_list": True,
+        "filter_data": filter_data,
+    }
+
+
 def media_list(request, media_type):
     """Return the media list page."""
     route_media_type = media_type
@@ -1208,35 +1489,6 @@ def media_list(request, media_type):
 
     def apply_progress_filter(media_items, filter_value, media_type):
         return apply_media_list_progress_filter(media_items, filter_value, media_type)
-
-    def _release_date_from_value(value):
-        if value is None:
-            return None
-        if isinstance(value, date) and not hasattr(value, "hour"):
-            return value
-        if hasattr(value, "date"):
-            try:
-                if hasattr(value, "utcoffset") and timezone.is_aware(value):
-                    return timezone.localtime(value).date()
-            except Exception:  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-                pass
-            try:
-                return value.date()
-            except Exception:
-                return None
-        return None
-
-    def _matches_release_filter_value(release_value, filter_value, today):
-        if filter_value == "all":
-            return True
-        release_date = _release_date_from_value(release_value)
-        if not release_date:
-            return filter_value == "not_released"
-        if filter_value == "released":
-            return release_date <= today
-        if filter_value == "not_released":
-            return release_date > today
-        return True
 
     collection_formats_by_item_id = defaultdict(set)
     collection_platforms_by_item_id = defaultdict(set)
@@ -1777,7 +2029,9 @@ def media_list(request, media_type):
         engine_query = from_media_list_filters(sql_media_filters, (media_type,))
         engine = LibraryQueryExecutor(request.user, engine_query)
         engine_total = engine.count()
-        media_page = Paginator(range(engine_total), items_per_page).get_page(max(page, 1))
+        media_page = Paginator(range(engine_total), items_per_page).get_page(
+            max(page, 1)
+        )
         engine_page = engine.page(
             (media_page.number - 1) * items_per_page,
             items_per_page,
@@ -1827,12 +2081,12 @@ def media_list(request, media_type):
                 author="",
                 format="",
                 provider="",
-                platforms=() if media_type == MediaTypes.GAME.value else platform_values,
+                platforms=()
+                if media_type == MediaTypes.GAME.value
+                else platform_values,
             )
             provider_region_for_values = (
-                watch_provider_region
-                if media_type in provider_media_types
-                else None
+                watch_provider_region if media_type in provider_media_types else None
             )
 
             def _menu_rows(filters):
@@ -1842,7 +2096,9 @@ def media_list(request, media_type):
                 )
                 return list(
                     BasicMedia.objects.item_values_for_menu(
-                        Item.objects.filter(pk__in=menu_engine.filtered.values("pk")).order_by(),
+                        Item.objects.filter(
+                            pk__in=menu_engine.filtered.values("pk")
+                        ).order_by(),
                         provider_region_for_values,
                     ),
                 )
@@ -2578,7 +2834,9 @@ def media_list(request, media_type):
         "current_genre": genre_filter,
         "current_implied_genre": implied_genre_filter,
         "current_year": year_filter,
-        "current_completed_date_from": "" if completed_date_within else completed_date_from,
+        "current_completed_date_from": ""
+        if completed_date_within
+        else completed_date_from,
         "current_completed_date_to": "" if completed_date_within else completed_date_to,
         "current_completed_date_within": completed_date_within,
         "current_completed_date_within_unit": completed_date_within_unit,
@@ -2866,7 +3124,7 @@ def media_list(request, media_type):
         context["enable_bulk_select"] = False
 
     if media_type == MediaTypes.MUSIC.value:
-        from app.models import AlbumTracker, Artist, ArtistTracker
+        from app.models import AlbumTracker
 
         context["current_subview"] = music_subview
 
@@ -2994,255 +3252,22 @@ def media_list(request, media_type):
             context["media_type_plural"] = "tracks"
 
         if music_subview == "artists":
-            artist_trackers = (
-                ArtistTracker.objects.filter(user=request.user)
-                .exclude(artist__name__isnull=True)
-                .exclude(artist__name__exact="")
-                .select_related("artist")
-            )
-
-            # Apply status filter to artists
-            if tracked_status_filter:
-                artist_trackers = artist_trackers.filter(
-                    status__in=tracked_status_filter
+            context.update(
+                _build_artist_list_context(
+                    request.user,
+                    tracked_status_filter=tracked_status_filter,
+                    search_query=search_query,
+                    rating_filter=rating_filter,
+                    release_filter=release_filter,
+                    genre_filter=genre_filter,
+                    origin_filter=origin_filter,
+                    sort_filter=sort_filter,
+                    direction=direction,
+                    layout=layout,
+                    page=page,
+                    is_pagination_req=page > 1,
                 )
-
-            # Apply search filter to artists
-            if search_query:
-                artist_trackers = artist_trackers.filter(
-                    artist__name__icontains=search_query
-                )
-
-            # Apply rating filter to artists
-            if rating_filter == "rated":
-                artist_trackers = artist_trackers.filter(score__isnull=False)
-            elif rating_filter == "not_rated":
-                artist_trackers = artist_trackers.filter(score__isnull=True)
-
-            should_annotate_first_release_date = (
-                release_filter != "all"
-                or sort_filter == "release_date"
-                or layout == "table"
             )
-            if should_annotate_first_release_date:
-                artist_trackers = artist_trackers.annotate(
-                    first_release_date=Min("artist__albums__release_date")
-                )
-
-            # Apply sorting (limited to what makes sense for artists)
-            if sort_filter == "title":
-                order = "artist__name" if direction == "asc" else "-artist__name"
-                artist_trackers = artist_trackers.order_by(order)
-            elif sort_filter == "score":
-                order = "score" if direction == "asc" else "-score"
-                artist_trackers = artist_trackers.order_by(order, "artist__name")
-            elif sort_filter == "release_date":
-                order = (
-                    F("first_release_date").asc(nulls_last=True)
-                    if direction == "asc"
-                    else F("first_release_date").desc(nulls_last=True)
-                )
-                artist_trackers = artist_trackers.order_by(order, "artist__name")
-            elif sort_filter == "date_added":
-                order = "created_at" if direction == "asc" else "-created_at"
-                artist_trackers = artist_trackers.order_by(order, "artist__name")
-            elif sort_filter == "start_date":
-                order = "start_date" if direction == "asc" else "-start_date"
-                artist_trackers = artist_trackers.order_by(order)
-            else:
-                # Default: most recently updated
-                artist_trackers = artist_trackers.order_by("-updated_at")
-
-            artist_trackers_list = list(artist_trackers)
-
-            if release_filter != "all":
-                today = timezone.localdate()
-                artist_trackers_list = [
-                    tracker
-                    for tracker in artist_trackers_list
-                    if _matches_release_filter_value(
-                        getattr(tracker, "first_release_date", None),
-                        release_filter,
-                        today,
-                    )
-                ]
-
-            def _build_music_filter_data(trackers):
-                genres_set = set()
-                origins_set = set()
-                for tracker in trackers:
-                    artist = tracker.artist
-                    for genre in artist.genres or []:
-                        genre_value = str(genre).strip()
-                        if genre_value:
-                            genres_set.add(genre_value)
-                    origin_value = (artist.country or "").strip()
-                    if origin_value:
-                        origins_set.add(origin_value)
-
-                genres = sorted(genres_set, key=lambda value: value.lower())
-                origins = []
-                for value in sorted(origins_set):
-                    label = (
-                        value.upper() if len(value) <= MAX_ISO_CODE_LENGTH else value
-                    )
-                    try:
-                        if len(value) <= MAX_ISO_CODE_LENGTH:
-                            country_name = stats._country_name_from_code(value.upper())
-                            if country_name:
-                                label = country_name
-                    except Exception:  # pragma: no cover - defensive  # noqa: S110  # deliberate best-effort; failure is non-fatal here
-                        pass
-                    origins.append({"value": value, "label": label})
-                return {
-                    "genres": genres,
-                    "years": [],
-                    "sources": [],
-                    "languages": [],
-                    "countries": [],
-                    "platforms": [],
-                    "origins": origins,
-                    "show_languages": False,
-                    "show_countries": False,
-                    "show_platforms": False,
-                    "show_origins": True,
-                }
-
-            filter_data = _build_music_filter_data(artist_trackers_list)
-
-            if genre_filter:
-                target_genre = _normalize_filter_value(genre_filter)
-                artist_trackers_list = [
-                    tracker
-                    for tracker in artist_trackers_list
-                    if any(
-                        _normalize_filter_value(genre) == target_genre
-                        for genre in (tracker.artist.genres or [])
-                    )
-                ]
-
-            if origin_filter:
-                target_country = _normalize_filter_value(origin_filter)
-                artist_trackers_list = [
-                    tracker
-                    for tracker in artist_trackers_list
-                    if _normalize_filter_value(tracker.artist.country) == target_country
-                ]
-
-            # Paginate artist trackers first
-            artist_paginator = Paginator(artist_trackers_list, 32)
-            artist_page = artist_paginator.get_page(page)
-
-            # Backfill missing artist images from album covers (no API calls - uses existing data)
-            # Similar to _fix_missing_season_images for TV seasons
-            # First, bulk fetch latest image data from DB for all artists on this page
-            # (images might have been set by background tasks, detail page visits, etc.)
-            # This is more efficient and reliable than individual refresh_from_db calls
-            artist_ids = [tracker.artist.id for tracker in artist_page.object_list]
-            artist_images_map = dict(
-                Artist.objects.filter(id__in=artist_ids).values_list("id", "image"),
-            )
-
-            refreshed_with_images = 0
-            images_in_db_count = 0
-            for tracker in artist_page.object_list:
-                artist_id = tracker.artist.id
-                old_image = tracker.artist.image
-                # Get the latest image from DB (may be None if not in map or if DB value is None)
-                # Use get() with a sentinel to distinguish "not in map" from "None in DB"
-                artist_images_map.get(artist_id, object())  # object() as sentinel
-
-                # Always update the in-memory object with the latest image from DB
-                # This ensures we have the most up-to-date data, even if it's None
-                if artist_id in artist_images_map:
-                    # Get the actual value (could be None if DB has None)
-                    actual_image = artist_images_map[artist_id]
-                    tracker.artist.image = actual_image
-                    # Count images that exist in DB (for logging)
-                    if actual_image and actual_image not in (settings.IMG_NONE, ""):
-                        images_in_db_count += 1
-                    # Count if refresh found an image that wasn't there before
-                    if (
-                        actual_image
-                        and actual_image not in (settings.IMG_NONE, "")
-                        and (not old_image or old_image in (settings.IMG_NONE, ""))
-                    ):
-                        refreshed_with_images += 1
-
-            # Only check artists on the current page to avoid full queryset evaluation
-            # Use object_list to avoid consuming the page iterator (important for HTMX pagination)
-            seen_artist_ids = set()
-            artists_checked = 0
-            artists_with_images = 0
-            artists_missing_images = 0
-
-            # Partition artists into those with / without images in a single pass.
-            artists_missing_image_objects = []
-            for tracker in artist_page.object_list:
-                artist = tracker.artist
-                if artist.id not in seen_artist_ids:
-                    seen_artist_ids.add(artist.id)
-                    artists_checked += 1
-                    has_image = artist.image and artist.image not in (
-                        settings.IMG_NONE,
-                        "",
-                    )
-                    if has_image:
-                        artists_with_images += 1
-                    else:
-                        artists_missing_images += 1
-                        artists_missing_image_objects.append(artist)
-
-            # Queue a background backfill for artists missing images instead of writing
-            # synchronously during this GET request (avoids racing concurrent importers'
-            # writes and 503s from SQLite lock contention). The Celery task performs the
-            # same "hero image from earliest album cover" lookup and single-row save.
-            queued_for_backfill = 0
-            if artists_missing_image_objects:
-                from app.tasks import prefetch_album_covers_batch
-
-                for artist in artists_missing_image_objects:
-                    cache_key = f"music:cover-prefetch:{artist.id}"
-                    if cache.add(cache_key, True, 60 * 10):
-                        prefetch_album_covers_batch.delay(
-                            [artist.id], limit_per_artist=5
-                        )
-                        queued_for_backfill += 1
-
-            # Log backfill attempt (always, not just when updates happen)
-            is_pagination_req = bool(
-                request.GET.get("page") and int(request.GET.get("page", 1)) > 1
-            )
-            # Use module-level logger via logging module to avoid conflict with local 'logger' variable
-            # (there's a local 'logger' assignment on line 168 that makes Python treat it as local)
-            import logging as _logging_module
-
-            _log = _logging_module.getLogger(__name__)
-            _log.debug(
-                "Artist image backfill check (page %d, pagination=%s): checked %d artists, %d had images in DB, %d had images after refresh, %d missing, %d queued for backfill",
-                page,
-                is_pagination_req,
-                artists_checked,
-                images_in_db_count,
-                artists_with_images,
-                artists_missing_images,
-                queued_for_backfill,
-            )
-
-            if refreshed_with_images > 0:
-                _log.info(
-                    "Refreshed %d artists from DB that now have images (page %d, pagination=%s)",
-                    refreshed_with_images,
-                    page,
-                    is_pagination_req,
-                )
-
-            # Replace media_list with artist trackers for music
-            # Use the page object directly - it's already iterable and has all pagination metadata
-            # This ensures HTMX pagination works correctly and images are backfilled for new pages
-            context["media_list"] = artist_page
-            context["is_artist_list"] = True
-            context["filter_data"] = filter_data
 
         context["enable_bulk_select"] = music_subview == "tracks"
 
@@ -3318,7 +3343,7 @@ def media_list(request, media_type):
             return response
 
         # Check if this is a pagination request (has page parameter and is not the first page)
-        is_pagination = request.GET.get("page") and int(request.GET.get("page", 1)) > 1
+        is_pagination = page > 1
         context["is_pagination"] = bool(is_pagination)
 
         if layout == "grid":

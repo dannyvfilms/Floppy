@@ -53,3 +53,24 @@ def find(query, wanted):
         if image:
             found[kind] = Art(f"{base_url}{image['filename']}", PROVIDER, str(image.get("id", "")))
     return found
+
+
+def gallery(query):
+    """Return all fanart available for the matched game."""
+    api_key = credentials.get(PROVIDER, "api_key")
+    if not api_key:
+        return []
+    game_id = _game_id(query, api_key)
+    if game_id is None:
+        return []
+    data = _get("/v1/Games/Images", {
+        "apikey": api_key, "games_id": game_id, "filter[type]": "fanart",
+    })
+    base_url = (data.get("base_url") or {}).get("original")
+    if not base_url:
+        return []
+    return [
+        {"url": f"{base_url}{image['filename']}"}
+        for image in (data.get("images") or {}).get(str(game_id)) or []
+        if image.get("type") == "fanart" and image.get("filename")
+    ]

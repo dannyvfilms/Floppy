@@ -10,7 +10,7 @@ from django.utils.translation import gettext as _
 from app import checkin, checkin_session
 from app.models import MediaTypes, Status
 
-# Every play is its own entry, so adding one is always the forward action.
+# Without a check-in, games add an entry for each play.
 ALWAYS_ADD_ENTRY = frozenset({MediaTypes.GAME.value, MediaTypes.BOARDGAME.value})
 # Once a finished entry exists, the next thing to do is another one. Videos keep
 # one row per user (repeat watches are plays on it) and TV-backed anime one
@@ -69,7 +69,7 @@ def track_actions(media_type, status, checkin_phase=None):
                 edit,
             ]
         if status == Status.COMPLETED.value and media_type == MediaTypes.MOVIE.value:
-            return [add_entry, start, edit]
+            return [start, add_entry, edit]
         return [start, edit]
     if media_type in ALWAYS_ADD_ENTRY or (
         media_type in ADD_ENTRY_WHEN_COMPLETED and status == Status.COMPLETED.value
@@ -91,6 +91,8 @@ def _session_actions(media_type, status, checkin_phase, edit, add_entry):
             edit,
         ]
     start = {"key": "start", "label": _("Check-in"), "icon": "play"}
+    if media_type == MediaTypes.GAME.value:
+        return [start, add_entry, edit]
     if media_type == MediaTypes.BOARDGAME.value:
         return [
             {"key": "log_play", "label": _("Log a play"), "icon": "plus"},

@@ -298,13 +298,32 @@
                     {% include "app/icons/persons.svg" with classes="w-4 h-4 text-[var(--color-link)] shrink-0" %}
                     <span>{% translate "Community Discord" %}</span>
                   </td>
-                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Connect with homelab users, share setups, and get live help" %}</td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Connect with other Floppy users, share setups, and help each other out" %}</td>
                   <td class="px-4 py-3 text-right">
                     <a href="https://discord.gg/uFgha7Kb6n"
                        target="_blank"
                        rel="noopener noreferrer"
                        class="inline-flex items-center gap-1 text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs">
                       <span>{% translate "Join Discord" %}</span>
+                      {% include "app/icons/external-link.svg" with classes="w-3 h-3" %}
+                      <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
+                    </a>
+                  </td>
+                </tr>
+
+                {# metadata_source tags the placement in GitHub's sponsorship export; nothing is tracked here. #}
+                <tr class="hover:bg-[var(--color-surface-hover)] transition-colors">
+                  <td class="px-4 py-3 font-medium text-[var(--color-text)] flex items-center gap-2">
+                    {% include "app/icons/heart.svg" with classes="w-4 h-4 text-[var(--color-link)] shrink-0" %}
+                    <span>{% translate "Support Floppy" %}</span>
+                  </td>
+                  <td class="px-4 py-3 text-[var(--color-text-muted)] text-xs">{% translate "Floppy is free and open source, with no paid features. If it has earned a place in your routine, sponsoring helps it keep improving for everyone." %}</td>
+                  <td class="px-4 py-3 text-right">
+                    <a href="https://github.com/sponsors/dannyvfilms?metadata_source=app-about"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="inline-flex items-center gap-1 text-[var(--color-link)] hover:text-[var(--color-link-hover)] font-medium text-xs">
+                      <span>{% translate "Sponsor" %}</span>
                       {% include "app/icons/external-link.svg" with classes="w-3 h-3" %}
                       <span class="sr-only">{% translate "(opens in a new tab)" %}</span>
                     </a>

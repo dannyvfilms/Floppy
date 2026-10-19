@@ -43,6 +43,20 @@ class CollectionListViewTest(TestCase):
         response = self.client.get(reverse("collection_list"))
         self.assertEqual(response.status_code, 200)
 
+    def test_initial_layout_does_not_wait_for_alpine(self):
+        """Cached posters need their grid width before any script initializes."""
+        self.client.login(**self.credentials)
+        for layout in ("grid", "table"):
+            with self.subTest(layout=layout):
+                response = self.client.get(
+                    reverse("collection_list"), {"layout": layout}
+                )
+                expected = "media-grid" if layout == "grid" else ""
+                self.assertRegex(
+                    response.content.decode(),
+                    rf'id="collection-view"[^>]*\sclass="{expected}"',
+                )
+
     def test_collection_list_unauthenticated(self):
         """Test unauthenticated user is redirected to login."""
         response = self.client.get(reverse("collection_list"))
@@ -229,7 +243,6 @@ class CollectionListViewTest(TestCase):
 
         self.assertEqual(small_page, large_page)
 
-
     def test_collection_episode_cards_do_not_query_per_episode(self):
         """Episode cards read their season; it is loaded with the page, not per card."""
         self.client.login(**self.credentials)
@@ -283,6 +296,7 @@ class CollectionListViewTest(TestCase):
         large_page = count_queries()
 
         self.assertEqual(small_page, large_page)
+
 
 class CollectionCompletenessTest(TestCase):
     """Test the collection page's partial/full collection filter and badge."""

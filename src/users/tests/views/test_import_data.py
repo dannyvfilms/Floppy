@@ -195,6 +195,7 @@ class ImportDataViewTests(TestCase):
             "import_yamtrack",
             "import_clz",
             "import_hltb",
+            "import_playnite",
             "import_grouvee",
             "import_imdb",
             "import_goodreads",
@@ -255,6 +256,14 @@ class ImportDataViewTests(TestCase):
             html=False,
         )
         self.assertContains(response, "Select Export File", html=False)
+
+    def test_import_data_renders_playnite_upload(self):
+        """The import page should expose Playnite's library CSV upload."""
+        response = self.client.get(reverse("import_data"))
+
+        self.assertContains(response, reverse("import_playnite"))
+        self.assertContains(response, 'name="playnite_csv"', html=False)
+        self.assertContains(response, "Import a Playnite library CSV backup.")
 
     def test_import_data_renders_trakt_export_upload(self):
         """The Trakt card should offer a data-export file upload fallback."""
