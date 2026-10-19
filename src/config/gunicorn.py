@@ -85,8 +85,40 @@ def _record_crash_markers(server):
                 server.log.error_log.addHandler(handler)
         run_state.enable_fault_log()
         run_state.start()
+        _record_stop_signals(server)
     except Exception:  # diagnostics must never stop the server
         server.log.exception("[gunicorn] could not record crash markers")
+
+
+def _noting_stop(original, name):
+    """Wrap an arbiter signal handler so the signal is recorded first."""
+
+    def handler():
+        from config import run_state
+
+        try:
+            run_state.note_stop_signal(name)
+        except Exception:  # diagnostics must never stop the server
+            logging.getLogger(__name__).debug("run-state stop note failed")
+        original()
+
+    return handler
+
+
+def _record_stop_signals(server):
+    """Note which signal stops the master, then let gunicorn handle it as usual.
+
+    gunicorn's ``on_exit`` hook is not told why it runs. The arbiter looks its
+    ``handle_<signal>`` method up on the instance when a signal arrives, so
+    wrapping those three is enough.
+    """
+    for signal_name in ("term", "int", "quit"):
+        original = getattr(server, f"handle_{signal_name}")
+        setattr(
+            server,
+            f"handle_{signal_name}",
+            _noting_stop(original, f"SIG{signal_name.upper()}"),
+        )
 
 
 def on_exit(server):
@@ -150,6 +182,7 @@ def post_request(worker, req, environ, resp):  # gunicorn's hook signature
     resident = _worker_rss_bytes()
     if resident is not None and resident > max_worker_memory_bytes:
         worker.alive = False
+
 
 print(  # noqa: T201  # gunicorn has no logger configured this early
     f"[gunicorn] {PROFILE.describe()} -> workers={workers} threads={threads} "

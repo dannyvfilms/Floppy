@@ -61,3 +61,54 @@ class GunicornConfigTests(SimpleTestCase):
 
         exit_code = cm.exception.args[0]
         self.assertEqual(exit_code, 0)
+
+
+class StopSignalRecordingTests(SimpleTestCase):
+    """The master notes which signal stops it, then handles it as before."""
+
+    def _server(self):
+        class Arbiter:
+            calls = []
+
+            def handle_term(self):
+                self.calls.append("term")
+                raise StopIteration
+
+            def handle_int(self):
+                self.calls.append("int")
+                raise StopIteration
+
+            def handle_quit(self):
+                self.calls.append("quit")
+                raise StopIteration
+
+        return Arbiter()
+
+    def test_each_stop_signal_is_noted_and_still_stops_the_server(self):
+        for name, expected in (
+            ("term", "SIGTERM"),
+            ("int", "SIGINT"),
+            ("quit", "SIGQUIT"),
+        ):
+            with self.subTest(name):
+                server = self._server()
+                gunicorn_config._record_stop_signals(server)
+
+                with mock.patch("config.run_state.note_stop_signal") as note:
+                    with self.assertRaises(StopIteration):
+                        getattr(server, f"handle_{name}")()
+
+                note.assert_called_once_with(expected)
+                self.assertEqual(server.calls, [name])
+
+    def test_a_failing_note_does_not_stop_the_shutdown(self):
+        server = self._server()
+        gunicorn_config._record_stop_signals(server)
+
+        with mock.patch(
+            "config.run_state.note_stop_signal", side_effect=OSError("disk full")
+        ):
+            with self.assertRaises(StopIteration):
+                server.handle_term()
+
+        self.assertEqual(server.calls, ["term"])
