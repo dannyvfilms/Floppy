@@ -510,6 +510,95 @@ class CalendarTVTests(CalendarFixturesMixin, TestCase):
 
         self.assertEqual(events_bulk, [])
 
+    @patch("events.calendar.tv.process_tv_seasons")
+    @patch("events.calendar.tv.get_seasons_to_process", return_value=[1])
+    def test_process_tv_reads_current_provider_data(self, _seasons, _process):
+        """A check drops the cached payloads so it cannot miss a new or dated season."""
+        from app.providers import tmdb
+
+        show_key = tmdb._tv_cache_key(self.tv_item.media_id)
+        season_key = tmdb._season_cache_key(self.tv_item.media_id, 1)
+        other_key = tmdb._tv_cache_key("not-this-show")
+        for key in (show_key, season_key, other_key):
+            cache.set(key, {"cached": True})
+
+        self.assertTrue(process_tv(self.tv_item, []))
+
+        self.assertIsNone(cache.get(show_key))
+        self.assertIsNone(cache.get(season_key))
+        self.assertIsNotNone(cache.get(other_key))
+
+    @patch("events.calendar.tv.process_tv_seasons")
+    @patch("events.calendar.tv.get_seasons_to_process", return_value=[1])
+    def test_process_tv_keeps_cache_when_given_fresh_metadata(self, _seasons, _process):
+        """The metadata backfill hands in a payload it just fetched; leave the cache."""
+        from app.providers import tmdb
+
+        show_key = tmdb._tv_cache_key(self.tv_item.media_id)
+        cache.set(show_key, {"cached": True})
+
+        process_tv(self.tv_item, [], tv_metadata={"related": {"seasons": []}})
+
+        self.assertIsNotNone(cache.get(show_key))
+
+    def test_season_eviction_keeps_the_show_payload_just_fetched(self):
+        """TVDB's season keys include the series payload; a season-only eviction spares it."""
+        from types import SimpleNamespace
+
+        from app.metadata_utils import provider_metadata_cache_keys
+        from events.calendar.tv import _evict_cached_metadata
+
+        tvdb_item = SimpleNamespace(source=Sources.TVDB.value, media_id="81189")
+        show_keys = provider_metadata_cache_keys(
+            tvdb_item.source,
+            MediaTypes.TV.value,
+            tvdb_item.media_id,
+        )
+        season_keys = [
+            key
+            for key in provider_metadata_cache_keys(
+                tvdb_item.source,
+                MediaTypes.SEASON.value,
+                tvdb_item.media_id,
+                season_number=1,
+            )
+            if key not in show_keys
+        ]
+        self.assertTrue(season_keys)
+        for key in show_keys + season_keys:
+            cache.set(key, {"cached": True})
+
+        _evict_cached_metadata(tvdb_item, [1], show=False)
+
+        for key in show_keys:
+            self.assertIsNotNone(cache.get(key))
+        for key in season_keys:
+            self.assertIsNone(cache.get(key))
+
+    def test_process_season_episodes_logs_how_many_episodes_have_no_date(self):
+        """The log shows whether the provider dated the season, for bug reports."""
+        events_bulk = []
+        with (
+            patch("events.calendar.tv.get_tvmaze_episode_map", return_value={}),
+            self.assertLogs("events.calendar.tv", level="INFO") as logs,
+        ):
+            process_season_episodes(
+                self.season_item,
+                {
+                    "season_number": 1,
+                    "episodes": [
+                        {"episode_number": 1, "air_date": "2026-10-16"},
+                        {"episode_number": 2, "air_date": None},
+                    ],
+                },
+                events_bulk,
+            )
+
+        self.assertTrue(
+            any("2 episodes from the provider, 1 without an air date" in line for line in logs.output),
+            logs.output,
+        )
+
     def test_process_season_episodes_handles_missing_tvdb_and_episodes(self):
         """A season without TVDB data or episodes should not add events."""
         events_bulk = []

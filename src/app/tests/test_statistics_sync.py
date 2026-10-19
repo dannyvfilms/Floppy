@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.db import OperationalError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -132,6 +133,24 @@ class MarkingTests(StatisticsSyncTestCase):
         self.assertIsNone(result)
         aggregate.assert_not_called()
         self.assertEqual(self.state().lease_expires_at, lease)
+        self.assertGreater(self.state().generation, before)
+        self.assertIsNotNone(self.state().full_sweep_requested_at)
+        enqueue.assert_called_once()
+
+    @NON_EAGER
+    @patch(SYNC_TASK)
+    def test_inline_refresh_that_hits_a_lock_leaves_durable_work(self, enqueue):
+        before = self.state().generation
+        with (
+            patch.object(
+                statistics_sync,
+                "_claim_lease",
+                side_effect=OperationalError("database is locked"),
+            ),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            result = statistics_sync.refresh_range_inline(self.user.id, "Today")
+        self.assertIsNone(result)
         self.assertGreater(self.state().generation, before)
         self.assertIsNotNone(self.state().full_sweep_requested_at)
         enqueue.assert_called_once()
@@ -431,6 +450,81 @@ class SyncTests(StatisticsSyncTestCase):
                 user_id=self.user.id, day=self.day(40)
             ).exists()
         )
+
+    def test_a_lock_error_ends_the_sync_quietly_and_leaves_the_work_queued(self):
+        self.mark([self.day(3)])
+
+        with (
+            patch.object(
+                statistics_sync,
+                "_build_days",
+                side_effect=OperationalError("database is locked"),
+            ),
+            patch(SYNC_TASK) as enqueue,
+            self.assertLogs("app.statistics_sync", level="WARNING") as logs,
+        ):
+            result = statistics_sync.run_sync(self.user.id)
+
+        self.assertEqual(result["status"], "locked")
+        self.assertIn("stats_sync_locked", logs.output[0])
+        enqueue.assert_not_called()
+        self.assertIsNone(self.state().lease_expires_at)
+        self.assertEqual(self.state().last_error, "")
+        self.assertTrue(
+            StatisticsDirtyDay.objects.filter(user=self.user, day=self.day(3)).exists()
+        )
+        self.assertIn(self.user.id, statistics_sync.users_needing_sync())
+
+    def test_a_lock_while_claiming_the_lease_ends_the_sync_quietly(self):
+        self.mark([self.day(3)])
+
+        with (
+            patch.object(
+                statistics_sync,
+                "_claim_lease",
+                side_effect=OperationalError("database is locked"),
+            ),
+            self.assertLogs("app.statistics_sync", level="WARNING") as logs,
+        ):
+            result = statistics_sync.run_sync(self.user.id)
+
+        self.assertEqual(result["status"], "locked")
+        self.assertIn("stats_sync_locked", logs.output[0])
+        self.assertIsNone(self.state().lease_expires_at)
+        self.assertTrue(
+            StatisticsDirtyDay.objects.filter(user=self.user, day=self.day(3)).exists()
+        )
+
+    def test_a_lock_while_releasing_the_lease_does_not_fail_the_sync(self):
+        self.mark([self.day(3)])
+
+        with (
+            patch.object(
+                statistics_sync,
+                "_release_lease",
+                side_effect=OperationalError("database is locked"),
+            ),
+            self.assertLogs("app.statistics_sync", level="WARNING") as logs,
+        ):
+            result = statistics_sync.run_sync(self.user.id)
+
+        self.assertEqual(result["status"], "done")
+        self.assertTrue(any("stats_sync_release_locked" in line for line in logs.output))
+
+    def test_other_database_errors_still_fail_the_sync(self):
+        self.mark([self.day(3)])
+
+        with (
+            patch.object(
+                statistics_sync,
+                "_build_days",
+                side_effect=OperationalError("no such table"),
+            ),
+            self.assertRaises(OperationalError),
+        ):
+            statistics_sync.run_sync(self.user.id)
+
+        self.assertIn("no such table", self.state().last_error)
 
     def test_an_aggregate_only_change_rebuilds_no_old_day(self):
         self.full_sync()

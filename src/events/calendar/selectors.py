@@ -143,6 +143,47 @@ def _aired_show_recheck_q():
     )
 
 
+def _log_skipped_finished_shows(tv_items, included_ids, limit=40):
+    """Name finished shows left out of a reload because they were checked recently.
+
+    A show whose new season never appears is either not selected or selected
+    and fetched with nothing new. This line is what tells the two apart in a
+    bug report (#1531): a show listed here was skipped, not fetched.
+    """
+    recheck_days = getattr(settings, "CALENDAR_AIRED_SHOW_RECHECK_DAYS", 0)
+    if recheck_days <= 0:
+        return
+    season_events = Event.objects.filter(
+        item__media_id=OuterRef("media_id"),
+        item__source=OuterRef("source"),
+        item__media_type=MediaTypes.SEASON.value,
+    )
+    skipped = list(
+        tv_items.exclude(id__in=included_ids)
+        .annotate(
+            has_season_events=Exists(season_events),
+            has_future_events=Exists(
+                season_events.filter(datetime__gte=timezone.now()),
+            ),
+        )
+        .filter(has_season_events=True, has_future_events=False)
+        .order_by("title")
+        .values_list("title", "media_id", "calendar_checked_at")[: limit + 1],
+    )
+    if not skipped:
+        return
+    logger.info(
+        "TV selection: skipped finished shows checked within %d days%s: %s",
+        recheck_days,
+        f" (first {limit})" if len(skipped) > limit else "",
+        "; ".join(
+            f"{title} ({media_id}, checked "
+            f"{checked_at.date().isoformat() if checked_at else 'never'})"
+            for title, media_id, checked_at in skipped[:limit]
+        ),
+    )
+
+
 def get_tv_items_to_include(tv_items):
     """Return tracked TMDB TV item ids that should be refreshed."""
     tracked_count = tv_items.count()
@@ -162,10 +203,21 @@ def get_tv_items_to_include(tv_items):
             has_future_events=Exists(
                 season_events.filter(datetime__gte=timezone.now()),
             ),
+            has_undated_events=Exists(
+                season_events.filter(
+                    item__season_number__gt=0,
+                    datetime__year__lt=1900,
+                ),
+            ),
         )
         .filter(
             Q(media_id__in=changed_tv_ids)
             | Q(has_season_events=False)
+            # TMDB can list a season before it has air dates. Those episodes
+            # are stored with the year-1 unknown-date sentinel, and TMDB's
+            # change feed is capped, so nothing else reliably brings the show
+            # back once the dates are published (#1531).
+            | Q(has_undated_events=True)
             | _aired_show_recheck_q(),
         )
         .values("id", "media_id", "title", "has_season_events"),
@@ -177,6 +229,7 @@ def get_tv_items_to_include(tv_items):
         len(changed_tv_ids),
         len(included_tv_rows),
     )
+    _log_skipped_finished_shows(tv_items, [row["id"] for row in included_tv_rows])
 
     for item in included_tv_rows:
         if item["media_id"] in changed_tv_ids:

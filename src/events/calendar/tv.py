@@ -10,7 +10,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 from simple_history.utils import bulk_create_with_history, bulk_update_with_history
 
-from app import cache_utils
+from app import cache_utils, metadata_utils
 from app.models import TV, Item, MediaTypes, Season, Sources, Status
 from app.providers import services, tmdb, tvdb
 from events.models import Event
@@ -51,6 +51,37 @@ def _clear_tv_time_left_cache(media_id, source, user_ids=None):
         cache_utils.clear_time_left_cache_for_user(user_id)
 
 
+def _evict_cached_metadata(tv_item, season_numbers=(), *, show=True):
+    """Drop cached provider payloads so this check reads current air dates.
+
+    Provider metadata is cached for 12 to 24 hours, and a check that reads it
+    can miss a season the provider added, or dated, since (#1531). Only shows
+    selected for a check come through here, and each is about to be fetched.
+    """
+    show_keys = metadata_utils.provider_metadata_cache_keys(
+        tv_item.source,
+        MediaTypes.TV.value,
+        tv_item.media_id,
+    )
+    keys = list(show_keys) if show else []
+    for season_number in season_numbers:
+        # TVDB's season keys include the series payload; keep the one just fetched.
+        keys.extend(
+            key
+            for key in metadata_utils.provider_metadata_cache_keys(
+                tv_item.source,
+                MediaTypes.SEASON.value,
+                tv_item.media_id,
+                season_number=season_number,
+            )
+            if show or key not in show_keys
+        )
+    try:
+        cache.delete_many(keys)
+    except Exception:
+        logger.warning("Could not clear cached metadata for %s", tv_item, exc_info=True)
+
+
 def process_tv(tv_item, events_bulk, tv_metadata=None, force_seasons=None):
     """Process TV item and create events for all seasons and episodes.
 
@@ -60,6 +91,9 @@ def process_tv(tv_item, events_bulk, tv_metadata=None, force_seasons=None):
     logger.info("Processing TV show: %s", tv_item)
 
     try:
+        if tv_metadata is None:
+            _evict_cached_metadata(tv_item)
+
         seasons_to_process = get_seasons_to_process(
             tv_item,
             tv_metadata=tv_metadata,
@@ -69,6 +103,9 @@ def process_tv(tv_item, events_bulk, tv_metadata=None, force_seasons=None):
         if not seasons_to_process:
             logger.info("%s - No seasons need processing", tv_item)
             return True
+
+        if tv_metadata is None:
+            _evict_cached_metadata(tv_item, seasons_to_process, show=False)
 
         process_tv_seasons(
             tv_item,
@@ -146,15 +183,20 @@ def get_seasons_to_process(tv_item, tv_metadata=None, force_seasons=None):
             or season_num in seasons_with_refreshable_events
         ]
 
-    if not seasons_to_process:
-        return []
-
+    # One line per checked show: it separates "the provider has no new season"
+    # from "the show was never checked" when a season is missing (#1531).
     logger.info(
-        "%s - Processing %d seasons (Next episode season: %s)",
+        "%s - Provider seasons %s, seasons with events %s, processing %s "
+        "(Next episode season: %s)",
         tv_item,
-        len(seasons_to_process),
+        sorted(season_numbers),
+        sorted(seasons_with_events),
+        sorted(seasons_to_process),
         next_episode_season,
     )
+
+    if not seasons_to_process:
+        return []
 
     return seasons_to_process
 
@@ -407,6 +449,7 @@ def process_season_episodes(item, metadata, events_bulk, tv_metadata=None):
     items_to_update = []
     new_items = []
     earliest_release = None
+    undated_count = 0
 
     for episode in metadata["episodes"]:
         episode_number = episode["episode_number"]
@@ -463,6 +506,8 @@ def process_season_episodes(item, metadata, events_bulk, tv_metadata=None):
         release_datetime = (
             episode_datetime if episode_datetime.year > MIN_VALID_RELEASE_YEAR else None
         )
+        if release_datetime is None:
+            undated_count += 1
 
         if release_datetime is not None and (
             earliest_release is None or release_datetime < earliest_release
@@ -489,6 +534,13 @@ def process_season_episodes(item, metadata, events_bulk, tv_metadata=None):
             updated = True
         if updated and episode_item not in new_items:
             items_to_update.append(episode_item)
+
+    logger.info(
+        "%s - %d episodes from the provider, %d without an air date",
+        item,
+        len(metadata["episodes"]),
+        undated_count,
+    )
 
     if new_items:
         Item.objects.bulk_create(new_items, batch_size=100)

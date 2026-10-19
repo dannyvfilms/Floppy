@@ -555,6 +555,12 @@ else:
             "NAME": FLOPPY_DB_PATH,
             "OPTIONS": {
                 "timeout": SQLITE_BUSY_TIMEOUT_SECONDS,
+                # Take the write lock when a transaction starts. A plain BEGIN
+                # defers it to the first write, and a transaction that read
+                # first and then writes after another process committed fails
+                # at once with "database is locked", ignoring the timeout
+                # above. IMMEDIATE queues behind the other writer instead.
+                "transaction_mode": "IMMEDIATE",
             },
             # Reuse a thread's connection across requests instead of opening
             # one (plus the PRAGMAs below) for every request. Idle autocommit

@@ -1104,7 +1104,12 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                 ),
             )
 
+            # A dropped season's episodes are not counted in the show's progress
+            # (TV.progress), so its events must not be counted as candidates
+            # either: the position would land on one of its old episodes.
             for season in seasons:
+                if season.status == Status.DROPPED.value:
+                    continue
                 season_item = getattr(season, "item", None)
                 season_events = (
                     _ordered_events_for_item(season_item) if season_item else []
@@ -2051,6 +2056,26 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
 
     def _annotate_tv_released_episodes(self, tv_list, current_datetime):
         """Annotate TV shows with the number of released episodes."""
+        tv_model = apps.get_model("app", "TV")
+        stray_rows = [tv for tv in tv_list if not isinstance(tv, tv_model)]
+        if stray_rows:
+            # Only a show tracker has seasons to count. A season (or other)
+            # row on a TV page means its item is mis-typed in the library;
+            # leave the row unannotated and name it, instead of failing the
+            # whole page.
+            for row in stray_rows:
+                logger.warning(
+                    "TV list holds a non-show row: model=%s pk=%s item_id=%s "
+                    "item_media_type=%s media_id=%s source=%s",
+                    type(row).__name__,
+                    row.pk,
+                    getattr(row, "item_id", None),
+                    getattr(getattr(row, "item", None), "media_type", None),
+                    getattr(getattr(row, "item", None), "media_id", None),
+                    getattr(getattr(row, "item", None), "source", None),
+                )
+                row.max_progress = None
+            tv_list = [tv for tv in tv_list if isinstance(tv, tv_model)]
         if not tv_list:
             return
 
