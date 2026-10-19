@@ -111,10 +111,20 @@ def _item_credit_feature_maps(
             "person__name",
         )
     )
-    for item_id, role_type, role, department, person_name_raw in credit_entries:
+    # Stream the rows, and share one string per name: a library holds hundreds
+    # of thousands of credits but far fewer distinct people.
+    shared_names: dict[str, str] = {}
+    for (
+        item_id,
+        role_type,
+        role,
+        department,
+        person_name_raw,
+    ) in credit_entries.iterator(chunk_size=5000):
         person_name = normalize_person_name(person_name_raw or "")
         if not person_name:
             continue
+        person_name = shared_names.setdefault(person_name, person_name)
         if person_name not in people_seen[item_id]:
             people_seen[item_id].add(person_name)
             people_map[item_id].append(person_name)

@@ -1,5 +1,6 @@
 """Discover refreshes: queued copies coalesce and a library pool stays bounded."""
 
+import json
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -76,6 +77,39 @@ class RowRefreshCoalescingTests(TestCase):
 
         self.assertEqual(self.run_task("coming_soon").call_count, 1)
         self.assertEqual(self.queue("comfort_rewatches").call_count, 1)
+
+    def test_every_return_path_is_json_serializable(self):
+        # Celery stores the return value as JSON; an eager test run never
+        # encodes it, so a User object left in the result went unnoticed.
+        self.queue("comfort_rewatches", "coming_soon")
+        coalesced = self.run_task("comfort_rewatches")
+        rebuilt = self.run_task("coming_soon")
+        with patch("app.discover.service.refresh_rows_for_user", return_value=1):
+            results = [
+                refresh_discover_rows(self.user.id, "movie", ["coming_soon"]),
+                refresh_discover_rows(0, "movie", ["coming_soon"]),
+            ]
+        self.user.show_discover = False
+        self.user.save(update_fields=["show_discover"])
+        results.append(refresh_discover_rows(self.user.id, "movie", ["coming_soon"]))
+
+        self.assertEqual(coalesced.call_count, 0)
+        self.assertEqual(rebuilt.call_count, 1)
+        for result in results:
+            json.dumps(result)
+
+    def test_a_coalesced_result_has_no_internal_keys(self):
+        self.queue("comfort_rewatches", "coming_soon")
+        with (
+            patch("app.discover.service.refresh_rows_for_user", return_value=1),
+            patch("app.discover.tab_cache.refresh_tab_cache"),
+        ):
+            result = refresh_discover_rows(self.user.id, "movie", ["comfort_rewatches"])
+
+        self.assertEqual(
+            result,
+            {"refreshed": 1, "user_id": self.user.id, "media_type": "movie"},
+        )
 
     def test_a_disabled_media_type_still_releases_its_lock(self):
         self.user.comic_enabled = False

@@ -51,7 +51,10 @@ from app.discover.movie_comfort import (
     _entry_phase_evidence,
     _phase_affinity_maps,
 )
-from app.discover.profile import get_or_compute_taste_profile
+from app.discover.profile import (
+    get_or_compute_taste_profile,
+    preload_tv_activity_dates,
+)
 from app.discover.provider_candidates import (
     _mal_anime_fallback_candidates,
     _provider_row_candidates,
@@ -168,9 +171,11 @@ def _recent_completed_tag_coverage(
         recent_queryset = recent_queryset.filter(
             _activity_filter_query(model, cutoff, newer_than=True),
         )
+    recent_entries = list(recent_queryset.order_by(*_activity_ordering(model))[:300])
+    preload_tv_activity_dates(recent_entries)
     recent_entries = [
         entry
-        for entry in recent_queryset.order_by(*_activity_ordering(model))[:300]
+        for entry in recent_entries
         if (
             _entry_activity_datetime(entry)
             and _entry_activity_datetime(entry) >= cutoff
@@ -231,6 +236,10 @@ def _comfort_candidates(
             _activity_filter_query(model, unrated_cutoff, newer_than=False),
         )
     unrated_queryset = unrated_queryset[:COMFORT_LIBRARY_ENTRY_LIMIT]
+
+    rated_queryset = list(rated_queryset)
+    unrated_queryset = list(unrated_queryset)
+    preload_tv_activity_dates(rated_queryset + unrated_queryset)
 
     rated_entries = []
     for entry in rated_queryset:

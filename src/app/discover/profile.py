@@ -30,9 +30,11 @@ from app.discover.scoring import (
     weighted_pearson_correlation,
 )
 from app.models import (
+    TV,
     CreditRoleType,
     DiscoverFeedback,
     DiscoverFeedbackType,
+    Episode,
     Item,
     ItemPersonCredit,
     ItemStudioCredit,
@@ -237,6 +239,33 @@ def _entry_activity_datetime(entry):
     )
 
 
+def preload_tv_activity_dates(entries) -> None:
+    """Give TV entries their last-watched date in one query.
+
+    `TV.end_date` and `TV.progressed_at` walk seasons and episodes on first
+    read, so asking a whole library for them cost thousands of queries
+    (minutes on a slow disk, and past the task time limit). Both are the
+    newest watched episode date, so one grouped read seeds the values the
+    `cached_property` would otherwise compute.
+    """
+    shows = [entry for entry in entries if type(entry) is TV]
+    if not shows:
+        return
+    latest = dict(
+        Episode.objects.filter(
+            related_season__related_tv__user_id=shows[0].user_id,
+            related_season__order_archived=False,
+            end_date__isnull=False,
+        )
+        .values_list("related_season__related_tv_id")
+        .annotate(latest=Max("end_date")),
+    )
+    for show in shows:
+        show.__dict__["end_date"] = show.__dict__["progressed_at"] = latest.get(
+            show.id
+        )
+
+
 def _latest_datetime(*values):
     filtered = [value for value in values if value is not None]
     if not filtered:
@@ -353,10 +382,20 @@ def _item_credit_feature_maps(
             "person__name",
         )
     )
-    for item_id, role_type, role, department, person_name_raw in credit_entries:
+    # Stream the rows, and share one string per name: a library holds hundreds
+    # of thousands of credits but far fewer distinct people.
+    shared_names: dict[str, str] = {}
+    for (
+        item_id,
+        role_type,
+        role,
+        department,
+        person_name_raw,
+    ) in credit_entries.iterator(chunk_size=5000):
         person_name = normalize_person_name(person_name_raw or "")
         if not person_name:
             continue
+        person_name = shared_names.setdefault(person_name, person_name)
         if person_name not in people_seen[item_id]:
             people_seen[item_id].add(person_name)
             people_map[item_id].append(person_name)
@@ -869,6 +908,7 @@ def compute_taste_profile(user, media_type: str) -> ProfilePayload:
         entries = list(
             model.objects.filter(user=user).select_related("item").only(*only_fields),
         )
+        preload_tv_activity_dates(entries)
 
         item_ids = [entry.item_id for entry in entries if entry.item_id]
 
