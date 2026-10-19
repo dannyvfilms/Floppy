@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from app.models import (
     CREDITS_BACKFILL_VERSION,
@@ -183,6 +185,70 @@ class SyncImdbRatingsTaskTests(TestCase):
                 "seasons_updated": 1,
             },
         )
+
+
+class SyncImdbRatingsMemoryTests(TestCase):
+    """The sync must not load columns it never reads (watch_providers is ~146 KiB)."""
+
+    def test_sync_never_selects_heavy_columns(self):
+        show = Item.objects.create(
+            media_id="tmdb-9",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="A Show",
+            provider_external_ids={"imdb_id": "tt0000009"},
+            watch_providers={"US": {"flatrate": [{"provider_name": "x" * 1000}]}},
+        )
+        episode = Item.objects.create(
+            media_id="tmdb-9",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Pilot",
+            season_number=1,
+            episode_number=1,
+        )
+        season = Item.objects.create(
+            media_id="tmdb-9",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Season 1",
+            season_number=1,
+        )
+
+        with (
+            patch(
+                "app.providers.imdb_datasets.download_ratings",
+                side_effect=[{"tt0000009": (7.0, 10)}, {"tt0000010": (8.0, 20)}],
+            ),
+            patch(
+                "app.providers.imdb_datasets.download_episode_map",
+                return_value={"tt0000009": {(1, 1): "tt0000010"}},
+            ),
+            CaptureQueriesContext(connection) as queries,
+        ):
+            result = sync_imdb_ratings_from_datasets()
+
+        self.assertEqual(
+            result,
+            {
+                "movies_and_shows_updated": 1,
+                "episodes_updated": 1,
+                "seasons_updated": 1,
+            },
+        )
+        select_sql = [q["sql"] for q in queries if q["sql"].startswith("SELECT")]
+        self.assertTrue(select_sql)
+        for sql in select_sql:
+            self.assertNotIn("watch_providers", sql)
+            self.assertNotIn("synopsis", sql)
+        show.refresh_from_db()
+        episode.refresh_from_db()
+        season.refresh_from_db()
+        self.assertEqual((show.imdb_rating, show.imdb_rating_count), (7.0, 10))
+        self.assertEqual((episode.imdb_rating, episode.imdb_rating_count), (8.0, 20))
+        self.assertEqual((season.imdb_rating, season.imdb_rating_count), (8.0, 20))
+        # The sync must not wipe the columns it left unloaded.
+        self.assertIn("US", show.watch_providers)
 
 
 class SyncSeasonRatingsBucketTests(TestCase):

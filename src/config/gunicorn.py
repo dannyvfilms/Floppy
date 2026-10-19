@@ -89,6 +89,25 @@ def _record_crash_markers(server):
         server.log.exception("[gunicorn] could not record crash markers")
 
 
+def _load_url_conf(server):
+    """Import the URLconf, and every view module behind it, in the master.
+
+    Django resolves ROOT_URLCONF on the first request, not in django.setup(),
+    so with preload_app every forked worker paid for it: about 1.5 s of CPU on
+    a laptop, and on a loaded NAS 1 to 16 s for the first request after each
+    recycle -- once, at worst, a health check slower than Docker's 15 s
+    timeout. Importing here lets the fork inherit it, and the freeze below
+    keeps those pages shared. Never fatal: a worker would still import it
+    lazily and report the real error.
+    """
+    try:
+        from django.urls import get_resolver
+
+        get_resolver().url_patterns  # noqa: B018  # the property imports the URLconf
+    except Exception:
+        server.log.exception("[gunicorn] could not preload the URLconf")
+
+
 def on_exit(server):
     """Mark a deliberate stop, so the next start can tell it from a crash."""
     from config import run_state
@@ -118,6 +137,7 @@ def when_ready(server):
     this runs once here rather than in each of them.
     """
     _record_crash_markers(server)
+    _load_url_conf(server)
     gc.collect()
     gc.freeze()
     server.log.info(

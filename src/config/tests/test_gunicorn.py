@@ -45,6 +45,41 @@ class GunicornConfigTests(SimpleTestCase):
 
         redis_cache.client.do_close_clients.assert_called_once_with()
 
+    def test_when_ready_preloads_url_conf_before_freezing(self):
+        """Workers must inherit the imported URLconf, not each import it."""
+        calls = []
+        server = mock.Mock()
+        with (
+            mock.patch.object(gunicorn_config, "_record_crash_markers"),
+            mock.patch("django.urls.get_resolver") as get_resolver,
+            mock.patch.object(gunicorn_config.gc, "collect"),
+            mock.patch.object(
+                gunicorn_config.gc,
+                "freeze",
+                side_effect=lambda: calls.append("freeze"),
+            ),
+        ):
+            type(get_resolver.return_value).url_patterns = mock.PropertyMock(
+                side_effect=lambda: calls.append("urlconf") or [],
+            )
+            gunicorn_config.when_ready(server)
+
+        self.assertEqual(calls, ["urlconf", "freeze"])
+
+    def test_when_ready_survives_a_broken_url_conf(self):
+        """A failed preload must not stop the server; workers report it."""
+        server = mock.Mock()
+        with (
+            mock.patch.object(gunicorn_config, "_record_crash_markers"),
+            mock.patch("django.urls.get_resolver", side_effect=ImportError("boom")),
+            mock.patch.object(gunicorn_config.gc, "collect"),
+            mock.patch.object(gunicorn_config.gc, "freeze") as freeze,
+        ):
+            gunicorn_config.when_ready(server)
+
+        server.log.exception.assert_called_once()
+        freeze.assert_called_once_with()
+
     def test_config(self):
         """Test that the Gunicorn configuration file is valid."""
         argv = [

@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 _SHOW_MEDIA_TYPES = (MediaTypes.TV.value, MediaTypes.ANIME.value)
 
+# The sync reads and writes only these columns. Loading whole Items also decodes
+# watch_providers (TMDB's availability for every region, ~146 KiB a title), which
+# held the task at a ~529 MiB high-water mark on a 1,400-title library.
+_RATING_FIELDS = ("imdb_rating", "imdb_rating_count")
+
 
 def sync_movie_and_show_ratings() -> int:
     """Update imdb_rating/imdb_rating_count for movies and shows with a known imdb id.
@@ -30,7 +35,7 @@ def sync_movie_and_show_ratings() -> int:
         Item.objects.filter(
             media_type__in=(MediaTypes.MOVIE.value, *_SHOW_MEDIA_TYPES),
             provider_external_ids__has_key="imdb_id",
-        ),
+        ).only("provider_external_ids", *_RATING_FIELDS),
     )
     if not items:
         return 0
@@ -127,7 +132,7 @@ def sync_episode_ratings() -> int:
             media_id=media_id,
             source=source,
             media_type=MediaTypes.EPISODE.value,
-        )
+        ).only("season_number", "episode_number", *_RATING_FIELDS)
         for episode_item in episode_items:
             if (
                 episode_item.season_number is None
@@ -222,7 +227,7 @@ def sync_season_ratings() -> int:
             source=source,
             media_type=MediaTypes.SEASON.value,
             season_number__in=totals_by_season.keys(),
-        )
+        ).only("season_number", *_RATING_FIELDS)
         if is_anime_bucket:
             season_qs = season_qs.filter(library_media_type=MediaTypes.ANIME.value)
         else:
