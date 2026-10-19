@@ -13,6 +13,7 @@ from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme, urlencode
 from django.utils.translation import gettext
 from django.views.decorators.cache import never_cache
@@ -937,6 +938,63 @@ def collection_remove_season(request, season_item_id):
     return _collection_redirect(request)
 
 
+@require_POST
+def collection_update_season(request, season_item_id):
+    """Apply edited format details to every collected episode of a season."""
+    season_item = get_object_or_404(
+        Item,
+        id=season_item_id,
+        media_type=MediaTypes.SEASON.value,
+    )
+    season_title = (
+        "Specials"
+        if season_item.season_number == 0
+        else f"Season {season_item.season_number}"
+    )
+    post_data = request.POST.copy()
+    post_data["item"] = season_item.id
+    form = CollectionEntryForm(
+        post_data,
+        user=request.user,
+        collection_media_type=season_item.media_type,
+    )
+    if not form.is_valid():
+        helpers.form_error_messages(form, request)
+        if request.headers.get("HX-Request"):
+            return JsonResponse({"success": False, "errors": form.errors}, status=400)
+        return _collection_redirect(request)
+
+    copy_fields = {
+        field: form.cleaned_data[field]
+        for field in _COLLECTION_ENTRY_COPY_FIELDS
+        if field in form.cleaned_data
+    }
+    updated_count = CollectionEntry.objects.filter(
+        user=request.user,
+        item__media_id=season_item.media_id,
+        item__source=season_item.source,
+        item__media_type=MediaTypes.EPISODE.value,
+        item__season_number=season_item.season_number,
+    ).update(**copy_fields, updated_at=timezone.now())
+
+    if updated_count:
+        message = gettext("Updated %(value_1)s in collection") % {
+            "value_1": season_title
+        }
+        messages.success(request, message)
+    else:
+        message = gettext("No collected episodes found for %(value_1)s") % {
+            "value_1": season_title
+        }
+        messages.error(request, message)
+    if request.headers.get("HX-Request"):
+        return JsonResponse(
+            {"success": bool(updated_count), "message": message},
+            status=200 if updated_count else 404,
+        )
+    return _collection_redirect(request)
+
+
 def _collection_source_labels_by_item_id(user, item_ids):
     """Return source labels grouped by item id for collection auditing."""
     if not item_ids:
@@ -1416,6 +1474,62 @@ def _apply_custom_field_values(entry, user, post_data, *, scope_media_type=None)
     entry.save(update_fields=["custom_field_values"])
 
 
+def _edit_form_for(
+    user, media_type, *, form_key, instance=None, initial=None, choices_override=None
+):
+    """Return an inline edit form whose widget ids cannot clash with the add form."""
+    return CollectionEntryForm(
+        instance=instance,
+        initial=initial,
+        user=user,
+        collection_media_type=media_type,
+        collection_choices_override={"resolution": choices_override}
+        if choices_override
+        else None,
+        auto_id=f"id_edit_{form_key}_%s",
+    )
+
+
+def _attach_entry_edit_forms(user, entries, platform_choices=None):
+    """Give each real CollectionEntry what its inline edit form needs."""
+    for entry in entries:
+        entry.edit_form = _edit_form_for(
+            user,
+            entry.item.media_type,
+            form_key=entry.id,
+            instance=entry,
+            choices_override=platform_choices,
+        )
+        entry.edit_form_id = f"collection-edit-form-{entry.id}"
+        entry.edit_id_prefix = f"edit_{entry.id}_"
+        entry.edit_update_url = reverse("collection_update", args=[entry.id])
+
+
+def _attach_season_edit_forms(user, season_audit_entries):
+    """Give each season summary row a form that edits all its episode entries."""
+    for row in season_audit_entries:
+        form = _edit_form_for(
+            user,
+            MediaTypes.SEASON.value,
+            form_key=f"season_{row['season_item_id']}",
+            initial={
+                field: row["collection_entry"].get(field)
+                for field in _COLLECTION_ENTRY_COPY_FIELDS
+            },
+        )
+        row["edit_form"] = form
+        row["edit_title"] = gettext("Edit all episodes in this season")
+        row["edit_collection_fields"] = [
+            field
+            for field in form.collection_fields
+            if field in _COLLECTION_ENTRY_COPY_FIELDS
+        ]
+        row["edit_form_id"] = f"collection-edit-form-season-{row['season_item_id']}"
+        row["edit_update_url"] = reverse(
+            "collection_update_season", args=[row["season_item_id"]]
+        )
+
+
 def build_collection_modal_context(
     request,
     source,
@@ -1447,6 +1561,11 @@ def build_collection_modal_context(
     season_audit_entries = _build_collection_season_audit_entries(request.user, item)
     episode_audit_entries = _build_collection_episode_audit_entries(request.user, item)
     visible_existing_entries = list(existing_entries)
+    _attach_entry_edit_forms(request.user, visible_existing_entries, platform_choices)
+    _attach_entry_edit_forms(
+        request.user, [row["entry"] for row in episode_audit_entries]
+    )
+    _attach_season_edit_forms(request.user, season_audit_entries)
     if season_audit_entries:
         # At show level an entry on the show Item cannot say which season it
         # covers, so the per-season audit rows replace it. A season-level entry
