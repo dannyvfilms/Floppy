@@ -443,6 +443,7 @@ class PlannedHomeDisplayChoices(models.TextChoices):
 class HomeScreenRowTypeChoices(models.TextChoices):
     """Supported row sources for the configurable home screen."""
 
+    UP_NEXT = "up_next", _("Up Next")
     LIBRARY_QUERY = "library_query", _("Library Row")
     CUSTOM_LIST = "custom_list", _("List / Smart List")
     RECENTLY_UNRATED = "recently_unrated", _("Recently Played - Not Rated")
@@ -2508,6 +2509,7 @@ class HomeScreenRow(models.Model):
         blank=True,
         related_name="home_screen_rows",
     )
+    columns = models.PositiveSmallIntegerField(default=2, choices=[(2, "2"), (3, "3"), (4, "4")])
     sort_by = models.CharField(max_length=32, default=MediaSortChoices.TITLE)
     direction = models.CharField(
         max_length=4,

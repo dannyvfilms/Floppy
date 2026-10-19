@@ -1082,6 +1082,18 @@ def _write_episode_save_oob(
 @rating_edit
 def episode_save(request):
     """Handle the creation, deletion, and updating of episodes for a season."""
+    up_next_row = None
+    home_row_id = request.POST.get("up_next_row_id")
+    if home_row_id:
+        from users.models import HomeScreenRow, HomeScreenRowTypeChoices
+
+        try:
+            up_next_row = HomeScreenRow.objects.get(
+                pk=int(home_row_id), user=request.user, enabled=True,
+                row_type=HomeScreenRowTypeChoices.UP_NEXT,
+            )
+        except (ValueError, HomeScreenRow.DoesNotExist):
+            return HttpResponseBadRequest(gettext("Invalid Up Next row"))
     media_id = request.POST["media_id"]
     season_number = int(request.POST["season_number"])
     episode_number = int(request.POST["episode_number"])
@@ -1089,7 +1101,7 @@ def episode_save(request):
     library_media_type = (request.POST.get("library_media_type") or "").strip()
 
     next_path = request.GET.get("next") or ""
-    if source == Sources.TMDB.value and next_path:
+    if source == Sources.TMDB.value and next_path and not media_id.startswith("order_"):
         parsed_next_path = urlparse(next_path).path
         path_parts = [segment for segment in parsed_next_path.split("/") if segment]
         if len(path_parts) >= DETAILS_ROUTE_MIN_SEGMENTS and path_parts[0] == "details":
@@ -1176,6 +1188,14 @@ def episode_save(request):
         cache_utils.clear_media_list_cache_for_user(related_season.user_id)
 
     if request.headers.get("HX-Request"):
+        if up_next_row:
+            from users.home_screen import _build_row_section
+
+            cache_utils.clear_home_row_cache_for_user(request.user.pk)
+            section = _build_row_section(request.user, up_next_row, up_next_row.media_type, 14)
+            return render(request, "app/components/episode_feed_items.html", {
+                "row": section or {"row_id": up_next_row.pk, "items": [], "total": 0, "columns": up_next_row.columns},
+            })
         episode_history = list(
             Episode.objects.filter(
                 related_season=related_season,

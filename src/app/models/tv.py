@@ -458,7 +458,7 @@ class TV(Media):
 
         return None
 
-    def next_episode_target(self):
+    def next_episode_target(self, *, episode_numbers_by_season=None):
         """Return the first tracked season and episode that can be watched next."""
         seasons = sorted(
             (season for season in self.seasons.all() if season.item.season_number != 0),
@@ -472,7 +472,12 @@ class TV(Media):
             if season.status == Status.DROPPED.value:
                 continue
 
-            next_episode_number = season.next_episode_number()
+            next_episode_number = season.next_episode_number(
+                episode_numbers=(
+                    episode_numbers_by_season.get(season.item.season_number, [])
+                    if episode_numbers_by_season is not None else None
+                ),
+            )
             if next_episode_number is None:
                 has_caught_up_season = (
                     season.status == Status.COMPLETED.value or season.progress > 0

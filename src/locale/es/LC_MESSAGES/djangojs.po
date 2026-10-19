@@ -1736,3 +1736,7 @@ msgstr "de títulos"
 
 #~ msgid "On hover"
 #~ msgstr "Al pasar el cursor"
+
+#: templates/users/home_screen.html
+msgid "Up Next"
+msgstr "A continuación"

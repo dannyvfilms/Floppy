@@ -12541,3 +12541,134 @@ msgstr "Rien dans votre bibliothèque ne correspond à &ldquo;%(value_1)s&rdquo;
 #, python-format
 msgid "See all library results for &ldquo;%(value_1)s&rdquo;"
 msgstr "Afficher tous les résultats de la bibliothèque pour &ldquo;%(value_1)s&rdquo;"
+
+#: templates/app/episode_feed.html
+msgid "Up Next - Floppy"
+msgstr "À suivre - Floppy"
+
+#: templates/app/components/episode_feed_items.html templates/app/episode_feed.html templates/base.html users/home_screen.py
+msgid "Up Next"
+msgstr "À suivre"
+
+#: templates/app/components/episode_feed_items.html
+msgid "Find a TV show"
+msgstr "Rechercher une série"
+
+#: templates/app/components/episode_feed_items.html
+msgid "Posters per row"
+msgstr "Affiches par ligne"
+
+#: templates/app/components/episode_feed_items.html
+#, python-format
+msgid "%(count)s released episode not watched"
+msgid_plural "%(count)s released episodes not watched"
+msgstr[0] "%(count)s épisode diffusé non vu"
+msgstr[1] "%(count)s épisodes diffusés non vus"
+
+#: templates/app/components/episode_feed_items.html
+#, python-format
+msgid "Next episode in %(count)s day"
+msgid_plural "Next episode in %(count)s days"
+msgstr[0] "Prochain épisode dans %(count)s jour"
+msgstr[1] "Prochain épisode dans %(count)s jours"
+
+#: templates/app/components/episode_feed_items.html
+msgid "Released episodes not watched"
+msgstr "Épisodes diffusés non vus"
+
+#: templates/app/components/episode_feed_items.html
+msgid "Behind"
+msgstr "Non vus"
+
+#: templates/app/components/episode_feed_items.html
+msgid "day"
+msgid_plural "days"
+msgstr[0] "jour"
+msgstr[1] "jours"
+
+#: templates/app/components/episode_feed_items.html
+msgid "Mark watched"
+msgstr "Marquer comme vu"
+
+#: templates/app/components/episode_feed_items.html
+msgid "Date to be announced"
+msgstr "Date à annoncer"
+
+#: templates/app/components/episode_feed_items.html
+msgid "No released episodes to watch next."
+msgstr "Aucun épisode diffusé en attente de visionnage."
+
+#: templates/app/components/episode_feed_items.html
+msgid "Episode feed pages"
+msgstr "Pages des épisodes à suivre"
+
+#: templates/app/components/all_episodes.html
+msgid "All Episodes"
+msgstr "Tous les épisodes"
+
+#: templates/app/components/all_episodes.html
+#, python-format
+msgid "%(watched)s / %(total)s watched"
+msgstr "%(watched)s / %(total)s vus"
+
+#: templates/app/components/all_episodes.html
+msgid "Track season"
+msgstr "Suivre la saison"
+
+#: templates/app/components/all_episodes.html
+msgid "Unwatched"
+msgstr "Non vu"
+
+#: templates/app/components/all_episodes.html
+msgid "Remove watch"
+msgstr "Supprimer le visionnage"
+
+#: templates/app/components/all_episodes.html
+#, python-format
+msgid "Remove watch for episode %(number)s"
+msgstr "Supprimer le visionnage de l’épisode %(number)s"
+
+#: templates/app/components/all_episodes.html
+msgid "Mark unwatched"
+msgstr "Marquer comme non vu"
+
+#: templates/app/components/all_episodes.html
+#, python-format
+msgid "Mark episode %(number)s watched"
+msgstr "Marquer l’épisode %(number)s comme vu"
+
+#: templates/app/components/all_episodes.html
+msgid "Episode information is unavailable."
+msgstr "Les informations sur les épisodes ne sont pas disponibles."
+
+#: templates/users/sidebar.html
+msgid "Choose which pages and media types appear and how media types are ordered."
+msgstr "Choisissez les pages et les types de médias à afficher ainsi que l’ordre des types de médias."
+
+#: templates/users/sidebar.html
+msgid "Feeds"
+msgstr "Flux"
+
+#: templates/users/sidebar.html
+msgid "Show Up Next in the sidebar for a dedicated episode feed."
+msgstr "Affichez « À suivre » dans la barre latérale pour accéder aux épisodes à regarder."
+
+#: templates/users/sidebar.html
+msgid "Show Up Next"
+msgstr "Afficher « À suivre »"
+
+#: users/home_screen.py app/save_views.py
+msgid "Up Next requires the TV library."
+msgstr "« À suivre » nécessite la bibliothèque de séries."
+
+#: users/home_screen.py app/save_views.py
+msgid "Invalid Up Next column count."
+msgstr "Nombre de colonnes non valide pour « À suivre »."
+
+#: users/home_screen.py app/save_views.py
+msgid "All media supports library and Up Next rows."
+msgstr "Tous les médias prend en charge les lignes de bibliothèque et « À suivre »."
+
+#: users/home_screen.py app/save_views.py
+msgid "Invalid Up Next row"
+msgstr "Ligne « À suivre » non valide"

@@ -1,0 +1,149 @@
+{% load i18n app_tags user_tags %}
+<section id="all-episodes" class="mb-8">
+  <div class="mb-5 flex flex-wrap items-baseline justify-between gap-2">
+    <h2 class="text-sm font-medium uppercase tracking-wide">{% translate "All Episodes" %}</h2>
+    {% if all_episode_total %}
+      <p class="text-xs text-[var(--color-text-muted)]">
+        {% blocktranslate with watched=all_episode_watched total=all_episode_total %}{{ watched }} / {{ total }} watched{% endblocktranslate %}
+      </p>
+    {% endif %}
+  </div>
+  <div class="space-y-6">
+    {% for season in all_episode_seasons %}
+      <details open
+               class="group/season border-t border-[var(--color-surface-border)]"
+               x-data="{ trackOpen: false }">
+        <summary class="flex min-h-11 cursor-pointer list-none items-center gap-2 text-xs font-medium uppercase tracking-wide [&::-webkit-details-marker]:hidden">
+          <span class="text-[var(--color-text-muted)] transition-transform group-open/season:rotate-90"
+                aria-hidden="true">›</span>
+          <span>{{ season.season_title|default:season.title }}</span>
+          <span class="ml-auto font-normal tabular-nums text-[var(--color-text-muted)]">{{ season.episodes|length }}</span>
+        </summary>
+        {% if not public_view and user.is_authenticated %}
+          <button type="button"
+                  hx-get="{% media_view_url 'track_modal' season %}?return_url={{ detail_return_url|add:'#all-episodes'|urlencode }}"
+                  hx-target="#all-episodes-season-track-{{ season.season_number }}"
+                  @click="trackOpen = true"
+                  class="mb-2 inline-flex min-h-9 items-center text-[10px] uppercase tracking-wide text-[var(--color-link)] hover:underline cursor-pointer">
+            {% translate "Track season" %}
+          </button>
+          <div x-show="trackOpen"
+               x-cloak
+               @mousedown.self="trackOpen = false"
+               @keydown.escape.window="trackOpen = false"
+               class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div class="modal-max-height overflow-y-auto px-4 md:px-0 w-full">
+              <div id="all-episodes-season-track-{{ season.season_number }}"></div>
+            </div>
+          </div>
+        {% endif %}
+        <ul class="divide-y divide-[var(--color-surface-border)]">
+          {% for episode in season.episodes %}
+            <li class="flex min-h-16 items-center gap-3 py-2"
+                data-episode="{{ season.season_number }}-{{ episode.episode_number }}"
+                {% if season.season_number and not episode.watched and not episode.dropped %}data-unwatched="true"{% endif %}>
+              <span class="sr-only"
+                    aria-label="{% if episode.watched %}{% translate 'Watched' %}{% elif episode.dropped %}{% translate 'Dropped' %}{% else %}{% translate 'Unwatched' %}{% endif %}">
+                {% if episode.watched %}
+                  ✓
+                {% elif episode.dropped %}
+                  −
+                {% else %}
+                  ○
+                {% endif %}
+              </span>
+              <span class="w-7 shrink-0 text-xl font-light tabular-nums {% if episode.watched %}text-[var(--color-link)]{% else %}text-[var(--color-text-muted)]{% endif %}">{{ episode.episode_number|stringformat:"02d" }}</span>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-normal break-words">{{ episode.title }}</p>
+                {% if episode.air_date or not episode.released %}
+                  <p class="mt-1 text-[10px] uppercase tracking-wide text-[var(--color-text-muted)]">
+                    {% if episode.air_date %}
+                      {{ episode.air_date|user_date_format:user }}
+                    {% else %}
+                      {% translate "Upcoming" %}
+                    {% endif %}
+                  </p>
+                {% endif %}
+              </div>
+              {% if not public_view and user.is_authenticated %}
+                {% if episode.watched %}
+                  <div class="shrink-0 space-y-1">
+                    {% for play in episode.watched_plays %}
+                      <form method="post"
+                            action="{% url 'media_delete' %}?next={{ detail_return_url|add:'#all-episodes'|urlencode }}"
+                            hx-boost="false">
+                        {% csrf_token %}
+                        <input type="hidden" name="instance_id" value="{{ play.id }}">
+                        <input type="hidden" name="media_type" value="episode">
+                        <button type="submit"
+                                class="inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--color-link)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                                title="{% translate 'Remove watch' %}"
+                                aria-label="{% blocktranslate with number=episode.episode_number %}Remove watch for episode {{ number }}{% endblocktranslate %}">
+                          {% include "app/icons/circle-check.svg" with classes="w-5 h-5" %}
+                          <span class="sr-only">
+                            {% if episode.watched_plays|length == 1 %}
+                              {% translate "Mark unwatched" %}
+                            {% else %}
+                              {% translate "Remove watch" %}
+                            {% endif %}
+                          </span>
+                        </button>
+                      </form>
+                    {% endfor %}
+                  </div>
+                {% elif episode.released %}
+                  <form method="post"
+                        action="{% url 'episode_save' %}?next={{ detail_return_url|add:'#all-episodes'|urlencode }}"
+                        class="shrink-0"
+                        hx-boost="false">
+                    {% csrf_token %}
+                    <input type="hidden" name="media_id" value="{{ season.media_id }}">
+                    <input type="hidden" name="source" value="{{ season.source }}">
+                    <input type="hidden" name="season_number" value="{{ season.season_number }}">
+                    <input type="hidden"
+                           name="episode_number"
+                           value="{{ episode.episode_number }}">
+                    <input type="hidden" name="status" value="Completed">
+                    {% now "Y-m-d" as watch_date %}
+                    <input type="hidden" name="end_date" value="{{ watch_date }}">
+                    {% watch_operation_id as operation_id %}
+                    <input type="hidden" name="watch_operation_id" value="{{ operation_id }}">
+                    <button type="submit"
+                            class="inline-flex h-11 w-11 items-center justify-center rounded-full text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                            title="{% translate 'Mark watched' %}"
+                            aria-label="{% blocktranslate with number=episode.episode_number %}Mark episode {{ number }} watched{% endblocktranslate %}">
+                      {% include "app/icons/eye.svg" with classes="w-5 h-5" %}
+                    </button>
+                  </form>
+                {% endif %}
+              {% endif %}
+            </li>
+          {% empty %}
+            <li class="text-sm text-[var(--color-text-muted)]">{% translate "Episode information is unavailable." %}</li>
+          {% endfor %}
+        </ul>
+      </details>
+    {% empty %}
+      <p class="text-sm text-[var(--color-text-muted)]">{% translate "Episode information is unavailable." %}</p>
+    {% endfor %}
+  </div>
+</section>
+<script>
+  if (window.location.hash === '#all-episodes') {
+    const scrollToCurrentEpisode = () => requestAnimationFrame(() => {
+      const section = document.getElementById('all-episodes');
+      const nextEpisode = section?.querySelector('[data-unwatched="true"]');
+      if (nextEpisode) {
+        nextEpisode.closest('details').open = true;
+        nextEpisode.scrollIntoView({ behavior: 'instant', block: 'center' });
+      } else {
+        section?.scrollIntoView({ behavior: 'instant', block: 'end' });
+      }
+    });
+    if (document.readyState === 'complete') {
+      scrollToCurrentEpisode();
+    } else {
+      window.addEventListener('load', scrollToCurrentEpisode, { once: true });
+    }
+  }
+</script>

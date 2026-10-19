@@ -1028,6 +1028,124 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
                 [],
             )
 
+    def attach_episode_queue(self, medias):
+        """Attach next released/future episode metadata in bulk, without writes.
+
+        Keep watch-order policy in TV.next_episode_target and release data in
+        the existing calendar/catalogue. Untracked seasons need no tracker row.
+        """
+        from events.models import SentinelDatetime
+
+        now = timezone.now()
+        today = timezone.localdate(now)
+        show_keys = {}
+        seasons_by_show = {}
+        catalogue_query = Q(pk__in=[])
+        for media in medias:
+            seasons = {season.item.season_number: season for season in media.seasons.all()}
+            seasons_by_show[id(media)] = seasons
+            item = next(iter(seasons.values())).item if seasons else media.item
+            key = (item.media_id, item.source, media.active_episode_order_id)
+            show_keys[id(media)] = key
+            catalogue_query |= Q(media_id=key[0], source=key[1], episode_order_id=key[2])
+        calendar = self._season_events_by_show(
+            [(key[0], key[1]) for key in show_keys.values()],
+        )
+        records = defaultdict(dict)
+        for key in set(show_keys.values()):
+            for event in calendar.get(key[:2], []):
+                if not MIN_PLAUSIBLE_YEAR <= event.datetime.year < SentinelDatetime.YEAR:
+                    continue
+                coordinate = (event.item.season_number, event.content_number)
+                records[key][coordinate] = {"air_date": event.datetime, "title": ""}
+        for item in Item.objects.filter(
+            catalogue_query,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.EPISODE.value,
+            season_number__gt=0,
+            episode_number__isnull=False,
+        ).only(
+            "media_id",
+            "source",
+            "episode_order_id",
+            "season_number",
+            "episode_number",
+            "title",
+            "release_datetime",
+        ):
+            key = (item.media_id, item.source, item.episode_order_id)
+            record = records[key].setdefault(
+                (item.season_number, item.episode_number),
+                {"air_date": None},
+            )
+            record["title"] = item.title
+            date = item.release_datetime
+            if date and MIN_PLAUSIBLE_YEAR <= date.year < SentinelDatetime.YEAR:
+                record["air_date"] = min(filter(None, (record["air_date"], date)))
+        for media in medias:
+            key = show_keys[id(media)]
+            seasons = seasons_by_show[id(media)]
+            episodes = records[key]
+            released_numbers = defaultdict(list)
+            eligible = []
+            last_dates = []
+            for coordinate, record in episodes.items():
+                date = record["air_date"]
+                if date and date <= now:
+                    released_numbers[coordinate[0]].append(coordinate[1])
+                    last_dates.append(date)
+                season = seasons.get(coordinate[0])
+                if season is None or (
+                    season.status != Status.DROPPED.value
+                    and coordinate[1] > season.progress
+                ):
+                    eligible.append(coordinate)
+            target = media.next_episode_target(episode_numbers_by_season=released_numbers)
+            released = [
+                coordinate
+                for coordinate in eligible
+                if episodes[coordinate]["air_date"]
+                and episodes[coordinate]["air_date"] <= now
+            ]
+            # Preserve the model's paused/planning-season policy when it found
+            # a tracked target; an earlier untracked season still takes priority.
+            if target:
+                coordinate = (target[0].item.season_number, target[1])
+                if coordinate in released:
+                    released = [coordinate] + [c for c in released if c[0] not in seasons]
+            coordinate = min(released, default=None)
+            if coordinate is None:
+                coordinate = min(
+                    (
+                        c
+                        for c in eligible
+                        if episodes[c]["air_date"] and episodes[c]["air_date"] > now
+                    ),
+                    key=lambda c: (episodes[c]["air_date"], c),
+                    default=None,
+                )
+            projection = {
+                "released": bool(released),
+                "days_until": None,
+                "last_air_date": max(last_dates, default=None),
+            }
+            if coordinate:
+                record = episodes[coordinate]
+                projection.update(
+                    source=key[1],
+                    media_id=key[0],
+                    episode_order_id=key[2],
+                    season_number=coordinate[0],
+                    episode_number=coordinate[1],
+                    title=record.get("title", ""),
+                    air_date=record["air_date"],
+                )
+                if not projection["released"]:
+                    projection["days_until"] = (
+                        timezone.localdate(record["air_date"]) - today
+                    ).days
+            media.next_episode_queue = projection
+
     def _next_episode_air_date_value(self, media):
         """Return the air datetime for the next episode in watch order."""
         item = getattr(media, "item", None)

@@ -470,8 +470,9 @@ def home(request):
                 return HttpResponse("")
             response = render(
                 request,
-                "app/components/home_grid.html",
+                "app/components/episode_feed_append.html" if target_row["row_type"] == "up_next" else "app/components/home_grid.html",
                 {
+                    "row": target_row,
                     "media_list": target_row,
                     "user": request.user,
                     "MediaTypes": MediaTypes,

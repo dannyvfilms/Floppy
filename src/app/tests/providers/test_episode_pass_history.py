@@ -86,6 +86,20 @@ class EpisodePassHistory(TestCase):
             ],
         }
 
+    def test_episode_state_without_artwork_preserves_history_and_skips_image_fetches(self, _mock_metadata):
+        metadata = self._metadata()
+        plays = list(self.season.episodes.all())
+        with patch.object(tmdb.helpers, "get_tmdb_backdrop_image") as backdrop, patch.object(
+            tmdb, "get_tvdb_episode_image_map", return_value={}
+        ) as tvdb_images:
+            rows = tmdb.process_episodes(metadata, plays, season=self.season, include_artwork=False)
+        backdrop.assert_not_called()
+        tvdb_images.assert_not_called()
+        self.assertEqual(len(rows[0]["history"]), 1)
+        self.assertEqual(rows[0]["history"], rows[0]["all_history"])
+        self.assertEqual(rows[0]["episode_number"], 1)
+        self.assertIsNone(rows[0]["image"])
+
     def test_pass_history_matches_history_without_a_rewatch(self, _mock_metadata):
         """Outside a pass, both lists describe the same plays."""
         episodes = tmdb.process_episodes(

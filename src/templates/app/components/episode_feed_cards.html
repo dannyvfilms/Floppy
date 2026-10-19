@@ -1,0 +1,80 @@
+{% load i18n app_tags %}
+{% for entry in row.items %}
+  {% if entry.next_episode %}
+    <article class="group min-w-0">
+      <div class="relative">
+        <a href="{{ entry.item|media_url }}#all-episodes"
+           class="block aspect-2/3 overflow-hidden bg-[var(--color-surface-alt)]">
+          <img src="{{ entry.item.image|default:IMG_NONE|image_url }}"
+               alt="{{ entry.item.title }}"
+               width="300"
+               height="450"
+               loading="lazy"
+               decoding="async"
+               class="h-full w-full {% if entry.item.image and entry.item.image != IMG_NONE %}object-cover{% else %}object-contain p-6{% endif %}">
+        </a>
+        <span class="pointer-events-none absolute -bottom-2 inset-x-0 flex justify-center"
+              aria-label="{% if entry.next_episode.released %}{% blocktranslate count count=entry.media.episodes_left %}{{ count }} released episode not watched{% plural %}{{ count }} released episodes not watched{% endblocktranslate %}{% elif entry.next_episode.days_until != None %}{% blocktranslate count count=entry.next_episode.days_until %}Next episode in {{ count }} day{% plural %}Next episode in {{ count }} days{% endblocktranslate %}{% else %}{% translate 'Upcoming' %}{% endif %}"
+              title="{% if entry.next_episode.released %}{% translate 'Released episodes not watched' %}{% else %}{% translate 'Next episode' %}{% endif %}">
+          <span class="inline-flex items-center bg-[var(--color-page-bg)] text-[10px] leading-5 uppercase">
+            {% if entry.next_episode.released %}
+              <span class="min-w-5 bg-[var(--color-accent)] px-1 text-center text-[var(--color-accent-contrast)]">{{ entry.media.episodes_left }}</span>
+              <span class="px-1.5 text-[var(--color-text-muted)]">{% translate 'Behind' %}</span>
+            {% elif entry.next_episode.days_until == 0 %}
+              <span class="px-1.5 text-[var(--color-text-muted)]">{% translate 'Today' %}</span>
+            {% elif entry.next_episode.days_until != None %}
+              <span class="min-w-5 bg-[var(--color-accent)] px-1 text-center text-[var(--color-accent-contrast)]">{{ entry.next_episode.days_until }}</span>
+              <span class="px-1.5 text-[var(--color-text-muted)]">{% blocktranslate count count=entry.next_episode.days_until %}day{% plural %}days{% endblocktranslate %}</span>
+            {% else %}
+              <span class="px-1.5 text-[var(--color-text-muted)]">{% translate 'Upcoming' %}</span>
+            {% endif %}
+          </span>
+        </span>
+        {% if entry.next_episode.released %}
+          {% watch_operation_id as episode_watch_id %}
+          <form hx-post="{% url 'episode_save' %}"
+                hx-target="#episode-feed-{{ row.row_id }}"
+                hx-swap="outerHTML"
+                class="absolute right-0 top-0 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100">
+            {% csrf_token %}
+            <input type="hidden"
+                   name="media_id"
+                   value="{{ entry.next_episode.media_id }}">
+            <input type="hidden" name="source" value="{{ entry.next_episode.source }}">
+            <input type="hidden"
+                   name="season_number"
+                   value="{{ entry.next_episode.season_number }}">
+            <input type="hidden"
+                   name="episode_number"
+                   value="{{ entry.next_episode.episode_number }}">
+            <input type="hidden" name="end_date" value="{% now 'Y-m-d\TH:i:s' %}">
+            <input type="hidden" name="up_next_row_id" value="{{ row.row_id }}">
+            <input type="hidden"
+                   name="watch_operation_id"
+                   value="{{ episode_watch_id }}">
+            <button type="submit"
+                    class="inline-flex h-11 w-11 items-center justify-center text-white drop-shadow-md hover:bg-black/40 disabled:opacity-50"
+                    hx-disabled-elt="this"
+                    aria-label="{% translate 'Mark watched' %}"
+                    title="{% translate 'Mark watched' %}">
+              {% include 'app/icons/eye.svg' with classes='w-4 h-4' %}
+            </button>
+          </form>
+        {% endif %}
+      </div>
+      <a href="{{ entry.item|media_url }}#all-episodes"
+         class="block px-2 pb-3 pt-3"
+         title="{{ entry.item.title }}">
+        <span class="block truncate text-xs font-medium uppercase">{{ entry.item.title }}</span>
+        <span class="mt-0.5 block truncate text-[11px] text-[var(--color-text-muted)]">
+          {% if entry.next_episode.episode_number != None %}
+            S{{ entry.next_episode.season_number|stringformat:'02d' }}E{{ entry.next_episode.episode_number|stringformat:'02d' }}
+            {% if entry.next_episode.title %}{{ entry.next_episode.title }}{% endif %}
+          {% else %}
+            {% translate 'Date to be announced' %}
+          {% endif %}
+        </span>
+      </a>
+    </article>
+  {% endif %}
+{% endfor %}

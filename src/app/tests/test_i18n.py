@@ -192,3 +192,26 @@ class SpanishPresentationTests(SimpleTestCase):
             self.assertEqual(month_abbreviation(""), "")
             self.assertEqual(translate_activity_text("Up 9.8%"), "Sube un 9.8%")
             self.assertEqual(translate_activity_text("Down 2%"), "Baja un 2%")
+
+
+class EpisodeFeedPluralTests(SimpleTestCase):
+    """Episode counts and countdowns use the selected language's real catalog."""
+
+    def test_episode_and_day_plurals(self):
+        for language, singular_day, plural_day, singular_episode, plural_episode in (
+            ("de", "Tag", "Tage", "1 veröffentlichte Folge ungesehen", "2 veröffentlichte Folgen ungesehen"),
+            ("es", "día", "días", "1 episodio estrenado sin ver", "2 episodios estrenados sin ver"),
+            ("fr", "jour", "jours", "1 épisode diffusé non vu", "2 épisodes diffusés non vus"),
+        ):
+            with self.subTest(language=language), translation.override(language):
+                self.assertEqual(translation.ngettext("day", "days", 1), singular_day)
+                self.assertEqual(translation.ngettext("day", "days", 2), plural_day)
+                for count, expected in ((1, singular_episode), (2, plural_episode)):
+                    self.assertEqual(
+                        translation.ngettext(
+                            "%(count)s released episode not watched",
+                            "%(count)s released episodes not watched",
+                            count,
+                        ) % {"count": count},
+                        expected,
+                    )

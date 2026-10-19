@@ -386,6 +386,10 @@
           </div>
         {% endif %}
 
+        {% if media_type == MediaTypes.TV.value %}
+          {% include "app/components/all_episodes.html" %}
+        {% endif %}
+
         {% if media.related.seasons %}
           <div {% detail_section_attrs user detail_family "content" "seasons" %}>
             {% include "app/components/seasons_grid.html" %}

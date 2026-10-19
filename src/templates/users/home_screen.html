@@ -7,12 +7,7 @@
 
 {% block settings_content %}
   <div class="bg-[var(--color-surface)] rounded-lg p-6"
-       x-data="homeScreenSettings({
-         sections: JSON.parse('{{ home_screen_sections_json|escapejs }}'),
-         listSearchUrl: '{{ home_screen_list_search_url|escapejs }}',
-         filterFieldsUrl: '{{ home_screen_filter_fields_url|escapejs }}',
-         directionChoices: JSON.parse('{{ direction_choices_json|escapejs }}')
-       })"
+       x-data="homeScreenSettings({ sections: JSON.parse('{{ home_screen_sections_json|escapejs }}'), listSearchUrl: '{{ home_screen_list_search_url|escapejs }}', filterFieldsUrl: '{{ home_screen_filter_fields_url|escapejs }}', directionChoices: JSON.parse('{{ direction_choices_json|escapejs }}') })"
        x-init="init()">
     <form method="post" @submit="prepareSubmit">
       {% csrf_token %}
@@ -29,9 +24,7 @@
               <button type="button"
                       class="section-drag-handle inline-flex shrink-0 touch-none items-center justify-center text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing"
                       aria-label="{% translate "Reorder section" %}"
-                      @click.stop>
-                {% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}
-              </button>
+                      @click.stop>{% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}</button>
               <button type="button"
                       class="flex min-w-0 flex-1 items-center gap-3 text-left cursor-pointer"
                       style="min-height: 2.75rem"
@@ -39,7 +32,8 @@
                 <div class="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--color-text-secondary)]"
                      x-html="section.icon_svg"></div>
                 <div class="min-w-0 flex-1">
-                  <h3 class="font-medium text-[var(--color-text-secondary)]" x-text="section.label"></h3>
+                  <h3 class="font-medium text-[var(--color-text-secondary)]"
+                      x-text="section.label"></h3>
                   <p class="truncate text-xs text-[var(--color-text-muted)]"
                      x-show="!section.expanded && section.rows.length"
                      x-cloak
@@ -48,7 +42,8 @@
               </button>
               <template x-if="section.media_type_chip_color">
                 <label class="flex shrink-0 items-center justify-center rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-page-bg)] cursor-pointer"
-                       style="height: 2.75rem; width: 2.75rem"
+                       style="height: 2.75rem;
+                              width: 2.75rem"
                        :title="section.label + ' ' + gettext('label color')"
                        @click.stop>
                   <span class="sr-only" x-text="section.label + ' ' + gettext('label color')"></span>
@@ -61,7 +56,8 @@
               </template>
               <button type="button"
                       class="flex shrink-0 items-center justify-center rounded-md text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] cursor-pointer"
-                      style="height: 2.75rem; width: 2.75rem"
+                      style="height: 2.75rem;
+                             width: 2.75rem"
                       :aria-expanded="section.expanded"
                       :aria-label="section.expanded ? gettext('Collapse section') : gettext('Expand section')"
                       @click="if (Date.now() - lastDragAt < 400) return; section.expanded = !section.expanded; ensureFilterFields(section); $nextTick(() => initSortables())">
@@ -97,9 +93,7 @@
                         <button type="button"
                                 class="row-drag-handle inline-flex h-8 w-8 shrink-0 touch-none items-center justify-center rounded-md border border-[var(--color-surface-hover)] bg-[var(--color-page-bg)] text-slate-400 transition-colors hover:text-[var(--color-text)] cursor-grab active:cursor-grabbing"
                                 aria-label="{% translate "Reorder row" %}"
-                                @click.stop>
-                          {% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}
-                        </button>
+                                @click.stop>{% include "app/icons/drag-handle.svg" with classes="h-4 w-4" %}</button>
 
                         <div class="home-settings-row-title min-w-0 flex-1 py-1.5">
                           <input type="text"
@@ -147,7 +141,8 @@
                                             class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                                             @click.stop="clearLibraryFilters(section, row); openMenu = null; filterView = 'root'; filterSearch = ''">
                                       <span>{% translate "All" %}</span>
-                                      <span class="ml-auto text-xs text-[var(--color-text-muted)]" x-show="!hasLibraryFilters(section, row)">{% translate "Active" %}</span>
+                                      <span class="ml-auto text-xs text-[var(--color-text-muted)]"
+                                            x-show="!hasLibraryFilters(section, row)">{% translate "Active" %}</span>
                                     </button>
 
                                     <div class="border-t border-gray-700 my-1"></div>
@@ -188,7 +183,8 @@
                                       </div>
 
                                       <div class="max-h-72 overflow-y-auto py-1">
-                                        <template x-for="option in filteredMenuOptions(field, filterSearch)" :key="`${field.key}-${option.value}`">
+                                        <template x-for="option in filteredMenuOptions(field, filterSearch)"
+                                                  :key="`${field.key}-${option.value}`">
                                           <button type="button"
                                                   class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
                                                   :class="isRowFilterOptionSelected(row, field.key, option.value) ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
@@ -204,7 +200,8 @@
                           </template>
 
                           <template x-if="row.row_type === 'library_query'">
-                            <div class="relative filter-control" @click.outside="if (openMenu === 'status') openMenu = null">
+                            <div class="relative filter-control"
+                                 @click.outside="if (openMenu === 'status') openMenu = null">
                               <button type="button"
                                       class="home-settings-chip flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                                       :aria-expanded="openMenu === 'status'"
@@ -231,8 +228,9 @@
                             </div>
                           </template>
 
-                          <template x-if="row.row_type !== 'recently_unrated'">
-                            <div class="relative filter-control" @click.outside="if (openMenu === 'sort') openMenu = null">
+                          <template x-if="row.row_type !== 'recently_unrated' && row.row_type !== 'up_next'">
+                            <div class="relative filter-control"
+                                 @click.outside="if (openMenu === 'sort') openMenu = null">
                               <button type="button"
                                       class="home-settings-chip flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                                       :aria-expanded="openMenu === 'sort'"
@@ -267,6 +265,17 @@
                             </div>
                           </template>
 
+                          <template x-if="row.row_type === 'up_next'">
+                            <label class="inline-flex items-center gap-2 text-sm text-[var(--color-text-secondary)]">
+                              <span>{% translate "Posters per row" %}</span>
+                              <select x-model.number="row.columns"
+                                      class="rounded-md bg-[var(--color-surface)] px-3 py-2">
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                              </select>
+                            </label>
+                          </template>
                           <template x-if="row.row_type === 'custom_list'">
                             <button type="button"
                                     class="home-settings-chip flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
@@ -282,7 +291,8 @@
                           </template>
 
                           <template x-if="row.row_type === 'recently_unrated' && section.media_type === 'music'">
-                            <div class="relative filter-control" @click.outside="if (openMenu === 'recent') openMenu = null">
+                            <div class="relative filter-control"
+                                 @click.outside="if (openMenu === 'recent') openMenu = null">
                               <button type="button"
                                       class="flex items-center px-2 py-2 rounded-md text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
                                       :aria-expanded="openMenu === 'recent'"
@@ -310,9 +320,7 @@
                           </template>
 
                           <template x-if="row.row_type === 'recently_unrated' && section.media_type !== 'music'">
-                            <div class="px-2 py-2 text-sm text-slate-300">
-                              {% translate "Recent unrated plays" %}
-                            </div>
+                            <div class="px-2 py-2 text-sm text-slate-300">{% translate "Recent unrated plays" %}</div>
                           </template>
 
                           <button type="button"
@@ -329,7 +337,9 @@
                       <div class="border-t border-[var(--color-surface-strong)] bg-[var(--color-sidebar)] px-4 py-4">
                         <div class="mb-3">
                           <h5 class="text-sm font-semibold text-[var(--color-text)]">{% translate "List Selection" %}</h5>
-                          <p class="mt-1 text-sm text-slate-400">{% translate "Search your owned and collaborator lists. Smart lists are included here too." %}</p>
+                          <p class="mt-1 text-sm text-slate-400">
+                            {% translate "Search your owned and collaborator lists. Smart lists are included here too." %}
+                          </p>
                         </div>
                         <div class="relative">
                           <input type="text"
@@ -344,7 +354,8 @@
                                       class="block w-full border-b border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-[var(--color-text)] transition-colors hover:bg-[var(--color-surface-strong)] cursor-pointer last:border-b-0"
                                       @click="applyListResult(row, result)">
                                 <div class="font-medium" x-text="result.name"></div>
-                                <div class="text-xs text-[var(--color-text-muted)]" x-text="result.is_smart ? gettext('Smart list') : gettext('Manual list')"></div>
+                                <div class="text-xs text-[var(--color-text-muted)]"
+                                     x-text="result.is_smart ? gettext('Smart list') : gettext('Manual list')"></div>
                               </button>
                             </template>
                           </div>
@@ -382,6 +393,13 @@
                       {% translate "Library Row" %}
                     </button>
                     <button type="button"
+                            x-show="section.media_type === 'tv' || (section.media_type === 'all' && section.available_media_types.includes('tv'))"
+                            class="flex w-full items-center border-t border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] cursor-pointer"
+                            @click="addRow(section, 'up_next'); section.addRowMenuOpen = false">
+                      {% include "app/icons/play.svg" with classes="mr-2 h-4 w-4" %}
+                      {% translate "Up Next" %}
+                    </button>
+                    <button type="button"
                             x-show="section.media_type !== 'all'"
                             class="flex w-full items-center border-t border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-strong)] hover:text-[var(--color-text)] cursor-pointer"
                             @click="addRow(section, 'recently_unrated'); section.addRowMenuOpen = false"
@@ -411,11 +429,16 @@
         <div class="rounded-md border border-gray-600 bg-[var(--color-panel)] px-3 py-3">
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
-              <label class="block text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Media Type Headers" %}</label>
-              <p class="mt-1 text-xs text-[var(--color-text-muted)]">{% translate "Show an icon and media type above each group of Home rows." %}</p>
+              <label class="block text-sm font-medium text-[var(--color-text-secondary)]">
+                {% translate "Media Type Headers" %}
+              </label>
+              <p class="mt-1 text-xs text-[var(--color-text-muted)]">
+                {% translate "Show an icon and media type above each group of Home rows." %}
+              </p>
             </div>
             <label class="relative inline-flex shrink-0 items-center justify-center cursor-pointer"
-                   style="min-height: 2.75rem; min-width: 2.75rem">
+                   style="min-height: 2.75rem;
+                          min-width: 2.75rem">
               <span class="sr-only">{% translate "Toggle media type headers" %}</span>
               <input type="hidden" name="show_media_type_headers" value="0">
               <input class="sr-only peer"
@@ -432,10 +455,13 @@
           <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
               <label class="block text-sm font-medium text-[var(--color-text-secondary)]">{% translate "Media Type Labels" %}</label>
-              <p class="mt-1 text-xs text-[var(--color-text-muted)]">{% translate "Show labels on posters in Home rows that mix media types." %}</p>
+              <p class="mt-1 text-xs text-[var(--color-text-muted)]">
+                {% translate "Show labels on posters in Home rows that mix media types." %}
+              </p>
             </div>
             <label class="relative inline-flex shrink-0 items-center justify-center cursor-pointer"
-                   style="min-height: 2.75rem; min-width: 2.75rem">
+                   style="min-height: 2.75rem;
+                          min-width: 2.75rem">
               <span class="sr-only">{% translate "Toggle media type labels" %}</span>
               <input type="hidden" name="home_media_type_chips_enabled" value="0">
               <input class="sr-only peer"
@@ -451,7 +477,8 @@
             <select name="home_media_type_chip_style"
                     class="mt-1 w-full rounded-md border border-gray-600 bg-[var(--color-page-bg)] px-2 py-2 text-sm text-[var(--color-text-secondary)] focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">
               {% for value, label in media_type_chip_styles %}
-                <option value="{{ value }}" {% if user.home_media_type_chip_style == value %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ value }}"
+                        {% if user.home_media_type_chip_style == value %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
           </label>
@@ -485,6 +512,7 @@
             ...row,
             enabled: true,
             custom_title: row.custom_title || '',
+            columns: row.columns || 2,
             editorOpen: row.row_type === 'custom_list' && !row.id,
             filters: { ...(row.filters || {}) },
             recent_show: row.recent_show || 'album',
@@ -530,11 +558,13 @@
           return choice ? choice.label : gettext('Album');
         },
         rowTypeLabel(type) {
+          if (type === 'up_next') return gettext('Up Next');
           if (type === 'library_query') return gettext('Library Row');
           if (type === 'custom_list') return gettext('List / Smart List');
           return gettext('Recently Played');
         },
         rowAutoTitle(section, row) {
+          if (row.row_type === 'up_next') return gettext('Up Next');
           if (row.row_type === 'custom_list') {
             return row.custom_list_name || gettext('List / Smart List');
           }
@@ -816,6 +846,7 @@
             client_id: `new-row-${this.nextRowId++}`,
             enabled: true,
             custom_title: '',
+            columns: 2,
             row_type: rowType,
             custom_list_id: null,
             custom_list_name: '',
@@ -910,6 +941,7 @@
               id: row.id,
               enabled: true,
               custom_title: row.custom_title || '',
+            columns: row.columns || 2,
               row_type: row.row_type,
               custom_list_id: row.custom_list_id,
               sort_by: row.sort_by,
@@ -944,7 +976,7 @@
                 draggable: 'article',
                 handle: '.home-settings-row',
                 filter: 'input, textarea, select, a, .home-settings-row-controls',
-                preventOnFilter: true,
+                preventOnFilter: false,
                 onEnd: event => {
                   const orderedIds = Array.from(container.querySelectorAll('[data-row-client-id]')).map(node => node.dataset.rowClientId);
                   restoreDraggedNode(event);

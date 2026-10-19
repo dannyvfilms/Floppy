@@ -1,0 +1,10 @@
+{% load i18n %}
+<section id="episode-feed-{{ row.row_id }}" class="space-y-2 -mx-4 sm:-mx-8">
+  {% if row.title %}
+    <h3 class="px-4 sm:px-8 text-lg font-semibold">{% translate row.title %}</h3>
+  {% endif %}
+  <div class="grid grid-cols-2 gap-0"
+       style="grid-template-columns: repeat({{ row.columns }}, minmax(0, 1fr))">
+    {% include 'app/components/episode_feed_append.html' %}
+  </div>
+</section>

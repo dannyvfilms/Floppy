@@ -1491,3 +1491,7 @@ msgstr "Pas à jour"
 #: templates/base.html
 msgid "Search your whole library..."
 msgstr "Rechercher dans toute la bibliothèque..."
+
+#: templates/users/home_screen.html
+msgid "Up Next"
+msgstr "À suivre"

@@ -1500,3 +1500,7 @@ msgstr "Nicht auf dem neuesten Stand"
 #: templates/base.html
 msgid "Search your whole library..."
 msgstr "Gesamte Bibliothek durchsuchen …"
+
+#: templates/users/home_screen.html
+msgid "Up Next"
+msgstr "Als Nächstes"

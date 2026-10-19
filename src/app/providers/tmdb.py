@@ -2385,7 +2385,7 @@ def item_watch_provider_names(item, region):
     return sorted({p["provider_name"] for p in providers if p.get("provider_name")})
 
 
-def process_episodes(season_metadata, episodes_in_db, season=None):
+def process_episodes(season_metadata, episodes_in_db, season=None, *, include_artwork=True):
     """Process the episodes for the selected season."""
     episodes_metadata = []
     episode_backdrop = None
@@ -2399,7 +2399,7 @@ def process_episodes(season_metadata, episodes_in_db, season=None):
             tracked_episodes[episode_number] = []
         tracked_episodes[episode_number].append(ep)
 
-    if season_metadata.get("media_id"):
+    if include_artwork and season_metadata.get("media_id"):
         episode_backdrop = helpers.get_tmdb_backdrop_image(
             MediaTypes.TV.value,
             season_metadata["media_id"],
@@ -2409,7 +2409,7 @@ def process_episodes(season_metadata, episodes_in_db, season=None):
             season_metadata.get("season_number"),
             tmdb_media_id=season_metadata.get("media_id"),
         )
-    elif season_metadata.get("tvdb_id"):
+    elif include_artwork and season_metadata.get("tvdb_id"):
         tvdb_episode_images = get_tvdb_episode_image_map(
             season_metadata.get("tvdb_id"),
             season_metadata.get("season_number"),
@@ -2454,12 +2454,14 @@ def process_episodes(season_metadata, episodes_in_db, season=None):
                 # If parsing fails, keep the original value
                 pass
 
-        image, image_source = helpers.resolve_image_with_fallback(
-            get_image_url(episode["still_path"]) if episode.get("still_path") else None,
-            tvdb_episode_images.get(str(episode_number)),
-            helpers.first_real_image(episode.get("image"), default=None),
-            episode_backdrop,
-        )
+        image, image_source = None, None
+        if include_artwork:
+            image, image_source = helpers.resolve_image_with_fallback(
+                get_image_url(episode["still_path"]) if episode.get("still_path") else None,
+                tvdb_episode_images.get(str(episode_number)),
+                helpers.first_real_image(episode.get("image"), default=None),
+                episode_backdrop,
+            )
 
         episodes_metadata.append(
             {

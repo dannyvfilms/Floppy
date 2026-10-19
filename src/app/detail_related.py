@@ -3,10 +3,12 @@
 import logging
 
 from django.conf import settings
+from django.db.models import Q
+from django.utils import timezone
 
 from app import helpers
-from app.models import Item, MediaTypes, Sources
-from app.providers import services
+from app.models import Episode, Item, MediaTypes, Sources
+from app.providers import services, tmdb
 from app.services import metadata_resolution
 
 logger = logging.getLogger(__name__)
@@ -59,7 +61,7 @@ def enrich_detail_seasons(
     if (
         render_secondary_only
         and seasons
-        and source in {Sources.TMDB.value, Sources.TVDB.value}
+        and source in {Sources.TMDB.value, Sources.TVDB.value, Sources.MANUAL.value}
     ):
         season_numbers = sorted(
             {
@@ -71,15 +73,31 @@ def enrich_detail_seasons(
         )
         if season_numbers:
             try:
-                grouped_season_metadata = services.get_media_metadata(
-                    "tv_with_seasons",
-                    media_id,
-                    source,
-                    season_numbers,
-                    language=metadata_resolution.metadata_language_default(
-                        user, detail_item
-                    ),
-                )
+                if all(
+                    f"season/{number}" in media_metadata for number in season_numbers
+                ):
+                    # Pinned episode orders already carry their full catalogue.
+                    grouped_season_metadata = media_metadata
+                elif source == Sources.MANUAL.value:
+                    grouped_season_metadata = {
+                        f"season/{number}": services.get_media_metadata(
+                            MediaTypes.SEASON.value,
+                            media_id,
+                            source,
+                            [number],
+                        )
+                        for number in season_numbers
+                    }
+                else:
+                    grouped_season_metadata = services.get_media_metadata(
+                        "tv_with_seasons",
+                        media_id,
+                        source,
+                        season_numbers,
+                        language=metadata_resolution.metadata_language_default(
+                            user, detail_item
+                        ),
+                    )
             except services.ProviderAPIError:
                 grouped_season_metadata = None
                 logger.warning(
@@ -94,6 +112,15 @@ def enrich_detail_seasons(
                     )
                     if not isinstance(season_payload, dict):
                         continue
+
+                    if media_metadata.get("media_type") == MediaTypes.TV.value:
+                        season["episodes"] = season_payload.get("episodes") or []
+                        season["episode_source"] = (
+                            season_payload.get("source") or source
+                        )
+                        season["episode_media_id"] = (
+                            season_payload.get("media_id") or media_id
+                        )
 
                     detailed_title = Item._normalize_title_value(
                         season_payload.get("season_title"),
@@ -205,3 +232,89 @@ def enrich_detail_related_cards(request, media_metadata, *, media_type, tracking
                         item_dict["route_media_type"] = MediaTypes.ANIME.value
 
             media_metadata["related"][section_name] = enriched_related_items
+
+
+def build_all_episode_seasons(media_metadata, *, media_id, source, user):
+    """Build the overview with the same episode processor as season details."""
+    # Reuse fetched season metadata and read owner history once for the show.
+    season_payloads = [
+        result["item"]
+        for result in media_metadata.get("related", {}).get("seasons", [])
+    ]
+    histories = {}
+    episode_identities = Q()
+    for season in season_payloads:
+        season_media_id = str(season.get("episode_media_id", media_id))
+        order_id = season_media_id.removeprefix("order_")
+        episode_identities |= Q(
+            item__media_id=season_media_id,
+            item__source=season.get("episode_source", source),
+            item__episode_order_id=(
+                int(order_id)
+                if season_media_id.startswith("order_") and order_id.isdecimal()
+                else None
+            ),
+        )
+    if season_payloads and getattr(user, "is_authenticated", False):
+        for play in (
+            Episode.objects.filter(
+                episode_identities,
+                related_season__user=user,
+            )
+            .exclude(item__library_media_type=MediaTypes.ANIME.value)
+            .select_related("item", "related_season")
+            .order_by("-end_date", "-created_at")
+        ):
+            histories.setdefault(
+                (
+                    play.item.source,
+                    play.item.media_id,
+                    play.item.season_number,
+                    play.item.episode_number,
+                ),
+                [],
+            ).append(play)
+    result = []
+    now = timezone.now()
+    for season in sorted(season_payloads, key=lambda row: row.get("season_number", 0)):
+        episode_source = season.get("episode_source", source)
+        episode_media_id = str(season.get("episode_media_id", media_id))
+        payload = {**season, "source": episode_source, "media_id": episode_media_id}
+        plays = [
+            play
+            for episode in season.get("episodes", [])
+            for play in histories.get(
+                (
+                    episode_source,
+                    episode_media_id,
+                    season["season_number"],
+                    episode["episode_number"],
+                ),
+                [],
+            )
+        ]
+        episodes = tmdb.process_episodes(
+            payload,
+            plays,
+            plays[0].related_season if plays else None,
+            include_artwork=False,
+        )
+        for episode in episodes:
+            watched = [play for play in episode["history"] if not play.dropped]
+            air_date = helpers.extract_release_datetime(
+                {"release_date": episode["air_date"]}
+            )
+            episode.update(
+                watched_plays=watched,
+                watched=bool(watched),
+                dropped=bool(episode["history"]) and not watched,
+                air_date=air_date,
+                released=bool(air_date and air_date <= now),
+            )
+        result.append(
+            {
+                **payload,
+                "episodes": sorted(episodes, key=lambda row: row["episode_number"]),
+            }
+        )
+    return result

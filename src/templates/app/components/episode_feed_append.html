@@ -1,0 +1,11 @@
+{% load i18n %}
+{% include 'app/components/episode_feed_cards.html' %}
+{% if row.total > row.loaded_count %}
+  <button id="up-next-more-{{ row.row_id }}"
+          type="button"
+          class="col-span-full py-3 text-sm text-[var(--color-link)]"
+          hx-get="{% url 'home' %}?load_row={{ row.row_id }}&amp;offset={{ row.loaded_count }}"
+          hx-target="this"
+          hx-swap="outerHTML"
+          hx-disabled-elt="this">{% translate 'Load more' %}</button>
+{% endif %}

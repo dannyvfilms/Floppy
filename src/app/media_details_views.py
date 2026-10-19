@@ -51,6 +51,7 @@ from app.detail_builders import (
     _build_trakt_popularity_context,
 )
 from app.detail_related import (
+    build_all_episode_seasons,
     drop_recommendations_if_hidden,
     enrich_detail_related_cards,
     enrich_detail_seasons,
@@ -1966,6 +1967,18 @@ def media_details(
         )
 
     episode_load_more = None
+    all_episode_seasons = []
+    all_episode_watched = 0
+    all_episode_total = 0
+    if render_secondary_only and media_type == MediaTypes.TV.value:
+        all_episode_seasons = build_all_episode_seasons(
+            media_metadata, media_id=media_id, source=source,
+            user=list_owner or request.user,
+        )
+        all_episode_total = sum(len(season["episodes"]) for season in all_episode_seasons)
+        all_episode_watched = sum(
+            episode["watched"] for season in all_episode_seasons for episode in season["episodes"]
+        )
     if (
         render_secondary_only
         and media_type != MediaTypes.PODCAST.value
@@ -2082,6 +2095,9 @@ def media_details(
         "migrated_grouped_item": migrated_grouped_item,
         "migrated_grouped_title": migrated_grouped_title,
         "episode_load_more": episode_load_more,
+        "all_episode_seasons": all_episode_seasons,
+        "all_episode_watched": all_episode_watched,
+        "all_episode_total": all_episode_total,
         "detail_persistence_deferred": detail_persistence_deferred,
         "detail_return_url": detail_return_url,
         "detail_secondary_fragment_url": detail_secondary_fragment_url,
