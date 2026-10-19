@@ -120,6 +120,22 @@ class TvActivityDatesTests(TestCase):
 
         self.assertEqual(len(queries), 1)
 
+    def test_shows_are_read_in_batches_and_never_twice(self):
+        for index in range(5):
+            self.show(str(index), {1: [self.days_ago(index + 1)]})
+        entries = list(TV.objects.filter(user=self.user))
+
+        with (
+            patch("app.discover.profile.TV_ACTIVITY_BATCH_SIZE", 2),
+            CaptureQueriesContext(connection) as queries,
+        ):
+            preload_tv_activity_dates(entries)
+            preload_tv_activity_dates(entries)
+
+        self.assertEqual(len(queries), 3)
+        for query in queries.captured_queries:
+            self.assertIn("IN (", query["sql"])
+
     def test_other_entries_and_other_users_are_left_alone(self):
         other = get_user_model().objects.create_user(username="other", password="x")
         mine = self.show("1", {1: [self.days_ago(3)]})

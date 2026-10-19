@@ -44,6 +44,8 @@ from app.models import (
 )
 
 PROFILE_TTL_SECONDS = 60 * 60 * 24
+# Shows per query when reading last-watched dates; keeps the IN list small.
+TV_ACTIVITY_BATCH_SIZE = 500
 COMFORT_PROFILE_FAMILIES = (
     "genres",
     "keywords",
@@ -240,30 +242,35 @@ def _entry_activity_datetime(entry):
 
 
 def preload_tv_activity_dates(entries) -> None:
-    """Give TV entries their last-watched date in one query.
+    """Give TV entries their last-watched date, a few queries for any number.
 
     `TV.end_date` and `TV.progressed_at` walk seasons and episodes on first
     read, so asking a whole library for them cost thousands of queries
     (minutes on a slow disk, and past the task time limit). Both are the
-    newest watched episode date, so one grouped read seeds the values the
-    `cached_property` would otherwise compute.
+    newest watched episode date, so one grouped read per batch of shows seeds
+    the values the `cached_property` would otherwise compute. Shows that
+    already carry their dates are skipped.
     """
-    shows = [entry for entry in entries if type(entry) is TV]
-    if not shows:
-        return
-    latest = dict(
-        Episode.objects.filter(
-            related_season__related_tv__user_id=shows[0].user_id,
-            related_season__order_archived=False,
-            end_date__isnull=False,
+    shows = [
+        entry
+        for entry in entries
+        if type(entry) is TV and "end_date" not in entry.__dict__
+    ]
+    for start in range(0, len(shows), TV_ACTIVITY_BATCH_SIZE):
+        batch = shows[start : start + TV_ACTIVITY_BATCH_SIZE]
+        latest = dict(
+            Episode.objects.filter(
+                related_season__related_tv_id__in=[show.id for show in batch],
+                related_season__order_archived=False,
+                end_date__isnull=False,
+            )
+            .values_list("related_season__related_tv_id")
+            .annotate(latest=Max("end_date")),
         )
-        .values_list("related_season__related_tv_id")
-        .annotate(latest=Max("end_date")),
-    )
-    for show in shows:
-        show.__dict__["end_date"] = show.__dict__["progressed_at"] = latest.get(
-            show.id
-        )
+        for show in batch:
+            show.__dict__["end_date"] = show.__dict__["progressed_at"] = latest.get(
+                show.id
+            )
 
 
 def _latest_datetime(*values):
