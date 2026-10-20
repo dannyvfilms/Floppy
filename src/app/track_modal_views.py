@@ -149,7 +149,14 @@ def _track_modal_field_groups(form, *, hidden_field_names, metadata_field_names=
     metadata_field_names = metadata_field_names or set()
     ordered_general_field_names = [
         field_name
-        for field_name in ("score", "status", "progress", "start_date", "end_date")
+        for field_name in (
+            "score",
+            "status",
+            "progress",
+            "reading_time",
+            "start_date",
+            "end_date",
+        )
         if field_name in form.fields
     ]
     remaining_general_field_names = [

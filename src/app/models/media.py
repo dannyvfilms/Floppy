@@ -802,6 +802,11 @@ class Manga(Media):
 
     tracker = FieldTracker()
 
+    reading_time = models.PositiveIntegerField(
+        default=0,
+        help_text="Minutes spent reading, added up from check-ins or entered by hand.",
+    )
+
     def save(self, *args, **kwargs):
         """Save the manga instance, then queue a MyAnimeList sync if relevant."""
         should_sync = self._sync_relevant_fields_changed()
@@ -1113,6 +1118,11 @@ class Book(Media):
 
     tracker = FieldTracker()
 
+    reading_time = models.PositiveIntegerField(
+        default=0,
+        help_text="Minutes spent reading, added up from check-ins or entered by hand.",
+    )
+
     @property
     def formatted_progress(self):
         """Return progress formatted by book format: time for audiobooks, pages otherwise."""
@@ -1162,6 +1172,11 @@ class Comic(Media):
     """Model for comics."""
 
     tracker = FieldTracker()
+
+    reading_time = models.PositiveIntegerField(
+        default=0,
+        help_text="Minutes spent reading, added up from check-ins or entered by hand.",
+    )
 
     @property
     def formatted_progress(self):

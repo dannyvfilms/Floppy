@@ -11,6 +11,7 @@ from django.db.models import Q
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
+from app.forms import BookForm
 from app.mixins import disable_fetch_releases
 from app.models import (
     TV,
@@ -254,6 +255,28 @@ class ExportCSVTest(TestCase):
         exported_media_types = {r["media_type"] for r in list_item_rows}
         self.assertIn("movie", exported_media_types)
         self.assertIn("episode", exported_media_types)
+
+    def test_export_csv_writes_reading_time_as_hours_and_minutes(self):
+        """The importer reads a bare number as hours, so minutes must not be written raw."""
+        Book.objects.update(reading_time=125)
+
+        response = self.client.get(reverse("export_csv"))
+        content = b"".join(response.streaming_content).decode("utf-8")
+        rows = {
+            row["media_type"]: row
+            for row in csv.DictReader(StringIO(content))
+            if row["row_type"] == "media"
+        }
+
+        self.assertEqual(rows["book"]["reading_time"], "2h 05min")
+        self.assertEqual(rows["manga"]["reading_time"], "")
+        self.assertEqual(rows["game"]["reading_time"], "")
+        book_form = BookForm(
+            {**rows["book"], "media_id": rows["book"]["media_id"]},
+            instance=Book(item=Item.objects.get(media_type="book"), user=self.user),
+        )
+        self.assertTrue(book_form.is_valid(), book_form.errors)
+        self.assertEqual(book_form.cleaned_data["reading_time"], 125)
 
     def test_export_csv_lists_only_when_no_media_types_selected(self):
         """Deselecting all media types but keeping lists on exports only list rows."""

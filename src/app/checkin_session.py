@@ -9,8 +9,9 @@ shows elapsed time, and what Stop saves depends on the type:
 - A board game adds one play to its latest entry at Stop.
 - A book, comic or manga moves its latest entry to In Progress (a finished book
   or comic starts a new entry; manga reuses its entry) and Stop fills in the end
-  time. Pages and chapters are yours to enter, so the page then opens the edit
-  dialog.
+  time, and adds the elapsed minutes to its reading time (an audiobook's progress
+  already is its time). Pages and chapters are yours to enter, so the page then
+  opens the edit dialog.
 - A video with a length is assumed watched to the end; Stop saves how far it got.
 
 A session left running ends after four hours (or at the video's length). Its
@@ -233,6 +234,11 @@ def _save_video(user, record, progress_seconds):
         video.upsert_play(f"check-in:{record['token']}", progress_seconds)
 
 
+def _is_audiobook(record):
+    """Return whether the item is an audiobook, whose progress already is its time."""
+    return Item.objects.filter(id=record["item_id"], format="audiobook").exists()
+
+
 def _save(user, record, media_type):
     """Save what a session measured so far: a game's minutes, a reading end, a video's progress."""
     elapsed = max(0, _now_ts() - record["started_at_ts"])
@@ -243,8 +249,11 @@ def _save(user, record, media_type):
     row = MODELS[media_type].objects.filter(id=record["row_id"], user=user).first()
     if row is None:
         return
+    minutes = max(1, math.ceil(elapsed / 60))
     if media_type == MediaTypes.GAME.value:
-        row.progress += max(1, math.ceil(elapsed / 60))
+        row.progress += minutes
+    elif media_type in READING and not _is_audiobook(record):
+        row.reading_time += minutes
     row.end_date = _now()
     row.save()
 
