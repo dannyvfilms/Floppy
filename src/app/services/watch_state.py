@@ -85,6 +85,30 @@ def projection_suspended() -> bool:
     return _SUSPEND_PROJECTION.get()
 
 
+_IMPORTING = ContextVar("watch_state_importing", default=False)
+
+
+@contextmanager
+def importing_watch_state():
+    """Mark changes projected inside the block as coming from an import.
+
+    Importers write through the same projection as the UI, so a changed play
+    looks identical either way. Marking them lets a destination that only wants
+    real-time plays (see ``ACCEPTS_IMPORTED_CHANGES`` on adapters) skip a bulk
+    import instead of mistaking a whole library for something just watched.
+    """
+    token = _IMPORTING.set(True)
+    try:
+        yield
+    finally:
+        _IMPORTING.reset(token)
+
+
+def is_importing_watch_state() -> bool:
+    """Return whether the current block is an import (see importing_watch_state)."""
+    return _IMPORTING.get()
+
+
 def allocate_sequence(user) -> int:
     """Return the next server sequence for this user.
 
@@ -223,7 +247,11 @@ def _project_as_change(user, item, derived):
         watched=derived.watched,
         play_count=derived.play_count,
         watched_at=derived.last_watched_at,
-        origin_kind=WatchStateOrigin.LOCAL_UI.value,
+        origin_kind=(
+            WatchStateOrigin.IMPORT.value
+            if is_importing_watch_state()
+            else WatchStateOrigin.LOCAL_UI.value
+        ),
         origin_key="local",
     )
     state = result.state

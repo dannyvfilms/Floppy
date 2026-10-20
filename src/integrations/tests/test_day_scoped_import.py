@@ -77,9 +77,7 @@ class DayScopedImportTests(TestCase):
             patch.object(_media_imports, "DAY_SCOPED_IMPORTERS", scope),
             patch.object(_media_imports.events.tasks.reload_calendar, "delay"),
             patch("app.statistics_cache.invalidate_all_statistics_days") as stats_all,
-            patch.object(
-                _media_imports.history_cache, "invalidate_history_cache"
-            ) as history_all,
+            patch("app.history_cache.invalidate_history_cache") as history_all,
         ):
             _media_imports.import_media(importer, None, self.user.id, "new")
         return history_all, stats_all
@@ -152,4 +150,29 @@ class DayScopedImportTests(TestCase):
         self.assertEqual(
             StatisticsDirtyDay.objects.filter(user=self.user).count(),
             3,
+        )
+
+    def test_a_mix_of_dated_and_undated_rows_marks_days_and_the_aggregate(self):
+        dated = _new_podcast(self.user, "e", self.finished)
+        undated = _new_podcast(self.user, "f", None)
+        generation = StatisticsSyncState.objects.get(user=self.user).generation
+
+        helpers.publish_bulk_rows(self.user.id, [dated, undated])
+
+        self.assertEqual(StatisticsDirtyDay.objects.filter(user=self.user).count(), 1)
+        self.assertGreater(
+            StatisticsSyncState.objects.get(user=self.user).generation, generation
+        )
+
+    def test_a_noted_full_refresh_drops_every_day(self):
+        def run(identifier, user, mode, **kwargs):
+            helpers.note_full_refresh()
+            return {MediaTypes.PODCAST.value: 1}, ""
+
+        history_all, stats_all = self.run_import(run, scoped=True)
+
+        history_all.assert_called_once_with(self.user.id, force=True)
+        stats_all.assert_called_once_with(self.user.id, reason="media_import")
+        self.assertIsNotNone(
+            StatisticsSyncState.objects.get(user=self.user).full_sweep_requested_at
         )

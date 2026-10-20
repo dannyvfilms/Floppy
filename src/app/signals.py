@@ -1039,6 +1039,14 @@ def mark_statistics_previous_dates(sender, instance, **kwargs):
         instance.start_date, instance.end_date
     )
     if old_days:
+        # History day keys are the same days, and the receivers that follow
+        # only see the new dates: the day a row moved away from kept showing it.
+        history_cache.invalidate_history_days(
+            instance.user_id,
+            day_keys=sorted(old_days),
+            reason="media_date_moved",
+            force=True,
+        )
         statistics_cache.invalidate_statistics_days(
             instance.user_id, old_days, reason="media_date_moved"
         )

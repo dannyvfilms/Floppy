@@ -49,10 +49,35 @@ def record_bulk_rows():
         _bulk_rows.reset(token)
 
 
-def _note_bulk_rows(rows):
+def note_bulk_rows(rows):
+    """Record rows written without a save signal, so the import publishes their days."""
     sink = _bulk_rows.get()
     if sink is not None:
         sink.extend(rows)
+
+
+# Noted by an importer whose write moved rows between libraries, which no day
+# list describes; publishing then falls back to dropping every cached day.
+FULL_REFRESH = object()
+
+
+def note_full_refresh():
+    """Ask the import to drop every cached day when it publishes."""
+    note_bulk_rows([FULL_REFRESH])
+
+
+def publish_everything(user_id):
+    """Drop every cached History and Statistics day for one user."""
+    from app import history_cache, statistics_cache
+
+    # Importers rely on bulk_create_with_history, which bypasses model signals.
+    # Force-clear history cache so month view index pages don't keep stale
+    # "empty month" payloads after imports.
+    history_cache.invalidate_history_cache(user_id, force=True)
+    # The same bypass leaves statistics days unmarked: drop every day payload;
+    # the background sync rebuilds them in budgeted slices while the last
+    # published numbers keep being served.
+    statistics_cache.invalidate_all_statistics_days(user_id, reason="media_import")
 
 
 def publish_bulk_rows(user_id, rows):
@@ -62,23 +87,36 @@ def publish_bulk_rows(user_id, rows):
     of days then takes hours to rebuild, so a recurring poll that adds one row
     kept the worker busy until the next poll. Every day a row's dates
     touch is a superset of the days any History or Statistics placement uses.
+    Undated rows have no day to refresh, but their status and score still feed
+    the range totals, so they re-aggregate those.
+
+    Returns whether the refresh stayed scoped; False means it dropped every day
+    (see ``note_full_refresh``), so the sweep the import requested must stand.
     """
     from app import history_cache, statistics_sync
 
+    if FULL_REFRESH in rows:
+        publish_everything(user_id)
+        return False
+
     day_keys = set()
+    has_undated = False
     for row in rows:
         start, end = getattr(row, "start_date", None), getattr(row, "end_date", None)
-        day_keys.update(history_cache.history_day_keys_for_range(start, end))
-        day_keys.update(
+        row_keys = set(history_cache.history_day_keys_for_range(start, end))
+        row_keys.update(
             key for key in map(history_cache.history_day_key, (start, end)) if key
         )
+        has_undated = has_undated or not row_keys
+        day_keys.update(row_keys)
     if day_keys:
         history_cache.invalidate_history_days(
             user_id, day_keys=sorted(day_keys), force=True, reason="import_rows"
         )
         statistics_sync.mark_days(user_id, day_keys, reason="import_rows")
-    elif rows:
+    if has_undated:
         statistics_sync.mark_aggregate(user_id, reason="import_rows")
+    return True
 
 
 class MediaImportError(Exception):
@@ -563,7 +601,7 @@ def _backfill_completed_season_episodes(seasons, *, prepare_only=False):
             Episode,
             batch_size=500,
         )
-        _note_bulk_rows(created_episodes)
+        note_bulk_rows(created_episodes)
         normalize_completed_entries(created_episodes)
 
     return warnings
@@ -860,7 +898,7 @@ def bulk_create_media(bulk_media_list, user, *, backfill_completed=True, prepare
             )
 
         created_media = retry_on_lock(create_media)
-        _note_bulk_rows(created_media)
+        note_bulk_rows(created_media)
         if normalize:
             normalize_completed_entries(created_media)
         if media_type in PROJECTED_MEDIA_TYPES:

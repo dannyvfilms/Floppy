@@ -204,12 +204,20 @@ episode-order remaps, music track relinks and TV provider migrations.
 A recurring poll must not use that blanket drop: one changed row would send
 thousands of days back to the sync, and the next poll arrives before it has
 caught up. Importers listed in `DAY_SCOPED_IMPORTERS`
-(`integrations/tasks/_media_imports.py`, today Pocket Casts) write either through
-the ORM (signals mark the day) or through `helpers.bulk_create_media`, which
-records its rows; the task then calls `helpers.publish_bulk_rows` to refresh just
-those days in History and Statistics, and `coalesce_import_changes` drops the
-full sweep it requested up front. Add an importer to the list only after
-checking that every write it makes takes one of those two paths.
+(`integrations/tasks/_media_imports.py`) write through the ORM (signals mark the
+day, including the day a moved row left, for History as well as Statistics),
+through `helpers.bulk_create_media`, or through a bulk write they report with
+`helpers.note_bulk_rows`. The task then calls `helpers.publish_bulk_rows` to
+refresh just those days in History and Statistics (undated rows re-aggregate),
+and `coalesce_import_changes` drops the full sweep it requested up front.
+A write that moves rows between libraries (Stremio promoting a show to grouped
+anime) calls `helpers.note_full_refresh()`, which falls back to the blanket drop.
+
+Not in the list: Trakt (its durable, resumable import publishes through
+`durable.publish_pending`, which still drops everything) and the one-off file
+importers, where a full refresh after a big upload is what the user expects.
+Add an importer only after checking that every write it makes takes one of the
+paths above.
 
 If you add a write path that bypasses signals (`bulk_create`, `bulk_update`,
 `queryset.update`) on anything Statistics reads, mark it.

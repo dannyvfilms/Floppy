@@ -6,9 +6,10 @@ from django.db.models import Q
 from django.utils import timezone
 
 import events
-from app import backfill_queue, cache_safety, history_cache, statistics_sync
+from app import backfill_queue, cache_safety, statistics_sync
 from app.mixins import disable_fetch_releases
 from app.providers import credentials
+from app.services.watch_state import importing_watch_state
 from integrations import connection_health, import_progress
 from integrations.imports import (
     anilist,
@@ -26,6 +27,7 @@ from integrations.imports import (
     kavita,
     kitsu,
     komga,
+    koreader,
     mal,
     mangabaka,
     mdblist,
@@ -74,9 +76,37 @@ from integrations.tasks._plex_collection import update_collection_metadata_from_
 logger = logging.getLogger(__name__)
 
 # Importers whose every write either saves through the ORM (post_save marks
-# the day) or goes through helpers.bulk_create_media (published below), so a
-# changed poll refreshes only the days it touched instead of the whole library.
-DAY_SCOPED_IMPORTERS = (pocketcasts.importer,)
+# the day), goes through helpers.bulk_create_media, or is reported with
+# helpers.note_bulk_rows, so a changed poll refreshes only the days it touched
+# instead of the whole library. Left out: trakt (durable, resumable chunks),
+# and the one-off file importers, where a full refresh after a big upload is
+# what the user expects. See docs/architecture/statistics-sync.md.
+DAY_SCOPED_IMPORTERS = (
+    pocketcasts.importer,
+    gpodder.importer,
+    simkl.importer,
+    mal.importer,
+    anilist.importer,
+    kitsu.importer,
+    mangabaka.importer,
+    komga.importer,
+    kavita.importer,
+    storyteller.importer,
+    koreader.importer,
+    audiobookshelf.importer,
+    hardcover.sync_importer,
+    psn.importer,
+    steam.importer,
+    xbox.importer,
+    radarr.importer,
+    sonarr.importer,
+    mylar.importer,
+    kapowarr.importer,
+    plex.importer,
+    plex.mark_watched_importer,
+    mdblist.importer,
+    stremio.importer,
+)
 
 # A sync that dies leaves its lock behind; it expires on its own after this.
 PSN_IMPORT_LOCK_SECONDS = 15 * 60
@@ -138,6 +168,7 @@ def import_media(
             # would not see the user's personal provider keys (#1488).
             credentials.current_user_scope(user),
             helpers.record_bulk_rows() as bulk_rows,
+            importing_watch_state(),
         ):
             if oauth_username is None:
                 imported_counts, warnings = importer_func(
@@ -156,8 +187,9 @@ def import_media(
                 )
             statistics_changes["unchanged"] = not has_imported_media(imported_counts)
             if day_scoped:
-                helpers.publish_bulk_rows(user_id, bulk_rows)
-                statistics_changes["scoped"] = True
+                statistics_changes["scoped"] = helpers.publish_bulk_rows(
+                    user_id, bulk_rows
+                )
     except BaseException:
         # BaseException so a soft time limit or worker shutdown still leaves a
         # record. RUNNING only: a cancel has already marked the row CANCELLED.
@@ -203,10 +235,10 @@ def import_media(
             raise
     elif has_imported_media(imported_counts) and importer_func == gpodder.importer:
         # GPodder saves each play through the ORM, so post_save already marked
-        # the touched history and statistics days, and the importer queues a
-        # calendar reload for just the items it created. It polls every 15
-        # minutes; a library-wide rebuild per imported play kept a small host
-        # busy (#1158).
+        # the touched history and statistics days (it is day scoped, so no
+        # sweep is left behind), and the importer queues a calendar reload for
+        # just the items it created. It polls every 15 minutes; a library-wide
+        # rebuild per imported play kept a small host busy (#1158).
         logger.info(
             "import_catchup_skipped reason=signal_writes importer=gpodder user_id=%s",
             user_id,
@@ -216,21 +248,7 @@ def import_media(
         events.tasks.reload_calendar.delay()
     elif has_imported_media(imported_counts):
         events.tasks.reload_calendar.delay()
-
-        # Importers rely heavily on bulk_create_with_history, which bypasses model signals.
-        # Force-clear history cache so month view index pages don't keep stale "empty month"
-        # payloads after imports (notably reproducible with SIMKL imports).
-        history_cache.invalidate_history_cache(user.id, force=True)
-
-        # bulk_create also bypasses the post_save signals that mark statistics days
-        # dirty, and the importer does not report which days it touched. Drop every
-        # day payload; the background sync rebuilds them in budgeted slices while
-        # the last published numbers keep being served.
-        from app import statistics_cache as _statistics_cache
-
-        _statistics_cache.invalidate_all_statistics_days(
-            user.id, reason="media_import"
-        )
+        helpers.publish_everything(user.id)
     else:
         logger.info(
             "calendar_reload_skipped reason=no_items_imported importer=%s user_id=%s",

@@ -9,6 +9,7 @@ from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
 from app.models import Music
+from app.services.watch_state import is_importing_watch_state
 from integrations import lastfm_sync, tasks
 from integrations.lastfm_api import LastFMRecentTracksResult
 from integrations.models import ImportRun, LastFMAccount, LastFMHistoryImportStatus
@@ -213,6 +214,39 @@ class LastFMTaskTests(TestCase):
         self.assertEqual(self.account.last_fetch_timestamp_uts, 1700000000)
         self.assertEqual(self.account.last_error_code, "partial")
         self.assertEqual(result["errors"], 1)
+
+    @patch("integrations.tasks.import_lastfm_history.delay")
+    @patch("integrations.lastfm_sync.sync_lastfm_account")
+    def test_import_lastfm_history_marks_its_listens_as_imported(
+        self,
+        mock_sync,
+        mock_delay,
+    ):
+        """A history backfill is history, not something just listened to."""
+        seen = []
+
+        def spy(*args, **kwargs):
+            seen.append(is_importing_watch_state())
+            return {
+                "tracks": [],
+                "pages_fetched": 1,
+                "total_pages": 1,
+                "complete": True,
+                "interrupted": False,
+                "max_seen_uts": 1699999999,
+                "processed": 0,
+                "skipped": 0,
+                "errors": 0,
+                "affected_day_keys": set(),
+            }
+
+        mock_sync.side_effect = spy
+        self.account.reset_history_import(1699999999)
+        self.account.save()
+
+        tasks.import_lastfm_history(self.user.id)
+
+        self.assertEqual(seen, [True])
 
     @patch("integrations.tasks.import_lastfm_history.delay")
     @patch("integrations.lastfm_sync.sync_lastfm_account")

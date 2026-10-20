@@ -172,3 +172,38 @@ class ImportSteam(TestCase):
                 steam.importer("76561198000000000", self.user, "new")
 
             self.assertIn("Steam API key not configured", str(context.exception))
+
+    @patch("integrations.imports.steam.services.api_request")
+    @patch("integrations.imports.steam.external_game")
+    @patch("integrations.imports.steam.services.get_media_metadata")
+    def test_overwrite_reports_the_games_it_updates(
+        self,
+        mock_get_metadata,
+        mock_external_game,
+        mock_api_request,
+    ):
+        """bulk_update sends no signal, so the import must name the rows it changed."""
+        mock_external_game.return_value = 1
+        mock_get_metadata.return_value = {
+            "title": "Counter-Strike 2",
+            "image": "http://example.com/cs2.jpg",
+        }
+        for playtime in (100, 250):
+            mock_api_request.return_value = {
+                "response": {
+                    "games": [
+                        {
+                            "appid": 730,
+                            "name": "Counter-Strike 2",
+                            "playtime_forever": playtime,
+                            "playtime_2weeks": 0,
+                        },
+                    ],
+                },
+            }
+            with helpers.record_bulk_rows() as recorded:
+                steam.importer("76561198000000000", self.user, "overwrite")
+
+        game = Game.objects.get(user=self.user)
+        self.assertEqual(game.progress, 250)
+        self.assertEqual([row.pk for row in recorded], [game.pk])

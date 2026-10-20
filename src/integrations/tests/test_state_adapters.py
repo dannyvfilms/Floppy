@@ -6,6 +6,7 @@ unverified write reaches someone's library. Emby and Kodi therefore declare
 reads only, and these tests pin that rather than trusting the docstrings.
 """
 
+import importlib
 import logging
 from unittest.mock import Mock, patch
 
@@ -22,7 +23,7 @@ from integrations.models import (
     KodiAccount,
     SyncClientKind,
 )
-from integrations.state import outbound
+from integrations.state import outbound, registry
 from integrations.state.adapters.base import TerminalAdapterError
 from integrations.state.adapters.emby import EmbyStateAdapter
 from integrations.state.adapters.jellyfin import JellyfinStateAdapter
@@ -237,6 +238,14 @@ class AdapterRegistryTests(TestCase):
         adapter = outbound.get_adapter(binding)
 
         self.assertIsInstance(adapter, EmbyStateAdapter)
+
+    def test_every_registered_module_builds_adapters(self):
+        """A registry entry that cannot import fails here, not in a worker."""
+        for kind, module_path in registry.ADAPTER_MODULES.items():
+            with self.subTest(kind=kind):
+                module = importlib.import_module(module_path)
+                self.assertTrue(callable(module.build_adapter))
+                self.assertIn(kind, SyncClientKind.values)
 
     def test_a_client_kind_with_no_adapter_returns_none(self):
         user = get_user_model().objects.create_user(username="owner")

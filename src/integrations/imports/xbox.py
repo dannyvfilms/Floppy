@@ -220,6 +220,8 @@ class XboxImporter:
                 self.to_update,
                 fields=["progress", "status"],
             )
+            # bulk_update sends no save signal; publish these rows' days.
+            helpers.note_bulk_rows(self.to_update)
             logger.info(
                 "Updated %d existing games for user %s",
                 len(self.to_update),

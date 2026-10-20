@@ -741,6 +741,38 @@ class ImportStremioTests(TestCase):
             MediaTypes.ANIME.value,
         )
 
+    def test_promoting_an_existing_show_asks_for_a_full_refresh(self):
+        """Moving a tracked show between libraries changes days no list names."""
+        flat = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Show",
+            image="x.jpg",
+        )
+        grouped = Item.objects.create(
+            media_id="1397",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            library_media_type=MediaTypes.ANIME.value,
+            title="Anime",
+            image="x.jpg",
+        )
+        importer = stremio.StremioImporter.__new__(stremio.StremioImporter)
+
+        with (
+            patch(
+                "app.services.grouped_anime.promote_grouped_anime",
+                return_value=True,
+            ),
+            helpers.record_bulk_rows() as recorded,
+        ):
+            importer._promote_grouped(grouped, None)
+            self.assertEqual(recorded, [])
+            self.assertTrue(importer._promote_grouped(flat, None))
+
+        self.assertEqual(recorded, [helpers.FULL_REFRESH])
+
     def test_anime_episode_mapping_uses_canonical_tmdb_season(self):
         """Stremio anime imports remap source seasons without false completion."""
         self.user.anime_enabled = True

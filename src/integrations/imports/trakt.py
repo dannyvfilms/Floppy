@@ -1215,6 +1215,9 @@ class TraktImporter(TraktMetadataResolverMixin):
         if not tmdb_id:
             return
 
+        watched_at = entry["watched_at"]
+        watched_at_dt = _parse_watched_at(watched_at)
+
         # Check if we should process this movie based on mode
         if not helpers.should_process_media(
             self.existing_media,
@@ -1224,6 +1227,11 @@ class TraktImporter(TraktMetadataResolverMixin):
             tmdb_id,
             self.mode,
             deleted_media=self.deleted_media,
+            # Like episodes, each movie watch is judged by the play dedupe
+            # below, so an older Trakt watch of a tracked movie is kept (#1423).
+            # An undated watch cannot be deduped, so a tracked movie keeps
+            # skipping it or every re-import would add another row.
+            skip_existing=watched_at_dt is None,
         ):
             return
 
@@ -1233,8 +1241,6 @@ class TraktImporter(TraktMetadataResolverMixin):
 
         item = self._get_or_create_item(MediaTypes.MOVIE.value, tmdb_id, metadata)
         self._remember_trakt_reference(movie, MediaTypes.MOVIE.value, item)
-        watched_at = entry["watched_at"]
-        watched_at_dt = _parse_watched_at(watched_at)
 
         self.existing_movie_play_times.record_runtime(tmdb_id, item.runtime_minutes)
         if self.existing_movie_play_times.is_duplicate(tmdb_id, watched_at_dt):

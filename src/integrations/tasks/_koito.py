@@ -13,6 +13,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from app.log_safety import exception_summary
+from app.services.watch_state import importing_watch_state
 from integrations import connection_health
 from integrations.imports.helpers import retry_on_lock
 
@@ -404,7 +405,7 @@ def import_koito_history(user_id, reset=False):
             listens.sort(key=lambda listen: koito_api.listen_timestamp_uts(listen) or 0)
 
             processor = KoitoScrobbleProcessor(base_url, api_key, account_id=account.id)
-            with import_progress.tracking(task_id, import_run.id):
+            with import_progress.tracking(task_id, import_run.id), importing_watch_state():
                 stats = processor.process_listens(listens, account.user)
         except Exception as exc:
             account.refresh_from_db()

@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from app.log_safety import exception_summary
 from app.providers import credentials
+from app.services.watch_state import importing_watch_state
 from integrations import connection_health
 
 logger = logging.getLogger(__name__)
@@ -372,7 +373,7 @@ def _import_lastfm_history_chunk(user_id, reset, import_run_id):
         )
 
         try:
-            with import_progress.tracking(task_id, import_run.id):
+            with import_progress.tracking(task_id, import_run.id), importing_watch_state():
                 sync_result = lastfm_sync.sync_lastfm_account(
                     account,
                     to_timestamp_uts=account.history_import_cutoff_uts,

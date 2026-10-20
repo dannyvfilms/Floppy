@@ -1574,7 +1574,7 @@ class TestPlexPostImportSideEffects(TestCase):
 
     @patch("integrations.tasks.update_collection_metadata_from_plex.apply_async")
     @patch("app.statistics_cache.invalidate_all_statistics_days")
-    @patch("integrations.tasks._media_imports.history_cache.invalidate_history_cache")
+    @patch("app.history_cache.invalidate_history_cache")
     @patch("integrations.tasks._media_imports.events.tasks.reload_calendar.delay")
     @patch("integrations.imports.plex.importer")
     def test_plex_import_schedules_history_statistics_and_collection_refresh(
@@ -1602,7 +1602,7 @@ class TestPlexPostImportSideEffects(TestCase):
 
     @patch("integrations.tasks.update_collection_metadata_from_plex.apply_async")
     @patch("app.statistics_cache.invalidate_all_statistics_days")
-    @patch("integrations.tasks._media_imports.history_cache.invalidate_history_cache")
+    @patch("app.history_cache.invalidate_history_cache")
     @patch("integrations.tasks._media_imports.events.tasks.reload_calendar.delay")
     @patch("integrations.imports.plex.importer")
     def test_import_that_creates_nothing_does_not_reload_the_calendar(

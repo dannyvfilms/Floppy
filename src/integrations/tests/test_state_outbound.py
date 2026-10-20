@@ -16,10 +16,13 @@ from django.test import TestCase
 from app.models import (
     Item,
     MediaTypes,
+    Movie,
     Sources,
+    Status,
+    WatchStateChange,
     WatchStateOrigin,
 )
-from app.services.watch_state import record_state_change
+from app.services.watch_state import importing_watch_state, record_state_change
 from integrations.models import (
     CAPABILITY_WATCHED_PUSH_PLAYED,
     CAPABILITY_WATCHED_PUSH_UNPLAYED,
@@ -186,6 +189,73 @@ class EnqueueTests(OutboundTestCase):
             status=OutboundDeliveryStatus.SUPERSEDED.value,
         )
         self.assertEqual(superseded.count(), 2)
+
+
+class ImportedChangeTests(OutboundTestCase):
+    """A bulk import must not reach a destination that declines imported plays.
+
+    Importers write through the same projection as the UI, so without a marker a
+    Trakt or file import would look like the user just watched everything.
+    """
+
+    def _complete_movie(self):
+        return Movie.objects.create(
+            item=self.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=_dt(1),
+        )
+
+    def test_an_imported_play_is_recorded_as_an_import(self):
+        with importing_watch_state():
+            self._complete_movie()
+
+        change = WatchStateChange.objects.get(user=self.user, item=self.item)
+        self.assertEqual(change.origin_kind, WatchStateOrigin.IMPORT.value)
+
+    def test_a_ui_play_is_recorded_as_local(self):
+        self._complete_movie()
+
+        change = WatchStateChange.objects.get(user=self.user, item=self.item)
+        self.assertEqual(change.origin_kind, WatchStateOrigin.LOCAL_UI.value)
+
+    def test_an_adapter_that_declines_imports_receives_no_delivery(self):
+        self.adapter.ACCEPTS_IMPORTED_CHANGES = False
+
+        with importing_watch_state():
+            self._complete_movie()
+
+        self.assertFalse(OutboundStateDelivery.objects.exists())
+
+    def test_the_same_play_made_directly_is_still_delivered(self):
+        self.adapter.ACCEPTS_IMPORTED_CHANGES = False
+
+        self._complete_movie()
+
+        self.assertEqual(OutboundStateDelivery.objects.count(), 1)
+
+    def test_a_real_import_run_marks_its_plays_as_imports(self):
+        """import_media is the one entry point every importer goes through."""
+        from integrations.tasks import import_media
+
+        def importer(identifier, user, mode):
+            self._complete_movie()
+            return {"movie": 1}, ""
+
+        self.adapter.ACCEPTS_IMPORTED_CHANGES = False
+
+        import_media(importer, "someone", self.user.id, "new")
+
+        change = WatchStateChange.objects.get(user=self.user, item=self.item)
+        self.assertEqual(change.origin_kind, WatchStateOrigin.IMPORT.value)
+        self.assertFalse(OutboundStateDelivery.objects.exists())
+
+    def test_an_adapter_that_says_nothing_keeps_receiving_imports(self):
+        """Jellyfin, Emby and Kodi behave as before this marker existed."""
+        with importing_watch_state():
+            self._complete_movie()
+
+        self.assertEqual(OutboundStateDelivery.objects.count(), 1)
 
 
 class DeliveryTests(OutboundTestCase):
