@@ -47,11 +47,11 @@ class AboutViewTests(TestCase):
         response = self.client.get(reverse("about"))
 
         soup = BeautifulSoup(response.content, "html.parser")
-        link = soup.find("a", href=lambda h: h and "github.com/sponsors/" in h)
-        self.assertEqual(
-            link["href"],
-            "https://github.com/sponsors/dannyvfilms?metadata_source=app-about",
+        link = soup.find(
+            "a",
+            href=lambda h: h and h.endswith("github.com/sponsors/dannyvfilms?metadata_source=app-about"),
         )
+        self.assertIsNotNone(link)
         self.assertEqual(link["rel"], ["noopener", "noreferrer"])
         self.assertContains(response, "no paid features")
 
@@ -144,3 +144,20 @@ class AboutViewTests(TestCase):
         for wrapper in wrappers:
             with self.subTest(classes=wrapper.get("class")):
                 self.assertIn("relative", wrapper.get("class"))
+
+    def test_about_invites_sponsorship_with_a_subtle_inline_link(self):
+        response = self.client.get(reverse("about"))
+
+        soup = BeautifulSoup(response.content, "html.parser")
+        link = next(
+            link
+            for link in soup.find_all("a")
+            if link.get("href")
+            == "https://github.com/sponsors/dannyvfilms?metadata_source=app-about-description"
+        )
+        self.assertEqual(link.get("rel"), ["noopener", "noreferrer"])
+        self.assertIn(
+            "Floppy is free and supported by users like you",
+            link.parent.get_text(" ", strip=True),
+        )
+        self.assertNotIn("began as a fork", response.content.decode())

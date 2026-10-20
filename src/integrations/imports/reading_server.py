@@ -24,6 +24,7 @@ from integrations.imports.helpers import (
     ConnectionAuthError,
     MediaImportError,
     decrypt_or_raise,
+    retry_on_lock,
 )
 from integrations.imports.koreader import KoreaderImporter
 from integrations.safe_fetch import SelfHostedUrlError, send_to_self_hosted
@@ -232,22 +233,29 @@ class ReadingServerImporter(KoreaderImporter):
         ``write(item)`` returns what ``write_reading_progress`` returns.
         """
         link = links.get(key)
-        item = resolve_item() if force_resolve else (link.item if link else resolve_item())
+        # A SQLite lock can fail a write at once, so retry each write step.
+        item = (
+            retry_on_lock(resolve_item)
+            if force_resolve or not link
+            else link.item
+        )
         if item is None:
             self.warnings.append(f"Could not match {self.service} item {label}")
             counts["skipped"] += 1
             return
         if link and link.item_id != item.id:
             link.item = item
-            link.save(update_fields=["item"])
+            retry_on_lock(lambda: link.save(update_fields=["item"]))
         if link is None and key:
-            links[key] = self.link_model.objects.update_or_create(
-                user=self.user,
-                **{self.link_field: key},
-                defaults={"item": item},
+            links[key] = retry_on_lock(
+                lambda: self.link_model.objects.update_or_create(
+                    user=self.user,
+                    **{self.link_field: key},
+                    defaults={"item": item},
+                ),
             )[0]
 
-        result = write(item)
+        result = retry_on_lock(lambda: write(item))
         if result is None:
             counts["skipped"] += 1
             return

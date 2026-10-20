@@ -10,6 +10,9 @@ from app.history_entry_builders import (
     _serialize_show,
 )
 
+# played_at_local drives ordering; the other three feed the card properties.
+_ENTRY_DATETIME_KEYS = ("played_at_local", "created_at", "start_date", "end_date")
+
 
 def _serialize_history_entry(entry):
     data = dict(entry)
@@ -17,23 +20,27 @@ def _serialize_history_entry(entry):
     data["album"] = _serialize_album(data.get("album"))
     data["show"] = _serialize_show(data.get("show"))
     data.pop("episode_modal", None)
-    played_at = data.get("played_at_local")
-    if isinstance(played_at, datetime):
-        data["played_at_local"] = played_at.isoformat()
+    for key in _ENTRY_DATETIME_KEYS:
+        value = data.get(key)
+        if isinstance(value, datetime):
+            data[key] = value.isoformat()
     return data
 
 
 def _deserialize_history_entry(entry):
     data = dict(entry)
-    played_at = data.get("played_at_local")
-    if isinstance(played_at, str):
-        try:
-            parsed = datetime.fromisoformat(played_at)
-            if timezone.is_naive(parsed):
-                parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
-            data["played_at_local"] = parsed
-        except ValueError:
-            data["played_at_local"] = None
+    for key in _ENTRY_DATETIME_KEYS:
+        value = data.get(key)
+        if isinstance(value, str):
+            try:
+                parsed = datetime.fromisoformat(value)
+                if timezone.is_naive(parsed):
+                    parsed = timezone.make_aware(
+                        parsed, timezone.get_current_timezone()
+                    )
+                data[key] = parsed
+            except ValueError:
+                data[key] = None
     return data
 
 

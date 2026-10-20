@@ -55,8 +55,6 @@ def populate_episode_runtime_data(season_keys: list[str] | None = None):
     from app.models import Item, MediaTypes
     from app.providers import services as _services
     from app.statistics import parse_runtime_to_minutes
-
-    # Deferred to avoid circular import: tasks.py re-exports this module.
     from app.tasks import (
         _episode_runtime_items_queryset,
         _normalize_season_keys,
@@ -64,6 +62,9 @@ def populate_episode_runtime_data(season_keys: list[str] | None = None):
         _record_backfill_success,
         _schedule_metadata_statistics_refresh,
     )
+
+    # Deferred to avoid circular import: tasks.py re-exports this module.
+    from app.tasks_backfill_state import METADATA_BACKFILL_EMPTY_ANSWER_DELAY_SECONDS
 
     normalized_seasons = _normalize_season_keys(season_keys)
 
@@ -202,6 +203,7 @@ def populate_episode_runtime_data(season_keys: list[str] | None = None):
                             missing_item,
                             MetadataBackfillField.RUNTIME,
                             "no runtime",
+                            min_delay_seconds=METADATA_BACKFILL_EMPTY_ANSWER_DELAY_SECONDS,
                         )
                     continue
 
@@ -273,6 +275,7 @@ def populate_episode_runtime_data(season_keys: list[str] | None = None):
                         episode_item,
                         MetadataBackfillField.RUNTIME,
                         "missing episode metadata",
+                        min_delay_seconds=METADATA_BACKFILL_EMPTY_ANSWER_DELAY_SECONDS,
                     )
 
             time.sleep(0.1)

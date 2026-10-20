@@ -87,7 +87,7 @@ install_docker() {
     if [ "$(docker_state)" = "missing" ]; then
         _docker_install_engine_apt
     fi
-    [ "$(docker_state)" = "ready" ] || fail "Docker is not usable yet ($(docker_state)). Fix that, then run the installer again."
+    [ "$(docker_state)" = "ready" ] || fail "Docker is not usable yet ($(docker_state_text "$(docker_state)")). Fix that, then run the installer again."
 
     step "Writing the installation's configuration"
 

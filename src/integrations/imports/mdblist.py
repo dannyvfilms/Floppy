@@ -259,12 +259,14 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 app.models.Season,
                 fields=["status"],
             )
+            helpers.note_bulk_rows(self.completed_seasons)
         if self.dropped_tvs:
             bulk_update_with_history(
                 self.dropped_tvs,
                 app.models.TV,
                 fields=["status"],
             )
+            helpers.note_bulk_rows(self.dropped_tvs)
 
         imported_counts = {
             media_type: len(media_list)
@@ -991,10 +993,12 @@ class MDBListImporter(TraktMetadataResolverMixin):
                 item__episode_number=episode_number,
             )
             if episodes.exists():
-                episodes.exclude(score=scaled_score).update(
-                    score=scaled_score,
-                    scored_at=timezone.now(),
-                )
+                # A queryset update sends no save signal; publish these days.
+                changed = list(episodes.exclude(score=scaled_score))
+                app.models.Episode.objects.filter(
+                    pk__in=[episode.pk for episode in changed],
+                ).update(score=scaled_score, scored_at=timezone.now())
+                helpers.note_bulk_rows(changed)
                 return
 
         ep_key = f"{tmdb_id}:{season_number}:{episode_number}"

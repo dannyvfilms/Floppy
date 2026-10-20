@@ -107,7 +107,7 @@ else
     fi
 
     ask_choice METHOD "There are two ways to run Floppy:" docker \
-        "docker|Docker - recommended|Runs Floppy in containers, so nothing else on this computer changes. Docker here: ${docker_status}." \
+        "docker|Docker - recommended|Runs Floppy in containers, so nothing else on this computer changes. Docker here: $(docker_state_text "$docker_status")." \
         "source|Directly on this computer|${source_note}"
 
     if [ "$METHOD" = "source" ] && ! platform_supports_source; then
@@ -119,6 +119,7 @@ else
     fi
 
     if [ "$METHOD" = "docker" ]; then
+        docker_problem=""
         case $docker_status in
             missing)
                 if [ "$FLOPPY_OS" = "Darwin" ]; then
@@ -131,17 +132,31 @@ else
                 ;;
             stopped)
                 if [ "$FLOPPY_OS" = "Darwin" ]; then
-                    fail "Docker is installed but not running. Start Docker Desktop, wait for it to report Running, then run this installer again."
+                    docker_problem="Docker is installed but not running. Start Docker Desktop, wait for it to report Running, then run this installer again."
+                else
+                    docker_problem="Docker is installed but not responding. Start it (for example 'sudo systemctl start docker'), then run this installer again."
                 fi
-                fail "Docker is installed but not responding. Start it (for example 'sudo systemctl start docker'), then run this installer again."
                 ;;
             no-permission)
-                fail "Docker is installed but $(id -un) may not talk to it. Run 'sudo usermod -aG docker $(id -un)', log out and back in, then run this installer again."
+                docker_problem="Docker is installed but $(id -un) may not talk to it. Run 'sudo usermod -aG docker $(id -un)', log out and back in, then run this installer again."
                 ;;
             no-compose)
-                fail "Docker is installed without the Compose plugin. Install docker-compose-plugin, then run this installer again."
+                docker_problem="Docker is installed without the Compose plugin. Install it ('sudo apt-get install docker-compose-v2' on Ubuntu, or 'docker-compose-plugin' from Docker's own package repository), then run this installer again."
+                ;;
+            error)
+                docker_problem="Docker is installed but returned an error:
+$(docker_error_detail)
+Fix that, then run this installer again."
                 ;;
         esac
+        if [ -n "$docker_problem" ]; then
+            say ""
+            say "$docker_problem"
+            platform_supports_source || exit 1
+            say ""
+            ask_yes_no "Install Floppy directly on this computer instead?" no || exit 1
+            METHOD=source
+        fi
     fi
 
     # -----------------------------------------------------------------------

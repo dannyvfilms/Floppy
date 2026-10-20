@@ -5,6 +5,9 @@ services:
     # Use :release or :X.X.X for builds from the release branch/GitHub Releases
     image: ghcr.io/dannyvfilms/floppy:latest
     restart: unless-stopped
+    # A running celery task gets up to 60 s to finish and the web server 30 s.
+    # Docker's default 10 s stop timeout kills the container mid-shutdown.
+    stop_grace_period: 150s
     depends_on:
       - redis
     environment:

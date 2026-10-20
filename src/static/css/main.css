@@ -1896,6 +1896,12 @@
       border-color: color-mix(in oklab, var(--color-green-400) 28%, transparent);
     }
   }
+  .border-green-500\/30 {
+    border-color: color-mix(in srgb, oklch(72.3% 0.219 149.579) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-green-500) 30%, transparent);
+    }
+  }
   .border-indigo-400\/18 {
     border-color: color-mix(in srgb, oklch(67.3% 0.182 276.935) 18%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2458,6 +2464,12 @@
     background-color: color-mix(in srgb, oklch(79.2% 0.209 151.711) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-green-400) 10%, transparent);
+    }
+  }
+  .bg-green-500\/10 {
+    background-color: color-mix(in srgb, oklch(72.3% 0.219 149.579) 10%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-green-500) 10%, transparent);
     }
   }
   .bg-green-500\/14 {
@@ -3675,6 +3687,11 @@
     -webkit-user-select: none;
     user-select: none;
   }
+  .group-open\:rotate-90 {
+    &:is(:where(.group):is([open], :popover-open, :open) *) {
+      rotate: 90deg;
+    }
+  }
   .group-hover\:visible {
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
@@ -4379,6 +4396,13 @@
     &:hover {
       @media (hover: hover) {
         color: var(--color-text);
+      }
+    }
+  }
+  .hover\:text-\[var\(--color-text-primary\)\] {
+    &:hover {
+      @media (hover: hover) {
+        color: var(--color-text-primary);
       }
     }
   }

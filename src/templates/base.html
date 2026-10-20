@@ -599,6 +599,9 @@
 
           <main class="flex-1 relative bg-[var(--color-page-bg)]">
             <div class="container mx-auto max-lg:max-w-none pt-6 pb-[max(1.5rem,var(--safe-bottom))] sm:pb-[max(3rem,var(--safe-bottom))] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] sm:pl-[max(2rem,var(--safe-left))] sm:pr-[max(2rem,var(--safe-right))]">
+              {% if request.user.is_superuser and RELEASE_TAG %}
+                {% include "users/components/update_banner.html" %}
+              {% endif %}
               {% block content %}
               {% endblock content %}
             </div>

@@ -18,6 +18,7 @@ from app.models import Item, MediaTypes, MetadataBackfillField, MetadataBackfill
 from app.providers import services
 from app.task_cooperation import CooperativeRun
 from app.tasks_backfill_state import (
+    METADATA_BACKFILL_EMPTY_ANSWER_DELAY_SECONDS,
     _apply_backfill_state_filters,
     _filter_backfill_item_ids,
     _normalize_item_ids,
@@ -238,7 +239,18 @@ def _populate_runtime_for_items(items, delay_seconds):
     updated_items = []
 
     def _mark_runtime_failure(item, reason):
-        give_up = _record_backfill_failure(item, MetadataBackfillField.RUNTIME, reason)
+        give_up = _record_backfill_failure(
+            item,
+            MetadataBackfillField.RUNTIME,
+            reason,
+            # The provider answered and has no runtime: asking again in an hour
+            # gets the same answer.
+            min_delay_seconds=(
+                METADATA_BACKFILL_EMPTY_ANSWER_DELAY_SECONDS
+                if reason == "no runtime"
+                else None
+            ),
+        )
         if give_up:
             try:
                 with transaction.atomic():

@@ -7,6 +7,7 @@ from django.utils import formats, timezone
 from django.utils.html import format_html
 from django.utils.translation import gettext, gettext_noop, ngettext
 
+from users import currency
 from users.appearance import (
     BASIC_THEME_KEYS,
     THEME_PRESETS,
@@ -549,3 +550,10 @@ def user_datetime_format(datetime_obj, user):
             return str(datetime_obj)
     else:
         return f"{date_part} {time_part}"
+
+
+@register.simple_tag(takes_context=True)
+def user_price(context, amount):
+    """Format a collection price in the user's currency (#1100)."""
+    code = currency.resolve_currency(context.get("user"), context.get("request"))
+    return currency.format_price(amount, code)

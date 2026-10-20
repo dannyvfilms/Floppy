@@ -26,7 +26,11 @@ query {
 def fetch_goal() -> dict:
     token = os.environ.get("GITHUB_TOKEN")
     if not token:
-        raise SystemExit("GITHUB_TOKEN is required")
+        raise SystemExit(
+            "GITHUB_TOKEN is required. In Actions, add the SPONSORS_GOAL_TOKEN (or SPONSORS_TOKEN) repository "
+            "secret: a personal access token from dannyvfilms (the built-in token cannot "
+            "read GitHub Sponsors data)."
+        )
     request = Request(
         "https://api.github.com/graphql",
         data=json.dumps({"query": QUERY}).encode(),

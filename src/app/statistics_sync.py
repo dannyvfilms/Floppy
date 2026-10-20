@@ -25,11 +25,12 @@ from types import MappingProxyType, SimpleNamespace
 from django.apps import apps
 from django.conf import settings
 from django.core.cache import cache
-from django.db import IntegrityError, connection, transaction
+from django.db import IntegrityError, OperationalError, connection, transaction
 from django.db.models import F, Model, Q
 from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
+from app.db_retry import is_lock_error
 from app.interactive_requests import interactive_request_active
 from app.models import StatisticsDirtyDay, StatisticsSnapshot, StatisticsSyncState
 from app.statistics_day_cache import (
@@ -84,6 +85,9 @@ def coalesce_import_changes(user_id: int):
     Record the full sweep before writes: even a killed worker leaves recovery
     work behind. Dirty-day tokens still rotate, preserving concurrent marks.
     Other threads/processes retain the ordinary incremental marking path.
+
+    An import that marked each day it wrote sets ``scoped``; a clean finish
+    then drops the full sweep requested at the start.
     """
     users = _import_changes.get()
     if user_id in users:
@@ -93,7 +97,7 @@ def coalesce_import_changes(user_id: int):
     previous = StatisticsSyncState.objects.filter(user_id=user_id).values(*fields).first()
     mark_aggregate(user_id, reason="media_import_started", full_sweep=True)
     marker = StatisticsSyncState.objects.filter(user_id=user_id).values(*fields).first()
-    changes = {"marked": False, "unchanged": False}
+    changes = {"marked": False, "unchanged": False, "scoped": False}
     token = _import_changes.set(users | {user_id: changes})
     try:
         yield changes
@@ -107,6 +111,14 @@ def coalesce_import_changes(user_id: int):
                 generation=previous["generation"] + 1,
                 full_sweep_requested_at=marker["full_sweep_requested_at"],
             ).update(**previous)
+        elif changes["scoped"] and previous and marker:
+            # The import marked every day it wrote itself, so the sweep
+            # requested up front (for a worker killed mid-import) is spent:
+            # without this one changed row re-marks every day in the library.
+            StatisticsSyncState.objects.filter(
+                user_id=user_id,
+                full_sweep_requested_at=marker["full_sweep_requested_at"],
+            ).update(full_sweep_requested_at=previous["full_sweep_requested_at"])
 
 
 def _bulk_import_active(user_id: int) -> bool:
@@ -1002,7 +1014,8 @@ def run_sync(
     ``done``, ``busy`` (another sync holds the lease), ``continued`` (the time
     budget ran out), ``deferred`` (an interactive request is active),
     ``lost_lease`` (a successor claimed the lease mid-run; its fenced
-    operations stopped touching the user's state), or ``missing``.
+    operations stopped touching the user's state), ``locked`` (SQLite stayed
+    locked past the wait; the reconciler retries), or ``missing``.
 
     ``only_ranges`` rebuilds just those ranges, unconditionally; it is the
     inline path the eager/test read and the top-talent upgrade use.
@@ -1018,9 +1031,15 @@ def run_sync(
     user = user_model.objects.filter(pk=user_id).first()
     if user is None:
         return {"status": "missing", "published": {}}
-    if _ensure_state(user_id) is None:
-        return {"status": "missing", "published": {}}
-    lease_token = _claim_lease(user_id, takeover=takeover)
+    try:
+        if _ensure_state(user_id) is None:
+            return {"status": "missing", "published": {}}
+        lease_token = _claim_lease(user_id, takeover=takeover)
+    except OperationalError as exc:
+        if not is_lock_error(exc):
+            raise
+        logger.warning("stats_sync_locked user_id=%s error=%s", user_id, exc)
+        return {"status": "locked", "published": {}}
     if lease_token is None:
         return {"status": "busy", "published": {}}
 
@@ -1217,12 +1236,29 @@ def run_sync(
     except _OutOfTimeError:
         status = "continued"
     except Exception as exc:
-        StatisticsSyncState.objects.filter(
-            user_id=user_id, lease_token=lease_token
-        ).update(last_error=f"{type(exc).__name__}: {exc}"[:1000])
-        raise
+        if isinstance(exc, OperationalError) and is_lock_error(exc):
+            # Another writer held the database past the wait. Nothing is lost:
+            # the dirty days and generation are durable, and the reconciler
+            # queues a fresh sync within a minute.
+            status = "locked"
+            logger.warning("stats_sync_locked user_id=%s error=%s", user_id, exc)
+        else:
+            StatisticsSyncState.objects.filter(
+                user_id=user_id, lease_token=lease_token
+            ).update(last_error=f"{type(exc).__name__}: {exc}"[:1000])
+            raise
     finally:
-        _release_lease(user_id, lease_token)
+        try:
+            _release_lease(user_id, lease_token)
+        except OperationalError as exc:
+            if not is_lock_error(exc):
+                raise
+            # The lease lapses on its own, after which the reconciler can claim.
+            logger.warning("stats_sync_release_locked user_id=%s error=%s", user_id, exc)
+
+    if status == "locked":
+        # Queueing a follow-up now would just meet the same lock.
+        return {"status": status, "published": published}
 
     elapsed = time.monotonic() - started
     logger.info(
@@ -1279,7 +1315,7 @@ def sync_task_body(user_id: int) -> dict:
 def refresh_range_inline(user_id: int, range_name: str):
     """Rebuild one range in this process and return its payload."""
     result = run_sync(user_id, only_ranges=[range_name])
-    if result["status"] in ("busy", "lost_lease"):
+    if result["status"] in ("busy", "lost_lease", "locked"):
         # Preserve the running worker's lease and leave durable work for its
         # continuation/reconciler, including same-generation schema upgrades.
         mark_aggregate(user_id, reason="inline_refresh_deferred", full_sweep=True)

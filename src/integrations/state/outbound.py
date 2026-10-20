@@ -25,6 +25,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import F, Max, Q
 from django.utils import timezone
 
+from app.models.watch_state import WatchStateOrigin
 from integrations.models import (
     CAPABILITY_RATING_PUSH,
     CAPABILITY_WATCHED_PUSH_PLAYED,
@@ -32,9 +33,9 @@ from integrations.models import (
     OutboundDeliveryStatus,
     OutboundStateDelivery,
     SyncBinding,
-    SyncClientKind,
     SyncDirection,
 )
+from integrations.state import registry
 from integrations.state.adapters.base import (
     TerminalAdapterError,
     TransientAdapterError,
@@ -47,27 +48,10 @@ logger = logging.getLogger(__name__)
 RETRY_BACKOFF_SECONDS = (60, 300, 900, 3600)
 MAX_ATTEMPTS = len(RETRY_BACKOFF_SECONDS) + 1
 
-_ADAPTER_BUILDERS = {}
-
 
 def get_adapter(binding):
     """Return the adapter for a binding, or None when it has none."""
-    if not _ADAPTER_BUILDERS:
-        from integrations.state.adapters import emby, jellyfin, kodi, tmdb
-
-        _ADAPTER_BUILDERS.update(
-            {
-                SyncClientKind.JELLYFIN.value: jellyfin.build_adapter,
-                SyncClientKind.EMBY.value: emby.build_adapter,
-                SyncClientKind.KODI.value: kodi.build_adapter,
-                SyncClientKind.TMDB.value: tmdb.build_adapter,
-            },
-        )
-
-    builder = _ADAPTER_BUILDERS.get(binding.client_kind)
-    if builder is None:
-        return None
-    return builder(binding)
+    return registry.build_adapter(binding)
 
 
 def _capability_for(watched):
@@ -99,6 +83,12 @@ def enqueue_deliveries(change):
 
         adapter = get_adapter(binding)
         if adapter is None or capability not in adapter.CAPABILITIES:
+            continue
+        # Imports are history, not something the user just did. An adapter
+        # opts out when its service would show them as new activity.
+        if change.origin_kind == WatchStateOrigin.IMPORT.value and not getattr(
+            adapter, "ACCEPTS_IMPORTED_CHANGES", True
+        ):
             continue
 
         # Coalesce: a pending write for this item is about to be wrong. An

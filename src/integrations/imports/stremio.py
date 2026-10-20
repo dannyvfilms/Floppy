@@ -714,7 +714,7 @@ class StremioImporter:
                 if (
                     tv_instance is not None
                     and grouped_anime_match is not None
-                    and not grouped_anime.promote_grouped_anime(
+                    and not self._promote_grouped(
                         tv_instance.item,
                         grouped_anime_match,
                     )
@@ -751,10 +751,7 @@ class StremioImporter:
             if (
                 library_media_type == MediaTypes.ANIME.value
                 and grouped_anime_match is not None
-                and not grouped_anime.promote_grouped_anime(
-                    tv_item,
-                    grouped_anime_match,
-                )
+                and not self._promote_grouped(tv_item, grouped_anime_match)
             ):
                 self.warnings.append(
                     f"{name}: exact anime match had a target-bucket collision; "
@@ -1035,6 +1032,7 @@ class StremioImporter:
                         ["status"],
                         default_change_reason=STREMIO_IMPORT_REASON,
                     )
+                    helpers.note_bulk_rows([existing_season])
                 season_instance = existing_season
             elif season_item.id in self.bulk_season_by_item_id:
                 # Grouped-anime promotion can unify two Stremio entries onto
@@ -1337,6 +1335,14 @@ class StremioImporter:
         if date_str:
             return parse_datetime(date_str)
         return None
+
+    def _promote_grouped(self, tv_item, match):
+        """Promote a show to the anime bucket, noting a move no day list covers."""
+        already_grouped = tv_item.library_media_type == grouped_anime.GROUPED_BUCKET
+        promoted = grouped_anime.promote_grouped_anime(tv_item, match)
+        if promoted and not already_grouped:
+            helpers.note_full_refresh()
+        return promoted
 
     def _get_history_date(self, entry):
         """Get the history date for an entry."""

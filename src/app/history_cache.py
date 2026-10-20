@@ -101,6 +101,7 @@ from app.history_entry_builders import (  # noqa: F401
     _build_movie_entry,
     _build_music_album_entries,
     _build_video_play_entry,
+    _entry_dates,
     _format_boardgame_plays,
     _format_game_hours,
     _get_episode_display_title,
@@ -511,6 +512,7 @@ def _build_reading_entries(
                 "episode_label": None,
                 "episode_code": None,
                 "played_at_local": played_at_local,
+                **_entry_dates(reading_entry),
                 "runtime_minutes": 0,
                 "runtime_display": None,
                 "instance_id": reading_entry.id,
@@ -674,6 +676,7 @@ def _build_podcast_entries(user, podcast_history_records, podcasts_lookup):
                 "episode_label": None,
                 "episode_code": None,
                 "played_at_local": played_at_local,
+                **_entry_dates(history_record, added_from=podcast),
                 "runtime_minutes": runtime_minutes,
                 "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
                 if runtime_minutes
@@ -744,6 +747,7 @@ def _build_game_entries(
                     "episode_label": None,
                     "episode_code": None,
                     "played_at_local": played_at_local,
+                    **_entry_dates(game),
                     "runtime_minutes": runtime_minutes,
                     "runtime_display": helpers.minutes_to_hhmm(runtime_minutes)
                     if runtime_minutes
@@ -800,6 +804,7 @@ def _build_game_entries(
                     "episode_label": None,
                     "episode_code": None,
                     "played_at_local": played_at_local,
+                    **_entry_dates(boardgame),
                     "runtime_minutes": 0,
                     "runtime_display": progress_display,
                     "instance_id": boardgame.id,
@@ -858,6 +863,7 @@ def _build_game_entries(
                         "episode_label": None,
                         "episode_code": None,
                         "played_at_local": day_dt,
+                        **_entry_dates(game),
                         "runtime_minutes": minutes_for_day,
                         "runtime_display": helpers.minutes_to_hhmm(minutes_for_day)
                         if minutes_for_day
@@ -920,6 +926,7 @@ def _build_game_entries(
                         "episode_label": None,
                         "episode_code": None,
                         "played_at_local": day_dt,
+                        **_entry_dates(boardgame),
                         "runtime_minutes": 0,
                         "runtime_display": _format_boardgame_plays(plays_for_day)
                         if plays_for_day

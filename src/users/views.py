@@ -72,7 +72,7 @@ from integrations.models import (
 )
 from integrations.plex_watchlist import WATCHLIST_TASK_NAME
 from users import appearance as appearance_config
-from users import cache_management, helpers
+from users import cache_management, helpers, release_notes
 from users.forms import (
     AuthenticatorSetupForm,
     NotificationSettingsForm,
@@ -1526,6 +1526,15 @@ def preferences(request):
             request.user.time_format = time_format
             fields_to_update.append("time_format")
 
+        currency = request.POST.get("currency")
+        if (
+            currency
+            and currency in [choice[0] for choice in User._meta.get_field("currency").choices]
+            and request.user.currency != currency
+        ):
+            request.user.currency = currency
+            fields_to_update.append("currency")
+
         week_start_day = request.POST.get("week_start_day")
         if (
             week_start_day and week_start_day in WeekStartDayChoices.values
@@ -1733,6 +1742,7 @@ def preferences(request):
         "ui_language_choices": UiLanguageChoices.choices,
         "session_duration_choices": SessionDurationChoices.choices,
         "week_start_day_choices": WeekStartDayChoices.choices,
+        "currency_choices": User._meta.get_field("currency").choices,
     }
 
     return render(request, "users/preferences.html", context)
@@ -2439,7 +2449,7 @@ def export_logs(request):
 
     log_name = Path(settings.LOG_FILE).name
     sections = [(log_name, _log_files(log_name))]
-    sections += [(n, _log_files(n)) for n in ("supervisord.log", "faulthandler.log")]
+    sections += [(n, _log_files(n)) for n in ("restart-history.log", "supervisord.log", "faulthandler.log")]
 
     def lines():
         for title, found in sections:
@@ -2457,6 +2467,27 @@ def export_logs(request):
     response = StreamingHttpResponse(lines(), content_type="text/plain")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+@require_GET
+def whats_new(request):
+    """Render the release notes fragment the About page loads in the background."""
+    installed = release_notes.release_tag(settings.VERSION)
+    releases = release_notes.get_releases()
+    for release in releases or []:
+        release["installed"] = release["tag"] == installed
+        release["newer"] = release_notes.tag_sort_key(
+            release["tag"],
+        ) > release_notes.tag_sort_key(installed)
+    return render(
+        request,
+        "users/components/whats_new.html",
+        {
+            "releases": releases,
+            "installed": installed,
+            "releases_url": release_notes.RELEASES_PAGE_URL,
+        },
+    )
 
 
 @require_GET

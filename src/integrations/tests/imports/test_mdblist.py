@@ -506,6 +506,38 @@ class ImportMDBList(TestCase):
             2,
         )
 
+    def test_rerating_a_saved_episode_names_the_row_it_changed(self):
+        """The score update sends no signal, so the import must report the row."""
+        show = {"title": "Test Show", "ids": {"tmdb": 12345}}
+        responses = {
+            "/sync/watched": {
+                "episodes": [
+                    {
+                        "watched_at": "2023-01-01T00:00:00Z",
+                        "episode": {"season": 1, "number": 1, "show": show},
+                    },
+                ],
+            },
+            "/sync/ratings": {
+                "episodes": [
+                    {
+                        "rated_at": "2023-01-03T00:00:00Z",
+                        "rating": 9,
+                        "episode": {"season": 1, "number": 1, "show": show},
+                    },
+                ],
+            },
+        }
+        self._run_import(responses)
+        responses["/sync/ratings"]["episodes"][0]["rating"] = 4
+
+        with helpers.record_bulk_rows() as recorded:
+            self._run_import(responses)
+
+        episode = Episode.objects.get(item__media_id="12345")
+        self.assertEqual(episode.score, self.user.scale_score_for_storage(Decimal(4)))
+        self.assertIn(episode.pk, [row.pk for row in recorded])
+
     def test_dropped_show_marks_existing_tv(self):
         """Dropped shows set DROPPED on the TV row built during the import."""
         responses = {

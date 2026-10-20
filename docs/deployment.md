@@ -19,6 +19,7 @@ services:
     image: ghcr.io/dannyvfilms/floppy:latest
     container_name: floppy
     restart: unless-stopped
+    stop_grace_period: 150s
     depends_on:
       redis:
         condition: service_healthy
@@ -91,12 +92,26 @@ volume as the database and survive the container being recreated.
 
 If the container keeps crashing, that folder holds `floppy.log` (application
 log, with a memory line every 5 minutes and a note on the next start when the
-previous run did not shut down cleanly), `supervisord.log` (which process
-exited and how) and `faulthandler.log` (Python traceback after a segfault). It
-can be read from the host even while the container is down. Settings →
-Advanced → Download Sanitized Logs bundles all three and redacts known credential
+previous run did not shut down cleanly), `restart-history.log` (one line per
+start: whether the last run stopped cleanly, how long it was up and down,
+whether the container or version changed, and how long startup took),
+`supervisord.log` (which process exited and how) and `faulthandler.log`
+(Python traceback after a segfault). A run that "restarts daily" but always
+reads "stopped cleanly" was stopped from outside Floppy (a scheduler, backup
+job or updater), not crashed. It can be read from the host even while the
+container is down. Settings → Advanced → Download Sanitized Logs bundles all
+four and redacts known credential
 patterns. The download can still contain private activity or unrecognized secrets;
 review it before sharing.
+
+If the container is stopped from outside (`docker stop`, a restart, a NAS
+scheduled task), the next start logs `Previous run was stopped by SIGTERM`.
+Docker kills a container that is still shutting down after 10 seconds by
+default, but celery waits up to 60 seconds for a running task, so the compose
+files set `stop_grace_period: 150s` (`--stop-timeout 150` for `docker run`). A
+stop that is cut short is logged as an unclean shutdown that names the stop
+request. If you wrote your own compose file, add the setting to the `floppy`
+service.
 
 `BACKUP_DIR` defaults to `/floppy/backups` inside the container. The
 Settings → Export page shows this path, but it is a container path, not a
@@ -216,6 +231,7 @@ services:
     image: ghcr.io/dannyvfilms/floppy:latest
     container_name: floppy
     restart: unless-stopped
+    stop_grace_period: 150s
     depends_on:
       - db
       - redis
@@ -299,6 +315,7 @@ docker run -d \
   --name floppy \
   --network floppy-net \
   --restart unless-stopped \
+  --stop-timeout 150 \
   -e ALLOWED_HOSTS=floppy.yourdomain.com,your.lan.ip.address \
   -e DEBUG=False \
   -e DEMO_ACCOUNT_ENABLED=False \

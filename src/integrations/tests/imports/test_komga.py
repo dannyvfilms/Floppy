@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import requests
 from django.contrib.auth import get_user_model
+from django.db import OperationalError
+from django.db.models.query import QuerySet
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -126,6 +128,29 @@ class KomgaImporterTests(TestCase):
         self.assertEqual(item.source, Sources.MANUAL.value)
         self.assertEqual(item.title, "Saga #1")
         self.assertTrue(KomgaBookLink.objects.filter(user=self.user, item=item).exists())
+
+    def test_write_retries_when_sqlite_reports_a_lock(self):
+        """A lock that fails the first write at once must not abort the sync."""
+        real = QuerySet.update_or_create
+        failures = []
+
+        def locked_once(queryset, *args, **kwargs):
+            if queryset.model is ComicIssue and not failures:
+                failures.append(1)
+                raise OperationalError("database is locked")
+            return real(queryset, *args, **kwargs)
+
+        with (
+            patch.object(QuerySet, "update_or_create", locked_once),
+            patch("app.db_retry.time.sleep"),
+        ):
+            counts, _warnings = self._sync(
+                _page([_book("b1", read_date="2026-09-20T12:00:00Z", page=3)]),
+            )
+
+        self.assertEqual(failures, [1])
+        self.assertEqual(ComicIssue.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(counts["created"], 1)
 
     def test_unlinked_comic_is_skipped_when_create_missing_is_off(self):
         self.account.create_missing = False

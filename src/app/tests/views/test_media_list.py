@@ -2652,6 +2652,55 @@ class MediaListViewTests(TestCase):
         air_date = BasicMedia.objects._next_episode_air_date_value(tv)
         self.assertEqual(air_date, season2_release)
 
+    def test_tv_next_episode_air_date_ignores_a_dropped_season(self):
+        """A dropped season is outside the show's progress, so outside its events too (#1531)."""
+        base_now = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0)
+        old_release = base_now - timedelta(days=60)
+        premiere = base_now + timedelta(days=3)
+
+        tv, season = self._create_tv_next_episode_air_date_entry(
+            "tv-next-episode-dropped",
+            "Dropped Season TV",
+            [old_release, old_release + timedelta(days=7)],
+            progress=2,
+        )
+        Season.objects.filter(pk=season.pk).update(status=Status.DROPPED.value)
+        season2_item = Item.objects.create(
+            media_id="tv-next-episode-dropped",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Dropped Season TV Season 2",
+            image="http://example.com/tv-next-episode-season2.jpg",
+            season_number=2,
+        )
+        Event.objects.create(
+            item=season2_item,
+            content_number=1,
+            datetime=premiere,
+            notification_sent=False,
+        )
+
+        tv = TV.objects.get(pk=tv.pk)
+        self.assertEqual(
+            BasicMedia.objects._next_episode_air_date_value(tv),
+            premiere,
+        )
+
+    def test_tv_page_annotation_skips_a_season_row_instead_of_failing(self):
+        """A season row on a TV page is named in the log; the page still loads."""
+        _tv, season = self._create_tv_next_episode_air_date_entry(
+            "tv-stray-season",
+            "Stray Season TV",
+            [timezone.now() - timedelta(days=5)],
+        )
+
+        with self.assertLogs("app.models.manager", level="WARNING") as logs:
+            BasicMedia.objects.annotate_max_progress([season], MediaTypes.TV.value)
+
+        self.assertIsNone(season.max_progress)
+        self.assertIn("TV list holds a non-show row: model=Season", logs.output[0])
+        self.assertIn("item_media_type=season", logs.output[0])
+
     def test_anime_sort_by_next_episode_air_date_orders_grouped_and_flat_rows(self):
         self.user.date_format = "iso_8601"
         self.user.anime_library_mode = MediaTypes.ANIME.value

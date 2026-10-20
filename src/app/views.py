@@ -95,6 +95,7 @@ from app.collection_views import (
     collection_remove_season,
     collection_status_api,
     collection_update,
+    collection_update_season,
 )
 from app.columns import (
     resolve_column_config,
@@ -2183,6 +2184,7 @@ __all__ = [
     "collection_remove_season",
     "collection_status_api",
     "collection_update",
+    "collection_update_season",
     "comicvine",
     "config",
     "create_album_from_search",

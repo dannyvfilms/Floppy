@@ -1263,7 +1263,9 @@ class CollectionEntryForm(forms.ModelForm):
                     normalized.append((option[0], option[1]))
                 else:
                     normalized.append((option, option))
-            current_value = getattr(self.instance, field_name, None)
+            current_value = getattr(
+                self.instance, field_name, None
+            ) or self.initial.get(field_name)
             existing_values = {str(value) for value, _ in normalized}
             if current_value and str(current_value) not in existing_values:
                 normalized.append((current_value, current_value))

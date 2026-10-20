@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
@@ -550,3 +551,74 @@ class CalendarAiredShowRecheckTests(CalendarFixturesMixin, TestCase):
         selected = get_items_to_process(self.user)
         self.assertNotIn(self.tv_item, selected)
         self.assertNotIn(tvdb_item, selected)
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    def test_tmdb_show_with_undated_season_is_rechecked_before_the_week_is_up(
+        self, _tv, _movie
+    ):
+        """A season TMDB listed without air dates is looked at again for the dates."""
+        self._aired_event(self.season_item)
+        undated_season = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Breaking Bad",
+            image="http://example.com/breakingbad.jpg",
+            season_number=2,
+        )
+        undated_event = Event.objects.create(
+            item=undated_season,
+            content_number=1,
+            datetime=datetime.min.replace(tzinfo=UTC),
+        )
+        self._checked(self.tv_item, days_ago=2)
+
+        self.assertIn(self.tv_item, get_items_to_process(self.user))
+
+        # Once TMDB publishes the date nothing keeps the show in the list.
+        Event.objects.filter(pk=undated_event.pk).update(
+            datetime=timezone.now() - timezone.timedelta(days=3),
+        )
+        self.assertNotIn(self.tv_item, get_items_to_process(self.user))
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    def test_undated_special_does_not_keep_a_show_in_the_reload(self, _tv, _movie):
+        """Season 0 specials often never get a date; they are not a new season."""
+        self._aired_event(self.season_item)
+        specials = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Breaking Bad",
+            image="http://example.com/breakingbad.jpg",
+            season_number=0,
+        )
+        Event.objects.create(
+            item=specials,
+            content_number=1,
+            datetime=datetime.min.replace(tzinfo=UTC),
+        )
+        self._checked(self.tv_item, days_ago=2)
+
+        self.assertNotIn(self.tv_item, get_items_to_process(self.user))
+
+    @patch("events.calendar.selectors.tmdb.movie_changes", return_value=set())
+    @patch("events.calendar.selectors.tmdb.tv_changes", return_value=set())
+    def test_selection_names_finished_shows_it_skipped(self, _tv, _movie):
+        """The log says which finished shows were left out, so a bug report can tell."""
+        self._aired_event(self.season_item)
+        self._checked(self.tv_item, days_ago=2)
+
+        with self.assertLogs("events.calendar.selectors", level="INFO") as logs:
+            get_items_to_process(self.user)
+
+        self.assertTrue(
+            any(
+                "skipped finished shows" in line and "Breaking Bad (1396, checked "
+                in line
+                for line in logs.output
+            ),
+            logs.output,
+        )

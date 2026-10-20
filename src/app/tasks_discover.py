@@ -38,6 +38,10 @@ def refresh_discover_rows(
     except Exception:
         release_row_refresh(user_id, media_type, row_keys, show_more)
         raise
+    # The user object is for the tab rebuild only; the result goes to the
+    # Celery result backend as JSON, on every return path.
+    user = result.pop("user", None)
+    rebuild_tab = result.pop("rebuild_tab", None)
     # Keep the higher-level tab cache aligned with refreshed row caches, unless
     # another row refresh for this tab is still queued: that one rebuilds it.
     if not release_row_refresh(user_id, media_type, row_keys, show_more):
@@ -48,9 +52,8 @@ def refresh_discover_rows(
             ",".join(row_keys),
         )
         return result
-    if result.pop("rebuild_tab", None):
-        _rebuild_tab_after_rows(result["user"], result["media_type"], show_more)
-    result.pop("user", None)
+    if rebuild_tab:
+        _rebuild_tab_after_rows(user, result["media_type"], show_more)
     return result
 
 

@@ -537,10 +537,7 @@ class ImportPSN(TestCase):
             patch("integrations.psn_api.PSNAWP") as mock_psnawp,
             patch("integrations.imports.psn.services.search") as mock_search,
             patch("integrations.tasks._media_imports.events.tasks.reload_calendar"),
-            patch(
-                "integrations.tasks._media_imports.history_cache"
-                ".invalidate_history_cache",
-            ) as invalidate_history,
+            patch("app.history_cache.invalidate_history_days") as invalidate_history,
         ):
             mock_psnawp.side_effect = FakePSNAWP(self.halo(120, timezone.now()))
             mock_search.side_effect = self.search_stub(media_id="1")
@@ -548,7 +545,7 @@ class ImportPSN(TestCase):
 
         self.assertIn("1 created", message)
         self.assertNotIn("No media was imported", message)
-        invalidate_history.assert_called_once()
+        invalidate_history.assert_called()
 
     @patch("integrations.imports.psn.services.search")
     @patch("integrations.psn_api.PSNAWP")

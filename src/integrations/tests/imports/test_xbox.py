@@ -240,10 +240,13 @@ class ImportXbox(TestCase):
                 side_effect=self.search_stub(media_id="1"),
             ),
         ):
-            xbox.importer(None, self.user, "overwrite")
+            with helpers.record_bulk_rows() as recorded:
+                xbox.importer(None, self.user, "overwrite")
 
         game = Game.objects.get(user=self.user, item=item)
         self.assertEqual(game.progress, 1250)
+        # bulk_update sends no signal, so the import must name the row it changed.
+        self.assertEqual([row.pk for row in recorded], [game.pk])
 
     def test_overwrite_preserves_completed_status(self):
         """A manually completed game keeps its status on re-sync."""

@@ -202,16 +202,19 @@ platform_supports_source() {
 }
 
 docker_state() {
-    # Prints one of: ready, stopped, missing, no-compose, no-permission
+    # Prints one of: ready, stopped, missing, no-compose, no-permission, error
+    local out
     if ! have docker; then
         printf 'missing'
         return
     fi
-    if ! docker info >/dev/null 2>&1; then
-        if docker info 2>&1 | grep -qi 'permission denied'; then
+    if ! out=$(docker info 2>&1 >/dev/null); then
+        if printf '%s' "$out" | grep -qi 'permission denied'; then
             printf 'no-permission'
-        else
+        elif [ -z "$out" ] || printf '%s' "$out" | grep -qiE 'cannot connect|daemon running|no such file|connection refused|error during connect'; then
             printf 'stopped'
+        else
+            printf 'error'
         fi
         return
     fi
@@ -220,6 +223,24 @@ docker_state() {
         return
     fi
     printf 'ready'
+}
+
+# docker_state_text STATE -> a plain sentence for the install menu.
+docker_state_text() {
+    case $1 in
+        ready) printf 'installed and running' ;;
+        missing) printf 'not installed' ;;
+        stopped) printf 'installed but not running' ;;
+        no-permission) printf 'installed, but %s is not allowed to use it yet' "$(id -un)" ;;
+        no-compose) printf 'installed, but missing the Compose plugin' ;;
+        *) printf 'installed, but it returned an error' ;;
+    esac
+}
+
+# docker_error_detail -> the first lines Docker itself reports, so a failure
+# says what Docker said instead of a guess.
+docker_error_detail() {
+    docker info 2>&1 >/dev/null | head -n 3 | cut -c1-300 || true
 }
 
 detect_timezone() {

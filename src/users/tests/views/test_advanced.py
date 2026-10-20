@@ -767,6 +767,20 @@ class ExportLogsTests(TestCase):
         self.assertIn("Segmentation fault", body)
         self.assertLess(body.index("app entry"), body.index("terminated by SIGKILL"))
 
+    def test_export_logs_includes_restart_history(self):
+        """Each restart's cause belongs in the download, past floppy.log rotation."""
+        self.log_file.write_text("app entry\n")
+        (self.log_file.parent / "restart-history.log").write_text(
+            "2026-10-14T18:46:10+00:00 Restart: previous run stopped cleanly.\n"
+        )
+
+        with override_settings(LOG_FILE=str(self.log_file)):
+            response = self.client.get(reverse("export_logs"))
+
+        body = self.export_body(response)
+        self.assertIn("===== restart-history.log =====", body)
+        self.assertIn("previous run stopped cleanly", body)
+
     def test_export_logs_skips_empty_crash_traceback_file(self):
         """faulthandler.log exists from the first start; an empty one is noise."""
         self.log_file.write_text("app entry\n")

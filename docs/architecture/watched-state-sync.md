@@ -145,6 +145,20 @@ never depends on the broker.
 Celery owns no retry: `deliver_watched_state` is `max_retries=0` and the row's
 `next_attempt_at` owns backoff, because a Celery retry would skip read-first.
 
+## Imports are marked, and a destination can decline them
+
+Importers write through the same projection as the UI, so an imported play and
+a play made a second ago look identical. `import_media` now wraps every importer
+in `importing_watch_state()`, which records the resulting changes with
+`WatchStateOrigin.IMPORT`. An adapter that sets `ACCEPTS_IMPORTED_CHANGES =
+False` receives no delivery for them. The default is `True`, so Jellyfin, Emby
+and Kodi behave as before. A destination that shows deliveries as new activity
+(a dated play log such as WeTrakr) should set it to `False` and receive imported
+history only through an explicit export.
+
+Adapters are found through `integrations.state.registry.ADAPTER_MODULES`: one
+line per `SyncClientKind`, plus an adapter module with `build_adapter(binding)`.
+
 ## Provider capability matrix
 
 A direction ships enabled only after its adapter has been shown to hold the

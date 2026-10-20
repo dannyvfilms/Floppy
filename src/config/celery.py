@@ -3,7 +3,7 @@ import os
 
 from celery import Celery, Task, states
 from celery.exceptions import Ignore
-from celery.signals import worker_process_init, worker_ready
+from celery.signals import worker_process_init, worker_ready, worker_shutting_down
 
 # Set the default Django settings module for the 'celery' program.
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
@@ -56,6 +56,19 @@ def _enable_fault_log(**_kwargs):
     from config import run_state
 
     run_state.enable_fault_log()
+
+
+@worker_shutting_down.connect
+def _log_shutdown(sig=None, how=None, **_kwargs):
+    """Record which tasks were running when the worker was told to stop."""
+    import logging
+
+    from config import run_state
+
+    try:
+        run_state.log_worker_shutdown(sig, how)
+    except Exception:  # diagnostics must never block a shutdown
+        logging.getLogger(__name__).debug("shutdown note failed", exc_info=True)
 
 
 @worker_ready.connect

@@ -28,6 +28,14 @@ BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 
 METADATA_BACKFILL_BASE_DELAY_SECONDS = 60 * 60  # 1 hour
 METADATA_BACKFILL_MAX_DELAY_SECONDS = 60 * 60 * 24  # 1 day
 METADATA_BACKFILL_MAX_ATTEMPTS = 6
+# "The provider answered and has nothing" (no runtime, no release date) does not
+# change within hours, so retrying it on the first rungs of the ladder (1 h, 2 h,
+# 4 h ...) only repeats the same empty answer.
+METADATA_BACKFILL_EMPTY_ANSWER_DELAY_SECONDS = 60 * 60 * 24  # 1 day
+# A pending item never gives up (its data may appear months later), so its
+# backoff keeps growing past the failure ladder's one-day cap. Without this, a
+# season TMDB has no air date for was fetched again every day, indefinitely.
+METADATA_BACKFILL_PENDING_MAX_DELAY_SECONDS = 60 * 60 * 24 * 14  # 2 weeks
 GENRE_BACKFILL_VERSION = 4
 # Bumped when MAL anime became eligible for TMDB watch-provider enrichment.
 WATCH_PROVIDERS_BACKFILL_VERSION = 3
@@ -128,11 +136,16 @@ def _apply_backfill_state_filters(
     return queryset.exclude(id__in=blocked)
 
 
-def _backfill_delay_seconds(fail_count: int) -> int:
+def _backfill_delay_seconds(
+    fail_count: int,
+    max_delay_seconds: int = METADATA_BACKFILL_MAX_DELAY_SECONDS,
+) -> int:
     if fail_count <= 0:
         return METADATA_BACKFILL_BASE_DELAY_SECONDS
-    delay = METADATA_BACKFILL_BASE_DELAY_SECONDS * (2 ** (fail_count - 1))
-    return min(delay, METADATA_BACKFILL_MAX_DELAY_SECONDS)
+    # Clamp the exponent first: fail_count runs to 9999 for a pending item, and
+    # 2 ** 9998 is a very large integer to build only to throw away.
+    delay = METADATA_BACKFILL_BASE_DELAY_SECONDS * (2 ** min(fail_count - 1, 30))
+    return min(delay, max_delay_seconds)
 
 
 def _record_backfill_failure(
@@ -142,7 +155,13 @@ def _record_backfill_failure(
     *,
     terminal: bool = False,
     strategy_version: int | None = None,
+    min_delay_seconds: int | None = None,
 ) -> bool:
+    """Record a failed attempt; return True when the item is now given up on.
+
+    ``min_delay_seconds`` is a floor under the backoff, for a caller whose
+    "failure" is a provider answering with nothing rather than an error.
+    """
     now = timezone.now()
     state, _ = MetadataBackfillState.objects.get_or_create(item=item, field=field)
     state.fail_count = min(state.fail_count + 1, 9999)
@@ -158,9 +177,10 @@ def _record_backfill_failure(
         state.next_retry_at = None
     else:
         state.give_up = False
-        state.next_retry_at = now + timedelta(
-            seconds=_backfill_delay_seconds(state.fail_count)
-        )
+        delay_seconds = _backfill_delay_seconds(state.fail_count)
+        if min_delay_seconds is not None:
+            delay_seconds = max(delay_seconds, int(min_delay_seconds))
+        state.next_retry_at = now + timedelta(seconds=delay_seconds)
     update_fields = [
         "fail_count",
         "last_attempt_at",
@@ -182,7 +202,10 @@ def _record_backfill_failure(
             bool(error_message or state.last_error),
         )
     else:
-        logger.info(
+        # DEBUG: one line per item per rung of the ladder was ~4,000 lines in two
+        # days on one install. Giving up (above) stays a warning, and each task
+        # logs how many items failed in its own summary line.
+        logger.debug(
             "metadata_backfill_retry_later item_id=%s media_type=%s field=%s fail_count=%s next_retry_at=%s has_reason=%s",
             item.id,
             item.media_type,
@@ -222,7 +245,9 @@ def _record_backfill_pending(
     state.last_attempt_at = now
     state.last_success_at = None
     state.give_up = False
-    delay_seconds = _backfill_delay_seconds(state.fail_count)
+    delay_seconds = _backfill_delay_seconds(
+        state.fail_count, METADATA_BACKFILL_PENDING_MAX_DELAY_SECONDS
+    )
     if min_delay_seconds is not None:
         delay_seconds = max(delay_seconds, int(min_delay_seconds))
     state.next_retry_at = now + timedelta(seconds=delay_seconds)
@@ -240,7 +265,7 @@ def _record_backfill_pending(
         state.strategy_version = int(strategy_version)
         update_fields.append("strategy_version")
     state.save(update_fields=update_fields)
-    logger.info(
+    logger.debug(
         "metadata_backfill_pending item_id=%s media_type=%s field=%s fail_count=%s next_retry_at=%s has_reason=%s",
         item.id,
         item.media_type,
@@ -537,13 +562,6 @@ def _schedule_metadata_statistics_refresh(items, field: str, reason: str):
             statistics_cache.invalidate_statistics_days(
                 user_id, day_keys, reason=reason
             )
-        statistics_cache.schedule_all_ranges_refresh(
-            user_id,
-            debounce_seconds=10,
-            countdown=3,
-            preferred_priority=BACKGROUND_TASK_PRIORITY,
-            all_time_priority=BACKGROUND_TASK_PRIORITY,
-        )
         logger.info(
             "metadata_refresh_scheduled user_id=%s field=%s days=%s reason=%s",
             user_id,

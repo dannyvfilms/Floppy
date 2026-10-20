@@ -7,6 +7,8 @@ from django.urls import reverse
 from app.models import (
     TV,
     CollectionEntry,
+    CollectionField,
+    CollectionFieldGroup,
     Episode,
     Game,
     Item,
@@ -1293,3 +1295,285 @@ class CollectionModalViewTest(TestCase):
         )
         self.assertContains(response, 'aria-label="Remove collection entry"', count=2)
         self.assertNotContains(response, ">Collection Entry<", html=True)
+
+
+class CollectionEditUiTest(TestCase):
+    """Collected copies can be edited from the Collection tab (issue #1207)."""
+
+    def setUp(self):
+        """Set up a movie with two copies and a show with episodes."""
+        self.client = Client()
+        self.credentials = {"username": "test", "password": "12345"}
+        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.client.login(**self.credentials)
+        self.movie = Item.objects.create(
+            media_id="1234",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Test Movie",
+            image="http://example.com/image.jpg",
+        )
+        group = CollectionFieldGroup.objects.create(user=self.user, name="Condition")
+        self.field = CollectionField.objects.create(
+            group=group, label="Grade", media_types=["movie"]
+        )
+
+    def _movie_modal(self):
+        return self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "media_id": "1234",
+                },
+            ),
+        )
+
+    def _show_with_episodes(self):
+        for season_number in (1, 2):
+            Item.objects.create(
+                media_id="tv-1",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                season_number=season_number,
+                title=f"Season {season_number}",
+                image="http://example.com/s.jpg",
+            )
+        Item.objects.create(
+            media_id="tv-1",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Test Show",
+            image="http://example.com/show.jpg",
+        )
+        episodes = {}
+        for season_number, episode_number in ((1, 1), (1, 2), (2, 1)):
+            item = Item.objects.create(
+                media_id="tv-1",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.EPISODE.value,
+                season_number=season_number,
+                episode_number=episode_number,
+                title=f"Episode {season_number}-{episode_number}",
+                image="http://example.com/e.jpg",
+            )
+            episodes[(season_number, episode_number)] = CollectionEntry.objects.create(
+                user=self.user, item=item, media_type="digital", resolution="720p"
+            )
+        return episodes
+
+    def test_modal_offers_an_edit_form_for_each_copy_prefilled(self):
+        """Each existing copy gets its own pre-filled form posting to update."""
+        digital = CollectionEntry.objects.create(
+            user=self.user, item=self.movie, media_type="digital", resolution="1080p"
+        )
+        bluray = CollectionEntry.objects.create(
+            user=self.user,
+            item=self.movie,
+            media_type="bluray",
+            custom_field_values={str(self.field.id): "Mint"},
+        )
+
+        response = self._movie_modal()
+
+        self.assertContains(response, 'aria-label="Edit collection entry"', count=2)
+        for entry in (digital, bluray):
+            update_url = reverse("collection_update", args=[entry.id])
+            self.assertContains(response, f'action="{update_url}')
+            self.assertContains(response, f'id="collection-edit-form-{entry.id}"')
+            self.assertEqual(
+                response.context["visible_existing_entries"][0].edit_form.instance.pk
+                in (digital.id, bluray.id),
+                True,
+            )
+        html = response.content.decode()
+        self.assertIn('value="1080p"', html)
+        self.assertIn('value="Mint"', html)
+        # Edit widgets must not reuse the add form's ids.
+        self.assertEqual(html.count('id="id_resolution"'), 1)
+        self.assertIn(f'id="id_edit_{digital.id}_resolution"', html)
+
+    def test_modal_without_copies_has_no_edit_form(self):
+        """Nothing to edit until a copy exists."""
+        response = self._movie_modal()
+        self.assertNotContains(response, "Edit collection entry")
+        self.assertNotContains(response, "Edit Copy")
+
+    def test_editing_one_copy_leaves_the_other_alone(self):
+        """Saving the edit form changes only that copy, custom fields included."""
+        first = CollectionEntry.objects.create(
+            user=self.user,
+            item=self.movie,
+            media_type="digital",
+            custom_field_values={str(self.field.id): "Mint"},
+        )
+        second = CollectionEntry.objects.create(
+            user=self.user, item=self.movie, media_type="digital"
+        )
+
+        response = self.client.post(
+            reverse("collection_update", args=[second.id]),
+            {
+                "item": self.movie.id,
+                "media_type": "bluray",
+                "resolution": "4k",
+                f"custom_field_{self.field.id}": "Good",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(second.media_type, "bluray")
+        self.assertEqual(second.resolution, "4k")
+        self.assertEqual(second.custom_field_values[str(self.field.id)], "Good")
+        self.assertEqual(first.media_type, "digital")
+        self.assertEqual(first.custom_field_values[str(self.field.id)], "Mint")
+
+    def test_edit_can_clear_a_value(self):
+        """Emptying a field in the edit form clears it (the Digital to unknown case)."""
+        entry = CollectionEntry.objects.create(
+            user=self.user, item=self.movie, media_type="digital", resolution="1080p"
+        )
+        self.client.post(
+            reverse("collection_update", args=[entry.id]),
+            {"item": self.movie.id, "media_type": "", "resolution": "1080p"},
+        )
+        entry.refresh_from_db()
+        self.assertEqual(entry.media_type, "")
+        self.assertEqual(entry.resolution, "1080p")
+
+    def test_show_modal_season_rows_edit_all_their_episodes(self):
+        """Season summary rows edit every collected episode of that season only."""
+        episodes = self._show_with_episodes()
+        season_one = Item.objects.get(
+            media_id="tv-1", media_type=MediaTypes.SEASON.value, season_number=1
+        )
+
+        response = self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "tv-1",
+                },
+            ),
+        )
+        self.assertContains(response, 'aria-label="Edit collection entry"', count=2)
+        self.assertContains(
+            response,
+            reverse("collection_update_season", args=[season_one.id]),
+        )
+
+        before = {key: entry.updated_at for key, entry in episodes.items()}
+        response = self.client.post(
+            reverse("collection_update_season", args=[season_one.id]),
+            {"media_type": "bluray", "resolution": "1080p"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        for key in ((1, 1), (1, 2)):
+            episodes[key].refresh_from_db()
+            self.assertEqual(episodes[key].media_type, "bluray")
+            self.assertEqual(episodes[key].resolution, "1080p")
+        episodes[(2, 1)].refresh_from_db()
+        self.assertEqual(episodes[(2, 1)].media_type, "digital")
+        for key in ((1, 1), (1, 2)):
+            self.assertGreater(episodes[key].updated_at, before[key])
+        self.assertEqual(episodes[(2, 1)].updated_at, before[(2, 1)])
+
+    def test_season_edit_form_keeps_the_stored_format_selected(self):
+        """A stored value missing from the format choices still shows as selected."""
+        self._show_with_episodes()
+        response = self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.TV.value,
+                    "media_id": "tv-1",
+                },
+            ),
+        )
+        row = response.context["season_audit_entries"][0]
+        self.assertEqual(row["edit_form"]["media_type"].value(), "digital")
+        self.assertIn(
+            "digital",
+            [
+                value
+                for value, _label in row["edit_form"]
+                .fields["media_type"]
+                .widget.choices
+            ],
+        )
+        self.assertContains(response, "Edit all episodes in this season")
+
+    def test_season_update_skips_other_users_and_missing_seasons(self):
+        """Only the requester's episodes change, and an empty season reports 404."""
+        episodes = self._show_with_episodes()
+        other = get_user_model().objects.create_user(username="o", password="12345")
+        theirs = CollectionEntry.objects.create(
+            user=other,
+            item=episodes[(1, 1)].item,
+            media_type="digital",
+        )
+        season_one = Item.objects.get(
+            media_id="tv-1", media_type=MediaTypes.SEASON.value, season_number=1
+        )
+        self.client.post(
+            reverse("collection_update_season", args=[season_one.id]),
+            {"media_type": "bluray"},
+        )
+        theirs.refresh_from_db()
+        self.assertEqual(theirs.media_type, "digital")
+
+        CollectionEntry.objects.filter(user=self.user).delete()
+        response = self.client.post(
+            reverse("collection_update_season", args=[season_one.id]),
+            {"media_type": "dvd"},
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_season_update_requires_post_and_a_season_item(self):
+        """GET is refused and a non-season item id is a 404."""
+        episodes = self._show_with_episodes()
+        season_one = Item.objects.get(
+            media_id="tv-1", media_type=MediaTypes.SEASON.value, season_number=1
+        )
+        self.assertEqual(
+            self.client.get(
+                reverse("collection_update_season", args=[season_one.id])
+            ).status_code,
+            405,
+        )
+        self.assertEqual(
+            self.client.post(
+                reverse("collection_update_season", args=[episodes[(1, 1)].item_id]),
+                {"media_type": "dvd"},
+            ).status_code,
+            404,
+        )
+
+    def test_season_modal_episode_rows_are_editable(self):
+        """Episode rows in a season modal edit that one episode."""
+        episodes = self._show_with_episodes()
+        response = self.client.get(
+            reverse(
+                "collection_modal",
+                kwargs={
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.SEASON.value,
+                    "media_id": "tv-1",
+                },
+            ),
+            {"season_number": 1},
+        )
+        self.assertContains(response, 'aria-label="Edit collection entry"', count=2)
+        self.assertContains(
+            response,
+            reverse("collection_update", args=[episodes[(1, 1)].id]),
+        )
+        self.assertNotContains(response, 'form="collection-edit-form-')

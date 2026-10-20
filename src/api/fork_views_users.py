@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 _CHOICE_PREFERENCE_FIELDS = (
     "date_format",
     "time_format",
+    "currency",
     "week_start_day",
     "activity_history_view",
     "duration_format",

@@ -500,6 +500,11 @@ urlpatterns = [
         name="collection_remove_season",
     ),
     path(
+        "collection/season/<int:season_item_id>/update/",
+        views.collection_update_season,
+        name="collection_update_season",
+    ),
+    path(
         "collection/modal/<source:source>/<media_type:media_type>/<path:media_id>/",
         views.collection_modal,
         name="collection_modal",
