@@ -7,8 +7,11 @@ from django.test import TestCase
 
 from app.forms import (
     AnimeForm,
+    BookForm,
+    ComicForm,
     EpisodeForm,
     GameForm,
+    MangaForm,
     ManualItemForm,
     SeasonForm,
     TvForm,
@@ -16,8 +19,11 @@ from app.forms import (
 from app.models import (
     TV,
     Anime,
+    Book,
+    Comic,
     Episode,
     Item,
+    Manga,
     MediaTypes,
     Season,
     Sources,
@@ -634,3 +640,107 @@ class ManualItemFormTest(TestCase):
         self.assertNotEqual(item1.media_id, item2.media_id)
         self.assertTrue(item1.media_id)
         self.assertTrue(item2.media_id)
+
+
+class ReadingTimeFormTest(TestCase):
+    """Books, comics and manga take a reading time; audiobooks do not."""
+
+    def setUp(self):
+        """Create a user and one item per reading type."""
+        self.user = get_user_model().objects.create_user(
+            username="reader",
+            password="12345",
+        )
+        self.items = {
+            MediaTypes.BOOK.value: Item.objects.create(
+                media_id="1",
+                source=Sources.OPENLIBRARY.value,
+                media_type=MediaTypes.BOOK.value,
+                title="Dune",
+            ),
+            MediaTypes.COMIC.value: Item.objects.create(
+                media_id="2",
+                source=Sources.COMICVINE.value,
+                media_type=MediaTypes.COMIC.value,
+                title="Saga",
+            ),
+            MediaTypes.MANGA.value: Item.objects.create(
+                media_id="3",
+                source=Sources.MAL.value,
+                media_type=MediaTypes.MANGA.value,
+                title="Berserk",
+            ),
+        }
+
+    def data(self, media_type, **extra):
+        item = self.items[media_type]
+        return {
+            "media_id": item.media_id,
+            "source": item.source,
+            "media_type": media_type,
+            "status": Status.COMPLETED.value,
+            "progress": 10,
+            **extra,
+        }
+
+    def test_each_reading_type_parses_the_time(self):
+        for media_type, form_class, model in (
+            (MediaTypes.BOOK.value, BookForm, Book),
+            (MediaTypes.COMIC.value, ComicForm, Comic),
+            (MediaTypes.MANGA.value, MangaForm, Manga),
+        ):
+            with self.subTest(media_type):
+                instance = model(item=self.items[media_type], user=self.user)
+                form = form_class(
+                    self.data(media_type, reading_time="1h 30min"),
+                    instance=instance,
+                )
+                self.assertTrue(form.is_valid(), form.errors)
+                self.assertEqual(form.save().reading_time, 90)
+
+    def test_blank_time_is_zero(self):
+        instance = Book(item=self.items[MediaTypes.BOOK.value], user=self.user)
+        form = BookForm(self.data(MediaTypes.BOOK.value), instance=instance)
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.save().reading_time, 0)
+
+    def test_bad_time_is_rejected(self):
+        instance = Book(item=self.items[MediaTypes.BOOK.value], user=self.user)
+        form = BookForm(
+            self.data(MediaTypes.BOOK.value, reading_time="soon"),
+            instance=instance,
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("reading_time", form.errors)
+
+    def test_saved_time_is_shown_as_hours_and_minutes_not_raw_minutes(self):
+        book = Book.objects.create(
+            item=self.items[MediaTypes.BOOK.value],
+            user=self.user,
+            reading_time=125,
+        )
+
+        form = BookForm(instance=book)
+
+        self.assertEqual(form.initial["reading_time"], "2h 05min")
+        # Saving the untouched form must not turn 125 minutes into 125 hours.
+        resubmit = BookForm(
+            self.data(
+                MediaTypes.BOOK.value,
+                reading_time=form.initial["reading_time"],
+            ),
+            instance=book,
+        )
+        self.assertTrue(resubmit.is_valid(), resubmit.errors)
+        self.assertEqual(resubmit.save().reading_time, 125)
+
+    def test_an_audiobook_has_no_reading_time_field(self):
+        item = self.items[MediaTypes.BOOK.value]
+        item.format = "audiobook"
+        item.save()
+
+        form = BookForm(instance=Book(item=item, user=self.user))
+
+        self.assertNotIn("reading_time", form.fields)

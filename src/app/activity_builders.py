@@ -96,6 +96,10 @@ def _build_detail_activity_subtitle(
             getattr(current_instance, "formatted_progress", None),
             include_max=True,
         )
+        duration_text = _format_detail_activity_duration(
+            play_stats.get("total_minutes"),
+            "read",
+        )
     elif media_type == MediaTypes.GAME.value:
         progress_value = (
             getattr(current_instance, "formatted_aggregated_progress", None)
@@ -353,6 +357,15 @@ def _build_detail_activity_state(
                 )
             else:
                 play_stats["total_plays"] = int(aggregated_progress or 0)
+                if media_type in (
+                    MediaTypes.BOOK.value,
+                    MediaTypes.COMIC.value,
+                    MediaTypes.MANGA.value,
+                ):
+                    # Time spent reading, over every read of this title.
+                    play_stats["total_minutes"] = sum(
+                        getattr(entry, "reading_time", 0) or 0 for entry in user_medias
+                    )
 
         activity_subtitle = _build_detail_activity_subtitle(
             media_type,

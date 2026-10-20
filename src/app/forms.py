@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from app import config
+from app.helpers import minutes_to_hhmm
 from app.models import (
     TV,
     AlbumTracker,
@@ -435,10 +436,44 @@ class MediaForm(RatingScaleFormMixin, forms.ModelForm):
         return (self.cleaned_data.get("image_url") or "").strip()
 
 
-class MangaForm(MediaForm):
-    """Form for manga."""
+class ReadingForm(MediaForm):
+    """Shared base for books, comics and manga: adds the time spent reading."""
+
+    reading_time = CustomDurationField(
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": _("hh:mm or 111 minutes")}),
+        label=_("Reading time"),
+    )
 
     class Meta(MediaForm.Meta):
+        """Put reading time right after progress."""
+
+        fields = [
+            "score",
+            "progress",
+            "reading_time",
+            "status",
+            "start_date",
+            "end_date",
+            "notes",
+            "entry_source",
+        ]
+
+    def __init__(self, *args, **kwargs):
+        """Drop reading time for audiobooks, whose progress already is the time."""
+        super().__init__(*args, **kwargs)
+        item = getattr(self.instance, "item", None)
+        if item is not None and item.format == "audiobook":
+            del self.fields["reading_time"]
+        elif self.instance.reading_time:
+            # The field reads bare numbers as hours, so never show raw minutes.
+            self.initial["reading_time"] = minutes_to_hhmm(self.instance.reading_time)
+
+
+class MangaForm(ReadingForm):
+    """Form for manga."""
+
+    class Meta(ReadingForm.Meta):
         """Bind form to model."""
 
         model = Manga
@@ -533,10 +568,10 @@ class BoardgameForm(MediaForm):
         }
 
 
-class BookForm(MediaForm):
+class BookForm(ReadingForm):
     """Form for books."""
 
-    class Meta(MediaForm.Meta):
+    class Meta(ReadingForm.Meta):
         """Bind form to model."""
 
         model = Book
@@ -557,10 +592,10 @@ class BookForm(MediaForm):
             )
 
 
-class ComicForm(MediaForm):
+class ComicForm(ReadingForm):
     """Form for comics."""
 
-    class Meta(MediaForm.Meta):
+    class Meta(ReadingForm.Meta):
         """Bind form to model."""
 
         model = Comic

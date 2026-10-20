@@ -456,6 +456,12 @@ def slug(arg1):
 
 
 @register.filter
+def minutes_hhmm(total_minutes):
+    """Format minutes as "1h 05min", or "45min" under an hour."""
+    return helpers.minutes_to_hhmm(total_minutes or 0)
+
+
+@register.filter
 def date_format(datetime, user):
     """Format a datetime using user's preferred date format (date only, no time).
 

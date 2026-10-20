@@ -102,7 +102,7 @@
           {% if general_fields|length > 1 %}<div class="grid grid-cols-2 gap-x-4">{% endif %}
             {% for field in general_fields %}
               {% translate field.label as translated_field_label %}
-              <div class="mb-4 sm:mb-5 {% if field.name == 'progress' or field.name == 'start_date' or field.name == 'end_date' %}col-span-2 sm:col-span-1{% endif %}">
+              <div class="mb-4 sm:mb-5 {% if field.name == 'progress' or field.name == 'reading_time' or field.name == 'start_date' or field.name == 'end_date' %}col-span-2 sm:col-span-1{% endif %}">
                 {% if field.name == "start_date" %}
                   <label class="block text-xs font-medium mb-1 text-[var(--color-text-secondary)] sm:hidden">{% translate "Dates" %}</label>
                   <label class="hidden sm:block text-sm font-medium mb-1 text-[var(--color-text-secondary)]"

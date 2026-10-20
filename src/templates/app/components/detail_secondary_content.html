@@ -88,6 +88,10 @@
                       </div>
                     {% endif %}
 
+                    {% if user_media.reading_time %}
+                      <div class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=user_media.reading_time|minutes_hhmm %}Reading time: {{ value_1 }}{% endblocktranslate %}</div>
+                    {% endif %}
+
                     {% if user_media.start_date %}
                       <div class="text-xs text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=user_media.start_date|datetime_format:user %}Started: {{ value_1 }}{% endblocktranslate %}</div>
                     {% endif %}

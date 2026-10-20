@@ -189,6 +189,19 @@ def generate_rows(user, media_types=None, include_lists=True, include_collection
                     media.progress,
                 )
 
+            if media_type in (
+                MediaTypes.BOOK.value,
+                MediaTypes.COMIC.value,
+                MediaTypes.MANGA.value,
+            ):
+                # The importer reads a bare number as hours, so write hh:mm.
+                reading_index = fields["track"].index("reading_time")
+                row[reading_index + 1 + len(fields["item"])] = (
+                    helpers.minutes_to_hhmm(media.reading_time)
+                    if media.reading_time
+                    else ""
+                )
+
             yield writer.writerow(row)
 
         logger.debug("Finished streaming %d %s row(s) to CSV", row_count, media_type)

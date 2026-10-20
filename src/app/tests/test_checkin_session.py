@@ -380,6 +380,92 @@ class ReadingSessionTests(SessionTestCase):
         self.assertEqual(self.earlier.progress, 0)
         self.assertIsNone(live_playback.peek_user_playback_state(self.user.id))
 
+    def test_stop_adds_the_elapsed_minutes_to_reading_time(self):
+        Book.objects.filter(pk=self.earlier.pk).update(status=Status.PLANNING.value)
+        self.start()
+
+        with self.at(95 * 60 + 10):
+            checkin_session.stop(self.user, "openlibrary", "book", "1942")
+
+        self.earlier.refresh_from_db()
+        self.assertEqual(self.earlier.reading_time, 96)
+
+    def test_a_second_session_adds_to_the_same_read(self):
+        Book.objects.filter(pk=self.earlier.pk).update(
+            status=Status.IN_PROGRESS.value,
+            reading_time=30,
+        )
+        self.start()
+
+        with self.at(20 * 60):
+            checkin_session.stop(self.user, "openlibrary", "book", "1942")
+
+        self.earlier.refresh_from_db()
+        self.assertEqual(self.earlier.reading_time, 50)
+
+    def test_a_re_read_starts_its_own_reading_time(self):
+        Book.objects.filter(pk=self.earlier.pk).update(reading_time=300)
+        self.start()
+
+        with self.at(10 * 60):
+            checkin_session.stop(self.user, "openlibrary", "book", "1942")
+
+        read = Book.objects.exclude(pk=self.earlier.pk).get()
+        self.assertEqual(read.reading_time, 10)
+        self.earlier.refresh_from_db()
+        self.assertEqual(self.earlier.reading_time, 300)
+
+    def test_a_replaced_check_in_keeps_the_time_read(self):
+        Book.objects.filter(pk=self.earlier.pk).update(status=Status.PLANNING.value)
+        self.start()
+
+        with self.at(15 * 60):
+            self.start()
+
+        self.earlier.refresh_from_db()
+        self.assertEqual(self.earlier.reading_time, 15)
+
+    def test_cancel_and_a_forgotten_session_add_no_reading_time(self):
+        Book.objects.filter(pk=self.earlier.pk).update(status=Status.PLANNING.value)
+        self.start()
+        checkin_session.cancel(self.user, "openlibrary", "book", "1942")
+        self.start()
+
+        with self.at(5 * HOUR):
+            checkin_session.settle(self.user.id)
+
+        self.earlier.refresh_from_db()
+        self.assertEqual(self.earlier.reading_time, 0)
+
+    def test_an_audiobook_has_no_reading_time(self):
+        Item.objects.filter(pk=self.item.pk).update(format="audiobook")
+        Book.objects.filter(pk=self.earlier.pk).update(status=Status.PLANNING.value)
+        self.start()
+
+        with self.at(30 * 60):
+            checkin_session.stop(self.user, "openlibrary", "book", "1942")
+
+        self.earlier.refresh_from_db()
+        self.assertEqual(self.earlier.reading_time, 0)
+
+    def test_manga_reading_time_builds_up_on_its_one_entry(self):
+        item = Item.objects.create(
+            media_id="5",
+            source=Sources.MANGAUPDATES.value,
+            media_type=MediaTypes.MANGA.value,
+            title="Berserk",
+        )
+        row = Manga.objects.create(
+            item=item, user=self.user, status=Status.COMPLETED.value, reading_time=40
+        )
+
+        checkin_session.start(self.user, "mangaupdates", "manga", "5")
+        with self.at(25 * 60):
+            checkin_session.stop(self.user, "mangaupdates", "manga", "5")
+
+        row.refresh_from_db()
+        self.assertEqual(row.reading_time, 65)
+
     def test_cancel_puts_the_entry_back(self):
         Book.objects.filter(pk=self.earlier.pk).update(status=Status.PLANNING.value)
         self.start()
