@@ -284,6 +284,14 @@ class MediaCollectionView(drf_views.APIView):
 
     _SOURCE = "api"
     _TEXT_FIELDS = ("media_type", "resolution", "hdr", "audio_codec", "audio_channels")
+    _LIBRARY_PARAMETER = OpenApiParameter(
+        "library_media_type",
+        OpenApiTypes.STR,
+        description=(
+            "The show's library bucket, e.g. `anime`; episodes in the anime "
+            "library are only found with it."
+        ),
+    )
 
     def _identity(self, media_type, source, season_number, episode_number):
         """Return ``(lookup_media_type, error_response)`` for the route."""
@@ -408,6 +416,7 @@ class MediaCollectionView(drf_views.APIView):
 
     @extend_schema(
         request=OpenApiTypes.OBJECT,
+        parameters=[_LIBRARY_PARAMETER],
         responses={
             200: OpenApiTypes.OBJECT,
             201: OpenApiTypes.OBJECT,
@@ -460,6 +469,7 @@ class MediaCollectionView(drf_views.APIView):
             user=request.user,
             season_number=season_number,
             episode_number=episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
         )
         if error:
             return error
@@ -494,6 +504,7 @@ class MediaCollectionView(drf_views.APIView):
                 OpenApiTypes.BOOL,
                 description="Also remove copies that were not created through the API.",
             ),
+            _LIBRARY_PARAMETER,
         ],
         responses={
             204: None,
@@ -528,6 +539,7 @@ class MediaCollectionView(drf_views.APIView):
             lookup_media_type,
             season_number=season_number,
             episode_number=episode_number,
+            library_media_type=request.query_params.get("library_media_type"),
         ).first()
         if item is None:
             return Response(

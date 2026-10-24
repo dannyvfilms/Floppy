@@ -355,6 +355,49 @@ class MediaEpisodeCollectionTests(FloppyApiTestCase):
         )
         self.assertEqual(deleted.status_code, HTTP.NO_CONTENT)
 
+    @patch(METADATA_PATH)
+    def test_anime_library_episode_found_with_library_media_type(self, mock_metadata):
+        """PUT and DELETE reach an episode in the anime library when told so."""
+        item = Item.objects.create(
+            media_id="1429",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            library_media_type=MediaTypes.ANIME.value,
+            season_number=1,
+            episode_number=1,
+            title="Attack on Titan",
+        )
+        args = (MediaTypes.TV.value, Sources.TMDB.value, "1429", 1, 1)
+        params = {"library_media_type": MediaTypes.ANIME.value}
+
+        created = self.call_api(
+            "put",
+            "api_media_episode_collection",
+            args=args,
+            params=params,
+            payload={"resolution": "1080p"},
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(created.status_code, HTTP.CREATED)
+        self.assertTrue(
+            CollectionEntry.objects.filter(user=self.user1, item=item).exists(),
+        )
+        mock_metadata.assert_not_called()
+
+        deleted = self.call_api(
+            "delete",
+            "api_media_episode_collection",
+            args=args,
+            params=params,
+            headers=self.auth_headers,
+        )
+
+        self.assertEqual(deleted.status_code, HTTP.NO_CONTENT)
+        self.assertFalse(
+            CollectionEntry.objects.filter(user=self.user1, item=item).exists(),
+        )
+
     def test_non_tv_media_type_rejected(self):
         """The episode route only accepts tv."""
         response = self.call_api(
