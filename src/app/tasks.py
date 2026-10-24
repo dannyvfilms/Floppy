@@ -309,6 +309,7 @@ from app.tasks_tv_provider_migration import (  # noqa: E402
 from app.tasks_watch_state import (  # noqa: E402
     backfill_user_watch_state,
     backfill_watch_state,
+    ensure_watch_state_repair,
 )
 
 RELEASE_BACKFILL_SOURCES = (
@@ -1399,6 +1400,7 @@ __all__ = [
     "ensure_genre_backfill_reconcile",
     "ensure_podcast_website_backfill_reconcile",
     "ensure_provider_backfill_reconcile",
+    "ensure_watch_state_repair",
     "fast_runtime_backfill_task",
     "is_external_ids_backfill_reconcile_complete",
     "is_genre_backfill_reconcile_complete",

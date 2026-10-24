@@ -12,18 +12,29 @@ to every connected provider the moment they upgraded.
 """
 
 import logging
+import time
 
 from celery import shared_task
 from django.conf import settings
 from django.contrib.auth import get_user_model
 
-from app.models import Item, MediaTypes, WatchState
+from app import reconcile_state
+from app.models import BackfillReconcileState, Item, MediaTypes, WatchState
 from app.services.watch_state import PROJECTED_MEDIA_TYPES, project_watch_state
 
 logger = logging.getLogger(__name__)
 
 BACKGROUND_TASK_PRIORITY = getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9)
 BACKFILL_BATCH_SIZE = 500
+
+# Libraries tracked before the projection had no rows, and bulk imports before
+# 2026-10-18 left stale ones behind (an overwrite deleted rows, which projected
+# "unwatched", then wrote them back without projecting). Bump the version to
+# re-check every library after another such write path is found.
+REPAIR_KEY = "watch_state_repair"
+REPAIR_VERSION = 1
+# Leaves room under the soft time limit; an unfinished sweep resumes next run.
+REPAIR_TIME_BUDGET_SECONDS = 5 * 60
 
 
 def _tracked_item_ids(user, media_type):
@@ -93,3 +104,47 @@ def backfill_watch_state(user_id=None):
         WatchState.objects.count(),
     )
     return projected
+
+
+def repair_watch_state(time_budget=REPAIR_TIME_BUDGET_SECONDS):
+    """Backfill every library once, resuming per user after a time budget.
+
+    Returns whether every user is done. Each user keeps its own cursor row, so
+    a large library is never restarted from the top.
+    """
+    deadline = time.monotonic() + time_budget
+    for user in get_user_model().objects.order_by("id").iterator():
+        key = f"{REPAIR_KEY}_user_{user.pk}"
+        state = reconcile_state.get_state(key, REPAIR_VERSION)
+        if state.completed_at is not None:
+            continue
+        cursor = state.last_cursor_item_id
+        while True:
+            if time.monotonic() > deadline:
+                return False
+            cursor = backfill_user_watch_state(user, after_item_id=cursor)
+            if cursor is None:
+                reconcile_state.mark_complete(key, REPAIR_VERSION)
+                break
+            BackfillReconcileState.objects.filter(key=key).update(
+                last_cursor_item_id=cursor,
+            )
+    return True
+
+
+@shared_task(name="Ensure watch state repair")
+def ensure_watch_state_repair():
+    """Run the one-time watch state repair unless it is finished or running."""
+    state = reconcile_state.should_run(REPAIR_KEY, REPAIR_VERSION)
+    if state is None:
+        return {"skipped": True, "reason": "not_due"}
+    if not reconcile_state.acquire(REPAIR_KEY, state):
+        return {"skipped": True, "reason": "already_running"}
+    try:
+        if repair_watch_state():
+            reconcile_state.mark_complete(REPAIR_KEY, REPAIR_VERSION)
+            return {"complete": True}
+        reconcile_state.mark_progress(REPAIR_KEY, REPAIR_VERSION, cursor=0, enqueued=1)
+        return {"complete": False}
+    finally:
+        reconcile_state.release(REPAIR_KEY)

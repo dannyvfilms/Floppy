@@ -87,6 +87,16 @@ ordered changes without any of them being edited.
 Backfill passes `record_changes=False`. Those rows were already there; calling
 them new decisions would deliver a whole library outward on upgrade.
 
+The backfill runs by itself once per `REPAIR_VERSION`
+(`app/tasks_watch_state.py`, `Ensure watch state repair`): the startup hook
+queues it, the beat entry resumes a library too large for one five-minute run,
+and per-user cursor rows in `BackfillReconcileState` keep it from restarting.
+It exists because bulk writes skip save signals: before 2026-10-18 an
+overwrite import projected "unwatched" while deleting rows and never projected
+the rows it wrote back. Any bulk write of a projected type must call
+`helpers.project_imported_watch_state`; bump `REPAIR_VERSION` when one is found
+that did not.
+
 ## The apply algorithm
 
 `integrations/state/apply.py`. The order is the design — each rule exists
@@ -213,7 +223,7 @@ what the user approved, and the settings page names the shortfall as
 | Jellyfin | Yes | Yes — `PlayedItems` is a *set*, so read-first retry is safe | inbound + outbound |
 | Emby | Yes | Unverified here | inbound only |
 | Kodi | Yes, via library id lookup | Unverified; its write assigns a *count* | inbound only |
-| Plex | Existing webhooks and history; manual marks via an opt-in 15-minute history poll (Plex sends no webhook for them) | `/:/scrobble` is undocumented | inbound only |
+| Plex | Existing webhooks and history; manual marks via an opt-in 15-minute history poll (Plex sends no webhook for them) | `/:/scrobble` is undocumented and adds a play per call | inbound only through the engine; a person-confirmed watched-only push outside it, see [Plex](../agents/plex_integration.md#sending-watched-to-plex) |
 | Stremio | Existing bitfield parsing | `datastorePut` is a read-modify-write of an opaque bitfield with no CAS | inbound only |
 | Audiobookshelf | Existing pull | Documented, unverified | inbound only |
 | WeTrakr | No | Batched plays (dated), statuses and ratings with a per-item reply; no unwatch yet | outbound only, see [WeTrakr](../integrations/wetrakr.md) |

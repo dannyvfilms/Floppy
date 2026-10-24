@@ -221,7 +221,7 @@ class MediaCardTemplateUsageTest(TestCase):
     def template_sources(self):
         """Yield ``(relative path, source)`` for every project template."""
         for path in TEMPLATES_DIR.rglob("*.html"):
-            yield path.relative_to(TEMPLATES_DIR).as_posix(), path.read_text()
+            yield path.relative_to(TEMPLATES_DIR).as_posix(), path.read_text(encoding="utf-8")
 
     def test_no_template_includes_the_card_directly(self):
         """A direct include bypasses the surface table, which is how drift starts."""
@@ -329,13 +329,13 @@ class CardProfileContractTest(TestCase):
         missing = [
             name
             for name in PROFILE_CARDS
-            if "card_lines" not in (TEMPLATES_DIR / name).read_text()
+            if "card_lines" not in (TEMPLATES_DIR / name).read_text(encoding="utf-8")
         ]
         self.assertEqual(missing, [])
 
     def test_lists_index_has_no_hover_class(self):
         """Item count stays visible. The index is not a media card."""
-        source = (TEMPLATES_DIR / "lists/components/list_grid.html").read_text()
+        source = (TEMPLATES_DIR / "lists/components/list_grid.html").read_text(encoding="utf-8")
         self.assertNotIn("media-card-subtitle-always", source)
         self.assertNotIn("card_lines", source)
 

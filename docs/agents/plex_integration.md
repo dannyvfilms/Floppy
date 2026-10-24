@@ -101,6 +101,17 @@ A Plex webhook owner can share the existing tokenized webhook endpoint with othe
 
 The webhook URL and Plex token remain owned by the sharing user. Incoming events are matched to enabled shares when the Plex username matches any configured username, then processed into the recipient's history and playback state. Plex API lookups and collection metadata use the owner's Plex account, so recipients do not need to connect Plex separately. Share IDs, rather than Plex tokens, are passed to Celery; the worker reloads the share and rechecks that it is still enabled before processing.
 
+## Sending watched to Plex
+
+**Settings → Integrations → Send Watched to Plex** marks Floppy-watched movies and episodes as watched for one Plex user (`src/integrations/plex_watched_push.py`, views in `plex_push_views.py`). It is manual on purpose and does not go through the delivery engine: nothing reaches Plex without a person confirming a previewed list.
+
+-   **Who**: the account owner or a Plex Home user, on a server the account owns. A Home user's token comes from `switch_home_user` (with their PIN when protected), lives for one request and is never stored. Friends a server is shared with are out of scope.
+-   **What**: watched only. Nothing is ever marked unwatched, and items already watched in Plex are skipped.
+-   **Matching**: saved Plex match decisions (`ExternalReference`) first, so corrections, ignores and episode mappings hold; otherwise an exact TMDB/TVDB/IMDB id, plus the show id and season/episode numbers for episodes. Anime-bucket and custom-order episodes need an episode-level decision. Numbers-only episode matches whose titles disagree are flagged and start unticked.
+-   **Send**: rebuilds the plan and writes only ticked rows it still contains, reads each item right before writing (`/:/scrobble` adds a play every call), reads it back afterwards, reads an item that this per-item read calls watched once more after the main pass (Plex was seen answering "watched" for items its listing and the next run showed unwatched) and sends it only if Plex then says unwatched, and stops on the first Plex error. It runs as the `Send watched to Plex` Celery task (`integrations/tasks/_plex_push.py`) so any number of items fits; the view opens the session first to refuse a wrong PIN, hands the PIN over through the cache (never the task's stored arguments), and the popup polls `plex_push_status` for progress and the result. The ticked rows post as one `writes` field so a large selection stays under `DATA_UPLOAD_MAX_NUMBER_FIELDS`.
+-   **Watch date**: Plex records the send time, not the Floppy date. The preview says so.
+-   **Echo**: every send is recorded in `PlexWatchedPush` before the write. The history importer skips a history row on the same server and rating key within `PUSH_ECHO_WINDOW` of a push (`skipped_floppy_push`), in every import mode, so a push never comes back as a second play.
+
 ## Troubleshooting & logging
 
 ### Common Log Messages

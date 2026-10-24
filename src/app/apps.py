@@ -25,6 +25,7 @@ STARTUP_SWEEP_COUNTDOWNS = {
     "podcast_website": 660,
     "external_ids": 780,
     "game_groups": 900,
+    "watch_state": 1020,
 }
 
 
@@ -144,6 +145,7 @@ class AppConfig(AppConfig):
             self._schedule_podcast_website_backfill_reconcile()
             self._schedule_external_ids_backfill_reconcile()
             self._schedule_game_groups_backfill_reconcile()
+            self._schedule_watch_state_repair()
 
     def _add_startup_cache_key(
         self,
@@ -335,6 +337,28 @@ class AppConfig(AppConfig):
             logger.warning(
                 "Failed to schedule IGDB ratings backfill reconcile: %s", error
             )
+
+    def _schedule_watch_state_repair(self):
+        """Queue the one-time watch state repair gate for a worker to evaluate.
+
+        The worker-side task owns the durable gate, so ready() runs no query.
+        """
+        try:
+            from app.tasks_watch_state import REPAIR_VERSION, ensure_watch_state_repair
+
+            if not self._add_startup_cache_key(
+                f"watch_state_repair_startup_v{REPAIR_VERSION}",
+                timeout=3600,
+            ):
+                return
+
+            ensure_watch_state_repair.apply_async(
+                countdown=STARTUP_SWEEP_COUNTDOWNS["watch_state"],
+                priority=getattr(settings, "CELERY_TASK_PRIORITY_BACKGROUND", 9),
+            )
+            logger.info("Scheduled watch state repair (version=%s)", REPAIR_VERSION)
+        except Exception as error:
+            logger.warning("Failed to schedule watch state repair: %s", error)
 
     def _schedule_podcast_website_backfill_reconcile(self):
         """Queue the podcast website backfill gate for a worker to evaluate.

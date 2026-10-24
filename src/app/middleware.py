@@ -609,6 +609,7 @@ class DemoAccountGuardMiddleware:
             "notifications",
             "update_tmdb_proxy",
             "plex_connect",
+            "plex_push_send",
             "jellyfin_connect",
             "jellyfin_settings",
             "update_jellyseerr_settings",
