@@ -13,8 +13,8 @@
     hx-trigger="click"
     @click="trackOpen = true"
     title="{% translate "Track Episode" %}"
-    class="p-2 {% if watched > 0 %}bg-indigo-600 hover:bg-indigo-700{% elif episode.history %}bg-amber-600 hover:bg-amber-700{% else %}bg-gray-600 hover:bg-gray-500{% endif %} text-white rounded-full transition duration-300 cursor-pointer">
-    {% if episode.history %}
+    class="p-2 {% if watched > 0 or episode.watched_by_progress and not episode.history %}bg-indigo-600 hover:bg-indigo-700{% elif episode.history %}bg-amber-600 hover:bg-amber-700{% else %}bg-gray-600 hover:bg-gray-500{% endif %} text-white rounded-full transition duration-300 cursor-pointer">
+    {% if episode.history or episode.watched_by_progress %}
       {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
     {% else %}
       {% include "app/icons/eye-closed.svg" with classes="w-4 h-4" %}

@@ -27,6 +27,7 @@ from app.history_cache_utils import (
     _typed_history_index_registry_key,
     expand_history_media_types,
 )
+from app.history_entry_builders import flat_anime_episode_watches
 from app.models import (
     Anime,
     BoardGame,
@@ -137,6 +138,32 @@ def build_history_index(
         if not (
             requested_media_types is None or media_type in requested_media_types
         ):
+            continue
+        if model is Anime:
+            # Flat anime episodes are dated by the entry's change log, so the
+            # days come from the same expansion the day builder renders.
+            anime_records = list(
+                Anime.objects.filter(user=user).only(
+                    "id",
+                    "progress",
+                    "start_date",
+                    "end_date",
+                ),
+            )
+            episode_watches = flat_anime_episode_watches(anime_records)
+            anime_days = set()
+            for record in anime_records:
+                watches = episode_watches.get(record.id)
+                if watches:
+                    anime_days.update(
+                        _localize_datetime(watched_at).date()
+                        for _number, watched_at in watches
+                    )
+                elif record.end_date or record.start_date:
+                    anime_days.add(
+                        _localize_datetime(record.end_date or record.start_date).date(),
+                    )
+            reading_count += _add_days(days, anime_days)
             continue
         reading_qs = model.objects.filter(user=user)
         reading_end_days = (

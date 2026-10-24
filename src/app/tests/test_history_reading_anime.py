@@ -1,3 +1,4 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -9,11 +10,11 @@ from app import history_cache
 from app.models import Anime, Book, Item, MediaTypes, Sources, Status
 
 
-def _patch_media_metadata(test_case):
+def _patch_media_metadata(test_case, max_progress=1):
     """Stop reading/anime model saves from making provider calls."""
     metadata_patch = patch(
         "app.models.media.providers.services.get_media_metadata",
-        return_value={"max_progress": 1},
+        return_value={"max_progress": max_progress},
     )
     fetch_releases_patch = patch("app.models.Item.fetch_releases")
     metadata_patch.start()
@@ -150,3 +151,98 @@ class ReadingAnimeHistoryDayTests(TestCase):
         )
 
         self.assertIn(self.day_key, history_cache.build_history_index(self.user))
+
+
+class FlatAnimeEpisodeHistoryTests(TestCase):
+    """A flat anime splits into one History card per episode, dated by its change log."""
+
+    def setUp(self):
+        cache.clear()
+        _patch_media_metadata(self, max_progress=12)
+        self.user = get_user_model().objects.create_user(
+            username="watcher",
+            password="12345",
+        )
+        self.item = Item.objects.create(
+            media_id="35330",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.ANIME.value,
+            title="Pop Team Epic",
+            image="http://example.com/x.jpg",
+        )
+        self.day_one = timezone.localtime().replace(
+            hour=12, minute=0, second=0, microsecond=0
+        ) - timedelta(days=2)
+        self.day_two = self.day_one + timedelta(days=1)
+        self.addCleanup(cache.clear)
+
+    def _save(self, anime, progress, at, **fields):
+        anime.progress = progress
+        for name, value in fields.items():
+            setattr(anime, name, value)
+        anime._history_date = at
+        anime.save()
+        return anime
+
+    def _labels(self, day_value):
+        day = history_cache.build_history_day(
+            self.user,
+            history_cache.history_day_key(day_value),
+        )
+        return [
+            (entry["episode_label"], entry.get("score"))
+            for entry in sorted(
+                (day or {}).get("entries", []),
+                key=lambda entry: entry["episode_number"],
+            )
+            if entry["media_type"] == MediaTypes.ANIME.value
+        ]
+
+    def test_each_progress_rise_dates_its_episodes(self):
+        anime = Anime(
+            item=self.item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            start_date=self.day_one,
+            score=8,
+        )
+        self._save(anime, 1, self.day_one)
+        self._save(anime, 3, self.day_two)
+
+        self.assertEqual(self._labels(self.day_one), [("E01", None)])
+        self.assertEqual(self._labels(self.day_two), [("E02", None), ("E03", 8)])
+        day_keys = history_cache.build_history_index(self.user)
+        self.assertIn(history_cache.history_day_key(self.day_one), day_keys)
+        self.assertIn(history_cache.history_day_key(self.day_two), day_keys)
+
+        days = history_cache.build_history_days(self.user)
+        labels = {
+            entry["episode_label"]
+            for day in days
+            for entry in day["entries"]
+            if entry["media_type"] == MediaTypes.ANIME.value
+        }
+        self.assertEqual(labels, {"E01", "E02", "E03"})
+
+    def test_import_of_an_old_watch_is_dated_on_its_end_date(self):
+        anime = Anime(
+            item=self.item,
+            user=self.user,
+            status=Status.COMPLETED.value,
+            end_date=self.day_one,
+        )
+        self._save(anime, 12, self.day_two)
+
+        self.assertEqual(len(self._labels(self.day_one)), 12)
+        self.assertEqual(self._labels(self.day_two), [])
+
+    def test_lowered_progress_drops_the_episodes_above_it(self):
+        anime = Anime(
+            item=self.item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+        )
+        self._save(anime, 3, self.day_one)
+        self._save(anime, 2, self.day_two)
+
+        self.assertEqual(self._labels(self.day_one), [("E01", None), ("E02", None)])

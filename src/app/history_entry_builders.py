@@ -1,7 +1,9 @@
 """Functions that build per-entry history dicts for each media type."""
 
 import logging
+from collections import defaultdict
 
+from django.apps import apps
 from django.conf import settings
 from django.utils import formats
 
@@ -99,6 +101,74 @@ def _attach_entry_score(entry, media):
     if score is not None:
         entry["score"] = score
     return entry
+
+
+def flat_anime_episode_watches(records):
+    """Return ``{anime_id: [(episode_number, watched_at), ...]}`` for flat anime.
+
+    A flat entry stores progress, not episodes, so each rise in its change log
+    dates the episodes it covered. A rise saved after the entry's own end date
+    (an import of an old watch) is dated on that end date. Each episode keeps
+    its latest date, and only episodes up to the current progress are kept, so
+    a lowered progress drops the ones above it. An entry with no change log
+    dates every episode on its end or start date.
+    """
+    records = [record for record in records if (record.progress or 0) > 0]
+    if not records:
+        return {}
+    HistoricalAnime = apps.get_model("app", "HistoricalAnime")
+    rows = (
+        HistoricalAnime.objects.filter(id__in=[record.id for record in records])
+        .order_by("history_date", "history_id")
+        .values_list("id", "progress", "end_date", "history_date")
+    )
+    dated_by_id = defaultdict(dict)
+    previous_progress = {}
+    for anime_id, row_progress, row_end_date, history_date in rows:
+        progress = row_progress or 0
+        before = previous_progress.get(anime_id, 0)
+        previous_progress[anime_id] = progress
+        if progress <= before:
+            continue
+        watched_at = min(history_date, row_end_date) if row_end_date else history_date
+        for episode_number in range(before + 1, progress + 1):
+            dated_by_id[anime_id][episode_number] = watched_at
+
+    watches = {}
+    for record in records:
+        dated = dated_by_id.get(record.id)
+        if not dated:
+            fallback = record.end_date or record.start_date
+            if not fallback:
+                continue
+            dated = dict.fromkeys(range(1, record.progress + 1), fallback)
+        watches[record.id] = sorted(
+            (number, watched_at)
+            for number, watched_at in dated.items()
+            if number <= record.progress
+        )
+    return watches
+
+
+def flat_anime_episode_entries(entry, watches, final_episode):
+    """Split a flat anime card into one card per dated episode.
+
+    The entry's score stays on the card of its last watched episode only.
+    """
+    cards = []
+    for episode_number, watched_at in watches:
+        card = {
+            **entry,
+            "episode_label": f"E{episode_number:02d}",
+            "episode_code": f"E{episode_number:02d}",
+            "episode_number": episode_number,
+            "played_at_local": _localize_datetime(watched_at),
+            "entry_key": f"{entry['entry_key']}-e{episode_number}",
+        }
+        if episode_number != final_episode:
+            card.pop("score", None)
+        cards.append(card)
+    return cards
 
 
 def _serialize_show(show):

@@ -24,6 +24,7 @@ from django_celery_results.models import TaskResult
 from app import credits as credit_helpers
 from app import history_cache, statistics_cache
 from app.discover import tab_cache as discover_tab_cache
+from app.history_entry_builders import flat_anime_episode_watches
 from app.models import (
     TV,
     AlbumTracker,
@@ -1303,14 +1304,28 @@ def refresh_statistics_cache_on_anime_change(sender, instance, **kwargs):
         return
     user_id = getattr(instance, "user_id", None)
     day_keys = _collect_reading_statistics_day_keys(instance)
-    history_day_keys = _collect_reading_history_day_keys(instance)
+    history_dates_may_have_moved = _history_dates_may_have_moved(instance, kwargs)
+    if kwargs.get("signal") is post_delete:
+        # History splits the entry into episodes dated by its change log, which
+        # the delete removes, so the days they were on are no longer known.
+        history_day_keys = []
+        history_dates_may_have_moved = True
+    else:
+        history_day_keys = set(_collect_reading_history_day_keys(instance))
+        # The change log row for this save is the newest episode date.
+        history_day_keys.add(history_cache.history_day_key(timezone.now()))
+        for _number, watched_at in flat_anime_episode_watches([instance]).get(
+            instance.id,
+            [],
+        ):
+            history_day_keys.add(history_cache.history_day_key(watched_at))
     _handle_media_cache_change(
         user_id,
         MediaTypes.ANIME.value,
         reason="anime_change",
         history_specs=[(history_day_keys, ("sessions", "repeats"))],
         statistics_day_values=day_keys,
-        history_dates_may_have_moved=_history_dates_may_have_moved(instance, kwargs),
+        history_dates_may_have_moved=history_dates_may_have_moved,
     )
 
 

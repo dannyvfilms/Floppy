@@ -5934,6 +5934,12 @@ class MediaDetailsViewTests(TestCase):
             title="Frieren",
             image="https://example.com/frieren.jpg",
         )
+        Anime.objects.create(
+            item=item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=2,
+        )
         mock_resolve_detail_metadata.side_effect = lambda *_args, **_kwargs: (
             MetadataResolutionResult(
                 display_provider=Sources.MAL.value,
@@ -5974,6 +5980,16 @@ class MediaDetailsViewTests(TestCase):
             response,
             "Episode cards are not available from MyAnimeList metadata.",
         )
+        # The flat entry's progress marks the episodes it covers as watched.
+        self.assertEqual(
+            [
+                episode["watched_by_progress"]
+                for episode in response.context["media"]["episodes"]
+            ],
+            [True, True, False],
+        )
+        self.assertContains(response, "epWatched: true", count=2)
+        self.assertContains(response, "epWatched: false", count=1)
 
     @override_settings(TVDB_API_KEY="test-tvdb-key")
     @patch("app.views.metadata_resolution.anime_mapping.find_entries_for_mal_id")

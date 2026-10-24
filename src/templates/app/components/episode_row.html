@@ -15,7 +15,7 @@
          revealed: false,
          hovering: false,
          canHover: window.matchMedia('(hover: hover)').matches,
-         epWatched: {{ episode.history|yesno:'true,false' }},
+         epWatched: {% if episode.history or episode.watched_by_progress %}true{% else %}false{% endif %},
          blurActive: {% if not public_view|default:False and user.is_authenticated %}{{ user.obfuscate_episodes|yesno:'true,false' }}{% else %}false{% endif %},
          syncBlurState(active) {
            this.blurActive = active;

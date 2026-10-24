@@ -39,6 +39,8 @@ from app.history_entry_builders import (
     _serialize_album,
     _serialize_item,
     _serialize_show,
+    flat_anime_episode_entries,
+    flat_anime_episode_watches,
 )
 from app.models import (
     Album,
@@ -264,25 +266,48 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
             and media_type_value not in requested_media_types
         ):
             continue
-        records = (
-            model.objects.filter(user=user)
-            .filter(
-                models.Q(end_date__gte=day_start, end_date__lt=day_end)
-                | (
-                    models.Q(end_date__isnull=True)
-                    & models.Q(start_date__gte=day_start, start_date__lt=day_end)
-                ),
+        record_on_day = models.Q(end_date__gte=day_start, end_date__lt=day_end) | (
+            models.Q(end_date__isnull=True)
+            & models.Q(start_date__gte=day_start, start_date__lt=day_end)
+        )
+        day_filter = record_on_day
+        if model is Anime:
+            # A flat anime's episodes are dated by its change log, so an entry
+            # can have episodes on a day its own dates are not on.
+            day_filter |= models.Q(
+                id__in=apps.get_model("app", "HistoricalAnime")
+                .objects.filter(
+                    models.Q(history_date__gte=day_start, history_date__lt=day_end)
+                    | models.Q(end_date__gte=day_start, end_date__lt=day_end),
+                )
+                .values("id"),
             )
+        records = list(
+            model.objects.filter(user=user)
+            .filter(day_filter)
             .select_related("item")
             .defer(*history_deferred_item_fields("item"))
         )
-        for record in records.iterator(chunk_size=500):
+        episode_watches = (
+            flat_anime_episode_watches(records) if model is Anime else {}
+        )
+        for record in records:
             item = getattr(record, "item", None)
             if not item:
                 continue
-            played_at_local = _localize_datetime(record.end_date or record.start_date)
-            if not played_at_local:
+            watches = [
+                (number, watched_at)
+                for number, watched_at in episode_watches.get(record.id, [])
+                if day_start <= watched_at < day_end
+            ]
+            record_date = record.end_date or record.start_date
+            if not watches and not (
+                record.id not in episode_watches
+                and record_date
+                and day_start <= record_date < day_end
+            ):
                 continue
+            played_at_local = _localize_datetime(record_date)
             entry = {
                 "media_type": media_type_value,
                 "item": _serialize_item(item),
@@ -303,7 +328,16 @@ def build_history_day(user, day_key, logging_style_override=None, media_types=No
             genres = _resolve_genres(item)
             if genres:
                 entry["genres"] = genres
-            entries.append(entry)
+            if watches:
+                entries.extend(
+                    flat_anime_episode_entries(
+                        entry,
+                        watches,
+                        episode_watches[record.id][-1][0],
+                    ),
+                )
+            else:
+                entries.append(entry)
 
     # Music (HistoricalMusic for the day)
     music_history = []
