@@ -2,6 +2,7 @@
 # views.py so future feat/add-api syncs stay clean. URL wiring lives in
 # fork_urls.py (included from urls.py with a single line).
 import logging
+import unicodedata
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.db import IntegrityError, transaction
@@ -36,6 +37,16 @@ from .helpers import (
 from .serializers import serialize_data
 
 logger = logging.getLogger(__name__)
+
+
+def _format_key(value):
+    """Return a comparison key for a collection format.
+
+    Folds Unicode form and case and keeps only letters and digits, so
+    "Blu-ray", "bluray" and "BLU RAY" match while "Blu-ray" and "DVD" don't.
+    """
+    text = unicodedata.normalize("NFKC", value or "").casefold()
+    return "".join(char for char in text if char.isalnum())
 
 
 def _resolve_user_media(user, media_id, media_type, source, season_number=None):
@@ -322,6 +333,22 @@ class MediaCollectionView(drf_views.APIView):
             source_records__source=self._SOURCE,
         )
 
+    def _reusable_entry(self, user, item, media_type):
+        """Return a copy added elsewhere that this call may update, or None.
+
+        Without a sent ``media_type`` any copy is reused. With one, only a
+        copy of the same format (see ``_format_key``) or one without a format
+        is, so a PUT for a digital copy never rewrites a Blu-ray added by hand.
+        """
+        copies = CollectionEntry.objects.filter(user=user, item=item)
+        if not media_type:
+            return copies.first()
+        wanted = _format_key(media_type)
+        copies = list(copies)
+        same_format = [c for c in copies if _format_key(c.media_type) == wanted]
+        no_format = [c for c in copies if not _format_key(c.media_type)]
+        return next(iter(same_format or no_format), None)
+
     def _entry_fields(self, data):
         """Return ``(fields, error_response)`` for the optional body fields.
 
@@ -431,7 +458,9 @@ class MediaCollectionView(drf_views.APIView):
         body fields `media_type`, `resolution`, `hdr`, `is_3d`, `audio_codec`,
         `audio_channels`, `bitrate` and `collected_at` are stored on the entry
         and replace the stored values on a repeat call, so a quality upgrade
-        updates the same entry.
+        updates the same entry. Without an API-created copy, a copy added
+        elsewhere is reused when its `media_type` is empty or matches the sent
+        one (any copy when none is sent); otherwise a new copy is created.
         """
         season_number = int(season_number) if season_number is not None else None
         episode_number = int(episode_number) if episode_number is not None else None
@@ -464,10 +493,12 @@ class MediaCollectionView(drf_views.APIView):
         if error:
             return error
 
-        entry = (
-            self._api_entries(request.user, item).first()
-            or CollectionEntry.objects.filter(user=request.user, item=item).first()
-        )
+        entry = self._api_entries(request.user, item).first()
+        if entry is None:
+            entry = self._reusable_entry(request.user, item, fields.get("media_type"))
+            if entry is not None and entry.media_type:
+                # Same format: keep the copy's own spelling ("Blu-ray").
+                fields.pop("media_type", None)
         created = False
         if entry is None:
             entry, created = self._create_entry(request.user, item, fields)

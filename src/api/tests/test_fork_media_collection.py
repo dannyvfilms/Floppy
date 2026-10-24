@@ -248,6 +248,109 @@ class MediaCollectionTests(FloppyApiTestCase):
         self.assertEqual(response.json()["id"], manual.id)
         self.assertFalse(CollectionEntrySource.objects.filter(entry=manual).exists())
 
+    def test_put_leaves_a_copy_of_another_format(self):
+        """A digital PUT adds its own copy instead of rewriting a Blu-ray."""
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        bluray = CollectionEntry.objects.create(
+            user=self.user1,
+            item=item,
+            media_type="Blu-ray",
+            resolution="1080p",
+        )
+
+        response = self._put(
+            item.media_id,
+            {"media_type": "digital", "resolution": "4K"},
+        )
+
+        self.assertEqual(response.status_code, HTTP.CREATED)
+        self.assertNotEqual(response.json()["id"], bluray.id)
+        bluray.refresh_from_db()
+        self.assertEqual(bluray.media_type, "Blu-ray")
+        self.assertEqual(bluray.resolution, "1080p")
+
+        again = self._put(item.media_id, {"media_type": "digital"})
+
+        self.assertEqual(again.status_code, HTTP.OK)
+        self.assertEqual(again.json()["id"], response.json()["id"])
+        self.assertEqual(
+            CollectionEntry.objects.filter(user=self.user1, item=item).count(),
+            2,
+        )
+
+    def test_put_reuses_a_copy_of_the_same_format_or_none(self):
+        """The format match ignores case and punctuation; no format matches too."""
+        movies = self.items_by_type[MediaTypes.MOVIE.value]
+        bluray = CollectionEntry.objects.create(
+            user=self.user1,
+            item=movies[0],
+            media_type="Blu-ray",
+        )
+        unknown = CollectionEntry.objects.create(user=self.user1, item=movies[1])
+
+        same = self._put(movies[0].media_id, {"media_type": "bluray"})
+        blank = self._put(movies[1].media_id, {"media_type": "digital"})
+
+        self.assertEqual(same.status_code, HTTP.OK)
+        self.assertEqual(same.json()["id"], bluray.id)
+        bluray.refresh_from_db()
+        self.assertEqual(bluray.media_type, "Blu-ray")
+        self.assertEqual(blank.status_code, HTTP.OK)
+        self.assertEqual(blank.json()["id"], unknown.id)
+        unknown.refresh_from_db()
+        self.assertEqual(unknown.media_type, "digital")
+
+    def test_put_prefers_the_same_format_over_a_copy_without_one(self):
+        """A matching copy wins over a newer copy that has no format."""
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        bluray = CollectionEntry.objects.create(
+            user=self.user1,
+            item=item,
+            media_type="Blu-ray",
+        )
+        # collected_at is auto_now_add, so make the Blu-ray the older copy here.
+        CollectionEntry.objects.filter(id=bluray.id).update(
+            collected_at=datetime(2020, 1, 1, tzinfo=UTC),
+        )
+        CollectionEntry.objects.create(user=self.user1, item=item)
+
+        response = self._put(item.media_id, {"media_type": "bluray"})
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["id"], bluray.id)
+
+    def test_put_does_not_take_a_non_latin_format_for_none(self):
+        """A format in another script is a format, not a blank one."""
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        disc = CollectionEntry.objects.create(
+            user=self.user1,
+            item=item,
+            media_type="ブルーレイ",
+        )
+
+        response = self._put(item.media_id, {"media_type": "digital"})
+
+        self.assertEqual(response.status_code, HTTP.CREATED)
+        disc.refresh_from_db()
+        self.assertEqual(disc.media_type, "ブルーレイ")
+
+    def test_put_without_a_format_reuses_any_copy(self):
+        """Without a sent media_type the first copy is reused, as before."""
+        item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        bluray = CollectionEntry.objects.create(
+            user=self.user1,
+            item=item,
+            media_type="Blu-ray",
+        )
+
+        response = self._put(item.media_id, {"resolution": "4K"})
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["id"], bluray.id)
+        bluray.refresh_from_db()
+        self.assertEqual(bluray.media_type, "Blu-ray")
+        self.assertEqual(bluray.resolution, "4K")
+
     def test_delete_removes_only_the_copy_the_api_created(self):
         """DELETE leaves copies added elsewhere; a repeat DELETE is a 404."""
         item = self.items_by_type[MediaTypes.MOVIE.value][0]

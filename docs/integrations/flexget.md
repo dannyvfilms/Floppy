@@ -124,7 +124,7 @@ fields it sends.
 | Status | Meaning |
 |---|---|
 | `201` | Collected; the body is the new collection entry |
-| `200` | Already collected; the same entry is returned, with the sent fields updated |
+| `200` | Already collected; the existing entry is returned, with the sent fields updated |
 | `204` | Removed (`DELETE`) |
 | `400` | Unsupported media type or source, a body that is not a JSON object, an invalid field, or a show without season and episode |
 | `404` | The provider does not know the id, or (`DELETE`) there was nothing to remove |
@@ -133,6 +133,12 @@ fields it sends.
 `PUT` is idempotent, so replaying a download event, or reporting a quality
 upgrade, updates one entry instead of adding copies. Two calls arriving at the
 same moment still produce one entry.
+
+Until the API has created a copy, `PUT` reuses a copy added elsewhere (by hand
+or by an import) only when that copy has no `media_type` or the same one (case
+and punctuation are ignored, so `Blu-ray` matches `bluray`); without a sent
+`media_type`, any copy is reused. Otherwise it adds its own copy (`201`) and
+leaves the other one unchanged.
 
 `DELETE` removes only the copy the API created. A copy added by hand in
 Floppy (for example a disc with its own details) is left alone, and `DELETE`
