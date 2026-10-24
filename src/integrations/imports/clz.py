@@ -25,6 +25,7 @@ from defusedxml.ElementTree import iterparse as defused_iterparse
 from django.db import transaction
 from django.utils import timezone
 
+from app import local_covers
 from app.collection_field_import import ImportColumn, ImportedFieldResolver
 from app.collection_field_import import normalize_label as normalize
 from app.helpers import MODEL_MAP
@@ -45,6 +46,8 @@ from integrations.imports.helpers import MediaImportError
 logger = logging.getLogger(__name__)
 
 SOURCE = "clz"
+# Consecutive failed cover downloads before a run keeps the remaining links.
+COVER_FAILURE_LIMIT = 5
 WISHLIST_LIST_NAME = "CLZ Wishlist"
 MAX_TITLE_MATCH_RESULTS = 5
 
@@ -510,6 +513,8 @@ class CLZImporter:
         self.wishlist_tag = " ".join((wishlist_tag or "").split())[:50] or None
         self._seen_ids = defaultdict(int)
         self._title_results = {}
+        self._covers = {}
+        self._cover_failures = 0
         self.warnings = []
         self.counts = defaultdict(int)
         self.import_run_id = import_progress.get_current_import_run_id()
@@ -1088,7 +1093,7 @@ class CLZImporter:
         title = self._title(record)
         if not title:
             return None
-        cover = self._get(record, "cover url")
+        cover = self._stored_cover(self._get(record, "cover url"))
         existing = Item.objects.filter(
             source=Sources.MANUAL.value,
             media_type=media_type,
@@ -1108,6 +1113,23 @@ class CLZImporter:
             title=title,
             image=cover,
         )
+
+    def _stored_cover(self, cover):
+        """Copy a CLZ cover into Floppy's data folder, or keep the link.
+
+        CLZ hosts the covers, so a link can stop working. A run that fails a
+        few times in a row (offline, blocked) stops trying and keeps links.
+        """
+        if not cover or self._cover_failures >= COVER_FAILURE_LIMIT:
+            return cover
+        if cover not in self._covers:
+            try:
+                self._covers[cover] = local_covers.fetch_cover(cover)
+                self._cover_failures = 0
+            except local_covers.CoverError:
+                self._covers[cover] = cover
+                self._cover_failures += 1
+        return self._covers[cover]
 
     def _title(self, record, issue_columns=ISSUE_COLUMNS):
         """Return the display title for a record.

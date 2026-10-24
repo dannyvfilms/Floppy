@@ -16,7 +16,7 @@ from django.utils.translation import gettext_noop
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
-from app import custom_metadata, helpers, history_processor
+from app import cover_views, custom_metadata, helpers, history_processor
 from app import statistics as stats
 from app.collection_views import build_collection_modal_context
 from app.discover_views import _build_track_modal_discover_tab_context
@@ -821,8 +821,15 @@ def _render_standard_track_modal(
             prefix="metadata",
         )
 
+    can_change_cover = bool(
+        metadata_item is not None
+        and request.user.is_authenticated
+        and cover_views.user_has_item(request.user, metadata_item)
+    )
+
     metadata_tab_available = bool(
-        metadata_fields
+        can_change_cover
+        or metadata_fields
         or can_update_metadata_provider
         or can_update_metadata_language
         or can_migrate_grouped_anime
@@ -978,6 +985,7 @@ def _render_standard_track_modal(
         ),
         "metadata_fields": metadata_fields,
         "image_field": image_field,
+        "can_change_cover": can_change_cover,
         "image_save_item_id": (
             metadata_item.id
             if media and metadata_item and not can_edit_custom_metadata

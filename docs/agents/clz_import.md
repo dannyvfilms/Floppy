@@ -187,3 +187,5 @@ an export written by this version still loads in an older one.
   a manual item rather than a guess at the wrong edition.
 - CLZ's own custom fields arrive as ordinary columns; there is no separate
   channel for them, and none is needed.
+- Covers: each record's cover link is copied into Floppy's data folder as a local
+  cover (see `docs/architecture/local-covers.md`). A failed download keeps the link.

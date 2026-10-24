@@ -343,6 +343,10 @@
     </section>
   {% endif %}
 
+  {% if can_change_cover %}
+    {% include "app/components/cover_change_section.html" %}
+  {% endif %}
+
   {% if manual_metadata_form %}
     <section class="space-y-4">
       <div>
@@ -407,7 +411,7 @@
     </section>
   {% endif %}
 
-  {% if image_field and not manual_metadata_form %}
+  {% if image_field and not manual_metadata_form and not can_change_cover %}
     <section class="space-y-3"
              x-data="{ imageUrl: '{{ image_field.value|default_if_none:''|escapejs }}' }">
       <label class="block text-sm font-medium text-[var(--color-text-secondary)]"

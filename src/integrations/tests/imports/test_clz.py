@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from app import local_covers
 from app.collection_field_import import normalize_label as normalize
 from app.models import (
     CollectionEntry,
@@ -82,6 +83,16 @@ def upload(name, content):
     return stream
 
 
+def block_cover_downloads(test):
+    """Keep an import test off the network: a cover download simply fails."""
+    patcher = patch(
+        "integrations.imports.clz.local_covers.fetch_cover",
+        side_effect=local_covers.CoverError("offline"),
+    )
+    test.fetch_cover = patcher.start()
+    test.addCleanup(patcher.stop)
+
+
 class CLZParsingTests(TestCase):
     """Parsing must survive CLZ's quoting, encodings and multi-valued XML."""
 
@@ -143,6 +154,7 @@ class CLZImportTests(TestCase):
         )
         self.search = patcher.start()
         self.addCleanup(patcher.stop)
+        block_cover_downloads(self)
 
     def run_import(self, name, content, mode="new"):
         """Run the CLZ importer over an in-memory export."""
@@ -353,6 +365,7 @@ class CLZMediaTypeTests(TestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        block_cover_downloads(self)
 
     def run_import(self, content, mode="new", media_type=None):
         """Run the CLZ importer over the in-memory export *content*."""
@@ -621,6 +634,7 @@ class CLZNativeExportTests(TestCase):
         )
         self.search = patcher.start()
         self.addCleanup(patcher.stop)
+        block_cover_downloads(self)
 
     def run_import(self, content=None, mode="new", **options):
         """Import the native export, as manga unless told otherwise."""
@@ -781,11 +795,35 @@ class CLZNativeExportTests(TestCase):
         )
 
     def test_the_best_cover_becomes_the_item_image(self):
-        """The export's cover link is the item's image when nothing better exists."""
+        """When the download fails, the export's cover link is kept as the image."""
         self.run_import()
 
         item = Item.objects.get(title="Test Series")
         self.assertTrue(item.image.endswith("test-1.jpg"))
+
+    def test_the_cover_is_copied_into_floppy(self):
+        """A cover that downloads is stored locally, so CLZ going away costs nothing."""
+        self.fetch_cover.side_effect = None
+        self.fetch_cover.return_value = "/covers/" + "a" * 64 + ".jpg"
+
+        self.run_import()
+
+        item = Item.objects.get(title="Test Series")
+        self.assertEqual(item.image, "/covers/" + "a" * 64 + ".jpg")
+
+    def test_a_run_stops_downloading_after_repeated_failures(self):
+        """An unreachable host is tried a few times, not once per record."""
+        records = [
+            native_record(
+                f"Series {n}",
+                "1",
+                cover=f"https://clzcomics.r.sizr.io/c/{n}.jpg",
+            )
+            for n in range(clz.COVER_FAILURE_LIMIT + 3)
+        ]
+        self.run_import(native_export(*records))
+
+        self.assertEqual(self.fetch_cover.call_count, clz.COVER_FAILURE_LIMIT)
 
     def test_wishlist_items_can_be_tagged_and_given_a_status(self):
         """The user picks a tag and a status to mark what CLZ calls wishlist."""

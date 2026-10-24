@@ -1,0 +1,29 @@
+{% load i18n %}
+{% load app_tags %}
+
+{% if candidates %}
+  <ul class="grid grid-cols-3 sm:grid-cols-4 gap-3">
+    {% for candidate in candidates %}
+      <li>
+        <form method="post" action="{% url 'update_item_cover' item.id %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ return_url }}">
+          <input type="hidden" name="cover_url" value="{{ candidate.image }}">
+          <button type="submit"
+                  title="{{ candidate.title }}"
+                  class="w-full text-left cursor-pointer group">
+            <img src="{{ candidate.image|image_url }}"
+                 alt="{{ candidate.title }}"
+                 loading="lazy"
+                 onerror="var list = this.closest('ul'); this.closest('li').remove(); if (!list.children.length) list.nextElementSibling.hidden = false;"
+                 class="w-full aspect-[2/3] rounded-md object-cover bg-[var(--color-surface-alt)] ring-2 ring-transparent group-hover:ring-[var(--color-accent)] group-focus-visible:ring-[var(--color-accent)]">
+            <span class="mt-1 block text-xs text-[var(--color-text-muted)] line-clamp-2">{{ candidate.title }}</span>
+          </button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+  <p class="text-sm text-[var(--color-text-muted)]" hidden>{% translate "No covers found. Try a link instead." %}</p>
+{% else %}
+  <p class="text-sm text-[var(--color-text-muted)]">{% translate "No covers found. Try a link instead." %}</p>
+{% endif %}

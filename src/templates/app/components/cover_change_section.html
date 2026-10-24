@@ -1,0 +1,65 @@
+{% load i18n %}
+{% load app_tags %}
+
+<section class="space-y-3" id="cover-section">
+  <div>
+    <h3 class="text-xl font-semibold text-[var(--color-text)]">{% translate "Cover" %}</h3>
+    <p class="text-sm text-[var(--color-text-muted)] mt-1">
+      {% translate "Upload a picture, paste a link to an image or to a book or comic page, or find one." %}
+    </p>
+  </div>
+
+  <div class="flex items-start gap-4">
+    <img src="{{ metadata_item.image|image_url }}"
+         alt=""
+         loading="lazy"
+         class="w-20 aspect-[2/3] rounded-md object-cover bg-[var(--color-surface-alt)] shrink-0">
+
+    <div class="flex-1 min-w-0 space-y-3">
+      <form method="post"
+            action="{% url 'update_item_cover' metadata_item.id %}"
+            enctype="multipart/form-data"
+            class="flex flex-col sm:flex-row gap-2">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ return_url }}">
+        <input type="file"
+               name="cover_file"
+               accept="image/jpeg,image/png,image/webp"
+               required
+               aria-label="{% translate "Cover image file" %}"
+               class="flex-1 min-w-0 text-sm text-[var(--color-text-secondary)] file:mr-3 file:h-10 file:cursor-pointer file:rounded-md file:border-0 file:bg-[var(--color-surface-strong)] file:px-4 file:text-sm file:text-[var(--color-text)]">
+        <button type="submit"
+                class="inline-flex h-10 items-center justify-center px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+          {% translate "Upload" %}
+        </button>
+      </form>
+
+      <form method="post"
+            action="{% url 'update_item_cover' metadata_item.id %}"
+            class="flex flex-col sm:flex-row gap-2">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ return_url }}">
+        <input type="url"
+               name="cover_url"
+               required
+               placeholder="https://example.com/cover.jpg"
+               aria-label="{% translate "Image or page link" %}"
+               class="flex-1 min-w-0 h-10 px-3 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]">
+        <button type="submit"
+                class="inline-flex h-10 items-center justify-center px-4 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+          {% translate "Use link" %}
+        </button>
+      </form>
+
+      <button type="button"
+              hx-get="{% url 'item_cover_candidates' metadata_item.id %}?return_url={{ return_url|urlencode }}"
+              hx-target="#cover-candidates"
+              hx-swap="innerHTML"
+              class="inline-flex h-10 items-center justify-center px-4 rounded-md border border-[var(--color-surface-border)] bg-[var(--color-surface)] text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-muted)] transition-colors cursor-pointer">
+        {% translate "Find cover" %}
+      </button>
+    </div>
+  </div>
+
+  <div id="cover-candidates"></div>
+</section>
