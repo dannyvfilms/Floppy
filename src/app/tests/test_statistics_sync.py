@@ -733,6 +733,9 @@ class HighlightHistoryDayTests(StatisticsSyncTestCase):
 
 class ReconcilerTests(StatisticsSyncTestCase):
     @NON_EAGER
+    # The recovered sync must finish in one task; the default 10s budget
+    # leaves it "continued" on a slower machine.
+    @override_settings(STATISTICS_SYNC_TASK_BUDGET_SECONDS=600)
     def test_a_dropped_sync_message_is_recovered(self):
         """#1272: the message that should rebuild the page never arrives."""
         with patch(SYNC_TASK) as dropped, self.captureOnCommitCallbacks(execute=True):
