@@ -19,6 +19,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from app.models import Item, Status
+from app.services.watch_state import PROJECTED_MEDIA_TYPES
 from app.signals import importer_replacing_rows
 from integrations import import_progress
 from integrations.models import (
@@ -514,6 +515,10 @@ def persist(run, owner, user):
                     bulk_create_with_history(rows, rows[0].__class__, batch_size=run.chunk_rows)
                     if first.operation == "backfill_create":
                         normalize_completed_entries(normalize_rows)
+                    # bulk_create fires no save signal, so project here as
+                    # bulk_create_media does for the main manifest.
+                    if rows[0]._meta.model_name in PROJECTED_MEDIA_TYPES:
+                        helpers.project_imported_watch_state(user, {row.item_id for row in rows})
                 else:
                     bulk_update_with_history(rows, rows[0].__class__, fields=["status"],
                                              default_change_reason=f"Trakt import ({run.prepared_state['mode']})" if first.operation == "update" else None)

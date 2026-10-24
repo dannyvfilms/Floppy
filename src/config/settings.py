@@ -1761,6 +1761,7 @@ CELERY_TASK_ROUTES = {
     "Ensure podcast website backfill reconcile": {
         "priority": CELERY_TASK_PRIORITY_BACKGROUND,
     },
+    "Ensure watch state repair": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Nightly metadata quality backfill": {"priority": CELERY_TASK_PRIORITY_BACKGROUND},
     "Refresh IMDB game credits from datasets": {
         "priority": CELERY_TASK_PRIORITY_BACKGROUND
@@ -2098,6 +2099,12 @@ CELERY_BEAT_SCHEDULE = {
     # first one the startup hook kicks off.
     "ensure_podcast_website_backfill_reconcile": {
         "task": "Ensure podcast website backfill reconcile",
+        "schedule": RECONCILE_INTERVAL_SECONDS,
+    },
+    # One-shot like the podcast sweep: the startup hook starts it, and this
+    # resumes a library too large to finish in one run (app/tasks_watch_state.py).
+    "ensure_watch_state_repair": {
+        "task": "Ensure watch state repair",
         "schedule": RECONCILE_INTERVAL_SECONDS,
     },
     "warm_discover_api_cache": {

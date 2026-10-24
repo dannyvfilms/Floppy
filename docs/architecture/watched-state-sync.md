@@ -87,6 +87,16 @@ ordered changes without any of them being edited.
 Backfill passes `record_changes=False`. Those rows were already there; calling
 them new decisions would deliver a whole library outward on upgrade.
 
+The backfill runs by itself once per `REPAIR_VERSION`
+(`app/tasks_watch_state.py`, `Ensure watch state repair`): the startup hook
+queues it, the beat entry resumes a library too large for one five-minute run,
+and per-user cursor rows in `BackfillReconcileState` keep it from restarting.
+It exists because bulk writes skip save signals: before 2026-10-18 an
+overwrite import projected "unwatched" while deleting rows and never projected
+the rows it wrote back. Any bulk write of a projected type must call
+`helpers.project_imported_watch_state`; bump `REPAIR_VERSION` when one is found
+that did not.
+
 ## The apply algorithm
 
 `integrations/state/apply.py`. The order is the design — each rule exists

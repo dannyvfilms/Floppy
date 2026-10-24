@@ -9,7 +9,16 @@ from django.contrib.auth import get_user_model
 from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
-from app.models import TV, DeletedMedia, Episode, Item, Movie, Season, Status
+from app.models import (
+    TV,
+    DeletedMedia,
+    Episode,
+    Item,
+    Movie,
+    Season,
+    Status,
+    WatchState,
+)
 from integrations import import_progress
 from integrations.import_scope import ImportOverwriteConflictError
 from integrations.imports import durable, helpers
@@ -398,6 +407,27 @@ class DurableImportTests(TransactionTestCase):
         self.persist()
         self.assertEqual(Movie.objects.count(), 6)
         self.assertEqual(list(self.run.prepared_entries.values_list("ordinal", flat=True)), list(range(6)))
+
+    def test_backfill_and_fanout_episodes_project_watched_state(self):
+        """Episodes a Completed show expands into are watched, like any import."""
+        self.persist()
+        tv_item, season_item, *episode_items = Item.objects.bulk_create([
+            Item(media_id="show", source="tmdb", media_type="tv", title="Show"),
+            Item(media_id="show", source="tmdb", media_type="season", title="Show", season_number=1),
+            Item(media_id="show", source="tmdb", media_type="episode", title="One", season_number=1, episode_number=1),
+            Item(media_id="show", source="tmdb", media_type="episode", title="Two", season_number=1, episode_number=2),
+        ])
+        tv = TV.objects.bulk_create([TV(item=tv_item, user=self.user)])[0]
+        season = Season.objects.bulk_create([Season(item=season_item, user=self.user, related_tv=tv)])[0]
+        for prefix, item in zip(("backfill_", "fanout_"), episode_items, strict=True):
+            episode = Episode(item=item, related_season=season, status=Status.COMPLETED, end_date=timezone.now())
+            durable.stage(self.run, self.owner, {"episode": [episode]}, [], {}, append=True, operation_prefix=prefix)
+            self.persist()
+
+        self.assertEqual(
+            set(WatchState.objects.filter(user=self.user, watched=True).values_list("item_id", flat=True)),
+            {Item.objects.get(media_id="durable").pk, *(item.pk for item in episode_items)},
+        )
 
     def test_prepared_episode_keeps_exact_archived_parent_identity(self):
         """Hydration must not remap a prepared episode to another active order."""
