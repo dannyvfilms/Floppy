@@ -926,7 +926,8 @@ def get_season_collection_stats(user, season_item):
         item_id__in=episode_item_ids,
     )
 
-    collected_count = episode_collection_entries.count()
+    # Count episodes, not copies: a Blu-ray and a digital copy are one episode.
+    collected_count = episode_collection_entries.values("item_id").distinct().count()
 
     # If no episode-level entries exist, fall back to broader collection rows.
     # A manual season-level entry represents the whole season in the current UI.

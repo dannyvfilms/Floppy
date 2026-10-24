@@ -453,6 +453,51 @@ class CollectionHelpersTest(TestCase):
             },
         )
 
+    def test_get_season_collection_stats_counts_an_episode_once(self):
+        """Two copies of one episode count as one collected episode."""
+        season_item = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.SEASON.value,
+            season_number=1,
+            title="Test TV Season 1",
+            image="http://example.com/season1.jpg",
+        )
+        episode_one = Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=1,
+            title="Test TV Episode 1",
+            image="http://example.com/episode1.jpg",
+        )
+        Item.objects.create(
+            media_id=self.tv_item.media_id,
+            source=self.tv_item.source,
+            media_type=MediaTypes.EPISODE.value,
+            season_number=1,
+            episode_number=2,
+            title="Test TV Episode 2",
+            image="http://example.com/episode2.jpg",
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=episode_one, media_type="Blu-ray"
+        )
+        CollectionEntry.objects.create(
+            user=self.user, item=episode_one, media_type="digital"
+        )
+
+        stats = get_season_collection_stats(self.user, season_item)
+
+        self.assertEqual(
+            stats,
+            {
+                "collected_episodes": 1,
+                "total_episodes": 2,
+            },
+        )
+
     def test_get_season_collection_stats_prefers_episode_rows_over_season_level_entry(
         self,
     ):
