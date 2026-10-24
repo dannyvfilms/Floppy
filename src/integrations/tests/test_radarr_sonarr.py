@@ -15,6 +15,7 @@ from integrations.imports import helpers, radarr, sonarr
 from integrations.models import CollectionSourceState, RadarrInstance, SonarrInstance
 from integrations.source_sync import (
     prune_collection_source_states,
+    remove_collection_source_state,
     upsert_collection_source_state,
 )
 
@@ -1100,6 +1101,33 @@ class CollectionSourceSyncTests(TestCase):
         self.assertEqual(result, "ok")
         self.assertEqual(mock_update_or_create.call_count, 2)
         mock_reconcile.assert_called_once_with(user=self.user, item=self.item)
+
+    def test_a_state_without_quality_neither_blanks_nor_outranks_a_label(self):
+        """An empty label is unknown: an older Radarr label still wins and stays."""
+        upsert_collection_source_state(
+            user=self.user,
+            item=self.item,
+            source="radarr",
+            quality_label="DVD",
+            source_updated_at=datetime(2020, 1, 1, tzinfo=UTC),
+        )
+        upsert_collection_source_state(
+            user=self.user,
+            item=self.item,
+            source="jellyfin",
+        )
+
+        entry = CollectionEntry.objects.get(user=self.user, item=self.item)
+        self.assertEqual(entry.resolution, "DVD")
+
+        remove_collection_source_state(
+            user=self.user,
+            item=self.item,
+            source="radarr",
+        )
+
+        entry.refresh_from_db()
+        self.assertEqual(entry.resolution, "DVD")
 
     def test_two_radarr_instances_own_independent_states(self):
         """Two Radarr instances reporting the same item get separate rows.

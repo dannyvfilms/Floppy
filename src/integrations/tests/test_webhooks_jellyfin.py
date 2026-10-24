@@ -2066,6 +2066,44 @@ class JellyfinWebhookTests(TestCase):
         mock_get_media_metadata.assert_not_called()
 
     @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
+    def test_item_added_keeps_the_resolution_of_a_collected_title(
+        self,
+        mock_get_media_metadata,
+    ):
+        """Jellyfin sends no quality, so its ItemAdded must not blank one."""
+        item = Item.objects.create(
+            media_id="603",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="The Matrix",
+        )
+        entry = CollectionEntry.objects.create(
+            user=self.user,
+            item=item,
+            media_type="digital",
+            resolution="4K",
+        )
+
+        JellyfinWebhookProcessor().process_payload(
+            {
+                "Event": "ItemAdded",
+                "Item": {"Type": "Movie", "ProviderIds": {"Tmdb": "603"}},
+            },
+            self.user,
+        )
+
+        entry.refresh_from_db()
+        self.assertEqual(entry.resolution, "4K")
+        self.assertTrue(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=item,
+                source="jellyfin",
+            ).exists(),
+        )
+        mock_get_media_metadata.assert_not_called()
+
+    @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
     def test_collection_events_ignore_invalid_or_unsupported_payloads(
         self,
         mock_get_media_metadata,

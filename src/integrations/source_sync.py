@@ -96,10 +96,12 @@ def _reconcile_collection_entry(*, user, item):
     if entry is None:
         entry = CollectionEntry.objects.create(user=user, item=item)
 
-    best_state = _get_best_state(states)
-    resolved_quality = (best_state.quality_label if best_state else "") or ""
-    if entry.resolution != resolved_quality:
-        entry.resolution = resolved_quality
+    # An empty quality label means unknown (Jellyfin webhooks, Mylar3,
+    # Kapowarr): it neither blanks nor outranks a resolution set by hand,
+    # through the API or by another source.
+    best_state = _get_best_state([state for state in states if state.quality_label])
+    if best_state and entry.resolution != best_state.quality_label:
+        entry.resolution = best_state.quality_label
         entry.save(update_fields=["resolution", "updated_at"])
 
     return entry
