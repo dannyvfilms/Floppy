@@ -1906,6 +1906,38 @@ class JellyfinWebhookTests(TestCase):
         )
 
     @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
+    def test_unofficial_plugin_item_removed_removes_jellyfin_collection(
+        self,
+        mock_get_media_metadata,
+    ):
+        """The unofficial Webhooks plugin sends ItemRemoved instead of ItemDeleted."""
+        mock_get_media_metadata.return_value = {
+            "media_id": "603",
+            "title": "The Matrix",
+            "image": "https://example.com/matrix.jpg",
+        }
+        payload = {
+            "Event": "ItemAdded",
+            "Item": {"Type": "Movie", "ProviderIds": {"Tmdb": "603"}},
+        }
+        processor = JellyfinWebhookProcessor()
+        processor.process_payload(payload, self.user)
+        item = Item.objects.get(media_id="603", media_type=MediaTypes.MOVIE.value)
+
+        processor.process_payload({**payload, "Event": "ItemRemoved"}, self.user)
+
+        self.assertFalse(
+            CollectionSourceState.objects.filter(
+                user=self.user,
+                item=item,
+                source="jellyfin",
+            ).exists(),
+        )
+        self.assertFalse(
+            CollectionEntry.objects.filter(user=self.user, item=item).exists()
+        )
+
+    @patch("integrations.webhooks.jellyfin.services.get_media_metadata")
     @patch.object(
         JellyfinWebhookProcessor, "_find_tv_media_id", return_value=("1668", None, None)
     )

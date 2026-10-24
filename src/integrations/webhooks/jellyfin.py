@@ -29,7 +29,8 @@ JELLYFIN_EVENT_MAP = {
     "Pause": "media.pause",
     "Stop": "media.stop",
 }
-JELLYFIN_COLLECTION_EVENTS = {"ItemAdded", "ItemDeleted"}
+# ItemRemoved is the unofficial Webhooks plugin's name for ItemDeleted.
+JELLYFIN_COLLECTION_EVENTS = {"ItemAdded", "ItemDeleted", "ItemRemoved"}
 JELLYFIN_COLLECTION_SOURCE = "jellyfin"
 JELLYFIN_RATING_EVENT = "UserDataSaved"
 JELLYFIN_RATING_MAX = 10
