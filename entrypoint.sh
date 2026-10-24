@@ -197,7 +197,7 @@ migrate_attempts=0
 migrate_verbosity=1
 until echo "[entrypoint] Applying database migrations (attempt $((migrate_attempts + 1)))" >&2 && \
       DB_POOL_ENABLED=false PGOPTIONS="-c lock_timeout=120s" \
-      timeout 900 python manage.py migrate --noinput -v "$migrate_verbosity"; do
+      timeout 900 python manage.py migrate --noinput --skip-checks -v "$migrate_verbosity"; do
     migrate_attempts=$((migrate_attempts + 1))
     migrate_verbosity=2
     if [ "$migrate_attempts" -ge 5 ]; then
