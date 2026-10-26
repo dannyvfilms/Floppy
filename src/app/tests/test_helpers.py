@@ -12,6 +12,7 @@ from app.helpers import (
     form_error_messages,
     minutes_to_hhmm,
     normalize_navigation_url,
+    progress_activity,
     redirect_back,
     supports_oauth_redirect,
 )
@@ -384,3 +385,43 @@ class SupportsOAuthRedirect(TestCase):
 
     def test_non_http_scheme_is_rejected(self):
         self.assertFalse(supports_oauth_redirect("ftp://floppy.example.com/import"))
+
+
+class ProgressActivityTest(TestCase):
+    """The progress-time fallback behind every Last Watched ordering."""
+
+    def test_completed_entry_without_watch_date_has_no_activity(self):
+        """A completed entry's progress time only records when it was logged."""
+        entry = MagicMock(status=Status.COMPLETED.value, progressed_at=timezone.now())
+        self.assertIsNone(progress_activity(entry))
+
+    def test_unfinished_entry_uses_its_progress_time(self):
+        """An in-progress entry still counts as recently watched."""
+        now = timezone.now()
+        entry = MagicMock(status=Status.IN_PROGRESS.value, progressed_at=now)
+        self.assertEqual(progress_activity(entry), now)
+
+    def test_media_list_sort_value_ignores_undated_completion(self):
+        """The media list ranks an undated completion below dated and playing ones."""
+        from app.media_list_filters import _sort_value
+
+        now = timezone.now()
+
+        def value(**fields):
+            media = MagicMock(spec=["status", "end_date", "progressed_at"])
+            for name, field in fields.items():
+                setattr(media, name, field)
+            entry = MagicMock(media=media)
+            return _sort_value(entry, "last_watched", None)
+
+        self.assertIsNone(
+            value(status=Status.COMPLETED.value, end_date=None, progressed_at=now),
+        )
+        self.assertEqual(
+            value(status=Status.IN_PROGRESS.value, end_date=None, progressed_at=now),
+            now,
+        )
+        self.assertEqual(
+            value(status=Status.COMPLETED.value, end_date=now, progressed_at=now),
+            now,
+        )

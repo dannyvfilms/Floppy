@@ -215,7 +215,7 @@ def _build_game_groups(entries, group_by, *, sort_key, direction):
             activity = (
                 getattr(media, "aggregated_last_watched", None)
                 or getattr(media, "end_date", None)
-                or getattr(media, "progressed_at", None)
+                or helpers.progress_activity(media)
             )
             if activity and (
                 group["last_played"] is None or activity > group["last_played"]
@@ -2827,7 +2827,7 @@ def media_list(request, media_type):
                         getattr(media, "aggregated_last_watched", None)
                         or getattr(media, "aggregated_end_date", None)
                         or getattr(media, "end_date", None)
-                        or getattr(media, "progressed_at", None)
+                        or helpers.progress_activity(media)
                     )
                     return (_sortable_dt(end_dt), title.lower())
                 if sort_filter == "next_episode_air_date":

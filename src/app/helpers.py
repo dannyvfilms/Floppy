@@ -1366,3 +1366,14 @@ def entry_activity_key(entry):
         entry.start_date or entry.created_at,
         entry.created_at,
     )
+
+
+def progress_activity(media):
+    """Return when an entry last progressed, for the Last Watched fallback.
+
+    A completed entry without a watch date has none: its progress time only
+    records when it was logged, so it must not rank as just watched.
+    """
+    if getattr(media, "status", None) == Status.COMPLETED.value:
+        return None
+    return getattr(media, "progressed_at", None)

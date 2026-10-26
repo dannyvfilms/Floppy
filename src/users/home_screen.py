@@ -21,6 +21,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext
 
+from app.helpers import progress_activity
 from app.library_query import FilterValues, LibraryQuery, LibraryQueryExecutor, SortSpec
 from app.library_query.adapters import (
     from_home_row_filters,
@@ -2549,7 +2550,7 @@ def _entry_last_watched_timestamp(entry: HomeRowEntry):
         getattr(media, "aggregated_last_watched", None)
         or getattr(media, "aggregated_end_date", None)
         or getattr(media, "end_date", None)
-        or getattr(media, "progressed_at", None)
+        or progress_activity(media)
     )
     dt_value = _coerce_datetime(candidate)
     return dt_value.timestamp() if dt_value else None

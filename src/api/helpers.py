@@ -9,7 +9,7 @@ from django.utils.dateparse import parse_date
 from django.utils.timezone import localdate
 from rest_framework.response import Response
 
-from app.helpers import parse_completion_datetime
+from app.helpers import parse_completion_datetime, progress_activity
 from app.models import (
     TV,
     Anime,
@@ -951,7 +951,7 @@ _AGGREGATED_SORT_KEYS = {
     "last_watched": lambda media: _sort_nullable(
         getattr(media, "aggregated_last_watched", None)
         or getattr(media, "end_date", None)
-        or getattr(media, "progressed_at", None),
+        or progress_activity(media),
     ),
     "id": lambda media: int(media.id),
     "itemid": itemid_key_compare,

@@ -871,7 +871,7 @@ def _sort_value(entry, sort, next_episode):
         return (
             getattr(media, "aggregated_last_watched", None)
             or getattr(media, "end_date", None)
-            or getattr(media, "progressed_at", None)
+            or helpers.progress_activity(media)
         )
     if sort in {"updated", "progressed_at"}:
         return getattr(media, "progressed_at", None)
