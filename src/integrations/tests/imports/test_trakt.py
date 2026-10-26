@@ -4,13 +4,14 @@ import json
 import sqlite3
 import tempfile
 import threading
+import time
 from collections import defaultdict
 from contextlib import closing
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import call, patch
+from unittest.mock import MagicMock, call, patch
 
 import redis
 import requests
@@ -3281,7 +3282,16 @@ class TraktSqliteWriteContentionTests(TransactionTestCase):
                     patch.object(importer_instance, "_get_paginated_data", return_value=entries),
                     patch.object(importer_instance, "_get_metadata",
                                  return_value={"title": "Test Movie", "image": "movie.jpg"}),
-                    patch("integrations.imports.trakt.time.sleep", side_effect=release_on_retry) as pause,
+                    # Patch the importer's own `time` name, not time.sleep itself:
+                    # that is the process-wide function, so any other thread
+                    # sleeping meanwhile would be counted and spin without waiting.
+                    patch(
+                        "integrations.imports.trakt.time",
+                        SimpleNamespace(
+                            monotonic=time.monotonic,
+                            sleep=(pause := MagicMock(side_effect=release_on_retry)),
+                        ),
+                    ),
                 ):
                     importer_instance.process_history()
                 self.assertEqual(pause.call_count, 1)
