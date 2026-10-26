@@ -6,6 +6,8 @@ from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 
 from django.core.cache import cache
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 
 from app import history_cache
 from app.models import (
@@ -1028,12 +1030,13 @@ class HistoryTimelineTests(FloppyApiTestCase):
         game.progress = 60
         game.save(update_fields=["start_date", "end_date", "progress"])
 
-        response = self.call_api(
-            "get",
-            "api_history",
-            params={"types": "episodes,movies", "limit": 3},
-            headers=self.auth_headers,
-        )
+        with CaptureQueriesContext(connection) as captured_queries:
+            response = self.call_api(
+                "get",
+                "api_history",
+                params={"types": "episodes,movies", "limit": 3},
+                headers=self.auth_headers,
+            )
 
         self.assertEqual(response.status_code, HTTP.OK)
         entries = [
@@ -1042,13 +1045,21 @@ class HistoryTimelineTests(FloppyApiTestCase):
             for entry in day["entries"]
         ]
         self.assertTrue(entries)
-        # A cold day is built whole so every reader can reuse it (see
-        # ``get_cached_history_window``), so the response, not the queries,
-        # is what the types filter must narrow.
         self.assertEqual(
             {entry["media_type"] for entry in entries},
             {MediaTypes.EPISODE.value, MediaTypes.MOVIE.value},
         )
+        sql = "\n".join(query["sql"].lower() for query in captured_queries.captured_queries)
+        for table_name in (
+            "app_game",
+            "app_music",
+            "app_historicalmusic",
+            "app_historicalpodcast",
+            "app_book",
+            "app_comic",
+            "app_manga",
+        ):
+            self.assertNotIn(table_name, sql)
 
     def test_history_types_pagination_preserves_total_days(self):
         """Type-filtered pagination continues to paginate over matching days."""
