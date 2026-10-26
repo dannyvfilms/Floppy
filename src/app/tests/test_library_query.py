@@ -201,6 +201,68 @@ class LastWatchedSortTests(LibraryQueryTestCase):
         ).items
         self.assertEqual(items[0].pk, item.pk)
 
+    def _undated_completed(self):
+        item = Item.objects.create(
+            media_id="last-watched-undated",
+            source=Sources.TMDB.value,
+            media_type=MOVIE,
+            title="Logged Today Without Date",
+            image="https://example.com/i.jpg",
+        )
+        self.track(
+            item,
+            status=Status.COMPLETED.value,
+            end_date=None,
+            progressed_at=self.now,
+        )
+        return item
+
+    def test_undated_completion_does_not_count_as_recent(self):
+        """A completed item with no watch date sorts last, not first."""
+        undated = self._undated_completed()
+        for direction in ("desc", "asc"):
+            with self.subTest(direction=direction):
+                ids = [
+                    item.pk
+                    for item in self.run_query(
+                        _query(sort=SortSpec("last_watched", direction)),
+                    ).items
+                ]
+                self.assertEqual(ids[-1], undated.pk)
+        newest_first = [
+            item.pk
+            for item in self.run_query(
+                _query(sort=SortSpec("last_watched", "desc")),
+            ).items
+        ]
+        self.assertEqual(
+            newest_first,
+            [self.active.item_id, self.completed.item_id, undated.pk],
+        )
+
+    def test_later_edit_does_not_change_the_order(self):
+        """Touching a row after its watch does not move it."""
+        older = self.track(
+            Item.objects.create(
+                media_id="last-watched-edited",
+                source=Sources.TMDB.value,
+                media_type=MOVIE,
+                title="Edited Later",
+                image="https://example.com/i.jpg",
+            ),
+            status=Status.COMPLETED.value,
+            end_date=self.now - timedelta(days=30),
+            progressed_at=self.now - timedelta(days=30),
+        )
+        Movie.objects.filter(pk=older.pk).update(score=9)
+        ids = [
+            item.pk
+            for item in self.run_query(
+                _query(sort=SortSpec("last_watched", "desc")),
+            ).items
+        ]
+        self.assertEqual(ids[-1], older.item_id)
+
     def test_end_date_stays_a_completion_sort(self):
         """Custom lists keep the literal end date ordering."""
         items = self.run_query(

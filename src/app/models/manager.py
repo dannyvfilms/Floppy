@@ -686,9 +686,15 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         if sort_key == "last_watched":
             concrete = {field.attname for field in model._meta.concrete_fields}
             if "progressed_at" in concrete:
+                # A completed entry with no watch date has no last watched
+                # value; progressed_at only records when it was logged.
                 activity = Case(
                     When(end_date__isnull=False, then=F("end_date")),
-                    When(progressed_at__isnull=False, then=F("progressed_at")),
+                    When(
+                        ~Q(status=Status.COMPLETED.value),
+                        progressed_at__isnull=False,
+                        then=F("progressed_at"),
+                    ),
                     default=None,
                     output_field=models.DateTimeField(),
                 )
@@ -858,7 +864,11 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
         last_watched_dates = []
         for entry in all_media_entries:
             activity = entry.end_date
-            if activity is None and has_progressed_at:
+            if (
+                activity is None
+                and has_progressed_at
+                and entry.status != Status.COMPLETED.value
+            ):
                 activity = entry.progressed_at
             if activity is not None:
                 last_watched_dates.append(activity)
@@ -1466,7 +1476,16 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             )
 
         if sort_filter == "last_watched":
-            activity = models.functions.Coalesce("end_date", "progressed_at")
+            activity = Case(
+                When(end_date__isnull=False, then=F("end_date")),
+                When(
+                    ~Q(status=Status.COMPLETED.value),
+                    progressed_at__isnull=False,
+                    then=F("progressed_at"),
+                ),
+                default=None,
+                output_field=models.DateTimeField(),
+            )
             order = (
                 activity.asc(nulls_last=True)
                 if direction == "asc"
