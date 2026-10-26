@@ -141,9 +141,13 @@ damaged `db.sqlite3`:
   cannot replace the database file itself.
 - `BACKUP_DIR/database/` &mdash; a verified raw snapshot of `db.sqlite3`,
   written on a schedule (`DB_SNAPSHOT_ENABLED`, default on). This is what to
-  restore from after physical corruption. Stop Floppy, preserve the damaged
-  database and any `-wal`/`-shm` files elsewhere, then restore a verified
-  snapshot without stale companion files. Keep the original signing key and
+  restore from after physical corruption. When Floppy stops at the
+  "cannot read the database file" page, the page lists these snapshots and
+  can restore one for you: it checks the snapshot, moves the damaged
+  database and its `-wal`/`-shm` files to `sqlite-recovery/` beside
+  `db.sqlite3`, and starts Floppy. To do it by hand, stop Floppy, preserve the
+  damaged database and any `-wal`/`-shm` files elsewhere, then restore a
+  verified snapshot without stale companion files. Keep the original signing key and
   configuration. Restore the matching application version first, verify the
   library and integrations, then upgrade separately.
 

@@ -2,6 +2,7 @@
 
 import threading
 import time
+from unittest import mock
 
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase
@@ -38,7 +39,13 @@ class StallWatchdogTests(SimpleTestCase):
         middleware = RequestPerformanceLoggingMiddleware(view)
         request = RequestFactory().get("/medialist/music?token=SECRET")
         thread = threading.Thread(target=middleware, args=(request,))
-        with self.assertLogs("app.stall_watchdog", level="WARNING") as logs:
+        # The background scanner would report the request between the
+        # threshold and this test's own scan, leaving the test with nothing
+        # to count. Only the explicit scans below may run.
+        with (
+            mock.patch.object(stall_watchdog, "_ensure_thread"),
+            self.assertLogs("app.stall_watchdog", level="WARNING") as logs,
+        ):
             thread.start()
             inside.wait(2)
             time.sleep(0.1)
