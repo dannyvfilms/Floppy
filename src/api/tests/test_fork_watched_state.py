@@ -24,13 +24,18 @@ from app.models import (
     Status,
     WatchStateChange,
     WatchStateOrigin,
+    WatchStateSequence,
 )
 from app.services.watch_state import effective_state, record_state_change
 from integrations.models import (
     CAPABILITY_WATCHED_READ,
+    IntegrationToken,
+    OutboundStateDelivery,
     StateConflict,
     StateConflictReason,
     StateConflictStatus,
+    SyncBinding,
+    SyncBindingStatus,
     SyncClientKind,
     SyncDirection,
 )
@@ -374,6 +379,148 @@ class ConnectionsTests(WatchedStateAPITestCase):
             entry["unavailable_capabilities"],
             [CAPABILITY_WATCHED_READ],
         )
+
+
+class RegisterConnectionTests(WatchedStateAPITestCase):
+    """A pull client names itself once and is bound to read-only change emission."""
+
+    def setUp(self):
+        super().setUp()
+        self.register_url = reverse("api_sync_connections")
+        self.body = {"instance_key": "kodi-0123456789abcdef", "label": "Living room"}
+
+    def _register(self, body=None):
+        return self.client.post(
+            self.register_url,
+            data=self.body if body is None else body,
+            format="json",
+        )
+
+    def test_registering_creates_an_active_pull_only_kodi_binding(self):
+        response = self._register()
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertEqual(payload["client_kind"], SyncClientKind.KODI.value)
+        self.assertEqual(payload["status"], SyncBindingStatus.ACTIVE.value)
+        self.assertEqual(payload["capabilities"], [CAPABILITY_WATCHED_READ])
+        self.assertEqual(payload["directions"], [SyncDirection.OUTBOUND.value])
+        self.assertTrue(payload["origin_key"])
+        binding = SyncBinding.objects.get(user=self.user)
+        self.assertEqual(binding.origin_key, payload["origin_key"])
+        self.assertEqual(binding.instance_key, self.body["instance_key"])
+        self.assertEqual(binding.label, "Living room")
+
+    def test_registering_turns_change_emission_on(self):
+        self._register()
+
+        self.assertTrue(
+            WatchStateSequence.objects.get(user=self.user).emit_changes,
+        )
+
+    def test_registering_twice_returns_the_same_binding(self):
+        first = self._register().json()
+        second = self._register()
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["id"], first["id"])
+        self.assertEqual(second.json()["origin_key"], first["origin_key"])
+        self.assertEqual(SyncBinding.objects.filter(user=self.user).count(), 1)
+
+    def test_registering_again_restores_a_disabled_binding(self):
+        first = self._register().json()
+        SyncBinding.objects.filter(pk=first["id"]).update(
+            status=SyncBindingStatus.DISABLED.value,
+        )
+
+        response = self._register()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], SyncBindingStatus.ACTIVE.value)
+        self.assertEqual(response.json()["origin_key"], first["origin_key"])
+
+    def test_registering_does_not_override_a_kill_switch(self):
+        first = self._register().json()
+        SyncBinding.objects.filter(pk=first["id"]).update(kill_switch=True)
+
+        response = self._register()
+
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(SyncBinding.objects.get(pk=first["id"]).kill_switch)
+
+    def test_registering_leaves_an_already_broader_binding_alone(self):
+        first = self._register().json()
+        binding = SyncBinding.objects.get(pk=first["id"])
+        binding.approved_capabilities = [CAPABILITY_WATCHED_READ, "play.push"]
+        binding.save(update_fields=["approved_capabilities"])
+
+        self._register()
+
+        binding.refresh_from_db()
+        self.assertEqual(
+            binding.approved_capabilities,
+            [CAPABILITY_WATCHED_READ, "play.push"],
+        )
+
+    def test_another_user_registering_the_same_key_gets_their_own_binding(self):
+        mine = self._register().json()
+        other = get_user_model().objects.create_user(username="other")
+        self.client.credentials(HTTP_X_API_KEY=other.token)
+
+        theirs = self._register()
+
+        self.assertEqual(theirs.status_code, 201)
+        self.assertNotEqual(theirs.json()["origin_key"], mine["origin_key"])
+        self.assertEqual(SyncBinding.objects.filter(user=other).count(), 1)
+        self.assertEqual(SyncBinding.objects.filter(user=self.user).count(), 1)
+
+    def test_a_registered_binding_appears_in_the_connections_list(self):
+        registered = self._register().json()
+
+        listed = self.client.get(self.register_url).json()["results"]
+
+        self.assertEqual([row["id"] for row in listed], [registered["id"]])
+
+    def test_a_missing_or_malformed_instance_key_is_rejected(self):
+        for body in (
+            {},
+            {"instance_key": ""},
+            {"instance_key": "   "},
+            {"instance_key": 12},
+            {"instance_key": "x" * 256},
+            {"instance_key": "kodi", "label": 5},
+            {"instance_key": "kodi", "label": "x" * 256},
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(self._register(body).status_code, 400)
+        self.assertFalse(SyncBinding.objects.filter(user=self.user).exists())
+
+    def test_registration_requires_authentication(self):
+        self.client.credentials()
+
+        self.assertIn(self._register().status_code, (401, 403))
+
+    def test_a_default_tracking_token_can_register(self):
+        _, secret = IntegrationToken.generate(user=self.user, name="Kodi")
+        self.client.credentials(HTTP_X_API_KEY=secret)
+
+        self.assertEqual(self._register().status_code, 201)
+
+    def test_changes_after_registering_are_logged_but_never_delivered(self):
+        self._register()
+
+        record_state_change(
+            self.user,
+            self.item,
+            watched=True,
+            origin_kind=WatchStateOrigin.LOCAL_API.value,
+        )
+
+        self.assertEqual(
+            WatchStateChange.objects.filter(user=self.user).count(),
+            1,
+        )
+        self.assertFalse(OutboundStateDelivery.objects.exists())
 
 
 class ConflictTests(WatchedStateAPITestCase):

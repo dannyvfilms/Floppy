@@ -173,7 +173,12 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_watched_state.WatchedStateView": {"GET": _R, "PUT": _W},
     "api.fork_views_watched_state.WatchedStateChangeFeedView": {"GET": "sync:read"},
     "api.fork_views_progress_changes.ProgressChangeFeedView": {"GET": "sync:read"},
-    "api.fork_views_watched_state.SyncConnectionsView": {"GET": "sync:read"},
+    "api.fork_views_watched_state.SyncConnectionsView": {
+        "GET": "sync:read",
+        # A pull client naming itself. The binding it creates can only read, so
+        # this stays within the tracking preset instead of needing sync:write.
+        "POST": "sync:read",
+    },
     "api.fork_views_watched_state.SyncConflictsView": {"GET": "sync:read"},
     "api.fork_views_watched_state.SyncConflictResolveView": {"POST": "sync:write"},
     "api.fork_views_users.UserPreferencesView": {

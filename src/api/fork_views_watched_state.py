@@ -21,16 +21,20 @@ from app.services.watch_state import (
     retained_change_range,
 )
 from integrations.models import (
+    CAPABILITY_WATCHED_READ,
     OutboundDeliveryStatus,
     StateConflict,
     StateConflictStatus,
     SyncBinding,
     SyncCheckpoint,
+    SyncClientKind,
+    SyncDirection,
 )
 from integrations.state.checkpoints import (
     WATCHED_STATE_RESOURCE,
     record_applied_position,
 )
+from integrations.state.identity import activate_binding, get_or_create_binding
 
 from .fork_views_playback import item_reference, show_item_map
 from .helpers import check_source_type, check_valid_type, resolve_item_queryset
@@ -38,6 +42,7 @@ from .helpers import check_source_type, check_valid_type, resolve_item_queryset
 logger = logging.getLogger(__name__)
 
 MAX_CHANGE_PAGE = 200
+MAX_CONNECTION_FIELD = 255
 
 
 def _serialize_state(state, item):
@@ -317,6 +322,66 @@ class WatchedStateChangeFeedView(drf_views.APIView):
 # /api/v1/sync/connections/
 class SyncConnectionsView(drf_views.APIView):
     """Report what each connection is actually allowed and able to do."""
+
+    def post(self, request):
+        """Register the calling Kodi client as a pull-only connection.
+
+        Idempotent on the client's own instance key. The binding may read
+        watched state and nothing else: it holds no push capability, so no
+        delivery is ever queued for it, and its only effect is to turn on the
+        change log the client then pulls from.
+        """
+        instance_key = request.data.get("instance_key")
+        label = request.data.get("label", "")
+        if not isinstance(instance_key, str) or not instance_key.strip():
+            return Response(
+                {"detail": "`instance_key` must be a non-empty string."},
+                status=HTTP.BAD_REQUEST,
+            )
+        if not isinstance(label, str) or max(len(instance_key), len(label)) > (
+            MAX_CONNECTION_FIELD
+        ):
+            return Response(
+                {"detail": "`label` must be a string; both fit in 255 characters."},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        binding, created = get_or_create_binding(
+            request.user,
+            SyncClientKind.KODI.value,
+            instance_key=instance_key.strip(),
+            label=label,
+        )
+        if binding.kill_switch:
+            return Response(
+                {"detail": "This connection is switched off by its owner."},
+                status=HTTP.CONFLICT,
+            )
+        if not (
+            binding.is_operational()
+            and binding.allows(
+                SyncDirection.OUTBOUND.value,
+                CAPABILITY_WATCHED_READ,
+            )
+        ):
+            activate_binding(
+                binding,
+                capabilities=[CAPABILITY_WATCHED_READ],
+                directions=[SyncDirection.OUTBOUND.value],
+            )
+
+        return Response(
+            {
+                "id": binding.pk,
+                "client_kind": binding.client_kind,
+                "label": binding.label,
+                "status": binding.status,
+                "directions": binding.approved_directions,
+                "capabilities": binding.approved_capabilities,
+                "origin_key": binding.origin_key,
+            },
+            status=HTTP.CREATED if created else HTTP.OK,
+        )
 
     def get(self, request):
         """Return connections, their directions, and unavailable capabilities."""
