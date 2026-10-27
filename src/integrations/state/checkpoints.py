@@ -13,6 +13,7 @@ client fetched a page and then died before applying it.
 import logging
 
 from django.db.models import Min
+from django.utils import timezone
 
 from integrations.models import (
     CAPABILITY_WATCHED_PULL,
@@ -26,12 +27,24 @@ logger = logging.getLogger(__name__)
 WATCHED_STATE_RESOURCE = "watched_state"
 
 
-def record_applied_position(binding, sequence, *, resource=WATCHED_STATE_RESOURCE):
+def record_applied_position(
+    binding, sequence, *, resource=WATCHED_STATE_RESOURCE, create=True,
+):
     """Record that ``binding`` has applied everything up to ``sequence``.
 
     Never moves a checkpoint backwards: an out-of-order or replayed request
-    must not re-expose changes that were already compacted away.
+    must not re-expose changes that were already compacted away. With
+    ``create=False`` only an existing checkpoint advances, for a pull client
+    whose checkpoint a snapshot alone may create.
     """
+    if not create:
+        SyncCheckpoint.objects.filter(
+            binding=binding,
+            resource=resource,
+            direction=SyncDirection.OUTBOUND.value,
+            last_sequence__lt=sequence,
+        ).update(last_sequence=sequence, cursor=str(sequence), updated_at=timezone.now())
+        return None
     checkpoint, created = SyncCheckpoint.objects.get_or_create(
         binding=binding,
         resource=resource,

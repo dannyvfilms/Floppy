@@ -33,6 +33,14 @@ from app.tasks_watch_state import (
     ensure_watch_state_repair,
     repair_watch_state,
 )
+from integrations.models import (
+    CAPABILITY_WATCHED_PULL,
+    SyncCheckpoint,
+    SyncClientKind,
+    SyncDirection,
+)
+from integrations.state.checkpoints import pin_snapshot_position
+from integrations.state.identity import activate_binding, get_or_create_binding
 
 
 def setUpModule():
@@ -217,6 +225,33 @@ class RepairTests(BackfillTests):
         self.assertEqual(states.count(), 3)
         self.assertTrue(all(state.watched for state in states))
         self.assertEqual(WatchStateChange.objects.count(), 0)
+
+    def test_a_manual_backfill_voids_each_processed_users_pull_position(self):
+        other = get_user_model().objects.create_user(username="untouched")
+        mine = self._pull_binding_with_position(self.user)
+        theirs = self._pull_binding_with_position(other)
+
+        backfill_watch_state(user_id=self.user.id)
+
+        self.assertFalse(SyncCheckpoint.objects.filter(binding=mine).exists())
+        self.assertTrue(SyncCheckpoint.objects.filter(binding=theirs).exists())
+
+        backfill_watch_state()
+
+        self.assertFalse(SyncCheckpoint.objects.filter(binding=theirs).exists())
+
+    @staticmethod
+    def _pull_binding_with_position(user):
+        binding, _ = get_or_create_binding(
+            user, SyncClientKind.KODI.value, instance_key="kodi",
+        )
+        activate_binding(
+            binding,
+            capabilities=[CAPABILITY_WATCHED_PULL],
+            directions=[SyncDirection.OUTBOUND.value],
+        )
+        pin_snapshot_position(binding, 3)
+        return binding
 
     def test_finished_repair_does_not_run_again(self):
         ensure_watch_state_repair()

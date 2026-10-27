@@ -99,7 +99,10 @@ def backfill_user_watch_state(user, *, after_item_id=0, limit=BACKFILL_BATCH_SIZ
 
 @shared_task(name="Backfill canonical watch state")
 def backfill_watch_state(user_id=None):
-    """Project canonical state for one user, or for everyone."""
+    """Project canonical state for one user, or for everyone.
+
+    Projection is silent, so each finished user's pull clients resnapshot.
+    """
     user_model = get_user_model()
     users = (
         user_model.objects.filter(id=user_id)
@@ -115,6 +118,7 @@ def backfill_watch_state(user_id=None):
             if cursor is None:
                 break
             projected += 1
+        _void_pull_positions(user)
 
     logger.info(
         "Watch state backfill complete (users=%s, batches=%s, rows=%s)",

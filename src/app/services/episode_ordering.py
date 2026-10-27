@@ -182,7 +182,7 @@ def preview_change(tv, order):
 
 @transaction.atomic
 def apply_change(tv, order, *, token, resolutions):
-    """Apply a fully resolved preview, logging the watch movements when emitting."""
+    """Apply a fully resolved preview without emitting external watch decisions."""
     from app.services.watch_state import project_watch_state
 
     tv = TV.objects.select_for_update().get(pk=tv.pk, user_id=tv.user_id)
@@ -266,7 +266,7 @@ def apply_change(tv, order, *, token, resolutions):
         )),
     )
     for item in Item.objects.filter(pk__in=touched):
-        project_watch_state(tv.user, item)
+        project_watch_state(tv.user, item, record_changes=False)
     journal.before_state = {**journal.before_state, "after_watches": {
         str(row.pk): _watch_values(row) for row in _watches(tv)
     }}
@@ -279,7 +279,15 @@ def apply_change(tv, order, *, token, resolutions):
         resolution.get("fields", {}).get("end_date") for resolution in resolutions
     ]
     statistics_sync.mark_days(tv.user_id, moved_days, reason="episode_order_change")
+    _void_pull_positions(tv.user)
     return journal
+
+
+def _void_pull_positions(user):
+    """Make pull clients resnapshot: the remap moved state the feed never logged."""
+    from integrations.state.checkpoints import reset_pull_positions
+
+    reset_pull_positions(user)
 
 
 def _watch_values(row):
@@ -329,7 +337,7 @@ def revert_change(tv):
     from django.utils.dateparse import parse_datetime
 
     from app import statistics_sync
-    from app.services.watch_state import project_watch_state
+    from app.services.watch_state import project_watch_state, suspend_projection
 
     tv = TV.objects.select_for_update().get(pk=tv.pk, user_id=tv.user_id)
     change = latest_reversible_change(tv)
@@ -344,7 +352,10 @@ def revert_change(tv):
         raise ValueError(blocker)
     touched = {row.item_id for row in current}
     moved_days = [row.end_date for row in current]
-    Episode.all_objects.filter(pk__in=created).delete()
+    # Deleting temporary custom-order rows fires normal projection signals.
+    # This remap is not a viewing decision; project the final state below.
+    with suspend_projection():
+        Episode.all_objects.filter(pk__in=created).delete()
     for watch_id, row in restored.items():
         values = {field: row[field] for field in WATCH_FIELDS}
         for field in ("start_date", "end_date"):
@@ -368,6 +379,7 @@ def revert_change(tv):
     change.before_state = {**before, "reverted": True}
     change.save(update_fields=["before_state"])
     for item in Item.objects.filter(pk__in=touched):
-        project_watch_state(tv.user, item)
+        project_watch_state(tv.user, item, record_changes=False)
     statistics_sync.mark_days(tv.user_id, moved_days, reason="episode_order_change")
+    _void_pull_positions(tv.user)
     return change

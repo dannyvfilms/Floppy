@@ -14,6 +14,7 @@ from app.models import (
     Season,
     Sources,
     Status,
+    WatchState,
     WatchStateChange,
     WatchStateSequence,
 )
@@ -28,6 +29,19 @@ from app.services.episode_ordering import (
 )
 from app.services.order_resolution import resolve_incoming_episode
 from app.templatetags.app_tags import media_url
+from integrations.models import (
+    CAPABILITY_PLAY_REMOVE,
+    CAPABILITY_WATCHED_PULL,
+    CAPABILITY_WATCHED_PUSH_PLAYED,
+    CAPABILITY_WATCHED_PUSH_UNPLAYED,
+    CAPABILITY_WATCHED_READ,
+    OutboundStateDelivery,
+    SyncCheckpoint,
+    SyncClientKind,
+    SyncDirection,
+)
+from integrations.state.checkpoints import pin_snapshot_position
+from integrations.state.identity import activate_binding, get_or_create_binding
 
 
 class EpisodeOrderingTests(TestCase):
@@ -475,49 +489,84 @@ class EpisodeOrderingPageTests(TestCase):
         self.assertTrue(context["can_revert"])
 
 
-class EpisodeOrderChangeLogTests(TestCase):
-    """Moving a viewing between episodes is a real state movement, so it is logged."""
+def make_binding(user, client_kind, capabilities):
+    """Return an active outbound binding with exactly these capabilities."""
+    binding, _ = get_or_create_binding(
+        user, client_kind, instance_key=client_kind, profile_key="u",
+    )
+    activate_binding(
+        binding, capabilities=capabilities, directions=[SyncDirection.OUTBOUND.value],
+    )
+    return binding
+
+
+class EpisodeOrderOutboundTests(TestCase):
+    """Moving a viewing between episodes must never be delivered to a provider.
+
+    The movement derives "unwatched" on every provider-numbered episode it
+    leaves, and the adapters only refuse the custom-numbered destination. So the
+    projection writes state without recording changes, and pull clients are told
+    to resnapshot instead.
+    """
 
     def setUp(self):
-        """Seed a show with a watched episode and turn change emission on."""
+        """Seed a show with watches, a provider binding and a pull binding."""
         _voyager(self)
         WatchStateSequence.objects.update_or_create(
             user=self.user, defaults={"emit_changes": True},
         )
+        self.provider = make_binding(
+            self.user, SyncClientKind.JELLYFIN.value,
+            [CAPABILITY_WATCHED_READ, CAPABILITY_WATCHED_PUSH_PLAYED,
+             CAPABILITY_WATCHED_PUSH_UNPLAYED, CAPABILITY_PLAY_REMOVE],
+        )
+        self.pull = make_binding(
+            self.user, SyncClientKind.KODI.value, [CAPABILITY_WATCHED_PULL],
+        )
+        pin_snapshot_position(self.pull, 5)
         self.resolutions = [
             {"watch_ids": [self.watches[15].pk], "episode_ids": ["t15", "t16"], "archive": False},
             {"watch_ids": [self.watches[16].pk], "episode_ids": ["t17"], "archive": False},
             {"watch_ids": [self.watches[17].pk], "episode_ids": [], "archive": True},
         ]
 
-    def _changes(self):
-        return WatchStateChange.objects.filter(user=self.user)
-
-    def test_applying_an_order_logs_the_movement_when_emitting(self):
-        preview = preview_change(self.tv, self.order)
-
-        apply_change(self.tv, self.order, token=preview["token"], resolutions=self.resolutions)
-
-        moved = self._changes()
-        self.assertTrue(moved.filter(watched=True, item__episode_order=self.order).exists())
-        self.assertTrue(moved.filter(watched=False).exists())
-
-    def test_applying_an_order_logs_nothing_when_not_emitting(self):
-        WatchStateSequence.objects.filter(user=self.user).update(emit_changes=False)
-        preview = preview_change(self.tv, self.order)
-
-        apply_change(self.tv, self.order, token=preview["token"], resolutions=self.resolutions)
-
-        self.assertFalse(self._changes().exists())
-
-    def test_reverting_an_order_logs_the_movement_back(self):
+    def _apply(self):
         preview = preview_change(self.tv, self.order)
         apply_change(self.tv, self.order, token=preview["token"], resolutions=self.resolutions)
-        applied = self._changes().count()
+
+    def _pinned(self):
+        return SyncCheckpoint.objects.filter(binding=self.pull).first()
+
+    def test_applying_an_order_delivers_nothing_and_logs_nothing(self):
+        self._apply()
+
+        self.assertFalse(OutboundStateDelivery.objects.exists())
+        self.assertFalse(WatchStateChange.objects.filter(user=self.user).exists())
+        self.assertTrue(
+            WatchState.objects.filter(
+                user=self.user, item__episode_order=self.order, watched=True,
+            ).exists(),
+        )
+
+    def test_reverting_an_order_delivers_nothing_and_logs_nothing(self):
+        self._apply()
 
         revert_change(self.tv)
 
-        self.assertGreater(self._changes().count(), applied)
-        self.assertTrue(
-            self._changes().filter(watched=True, item__episode_order__isnull=True).exists(),
-        )
+        self.assertFalse(OutboundStateDelivery.objects.exists())
+        self.assertFalse(WatchStateChange.objects.filter(user=self.user).exists())
+
+    def test_applying_an_order_drops_the_pull_checkpoint(self):
+        self.assertIsNotNone(self._pinned())
+
+        self._apply()
+
+        self.assertIsNone(self._pinned())
+
+    def test_reverting_an_order_drops_the_pull_checkpoint(self):
+        self._apply()
+        pin_snapshot_position(self.pull, 9)
+
+        revert_change(self.tv)
+
+        self.assertIsNone(self._pinned())

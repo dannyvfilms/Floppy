@@ -52,6 +52,7 @@ from integrations.models import (
 from integrations.state.checkpoints import (
     compaction_watermark,
     record_applied_position,
+    reset_pull_positions,
 )
 from integrations.state.identity import (
     activate_binding,
@@ -1220,6 +1221,14 @@ class PullConnectionGateTests(PullSyncTestCase):
         )
 
         self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "cursor_expired")
+        self.assertEqual(response.json()["reason"], "connection_missing")
+
+    def test_a_snapshot_for_an_unknown_connection_still_says_inactive(self):
+        response = self._snapshot(connection="nope")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["code"], "connection_inactive")
         self.assertEqual(response.json()["reason"], "missing")
 
     def test_an_unnamed_legacy_feed_pull_is_unchanged(self):
@@ -1301,6 +1310,24 @@ class PullGapTests(PullSyncTestCase):
             {first.state.item.media_id, missed.media_id},
         )
         self.assertEqual(self._feed(fresh["resume_cursor"]).status_code, 200)
+
+    def test_a_feed_acknowledgement_advances_the_snapshot_checkpoint(self):
+        pinned = self._snapshot().json()["resume_cursor"]
+
+        self.assertEqual(self._feed(pinned + 3).status_code, 200)
+
+        self.assertEqual(self._pinned().last_sequence, pinned + 3)
+
+    def test_a_feed_acknowledgement_never_recreates_a_voided_checkpoint(self):
+        """A request that passed the gate before a void must not undo it."""
+        pinned = self._snapshot().json()["resume_cursor"]
+        reset_pull_positions(self.user)
+        self.assertIsNone(self._pinned())
+
+        with patch.object(api_views.WatchedStateChangeFeedView, "_pull_problem", return_value=None):
+            self.assertEqual(self._feed(pinned + 3).status_code, 200)
+
+        self.assertIsNone(self._pinned())
 
     def test_registering_a_pending_binding_drops_any_old_position(self):
         record_applied_position(self.binding, 4)

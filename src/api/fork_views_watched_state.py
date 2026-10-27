@@ -389,7 +389,10 @@ class WatchedStateChangeFeedView(drf_views.APIView):
         # The server cannot know that any earlier, and advancing on delivery
         # would skip whatever a client fetched but died before applying.
         if binding is not None and cursor > 0:
-            record_applied_position(binding, cursor)
+            # A pull client's checkpoint is created only by its snapshot. A
+            # request that passed the gate before a repair or order change
+            # voided it must not bring it back.
+            record_applied_position(binding, cursor, create=not pulls)
 
         changes = changes_since(request.user, cursor, limit=limit)
         show_map = show_item_map([change.item for change in changes if change.item])
@@ -435,7 +438,10 @@ class WatchedStateChangeFeedView(drf_views.APIView):
         record no position, and so never let the log compact past them. A name
         that matches nothing is refused rather than treated as unnamed: the
         client believes it has a connection, and silently serving it as if it
-        had none hides that it must register again.
+        had none hides that it must register again. The refusal is the
+        ``cursor_expired`` every released client already answers with a
+        resnapshot; a pull client's snapshot then says ``connection_inactive``
+        and it registers again.
         """
         origin_key = request.query_params.get("connection")
         if not origin_key:
@@ -445,7 +451,11 @@ class WatchedStateChangeFeedView(drf_views.APIView):
             origin_key=origin_key,
         ).first()
         if binding is None:
-            return None, _inactive("missing")
+            return None, _cursor_expired(
+                "connection_missing",
+                "No connection with this name exists. Take a fresh snapshot "
+                "and register again if it says so.",
+            )
         return binding, None
 
     @staticmethod
