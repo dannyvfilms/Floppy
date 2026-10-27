@@ -40,7 +40,7 @@ SCOPE_DESCRIPTIONS = {
     "imports:read": "Read import activity.",
     "imports:write": "Start imports.",
     "exports:read": "Download exports.",
-    "sync:read": "Read sync connections, change feeds, and conflicts.",
+    "sync:read": "Read sync connections, change feeds, watched snapshots, and conflicts.",
     "sync:write": "Resolve sync conflicts.",
     "user:read": "Read preferences, sidebar, and notification settings.",
     "user:write": "Change preferences, sidebar, and notification settings.",
@@ -172,6 +172,7 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_tracking.HistoryRecordView": {"DELETE": _W},
     "api.fork_views_watched_state.WatchedStateView": {"GET": _R, "PUT": _W},
     "api.fork_views_watched_state.WatchedStateChangeFeedView": {"GET": "sync:read"},
+    "api.fork_views_watched_state.WatchedStateSnapshotView": {"GET": "sync:read"},
     "api.fork_views_progress_changes.ProgressChangeFeedView": {"GET": "sync:read"},
     "api.fork_views_watched_state.SyncConnectionsView": {
         "GET": "sync:read",

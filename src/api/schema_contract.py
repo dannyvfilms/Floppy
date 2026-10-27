@@ -443,6 +443,10 @@ EXPECTED_SCHEMA_ERRORS: frozenset[SchemaFinding] = frozenset(
             "api.fork_views_watched_state.WatchedStateChangeFeedView",
             "serializer-unresolved",
         ),
+        (
+            "api.fork_views_watched_state.WatchedStateSnapshotView",
+            "serializer-unresolved",
+        ),
         ("api.fork_views_watched_state.WatchedStateView", "serializer-unresolved"),
         ("api.fork_views_tracking.HistoryRecordView", "serializer-unresolved"),
         ("api.fork_views_tracking.HistoryView", "serializer-unresolved"),

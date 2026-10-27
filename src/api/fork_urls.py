@@ -378,6 +378,11 @@ urlpatterns = [
         name="api_sync_changes",
     ),
     re_path(
+        r"^sync/watched-state/?$",
+        fork_views_watched_state.WatchedStateSnapshotView.as_view(),
+        name="api_sync_watched_state",
+    ),
+    re_path(
         r"^sync/progress-changes/?$",
         fork_views_progress_changes.ProgressChangeFeedView.as_view(),
         name="api_sync_progress_changes",

@@ -140,6 +140,24 @@ review. It never silently overwrites a user's existing library.
 Start from `cursor=0`, which is always valid. Read `oldest_sequence` and
 `newest_sequence` from any feed response to know what the server still holds.
 
+### Pull-only clients: register and take a snapshot
+
+A client that only reads (Kodi's Umbrella add-on) registers itself with
+`POST /api/v1/sync/connections/` and `{"instance_key": "<stable random id>",
+"label": "<optional>"}`. It is idempotent: the same key returns the same
+binding (`201` the first time, `200` after) and its `origin_key`. The binding
+holds `watched.read` only, so it turns the change log on and never queues a
+delivery. A binding switched off with its kill switch returns `409`.
+
+To fill a local cache without replaying history, page through
+`GET /api/v1/sync/watched-state/` (`limit` 1-1000, default 500). It returns
+watched movies and episodes only. Pass each response's `next_cursor` as
+`cursor` and its `resume_cursor` back as `resume_cursor`; stop when `has_more`
+is false. When the last page is applied, continue with
+`GET /api/v1/sync/changes/?cursor=<resume_cursor>`. Rows that changed while you
+paged may arrive twice, never zero times. `limit` on the change feed must also
+be a positive integer; values above its cap are clamped.
+
 ## 3. Playback updates
 
 | Purpose | Call |

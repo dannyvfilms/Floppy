@@ -10,7 +10,9 @@ import logging
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITestCase
@@ -319,6 +321,39 @@ class ChangeFeedTests(WatchedStateAPITestCase):
 
         self.assertEqual(payload["results"], [])
 
+    def test_an_unusable_limit_is_rejected(self):
+        for limit in ("0", "-1", "abc", ""):
+            with self.subTest(limit=limit):
+                response = self.client.get(
+                    reverse("api_sync_changes"),
+                    {"limit": limit},
+                )
+                self.assertEqual(response.status_code, 400)
+
+    def test_an_oversized_limit_is_clamped_not_refused(self):
+        """Existing clients that ask for more than the cap keep working."""
+        response = self.client.get(reverse("api_sync_changes"), {"limit": 100000})
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_an_integer_cursor_keeps_working_after_registration(self):
+        """Registering must not change what a legacy integer cursor means."""
+        self.client.post(
+            reverse("api_sync_connections"),
+            data={"instance_key": "kodi-legacy"},
+            format="json",
+        )
+        self.client.put(
+            self.url,
+            data={"watched": True},
+            content_type="application/json",
+        )
+
+        payload = self.client.get(reverse("api_sync_changes"), {"cursor": 0}).json()
+
+        self.assertEqual(len(payload["results"]), 1)
+        self.assertEqual(payload["next_cursor"], payload["results"][0]["sequence"])
+
 
 class ChangeFeedEpisodeIdentityTests(WatchedStateAPITestCase):
     def test_an_episode_change_names_its_season_and_episode(self):
@@ -349,6 +384,286 @@ class ChangeFeedEpisodeIdentityTests(WatchedStateAPITestCase):
 
         self.assertEqual((row["season_number"], row["episode_number"]), (2, 3))
         self.assertEqual(row["ids"], {"tmdb": "1396", "imdb": "tt0903747"})
+
+
+class WatchedSnapshotTests(WatchedStateAPITestCase):
+    """The compact snapshot a pull client rebuilds its watched cache from."""
+
+    def setUp(self):
+        super().setUp()
+        self.snapshot_url = reverse("api_sync_watched_state")
+        self.show = Item.objects.create(
+            media_id="1396",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Breaking Bad",
+            provider_external_ids={"tmdb_id": 1396, "imdb_id": "tt0903747"},
+        )
+
+    def _watch(self, item, user=None, *, watched=True):
+        return record_state_change(
+            user or self.user,
+            item,
+            watched=watched,
+            play_count=1 if watched else 0,
+            watched_at=_dt(1) if watched else None,
+            origin_kind=WatchStateOrigin.LOCAL_API.value,
+        )
+
+    def _movie(self, number):
+        return Item.objects.create(
+            media_id=str(10_000 + number),
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title=f"Movie {number}",
+        )
+
+    def _episode(self, season, episode):
+        return Item.objects.create(
+            media_id=self.show.media_id,
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title=f"Episode {episode}",
+            season_number=season,
+            episode_number=episode,
+        )
+
+    def _walk(self, **params):
+        """Return every row of a snapshot, page by page, plus the pages."""
+        pages = []
+        query = dict(params)
+        while True:
+            payload = self.client.get(self.snapshot_url, query).json()
+            pages.append(payload)
+            if not payload["has_more"]:
+                break
+            query["cursor"] = payload["next_cursor"]
+            query["resume_cursor"] = payload["resume_cursor"]
+        return [row for page in pages for row in page["results"]], pages
+
+    def test_a_movie_row_is_compact(self):
+        self._watch(self.item)
+
+        payload = self.client.get(self.snapshot_url).json()
+
+        self.assertEqual(
+            set(payload),
+            {"results", "next_cursor", "has_more", "resume_cursor"},
+        )
+        self.assertEqual(
+            payload["results"],
+            [
+                {
+                    "media_id": "603",
+                    "source": Sources.TMDB.value,
+                    "media_type": MediaTypes.MOVIE.value,
+                    "season_number": None,
+                    "episode_number": None,
+                    "ids": {},
+                    "title": "The Matrix",
+                    "series_title": None,
+                    "play_count": 1,
+                    "last_watched_at": "2026-07-01T12:00:00Z",
+                },
+            ],
+        )
+
+    def test_an_episode_row_names_its_show_season_and_episode(self):
+        self._watch(self._episode(2, 3))
+
+        row = self.client.get(self.snapshot_url).json()["results"][0]
+
+        self.assertEqual(row["media_type"], MediaTypes.EPISODE.value)
+        self.assertEqual((row["season_number"], row["episode_number"]), (2, 3))
+        self.assertEqual(row["ids"], {"tmdb": "1396", "imdb": "tt0903747"})
+        self.assertEqual(row["series_title"], "Breaking Bad")
+
+    def test_a_row_matches_the_change_feed_identity_for_the_same_item(self):
+        self._watch(self._episode(2, 3))
+
+        snapshot = self.client.get(self.snapshot_url).json()["results"][0]
+        change = self.client.get(reverse("api_sync_changes")).json()["results"][0]
+
+        for key in ("media_id", "source", "media_type", "season_number"):
+            self.assertEqual(snapshot[key], change[key])
+        self.assertEqual(snapshot["episode_number"], change["episode_number"])
+        self.assertEqual(snapshot["ids"], change["ids"])
+
+    def test_only_watched_movies_and_episodes_are_returned(self):
+        watched_movie = self.item
+        self._watch(watched_movie)
+        self._watch(self._movie(1), watched=False)
+        self._watch(self._episode(1, 1))
+        self._watch(self.show)
+        self._watch(
+            Item.objects.create(
+                media_id="1396",
+                source=Sources.TMDB.value,
+                media_type=MediaTypes.SEASON.value,
+                title="Season 1",
+                season_number=1,
+            ),
+        )
+
+        rows, _ = self._walk()
+
+        self.assertCountEqual(
+            [(row["media_type"], row["media_id"]) for row in rows],
+            [
+                (MediaTypes.MOVIE.value, "603"),
+                (MediaTypes.EPISODE.value, "1396"),
+            ],
+        )
+
+    def test_another_users_states_are_never_returned(self):
+        other = get_user_model().objects.create_user(username="other")
+        self._watch(self.item, other)
+
+        self.assertEqual(self.client.get(self.snapshot_url).json()["results"], [])
+
+        self.client.credentials(HTTP_X_API_KEY=other.token)
+        self.assertEqual(len(self.client.get(self.snapshot_url).json()["results"]), 1)
+
+    def test_pages_cover_every_row_once_in_stable_item_order(self):
+        items = [self._movie(number) for number in range(5)]
+        for item in reversed(items):
+            self._watch(item)
+
+        rows, pages = self._walk(limit=2)
+
+        self.assertEqual(len(pages), 3)
+        self.assertEqual(
+            [row["media_id"] for row in rows],
+            [item.media_id for item in items],
+        )
+        self.assertEqual([page["has_more"] for page in pages], [True, True, False])
+
+    def test_an_exact_multiple_of_the_page_size_ends_without_a_phantom_page(self):
+        for number in range(4):
+            self._watch(self._movie(number))
+
+        _, pages = self._walk(limit=2)
+
+        self.assertEqual([page["has_more"] for page in pages], [True, False])
+        self.assertEqual(len(pages[-1]["results"]), 2)
+
+    def test_an_empty_snapshot_resumes_from_zero(self):
+        payload = self.client.get(self.snapshot_url).json()
+
+        self.assertEqual(payload["results"], [])
+        self.assertFalse(payload["has_more"])
+        self.assertEqual(payload["resume_cursor"], 0)
+
+    def test_the_resume_cursor_is_the_sequence_when_the_snapshot_began(self):
+        self._watch(self._movie(1))
+        self._watch(self._movie(2))
+        newest = WatchStateSequence.objects.get(user=self.user).last_sequence
+
+        payload = self.client.get(self.snapshot_url).json()
+
+        self.assertEqual(payload["resume_cursor"], newest)
+        self.assertGreater(newest, 0)
+
+    def test_a_change_between_pages_is_recovered_from_the_resume_cursor(self):
+        """No gap: whatever moves after page one is in the feed from the cursor."""
+        served = self._movie(1)
+        untouched = self._movie(2)
+        added_later = self._movie(3)
+        self._watch(served)
+        self._watch(untouched)
+        first = self.client.get(self.snapshot_url, {"limit": 1}).json()
+        resume = first["resume_cursor"]
+
+        self._watch(served, watched=False)
+        self._watch(added_later)
+        second = self.client.get(
+            self.snapshot_url,
+            {
+                "limit": 100,
+                "cursor": first["next_cursor"],
+                "resume_cursor": resume,
+            },
+        ).json()
+        feed = self.client.get(reverse("api_sync_changes"), {"cursor": resume}).json()
+
+        self.assertEqual(second["resume_cursor"], resume)
+        self.assertEqual(
+            {entry["media_id"] for entry in feed["results"]},
+            {served.media_id, added_later.media_id},
+        )
+        self.assertTrue(
+            all(entry["sequence"] > resume for entry in feed["results"]),
+        )
+
+    def test_a_later_page_requires_the_resume_cursor(self):
+        self._watch(self.item)
+
+        response = self.client.get(self.snapshot_url, {"cursor": 1})
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_unusable_limits_and_cursors_are_rejected(self):
+        for params in (
+            {"limit": "0"},
+            {"limit": "-1"},
+            {"limit": "abc"},
+            {"limit": ""},
+            {"cursor": "abc", "resume_cursor": "0"},
+            {"cursor": "-1", "resume_cursor": "0"},
+            {"cursor": "1", "resume_cursor": "abc"},
+            {"cursor": "1", "resume_cursor": "-1"},
+        ):
+            with self.subTest(params=params):
+                self.assertEqual(
+                    self.client.get(self.snapshot_url, params).status_code,
+                    400,
+                )
+
+    def test_an_oversized_limit_is_clamped(self):
+        for number in range(3):
+            self._watch(self._movie(number))
+
+        response = self.client.get(self.snapshot_url, {"limit": 10_000_000})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["results"]), 3)
+
+    def test_a_page_costs_the_same_queries_however_many_rows_it_holds(self):
+        def page_queries():
+            with CaptureQueriesContext(connection) as queries:
+                self.client.get(self.snapshot_url)
+            return len(queries)
+
+        for number in range(2):
+            self._watch(self._movie(number))
+            self._watch(self._episode(1, number + 1))
+        small = page_queries()
+        for number in range(2, 12):
+            self._watch(self._movie(number))
+            self._watch(self._episode(1, number + 1))
+
+        self.assertEqual(page_queries(), small)
+
+    def test_a_default_tracking_token_can_read_the_snapshot(self):
+        _, secret = IntegrationToken.generate(user=self.user, name="Kodi")
+        self.client.credentials(HTTP_X_API_KEY=secret)
+
+        self.assertEqual(self.client.get(self.snapshot_url).status_code, 200)
+
+    def test_a_token_without_sync_read_is_refused(self):
+        _, secret = IntegrationToken.generate(
+            user=self.user,
+            name="Narrow",
+            scopes=["catalog:read"],
+        )
+        self.client.credentials(HTTP_X_API_KEY=secret)
+
+        self.assertEqual(self.client.get(self.snapshot_url).status_code, 403)
+
+    def test_the_snapshot_requires_authentication(self):
+        self.client.credentials()
+
+        self.assertIn(self.client.get(self.snapshot_url).status_code, (401, 403))
 
 
 class ConnectionsTests(WatchedStateAPITestCase):

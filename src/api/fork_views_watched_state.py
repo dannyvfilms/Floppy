@@ -8,7 +8,12 @@ from django.utils import timezone
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
-from app.models import WatchStateOrigin
+from app.models import (
+    MediaTypes,
+    WatchState,
+    WatchStateOrigin,
+    WatchStateSequence,
+)
 from app.services.progress_changes import (
     PROGRESS_RESOURCE,
     retained_progress_range,
@@ -42,6 +47,29 @@ from .helpers import check_source_type, check_valid_type, resolve_item_queryset
 logger = logging.getLogger(__name__)
 
 MAX_CHANGE_PAGE = 200
+DEFAULT_SNAPSHOT_PAGE = 500
+MAX_SNAPSHOT_PAGE = 1000
+SNAPSHOT_MEDIA_TYPES = (MediaTypes.MOVIE.value, MediaTypes.EPISODE.value)
+
+
+def _integer_param(request, name, *, default, minimum):
+    """Return (value, error) for an integer query parameter at least ``minimum``."""
+    raw = request.query_params.get(name)
+    if raw is None:
+        return default, None
+    try:
+        value = int(raw)
+    except ValueError:
+        value = None
+    if value is None or value < minimum:
+        kind = "a positive" if minimum > 0 else "a non-negative"
+        return None, Response(
+            {"detail": f"{name} must be {kind} integer."},
+            status=HTTP.BAD_REQUEST,
+        )
+    return value, None
+
+
 MAX_CONNECTION_FIELD = 255
 
 
@@ -237,13 +265,10 @@ class WatchedStateChangeFeedView(drf_views.APIView):
                 status=HTTP.BAD_REQUEST,
             )
 
-        try:
-            limit = min(int(request.query_params.get("limit", 100)), MAX_CHANGE_PAGE)
-        except ValueError:
-            return Response(
-                {"detail": "limit must be an integer."},
-                status=HTTP.BAD_REQUEST,
-            )
+        limit, error = _integer_param(request, "limit", default=100, minimum=1)
+        if error is not None:
+            return error
+        limit = min(limit, MAX_CHANGE_PAGE)
 
         oldest, newest = retained_change_range(request.user)
         if oldest is not None and 0 < cursor < oldest - 1:
@@ -317,6 +342,101 @@ class WatchedStateChangeFeedView(drf_views.APIView):
             user=request.user,
             origin_key=origin_key,
         ).first()
+
+
+# /api/v1/sync/watched-state/
+class WatchedStateSnapshotView(drf_views.APIView):
+    """Serve every watched movie and episode, compactly, for a first sync."""
+
+    def get(self, request):
+        """Return one page of watched states, ordered by item.
+
+        Items are immutable keys, so paging by item id cannot skip a row that
+        a concurrent change would have moved. The first page records the
+        change-feed sequence and every later page repeats it: the client
+        applies the feed from that sequence once the snapshot is complete, so
+        a row changed mid-walk is at worst delivered twice, never lost.
+        """
+        limit, error = _integer_param(
+            request,
+            "limit",
+            default=DEFAULT_SNAPSHOT_PAGE,
+            minimum=1,
+        )
+        if error is not None:
+            return error
+        limit = min(limit, MAX_SNAPSHOT_PAGE)
+
+        cursor, error = _integer_param(request, "cursor", default=None, minimum=0)
+        if error is not None:
+            return error
+        resume_cursor, error = _integer_param(
+            request,
+            "resume_cursor",
+            default=None,
+            minimum=0,
+        )
+        if error is not None:
+            return error
+
+        if cursor is None:
+            cursor = 0
+            # Read before any row, so everything the rows miss is after it.
+            resume_cursor = (
+                WatchStateSequence.objects.filter(user=request.user)
+                .values_list("last_sequence", flat=True)
+                .first()
+                or 0
+            )
+        elif resume_cursor is None:
+            return Response(
+                {"detail": "resume_cursor is required with cursor."},
+                status=HTTP.BAD_REQUEST,
+            )
+
+        # One extra row says whether another page exists without a second query.
+        states = list(
+            WatchState.objects.filter(
+                user=request.user,
+                watched=True,
+                item__media_type__in=SNAPSHOT_MEDIA_TYPES,
+                item_id__gt=cursor,
+            )
+            .select_related("item")
+            .order_by("item_id")[: limit + 1],
+        )
+        has_more = len(states) > limit
+        states = states[:limit]
+
+        show_map = show_item_map([state.item for state in states])
+        results = []
+        for state in states:
+            item = state.item
+            show = show_map.get((item.source, item.media_id))
+            results.append(
+                {
+                    "media_id": item.media_id,
+                    "source": item.source,
+                    "media_type": item.media_type,
+                    **item_reference(item, show_map),
+                    "title": item.title,
+                    "series_title": show.title
+                    if show and item.media_type == MediaTypes.EPISODE.value
+                    else None,
+                    "play_count": state.play_count,
+                    "last_watched_at": state.last_watched_at,
+                },
+            )
+
+        return Response(
+            {
+                "results": results,
+                "next_cursor": states[-1].item_id if states else cursor,
+                "has_more": has_more,
+                "resume_cursor": resume_cursor,
+            },
+            status=HTTP.OK,
+        )
 
 
 # /api/v1/sync/connections/
