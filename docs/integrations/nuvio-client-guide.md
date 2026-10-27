@@ -144,19 +144,45 @@ Start from `cursor=0`, which is always valid. Read `oldest_sequence` and
 
 A client that only reads (Kodi's Umbrella add-on) registers itself with
 `POST /api/v1/sync/connections/` and `{"instance_key": "<stable random id>",
-"label": "<optional>"}`. It is idempotent: the same key returns the same
-binding (`201` the first time, `200` after) and its `origin_key`. The binding
-holds `watched.read` only, so it turns the change log on and never queues a
-delivery. A binding switched off with its kill switch returns `409`.
+"label": "<optional>"}`. The token needs `sync:write` on top of the tracking
+preset (the token form has a "Pull-sync client" preset), because registering
+turns the account's change log on. It is idempotent: the same key returns the
+same binding (`201` the first time, `200` after), its `origin_key`, and
+`resnapshot_required` (true until a snapshot is pinned). The binding holds
+`watched.pull` only, so it never queues a delivery and is never reconciled.
+An account holds at most 10 pull connections (`409 connection_limit`).
+
+Registration never overrides the owner. A connection that is off, needs
+reapproval or is paused returns `409 {"code": "connection_inactive",
+"reason": "disabled" | "needs_reapproval" | "kill_switch"}` and stays as it is:
+stop and tell the user. Only `reason: "missing"` means register again.
 
 To fill a local cache without replaying history, page through
-`GET /api/v1/sync/watched-state/` (`limit` 1-1000, default 500). It returns
+`GET /api/v1/sync/watched-state/?connection=<origin_key>` (`limit` 1-1000,
+default 500). `connection` is required (`400 connection_required`). It returns
 watched movies and episodes only. Pass each response's `next_cursor` as
-`cursor` and its `resume_cursor` back as `resume_cursor`; stop when `has_more`
-is false. When the last page is applied, continue with
-`GET /api/v1/sync/changes/?cursor=<resume_cursor>`. Rows that changed while you
-paged may arrive twice, never zero times. `limit` on the change feed must also
-be a positive integer; values above its cap are clamped.
+`cursor` and the first page's `resume_cursor` back as `resume_cursor`; stop
+when `has_more` is false. The first page pins `resume_cursor` as the
+connection's checkpoint. When the last page is applied, continue with
+`GET /api/v1/sync/changes/?connection=<origin_key>&cursor=<resume_cursor>`.
+Rows that changed while you paged may arrive twice, never zero times.
+
+Errors on the snapshot and the named feed:
+
+| Response | Meaning | Do |
+|---|---|---|
+| `409 connection_inactive` (`reason`) | Not registered, not a pull connection, off, paused, or Floppy is not recording changes | Register again only for `missing`; otherwise stop |
+| `409 cursor_expired` | Cursor compacted, the log was off or state was repaired since your snapshot, or no snapshot is pinned (`reason` may be `resnapshot_required` or `projection_incomplete`) | Take a fresh snapshot |
+| `503 projection_incomplete` + `Retry-After` | Floppy is still rebuilding this account's watched state | Wait, then snapshot |
+| `400 invalid_resume_cursor` | `resume_cursor` is above what the server pinned | Restart the snapshot |
+
+Every snapshot and feed row carries both `watched_at` and `last_watched_at`
+(same value), plus `numbering` (`"provider"` or `"custom"`) and
+`episode_order_id`. A `custom` row uses the user's personal episode order, so
+its season and episode numbers do not match the show's provider numbering:
+skip it rather than guess. A named pull feed requires a pinned snapshot; the
+unnamed feed is unchanged. `limit` on the change feed must be a positive
+integer; values above its cap are clamped.
 
 ## 3. Playback updates
 

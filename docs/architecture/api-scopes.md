@@ -83,7 +83,7 @@ Do not describe Floppy as fully scope-gated until those are addressed.
 | `music:read` / `music:write` | Artists, albums, tracks, plays |
 | `podcasts:read` / `podcasts:write` | Shows, episodes, play state |
 | `statistics:read` / `statistics:write` | Read statistics; trigger a recompute |
-| `sync:read` / `sync:write` | Read sync connections, the change feed, and conflicts; resolve a conflict |
+| `sync:read` / `sync:write` | Read sync connections, the change feed, watched snapshots and conflicts; resolve a conflict and register a pull-sync client |
 | `imports:read` / `imports:write` | Import activity; start imports |
 | `exports:read` | Download exports |
 | `user:read` / `user:write` | Preferences, sidebar, notification settings |
@@ -125,6 +125,15 @@ watched state, and browse Discover. It cannot touch lists, music, podcasts,
 imports, exports, user settings, or metadata. `TRACKING_PRESET` and
 `integrations.models.DEFAULT_INTEGRATION_SCOPES` are asserted equal by test, so
 the documented preset and the minted default cannot drift apart.
+
+## The pull-sync preset
+
+`POST /api/v1/sync/connections/` registers a pull client and turns on the
+account's change log (a write per save), so it needs `sync:write`. The tracking
+preset does not carry it, and is unchanged. `scopes.PULL_SYNC_PRESET` is the
+tracking preset plus `sync:write`, offered as the "Pull-sync client" button in
+the token form for Umbrella-style clients. Registrations are capped at 10 per
+account, so a leaked token cannot pin the change log with abandoned bindings.
 
 ## List write bindings
 

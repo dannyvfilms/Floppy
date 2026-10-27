@@ -8,6 +8,7 @@ nothing will ever travel down it.
 """
 
 from integrations.models import (
+    CAPABILITY_WATCHED_PULL,
     CAPABILITY_WATCHED_PUSH_PLAYED,
     CAPABILITY_WATCHED_PUSH_UNPLAYED,
     CAPABILITY_WATCHED_READ,
@@ -31,7 +32,14 @@ DIRECTION_CHOICES = (
     (DIRECTION_OUTBOUND, "Floppy to provider"),
     (DIRECTION_BOTH, "Both"),
 )
-DIRECTION_LABELS = dict(DIRECTION_CHOICES)
+# A client that pulls from Floppy is not a provider: it has no inbound or
+# outbound traffic for Floppy to manage, only a switch.
+DIRECTION_PULL = "pull"
+PULL_DIRECTION_CHOICES = (
+    (DIRECTION_OFF, "Off"),
+    (DIRECTION_PULL, "Client pulls from Floppy"),
+)
+DIRECTION_LABELS = {**dict(DIRECTION_CHOICES), **dict(PULL_DIRECTION_CHOICES)}
 
 INBOUND_CAPABILITIES = (
     CAPABILITY_WATCHED_READ,
@@ -44,6 +52,7 @@ OUTBOUND_CAPABILITIES = (
 )
 
 CAPABILITY_LABELS = {
+    CAPABILITY_WATCHED_PULL: "Client pulls watched state from Floppy",
     CAPABILITY_WATCHED_READ: "Read watched state",
     CAPABILITY_WATCHED_WRITE_PLAYED: "Accept 'watched' from the provider",
     CAPABILITY_WATCHED_WRITE_UNPLAYED: "Accept 'unwatched' from the provider",
@@ -52,8 +61,15 @@ CAPABILITY_LABELS = {
 }
 
 
+def is_pull_only(binding):
+    """Return whether a binding exists only so a client can pull from Floppy."""
+    return set(binding.approved_capabilities or []) == {CAPABILITY_WATCHED_PULL}
+
+
 def current_direction(binding):
     """Return the direction choice a binding currently represents."""
+    if is_pull_only(binding):
+        return DIRECTION_PULL
     directions = set(binding.approved_directions or [])
     inbound = SyncDirection.INBOUND.value in directions
     outbound = SyncDirection.OUTBOUND.value in directions
@@ -125,6 +141,9 @@ def binding_rows(user):
         adapter = get_adapter(binding)
         supported = set(adapter.CAPABILITIES) if adapter is not None else set()
         approved = set(binding.approved_capabilities or [])
+        # Served by Floppy itself, so no provider adapter vouches for it.
+        supported |= approved & {CAPABILITY_WATCHED_PULL}
+        pull_only = is_pull_only(binding)
 
         rows.append(
             {
@@ -137,7 +156,10 @@ def binding_rows(user):
                 "kill_switch": binding.kill_switch,
                 "direction": current_direction(binding),
                 "direction_label": DIRECTION_LABELS[current_direction(binding)],
-                "direction_choices": DIRECTION_CHOICES,
+                "direction_choices": (
+                    PULL_DIRECTION_CHOICES if pull_only else DIRECTION_CHOICES
+                ),
+                "is_pull": pull_only,
                 "capability_rows": _capability_rows(approved, supported),
                 "has_adapter": adapter is not None,
                 "can_write": bool(supported & set(OUTBOUND_CAPABILITIES)),

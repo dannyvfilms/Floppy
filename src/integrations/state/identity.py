@@ -17,6 +17,7 @@ from integrations.models import (
     SyncBinding,
     SyncBindingStatus,
 )
+from integrations.state.checkpoints import reset_pull_positions
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +172,11 @@ def _sync_emit_changes_flag(user):
     if sequence.emit_changes != should_emit:
         sequence.emit_changes = should_emit
         sequence.save(update_fields=["emit_changes"])
+        if should_emit:
+            # While the log was off, saves moved state without recording it. A
+            # pull client's cursor from before that cannot be trusted to be
+            # complete, so each must take a fresh snapshot.
+            reset_pull_positions(user)
 
 
 def operational_bindings(user, *, direction=None, capability=None):

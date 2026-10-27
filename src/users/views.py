@@ -3303,6 +3303,9 @@ def integration_token_context(user):
         "integration_tracking_preset_json": json.dumps(
             list(DEFAULT_INTEGRATION_SCOPES),
         ),
+        "integration_pull_sync_preset_json": json.dumps(
+            list(api_scopes.PULL_SYNC_PRESET),
+        ),
         "catalog_grants": list(
             CatalogGrant.objects.filter(
                 user=user,

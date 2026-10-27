@@ -7,6 +7,7 @@ named rather than hidden.
 """
 
 import logging
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -15,6 +16,7 @@ from django.urls import reverse
 from app.models import Item, MediaTypes, Sources
 from integrations.imports.helpers import encrypt
 from integrations.models import (
+    CAPABILITY_WATCHED_PULL,
     CAPABILITY_WATCHED_PUSH_PLAYED,
     CAPABILITY_WATCHED_READ,
     CAPABILITY_WATCHED_WRITE_UNPLAYED,
@@ -301,3 +303,90 @@ class ConflictResolutionViewTests(TestCase):
 
         self.conflict.refresh_from_db()
         self.assertEqual(self.conflict.status, StateConflictStatus.OPEN.value)
+
+
+class PullBindingSettingsTests(TestCase):
+    """A client that pulls from Floppy is not a provider Floppy reads or writes."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="owner",
+            password="pw",
+        )
+        self.client.force_login(self.user)
+        self.binding, _ = get_or_create_binding(
+            self.user,
+            SyncClientKind.KODI.value,
+            instance_key="umbrella",
+        )
+        activate_binding(
+            self.binding,
+            capabilities=[CAPABILITY_WATCHED_PULL],
+            directions=[SyncDirection.OUTBOUND.value],
+        )
+
+    def _post(self, direction):
+        return self.client.post(
+            reverse("sync_direction_settings"),
+            {"binding_id": self.binding.pk, "direction": direction},
+        )
+
+    def test_the_row_says_the_client_pulls_and_offers_only_off_or_pull(self):
+        row = next(
+            row
+            for row in settings_view.binding_rows(self.user)
+            if row["id"] == self.binding.pk
+        )
+
+        self.assertEqual(row["direction"], settings_view.DIRECTION_PULL)
+        self.assertEqual(row["direction_label"], "Client pulls from Floppy")
+        self.assertEqual(
+            [value for value, _ in row["direction_choices"]],
+            [settings_view.DIRECTION_OFF, settings_view.DIRECTION_PULL],
+        )
+        pull = next(
+            capability
+            for capability in row["capability_rows"]
+            if capability["code"] == CAPABILITY_WATCHED_PULL
+        )
+        self.assertTrue(pull["approved"])
+        self.assertFalse(pull["unavailable"])
+
+    def test_a_provider_direction_is_refused_and_changes_nothing(self):
+        for direction in (
+            settings_view.DIRECTION_INBOUND,
+            settings_view.DIRECTION_OUTBOUND,
+            settings_view.DIRECTION_BOTH,
+        ):
+            with self.subTest(direction=direction):
+                self._post(direction)
+
+                self.binding.refresh_from_db()
+                self.assertEqual(
+                    self.binding.approved_capabilities,
+                    [CAPABILITY_WATCHED_PULL],
+                )
+                self.assertEqual(
+                    self.binding.approved_directions,
+                    [SyncDirection.OUTBOUND.value],
+                )
+
+    def test_the_user_can_turn_it_off_and_back_on(self):
+        self._post(settings_view.DIRECTION_OFF)
+        self.binding.refresh_from_db()
+        self.assertEqual(self.binding.status, SyncBindingStatus.DISABLED.value)
+
+        self._post(settings_view.DIRECTION_PULL)
+
+        self.binding.refresh_from_db()
+        self.assertEqual(self.binding.status, SyncBindingStatus.ACTIVE.value)
+        self.assertEqual(self.binding.approved_capabilities, [CAPABILITY_WATCHED_PULL])
+
+    def test_reconciliation_never_selects_a_pull_binding(self):
+        from integrations.tasks import reconcile_watched_state
+
+        with patch("integrations.tasks._state_sync._reconcile_binding") as reconcile:
+            self.assertEqual(reconcile_watched_state(), 0)
+            self.assertEqual(reconcile_watched_state(binding_id=self.binding.pk), 0)
+
+        reconcile.assert_not_called()

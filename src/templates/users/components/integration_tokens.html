@@ -170,7 +170,21 @@
         <legend class="text-[var(--color-text-secondary)] text-sm font-medium mb-2">Permissions</legend>
         <p class="text-[var(--color-text-muted)] text-xs mb-3">
           Pre-selected for a tracking client: scrobbling, resume progress, and saved items.
+          A client that keeps its own copy of your watched state (Umbrella) also needs
+          <span class="font-mono">sync:write</span> to register itself.
         </p>
+        <div class="flex gap-2 mb-3">
+          <button type="button"
+                  @click='scopes = {{ integration_tracking_preset_json }}'
+                  class="px-3 py-1 text-xs rounded bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] cursor-pointer">
+            Tracking client
+          </button>
+          <button type="button"
+                  @click='scopes = {{ integration_pull_sync_preset_json }}'
+                  class="px-3 py-1 text-xs rounded bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] cursor-pointer">
+            Pull-sync client
+          </button>
+        </div>
         <div class="grid gap-2 sm:grid-cols-2">
           {% for choice in integration_scope_choices %}
             <label class="flex items-start gap-2 p-2 rounded-md hover:bg-[var(--color-surface-strong)] cursor-pointer">

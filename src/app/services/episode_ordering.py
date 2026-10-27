@@ -182,7 +182,7 @@ def preview_change(tv, order):
 
 @transaction.atomic
 def apply_change(tv, order, *, token, resolutions):
-    """Apply a fully resolved preview without emitting external watch decisions."""
+    """Apply a fully resolved preview, logging the watch movements when emitting."""
     from app.services.watch_state import project_watch_state
 
     tv = TV.objects.select_for_update().get(pk=tv.pk, user_id=tv.user_id)
@@ -266,7 +266,7 @@ def apply_change(tv, order, *, token, resolutions):
         )),
     )
     for item in Item.objects.filter(pk__in=touched):
-        project_watch_state(tv.user, item, record_changes=False)
+        project_watch_state(tv.user, item)
     journal.before_state = {**journal.before_state, "after_watches": {
         str(row.pk): _watch_values(row) for row in _watches(tv)
     }}
@@ -368,6 +368,6 @@ def revert_change(tv):
     change.before_state = {**before, "reverted": True}
     change.save(update_fields=["before_state"])
     for item in Item.objects.filter(pk__in=touched):
-        project_watch_state(tv.user, item, record_changes=False)
+        project_watch_state(tv.user, item)
     statistics_sync.mark_days(tv.user_id, moved_days, reason="episode_order_change")
     return change

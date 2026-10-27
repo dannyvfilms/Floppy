@@ -37,6 +37,25 @@ REPAIR_VERSION = 1
 REPAIR_TIME_BUDGET_SECONDS = 5 * 60
 
 
+def _user_repair_key(user):
+    return f"{REPAIR_KEY}_user_{user.pk}"
+
+
+def watch_state_repair_complete(user):
+    """Return whether this user's projection is known to cover their library.
+
+    Read-only on purpose: ``reconcile_state.get_state`` resets a row whose
+    strategy changed, and a reader must not start or restart a sweep. A row left
+    by an older ``REPAIR_VERSION`` counts as incomplete, because the version is
+    bumped exactly when a write path is found to have left stale rows.
+    """
+    return BackfillReconcileState.objects.filter(
+        key__in=[REPAIR_KEY, _user_repair_key(user)],
+        strategy_version=REPAIR_VERSION,
+        completed_at__isnull=False,
+    ).exists()
+
+
 def _tracked_item_ids(user, media_type):
     """Return ids of items this user has tracking rows for, for one type."""
     if media_type == MediaTypes.EPISODE.value:
@@ -106,6 +125,19 @@ def backfill_watch_state(user_id=None):
     return projected
 
 
+def _void_pull_positions(user):
+    """Make every pull client resnapshot after this user's repair.
+
+    The repair writes ``WatchState`` with ``record_changes=False``, so it moves
+    state the change feed never mentions. Recording it instead would deliver a
+    whole library outward, which is what the backfill must never do. Dropping
+    the checkpoints is the invalidation the feed already understands.
+    """
+    from integrations.state.checkpoints import reset_pull_positions
+
+    reset_pull_positions(user)
+
+
 def repair_watch_state(time_budget=REPAIR_TIME_BUDGET_SECONDS):
     """Backfill every library once, resuming per user after a time budget.
 
@@ -114,7 +146,7 @@ def repair_watch_state(time_budget=REPAIR_TIME_BUDGET_SECONDS):
     """
     deadline = time.monotonic() + time_budget
     for user in get_user_model().objects.order_by("id").iterator():
-        key = f"{REPAIR_KEY}_user_{user.pk}"
+        key = _user_repair_key(user)
         state = reconcile_state.get_state(key, REPAIR_VERSION)
         if state.completed_at is not None:
             continue
@@ -125,6 +157,7 @@ def repair_watch_state(time_budget=REPAIR_TIME_BUDGET_SECONDS):
             cursor = backfill_user_watch_state(user, after_item_id=cursor)
             if cursor is None:
                 reconcile_state.mark_complete(key, REPAIR_VERSION)
+                _void_pull_positions(user)
                 break
             BackfillReconcileState.objects.filter(key=key).update(
                 last_cursor_item_id=cursor,

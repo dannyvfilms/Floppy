@@ -2074,6 +2074,10 @@ class SyncBindingStatus(models.TextChoices):
 # shown to hold the contract, so these are declared per binding rather than
 # inferred from the provider's identity.
 CAPABILITY_WATCHED_READ = "watched.read"
+# A client that pulls the snapshot and the change feed from Floppy. It is not a
+# provider Floppy reads from or writes to, so it must never share a capability
+# with one: reconciliation and delivery select bindings by capability alone.
+CAPABILITY_WATCHED_PULL = "watched.pull"
 CAPABILITY_WATCHED_WRITE_PLAYED = "watched.write_played"
 CAPABILITY_WATCHED_WRITE_UNPLAYED = "watched.write_unplayed"
 CAPABILITY_WATCHED_PUSH_PLAYED = "watched.push_played"

@@ -6,7 +6,17 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
+from app.models import (
+    TV,
+    Episode,
+    Item,
+    MediaTypes,
+    Season,
+    Sources,
+    Status,
+    WatchStateChange,
+    WatchStateSequence,
+)
 from app.models.episode_order import EpisodeOrderChange
 from app.services.episode_ordering import (
     apply_change,
@@ -463,3 +473,51 @@ class EpisodeOrderingPageTests(TestCase):
         context = self.client.get(self.url).context
         self.assertEqual(context["revert_label"], "TVDB (Aired order)")
         self.assertTrue(context["can_revert"])
+
+
+class EpisodeOrderChangeLogTests(TestCase):
+    """Moving a viewing between episodes is a real state movement, so it is logged."""
+
+    def setUp(self):
+        """Seed a show with a watched episode and turn change emission on."""
+        _voyager(self)
+        WatchStateSequence.objects.update_or_create(
+            user=self.user, defaults={"emit_changes": True},
+        )
+        self.resolutions = [
+            {"watch_ids": [self.watches[15].pk], "episode_ids": ["t15", "t16"], "archive": False},
+            {"watch_ids": [self.watches[16].pk], "episode_ids": ["t17"], "archive": False},
+            {"watch_ids": [self.watches[17].pk], "episode_ids": [], "archive": True},
+        ]
+
+    def _changes(self):
+        return WatchStateChange.objects.filter(user=self.user)
+
+    def test_applying_an_order_logs_the_movement_when_emitting(self):
+        preview = preview_change(self.tv, self.order)
+
+        apply_change(self.tv, self.order, token=preview["token"], resolutions=self.resolutions)
+
+        moved = self._changes()
+        self.assertTrue(moved.filter(watched=True, item__episode_order=self.order).exists())
+        self.assertTrue(moved.filter(watched=False).exists())
+
+    def test_applying_an_order_logs_nothing_when_not_emitting(self):
+        WatchStateSequence.objects.filter(user=self.user).update(emit_changes=False)
+        preview = preview_change(self.tv, self.order)
+
+        apply_change(self.tv, self.order, token=preview["token"], resolutions=self.resolutions)
+
+        self.assertFalse(self._changes().exists())
+
+    def test_reverting_an_order_logs_the_movement_back(self):
+        preview = preview_change(self.tv, self.order)
+        apply_change(self.tv, self.order, token=preview["token"], resolutions=self.resolutions)
+        applied = self._changes().count()
+
+        revert_change(self.tv)
+
+        self.assertGreater(self._changes().count(), applied)
+        self.assertTrue(
+            self._changes().filter(watched=True, item__episode_order__isnull=True).exists(),
+        )

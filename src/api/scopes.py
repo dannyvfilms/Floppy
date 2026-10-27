@@ -41,7 +41,7 @@ SCOPE_DESCRIPTIONS = {
     "imports:write": "Start imports.",
     "exports:read": "Download exports.",
     "sync:read": "Read sync connections, change feeds, watched snapshots, and conflicts.",
-    "sync:write": "Resolve sync conflicts.",
+    "sync:write": "Resolve sync conflicts and register pull-sync clients.",
     "user:read": "Read preferences, sidebar, and notification settings.",
     "user:write": "Change preferences, sidebar, and notification settings.",
 }
@@ -59,6 +59,12 @@ TRACKING_PRESET = (
     "catalog:read",
     "sync:read",
 )
+
+# A pull-sync client (Umbrella, a Kodi add-on) registers itself, which turns on
+# the change log for the account. That is a write, so it needs ``sync:write`` on
+# top of what a tracking client holds. A separate preset rather than a change to
+# ``TRACKING_PRESET``: every other tracking token keeps exactly what it had.
+PULL_SYNC_PRESET = (*TRACKING_PRESET, "sync:write")
 
 _R = "watchlist:read"
 _W = "watchlist:write"
@@ -176,9 +182,9 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_progress_changes.ProgressChangeFeedView": {"GET": "sync:read"},
     "api.fork_views_watched_state.SyncConnectionsView": {
         "GET": "sync:read",
-        # A pull client naming itself. The binding it creates can only read, so
-        # this stays within the tracking preset instead of needing sync:write.
-        "POST": "sync:read",
+        # Registering a pull client turns on the account's change log, which
+        # costs a write per save, so it is a write. See PULL_SYNC_PRESET.
+        "POST": "sync:write",
     },
     "api.fork_views_watched_state.SyncConflictsView": {"GET": "sync:read"},
     "api.fork_views_watched_state.SyncConflictResolveView": {"POST": "sync:write"},

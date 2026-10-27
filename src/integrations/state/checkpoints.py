@@ -14,7 +14,12 @@ import logging
 
 from django.db.models import Min
 
-from integrations.models import SyncBinding, SyncCheckpoint, SyncDirection
+from integrations.models import (
+    CAPABILITY_WATCHED_PULL,
+    SyncBinding,
+    SyncCheckpoint,
+    SyncDirection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +44,52 @@ def record_applied_position(binding, sequence, *, resource=WATCHED_STATE_RESOURC
         checkpoint.cursor = str(sequence)
         checkpoint.save(update_fields=["last_sequence", "cursor", "updated_at"])
     return checkpoint
+
+
+def pin_snapshot_position(binding, sequence, *, resource=WATCHED_STATE_RESOURCE):
+    """Pin ``binding`` at the sequence a snapshot began, and mark it as seen now.
+
+    A snapshot is a client's proof that it holds everything up to ``sequence``,
+    so the log must not compact past it before the client's first feed pull.
+    Unlike :func:`record_applied_position` this always refreshes the row, even
+    when the sequence has not moved: a resnapshot at the same position has to
+    be visible as a fresh check-in, not look like the stale pin it replaces.
+    """
+    checkpoint, created = SyncCheckpoint.objects.get_or_create(
+        binding=binding,
+        resource=resource,
+        direction=SyncDirection.OUTBOUND.value,
+        defaults={"last_sequence": sequence, "cursor": str(sequence)},
+    )
+    if not created:
+        checkpoint.last_sequence = max(sequence, checkpoint.last_sequence)
+        checkpoint.cursor = str(checkpoint.last_sequence)
+        checkpoint.save(update_fields=["last_sequence", "cursor", "updated_at"])
+    return checkpoint
+
+
+def reset_pull_positions(user=None, *, binding=None, resource=WATCHED_STATE_RESOURCE):
+    """Forget where pull clients got to, so each must take a fresh snapshot.
+
+    Called whenever the log stopped being a complete record: it was not being
+    written, or state moved without being logged. A checkpoint is the only
+    thing that lets a named pull client resume from a cursor, so removing it is
+    what makes the client's next feed pull ask for a resnapshot.
+    """
+    # Filtered in Python: JSONField containment is not available on SQLite.
+    bindings = [binding] if binding is not None else list(
+        SyncBinding.objects.filter(user=user),
+    )
+    pull_ids = [
+        candidate.pk
+        for candidate in bindings
+        if candidate.has_capability(CAPABILITY_WATCHED_PULL)
+    ]
+    deleted, _ = SyncCheckpoint.objects.filter(
+        binding_id__in=pull_ids,
+        resource=resource,
+    ).delete()
+    return deleted
 
 
 def compaction_watermark(user, *, resource=WATCHED_STATE_RESOURCE, stale_before=None):

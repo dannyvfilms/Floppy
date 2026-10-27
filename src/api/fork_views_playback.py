@@ -284,12 +284,19 @@ def item_reference(item, show_map):
     numbers a change to one episode cannot be told from a change to any other.
     Episode Items are created without provider links, so their show-level ids
     (which is what clients match on) come from the show row.
+
+    An item under a personal episode order carries that order's season and
+    episode numbers, not the provider's, while its ids still name the show.
+    ``numbering`` says which one a client is looking at, so it can skip a row
+    it cannot match instead of marking the wrong episode.
     """
     show = _backing_show(item, show_map)
     return {
         "season_number": item.season_number,
         "episode_number": item.episode_number,
         "ids": build_provider_ids(item) or (build_provider_ids(show) if show else {}),
+        "numbering": "custom" if item.episode_order_id else "provider",
+        "episode_order_id": item.episode_order_id,
     }
 
 

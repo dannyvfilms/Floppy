@@ -6375,6 +6375,27 @@ def sync_direction_settings(request):
         )
         return redirect("integrations")
 
+    if settings_view.is_pull_only(binding) or direction == settings_view.DIRECTION_PULL:
+        # A pull client's only choices are off and on. Offering it a provider
+        # direction would make reconciliation treat it as a server to read.
+        if not (
+            settings_view.is_pull_only(binding)
+            and direction == settings_view.DIRECTION_PULL
+        ):
+            messages.error(
+                request,
+                "This connection is a client that pulls from Floppy. "
+                "It can only be turned off or on.",
+            )
+            return redirect("integrations")
+        identity.activate_binding(
+            binding,
+            capabilities=binding.approved_capabilities,
+            directions=binding.approved_directions,
+        )
+        messages.success(request, f"Turned on {binding.label or 'the client'}.")
+        return redirect("integrations")
+
     adapter = outbound.get_adapter(binding)
     supported = set(adapter.CAPABILITIES) if adapter is not None else set()
     capabilities = settings_view.capabilities_for_direction(direction, supported)

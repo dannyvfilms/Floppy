@@ -166,6 +166,20 @@ class IntegrationTokenLifecycleTests(TestCase):
         for scope in DEFAULT_INTEGRATION_SCOPES:
             self.assertIn(scope, response.context["integration_tracking_preset_json"])
 
+    def test_a_pull_sync_preset_is_offered_without_changing_the_default(self):
+        """Umbrella's token needs sync:write; no other token gains it."""
+        response = self.client.get(reverse("integrations"))
+
+        pull = response.context["integration_pull_sync_preset_json"]
+        for scope in DEFAULT_INTEGRATION_SCOPES:
+            self.assertIn(scope, pull)
+        self.assertIn("sync:write", pull)
+        self.assertNotIn("sync:write", DEFAULT_INTEGRATION_SCOPES)
+        self.assertNotIn(
+            "sync:write",
+            response.context["integration_tracking_preset_json"],
+        )
+
     def test_expired_token_is_listed_as_expired(self):
         """An expired token stays visible so the user can see why an app broke."""
         token, _ = IntegrationToken.generate(

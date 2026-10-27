@@ -4,6 +4,7 @@
 import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import views as drf_views
 from rest_framework.response import Response
@@ -25,19 +26,23 @@ from app.services.watch_state import (
     record_state_change,
     retained_change_range,
 )
+from app.tasks_watch_state import watch_state_repair_complete
 from integrations.models import (
-    CAPABILITY_WATCHED_READ,
+    CAPABILITY_WATCHED_PULL,
     OutboundDeliveryStatus,
     StateConflict,
     StateConflictStatus,
     SyncBinding,
+    SyncBindingStatus,
     SyncCheckpoint,
     SyncClientKind,
     SyncDirection,
 )
 from integrations.state.checkpoints import (
     WATCHED_STATE_RESOURCE,
+    pin_snapshot_position,
     record_applied_position,
+    reset_pull_positions,
 )
 from integrations.state.identity import activate_binding, get_or_create_binding
 
@@ -50,6 +55,25 @@ MAX_CHANGE_PAGE = 200
 DEFAULT_SNAPSHOT_PAGE = 500
 MAX_SNAPSHOT_PAGE = 1000
 SNAPSHOT_MEDIA_TYPES = (MediaTypes.MOVIE.value, MediaTypes.EPISODE.value)
+MAX_CONNECTION_FIELD = 255
+# Every registration turns the account's change log on and is held against it
+# until it checks in, so a runaway client or a leaked token must not be able to
+# mint them without bound.
+MAX_PULL_CONNECTIONS = 10
+PROJECTION_RETRY_AFTER_SECONDS = 300
+
+_INACTIVE_DETAIL = {
+    "missing": "No such connection for this account. Register it again.",
+    "not_pull": "This connection is not a pull-sync client.",
+    "pending": "This connection has not been approved yet.",
+    "disabled": "This connection was turned off by its owner.",
+    "needs_reapproval": "This connection needs its owner to approve it again.",
+    "kill_switch": "This connection is switched off by its owner.",
+    "emission_off": (
+        "Floppy is not recording changes for this account, so a cursor would "
+        "describe a log nobody is writing."
+    ),
+}
 
 
 def _integer_param(request, name, *, default, minimum):
@@ -70,7 +94,68 @@ def _integer_param(request, name, *, default, minimum):
     return value, None
 
 
-MAX_CONNECTION_FIELD = 255
+def _inactive(reason):
+    """Return the 409 that says why a connection cannot be served."""
+    return Response(
+        {
+            "code": "connection_inactive",
+            "reason": reason,
+            "detail": _INACTIVE_DETAIL[reason],
+        },
+        status=HTTP.CONFLICT,
+    )
+
+
+def _cursor_expired(reason, detail):
+    """Return the 409 that sends a pull client back to take a snapshot."""
+    return Response(
+        {"code": "cursor_expired", "reason": reason, "detail": detail},
+        status=HTTP.CONFLICT,
+    )
+
+
+def _projection_incomplete_response():
+    return Response(
+        {
+            "code": "projection_incomplete",
+            "detail": (
+                "Floppy is still rebuilding this account's watched state. "
+                "Retry shortly."
+            ),
+        },
+        status=HTTP.SERVICE_UNAVAILABLE,
+        headers={"Retry-After": str(PROJECTION_RETRY_AFTER_SECONDS)},
+    )
+
+
+def _pull_binding_problem(binding):
+    """Return why ``binding`` cannot serve a pull client, or None if it can."""
+    if binding is None:
+        return "missing"
+    if not binding.has_capability(CAPABILITY_WATCHED_PULL):
+        return "not_pull"
+    if binding.kill_switch:
+        return "kill_switch"
+    if binding.status == SyncBindingStatus.PENDING.value:
+        return "pending"
+    if binding.status == SyncBindingStatus.DISABLED.value:
+        return "disabled"
+    if binding.status == SyncBindingStatus.NEEDS_REAPPROVAL.value:
+        return "needs_reapproval"
+    if not WatchStateSequence.objects.filter(
+        user_id=binding.user_id,
+        emit_changes=True,
+    ).exists():
+        return "emission_off"
+    return None
+
+
+def _pinned_position(binding):
+    """Return the position a snapshot pinned for this binding, if any."""
+    return SyncCheckpoint.objects.filter(
+        binding=binding,
+        resource=WATCHED_STATE_RESOURCE,
+    ).first()
 
 
 def _serialize_state(state, item):
@@ -270,8 +355,20 @@ class WatchedStateChangeFeedView(drf_views.APIView):
             return error
         limit = min(limit, MAX_CHANGE_PAGE)
 
+        binding, error = self._named_binding(request)
+        if error is not None:
+            return error
+        pulls = binding is not None and binding.has_capability(CAPABILITY_WATCHED_PULL)
+        if pulls:
+            error = self._pull_problem(request.user, binding)
+            if error is not None:
+                return error
+
         oldest, newest = retained_change_range(request.user)
-        if oldest is not None and 0 < cursor < oldest - 1:
+        # An unnamed pull keeps its old meaning: 0 is "from the start", exempt
+        # from expiry. A pull client's 0 is a real position (an empty log at
+        # snapshot time), so compaction past it is a gap like any other.
+        if oldest is not None and (pulls or cursor > 0) and cursor < oldest - 1:
             # The client's position was compacted away. Serving the remaining
             # tail would look like a successful catch-up while silently
             # dropping everything between its cursor and what is left.
@@ -291,7 +388,6 @@ class WatchedStateChangeFeedView(drf_views.APIView):
         # Asking for changes after N is the client's proof it applied through N.
         # The server cannot know that any earlier, and advancing on delivery
         # would skip whatever a client fetched but died before applying.
-        binding = self._acknowledging_binding(request)
         if binding is not None and cursor > 0:
             record_applied_position(binding, cursor)
 
@@ -306,6 +402,9 @@ class WatchedStateChangeFeedView(drf_views.APIView):
                 "watched": change.watched,
                 "play_count": change.play_count,
                 "watched_at": change.watched_at,
+                # Same value under the snapshot's name, so a client maps one
+                # field name for both surfaces.
+                "last_watched_at": change.watched_at,
                 "media_id": change.item.media_id if change.item else None,
                 "source": change.item.source if change.item else None,
                 "media_type": change.item.media_type if change.item else None,
@@ -328,20 +427,51 @@ class WatchedStateChangeFeedView(drf_views.APIView):
         )
 
     @staticmethod
-    def _acknowledging_binding(request):
-        """Return the binding this pull speaks for, if it names one.
+    def _named_binding(request):
+        """Return (binding, error) for the connection this pull speaks for.
 
         Identified by origin key so a client can hold several connections
         without them sharing a checkpoint. Unnamed pulls still work; they just
-        record no position, and so never let the log compact past them.
+        record no position, and so never let the log compact past them. A name
+        that matches nothing is refused rather than treated as unnamed: the
+        client believes it has a connection, and silently serving it as if it
+        had none hides that it must register again.
         """
         origin_key = request.query_params.get("connection")
         if not origin_key:
-            return None
-        return SyncBinding.objects.filter(
+            return None, None
+        binding = SyncBinding.objects.filter(
             user=request.user,
             origin_key=origin_key,
         ).first()
+        if binding is None:
+            return None, _inactive("missing")
+        return binding, None
+
+    @staticmethod
+    def _pull_problem(user, binding):
+        """Return the response refusing a pull client the feed, or None.
+
+        A pull client may only resume from a position a snapshot pinned, taken
+        after the projection was last repaired and while the log was being
+        written. Anything else is a cursor that cannot be trusted.
+        """
+        problem = _pull_binding_problem(binding)
+        if problem is not None:
+            return _inactive(problem)
+        if not watch_state_repair_complete(user):
+            return _cursor_expired(
+                "projection_incomplete",
+                "Floppy is rebuilding this account's watched state. "
+                "Take a fresh snapshot once it finishes.",
+            )
+        if _pinned_position(binding) is None:
+            return _cursor_expired(
+                "resnapshot_required",
+                "No snapshot is pinned for this connection. Take a fresh "
+                "snapshot and resume from its sequence.",
+            )
+        return None
 
 
 # /api/v1/sync/watched-state/
@@ -357,6 +487,27 @@ class WatchedStateSnapshotView(drf_views.APIView):
         applies the feed from that sequence once the snapshot is complete, so
         a row changed mid-walk is at worst delivered twice, never lost.
         """
+        origin_key = request.query_params.get("connection")
+        if not origin_key:
+            return Response(
+                {
+                    "code": "connection_required",
+                    "detail": "Pass connection=<origin_key> of a registered client.",
+                },
+                status=HTTP.BAD_REQUEST,
+            )
+        binding = SyncBinding.objects.filter(
+            user=request.user,
+            origin_key=origin_key,
+        ).first()
+        problem = _pull_binding_problem(binding)
+        if problem is not None:
+            return _inactive(problem)
+        # A snapshot read before the repair finishes would be short, and the
+        # sequence it hands out would be trusted to be complete.
+        if not watch_state_repair_complete(request.user):
+            return _projection_incomplete_response()
+
         limit, error = _integer_param(
             request,
             "limit",
@@ -388,11 +539,32 @@ class WatchedStateSnapshotView(drf_views.APIView):
                 .first()
                 or 0
             )
+            # Pin it before any row is read, so compaction cannot overtake the
+            # snapshot while the client is still walking it.
+            pin_snapshot_position(binding, resume_cursor)
         elif resume_cursor is None:
             return Response(
                 {"detail": "resume_cursor is required with cursor."},
                 status=HTTP.BAD_REQUEST,
             )
+        else:
+            # Later pages echo the first page's value. It is the position the
+            # client will resume the feed from, so it must be one the server
+            # pinned: a value above it would skip changes silently.
+            pinned = _pinned_position(binding)
+            if pinned is None:
+                return _cursor_expired(
+                    "resnapshot_required",
+                    "This snapshot's pin was dropped. Start the snapshot again.",
+                )
+            if resume_cursor > pinned.last_sequence:
+                return Response(
+                    {
+                        "code": "invalid_resume_cursor",
+                        "detail": "resume_cursor was not issued for this snapshot.",
+                    },
+                    status=HTTP.BAD_REQUEST,
+                )
 
         # One extra row says whether another page exists without a second query.
         states = list(
@@ -425,6 +597,8 @@ class WatchedStateSnapshotView(drf_views.APIView):
                     else None,
                     "play_count": state.play_count,
                     "last_watched_at": state.last_watched_at,
+                    # Same value under the change feed's name.
+                    "watched_at": state.last_watched_at,
                 },
             )
 
@@ -446,49 +620,106 @@ class SyncConnectionsView(drf_views.APIView):
     def post(self, request):
         """Register the calling Kodi client as a pull-only connection.
 
-        Idempotent on the client's own instance key. The binding may read
-        watched state and nothing else: it holds no push capability, so no
-        delivery is ever queued for it, and its only effect is to turn on the
-        change log the client then pulls from.
+        Idempotent on the client's own instance key. The binding holds
+        ``watched.pull`` and nothing else Floppy would act on: no delivery is
+        ever queued for it, no reconcile pass selects it, and its only effect
+        is to turn on the change log the client then pulls from.
+
+        Registration never overrides the owner. A connection they switched off,
+        sent back for reapproval or paused is reported with a 409 and left as
+        it is; only a brand-new or still-pending connection is activated.
         """
-        instance_key = request.data.get("instance_key")
-        label = request.data.get("label", "")
+        data = request.data
+        if not isinstance(data, dict):
+            return Response(
+                {"detail": "Request body must be a JSON object."},
+                status=HTTP.BAD_REQUEST,
+            )
+        instance_key = data.get("instance_key")
         if not isinstance(instance_key, str) or not instance_key.strip():
             return Response(
                 {"detail": "`instance_key` must be a non-empty string."},
                 status=HTTP.BAD_REQUEST,
             )
-        if not isinstance(label, str) or max(len(instance_key), len(label)) > (
-            MAX_CONNECTION_FIELD
+        instance_key = instance_key.strip()
+        label = data.get("label", "")
+        if not isinstance(label, str):
+            return Response(
+                {"detail": "`label` must be a string."},
+                status=HTTP.BAD_REQUEST,
+            )
+        label = label.strip()
+        for name, value in (("instance_key", instance_key), ("label", label)):
+            if len(value) > MAX_CONNECTION_FIELD:
+                return Response(
+                    {
+                        "detail": (
+                            f"`{name}` must be at most "
+                            f"{MAX_CONNECTION_FIELD} characters."
+                        ),
+                    },
+                    status=HTTP.BAD_REQUEST,
+                )
+
+        with transaction.atomic():
+            return self._register(request.user, instance_key, label)
+
+    @staticmethod
+    def _register(user, instance_key, label):
+        """Create or look up the binding, and activate it only if it is new."""
+        existing = SyncBinding.objects.filter(
+            user=user,
+            client_kind=SyncClientKind.KODI.value,
+            instance_key=instance_key,
+            profile_key="",
+        ).first()
+        if existing is None and (
+            sum(
+                binding.has_capability(CAPABILITY_WATCHED_PULL)
+                for binding in SyncBinding.objects.filter(user=user)
+            )
+            >= MAX_PULL_CONNECTIONS
         ):
             return Response(
-                {"detail": "`label` must be a string; both fit in 255 characters."},
-                status=HTTP.BAD_REQUEST,
+                {
+                    "code": "connection_limit",
+                    "detail": (
+                        f"At most {MAX_PULL_CONNECTIONS} pull connections per "
+                        "account. Remove one in Integrations first."
+                    ),
+                },
+                status=HTTP.CONFLICT,
             )
 
         binding, created = get_or_create_binding(
-            request.user,
+            user,
             SyncClientKind.KODI.value,
-            instance_key=instance_key.strip(),
+            instance_key=instance_key,
             label=label,
         )
         if binding.kill_switch:
-            return Response(
-                {"detail": "This connection is switched off by its owner."},
-                status=HTTP.CONFLICT,
-            )
-        if not (
-            binding.is_operational()
-            and binding.allows(
-                SyncDirection.OUTBOUND.value,
-                CAPABILITY_WATCHED_READ,
-            )
-        ):
+            return _inactive("kill_switch")
+        if binding.status == SyncBindingStatus.DISABLED.value:
+            return _inactive("disabled")
+        if binding.status == SyncBindingStatus.NEEDS_REAPPROVAL.value:
+            return _inactive("needs_reapproval")
+
+        if binding.status == SyncBindingStatus.PENDING.value:
+            # Whatever position it held belongs to an earlier life.
+            reset_pull_positions(binding=binding)
+        if not binding.allows(SyncDirection.OUTBOUND.value, CAPABILITY_WATCHED_PULL):
+            # Merged, never replaced: approvals the owner gave stay.
             activate_binding(
                 binding,
-                capabilities=[CAPABILITY_WATCHED_READ],
-                directions=[SyncDirection.OUTBOUND.value],
+                capabilities=[*binding.approved_capabilities, CAPABILITY_WATCHED_PULL],
+                directions=[
+                    *binding.approved_directions,
+                    SyncDirection.OUTBOUND.value,
+                ],
             )
+        if label and binding.label != label:
+            binding.label = label
+            binding.save(update_fields=["label", "updated_at"])
 
         return Response(
             {
@@ -499,6 +730,9 @@ class SyncConnectionsView(drf_views.APIView):
                 "directions": binding.approved_directions,
                 "capabilities": binding.approved_capabilities,
                 "origin_key": binding.origin_key,
+                # No pinned position means the client has nothing to resume
+                # from: it has never taken a snapshot, or the last one was voided.
+                "resnapshot_required": _pinned_position(binding) is None,
             },
             status=HTTP.CREATED if created else HTTP.OK,
         )
@@ -519,6 +753,8 @@ class SyncConnectionsView(drf_views.APIView):
             adapter = get_adapter(binding)
             supported = set(adapter.CAPABILITIES) if adapter is not None else set()
             approved = set(binding.approved_capabilities or [])
+            # Served by Floppy itself, so no provider adapter vouches for it.
+            supported |= approved & {CAPABILITY_WATCHED_PULL}
 
             results.append(
                 {
