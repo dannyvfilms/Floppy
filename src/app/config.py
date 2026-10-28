@@ -244,7 +244,12 @@ MEDIA_TYPE_CONFIG = {
         "date_key": "release_date",
     },
     MediaTypes.PODCAST.value: {
-        "sources": [Sources.POCKETCASTS, Sources.GPODDER, Sources.AUDIOBOOKSHELF],
+        "sources": [
+            Sources.POCKETCASTS,
+            Sources.GPODDER,
+            Sources.PODCASTINDEX,
+            Sources.AUDIOBOOKSHELF,
+        ],
         "default_source": Sources.POCKETCASTS,
         "unicode_icon": "🎙️",
         "verb": (gettext_noop("listen"), gettext_noop("listened")),

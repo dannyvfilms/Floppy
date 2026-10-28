@@ -21,6 +21,7 @@ class Sources(models.TextChoices):
     MUSICBRAINZ = "musicbrainz", "MusicBrainz"
     POCKETCASTS = "pocketcasts", "Pocket Casts"
     GPODDER = "gpodder", "GPodder"
+    PODCASTINDEX = "podcastindex", "Podcast Index"
     AUDIOBOOKSHELF = "audiobookshelf", "Audiobookshelf"
     STORYTELLER = "storyteller", "Storyteller"
     PLEX = "plex", "Plex"

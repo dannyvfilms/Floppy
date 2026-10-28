@@ -1399,6 +1399,17 @@ OPENCRITIC_API_KEY = config(
     default=secret("OPENCRITIC_API_KEY_FILE", ""),
 )
 
+# Podcast Index (podcastindex.org) is free but asks every app for its own key
+# and secret, so there is no shared default.
+PODCASTINDEX_API_KEY = config(
+    "PODCASTINDEX_API_KEY",
+    default=secret("PODCASTINDEX_API_KEY_FILE", ""),
+)
+PODCASTINDEX_API_SECRET = config(
+    "PODCASTINDEX_API_SECRET",
+    default=secret("PODCASTINDEX_API_SECRET_FILE", ""),
+)
+
 COMICVINE_API = config(
     "COMICVINE_API",
     default=secret(
