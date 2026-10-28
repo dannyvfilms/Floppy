@@ -846,11 +846,17 @@ def build_now_playing_payload(user):
     Shared by the read route and the outgoing playback webhook so both speak
     exactly one shape; a client that parses one parses the other.
     """
-    state = live_playback.get_user_playback_state(user.id)
+    # The read route and webhook speak of one session: real playback first,
+    # else the check-in that started first.
+    slots = live_playback.active_slots(user.id)
+    if not slots:
+        return None
+    slot = slots[0]
+    state = live_playback.get_user_playback_state(user.id, slot=slot)
     if not state:
         return None
 
-    card = live_playback.build_home_playback_card(user)
+    card = live_playback.build_home_playback_card(user, slot=slot)
     if not card:
         # `build_home_playback_card` re-reads the cache and can find it gone —
         # the state expires lazily, on read. Treat a vanished session as
