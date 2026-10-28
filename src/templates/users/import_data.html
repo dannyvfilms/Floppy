@@ -31,16 +31,6 @@
            this.activeModal = null;
          },
          activeMediaTag: 'all',
-         mediaTagLabels: {
-           all: gettext('All Sources'),
-           screen: gettext('Movies & TV'),
-           anime_manga: gettext('Anime & Manga'),
-           reading: gettext('Books & Comics'),
-           games: gettext('Games'),
-           podcasts: gettext('Podcasts'),
-           music: gettext('Music'),
-           backup: gettext('Backups')
-         },
          sourceSupports(tags) {
            return this.activeMediaTag === 'all' || tags.includes(this.activeMediaTag);
          },
@@ -335,70 +325,9 @@
            target="_blank"
            class="text-[var(--color-link)] hover:text-[var(--color-link-hover)] underline">{% translate "import configuration guide" %}</a>.
       </p>
-      <div class="bg-[var(--color-surface-strong)] rounded-lg p-4 mb-5">
-        <p class="text-sm text-[var(--color-text-secondary)] mb-3">{% translate "Browse by media type:" %}</p>
-        <div class="flex flex-wrap gap-2">
-          <button type="button"
-                  @click="activeMediaTag = 'all'"
-                  :aria-pressed="activeMediaTag === 'all'"
-                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            {% translate "All Sources" %}
-          </button>
-          <button type="button"
-                  @click="activeMediaTag = 'screen'"
-                  :aria-pressed="activeMediaTag === 'screen'"
-                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'screen' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            {% translate "Movies & TV" %}
-          </button>
-          <button type="button"
-                  @click="activeMediaTag = 'anime_manga'"
-                  :aria-pressed="activeMediaTag === 'anime_manga'"
-                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'anime_manga' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            {% translate "Anime & Manga" %}
-          </button>
-          <button type="button"
-                  @click="activeMediaTag = 'reading'"
-                  :aria-pressed="activeMediaTag === 'reading'"
-                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'reading' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            {% translate "Books & Comics" %}
-          </button>
-          <button type="button"
-                  @click="activeMediaTag = 'games'"
-                  :aria-pressed="activeMediaTag === 'games'"
-                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'games' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            {% translate "Games" %}
-          </button>
-          <button type="button"
-                  @click="activeMediaTag = 'podcasts'"
-                  :aria-pressed="activeMediaTag === 'podcasts'"
-                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'podcasts' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            {% translate "Podcasts" %}
-          </button>
-          <button type="button"
-                  @click="activeMediaTag = 'music'"
-                  :aria-pressed="activeMediaTag === 'music'"
-                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'music' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            {% translate "Music" %}
-          </button>
-          <button type="button"
-                  @click="activeMediaTag = 'backup'"
-                  :aria-pressed="activeMediaTag === 'backup'"
-                  class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
-                  :class="activeMediaTag === 'backup' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
-            {% translate "Backups" %}
-          </button>
-        </div>
-        <p class="text-xs text-[var(--color-text-muted)] mt-3"
-           x-text="gettext('Showing ') + mediaTagLabels[activeMediaTag] + '.'">
-        </p>
-      </div>
+      {% media_tag_choices as media_tags %}
+      {% translate "All Sources" as all_sources_label %}
+      {% include "users/components/media_tag_filter.html" with tags=media_tags all_label=all_sources_label summary=True %}
 
       {# Import source tiles - click a tile to open its setup/import modal #}
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

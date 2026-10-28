@@ -1,4 +1,5 @@
+{% load app_tags %}
 {% comment %}Swaps a card's rating after a score change. No `rate_url` renders it read-only.{% endcomment %}
-<span id="media-card-rating-{{ media_instance_id }}" hx-swap-oob="outerHTML">
+<span id="{% item_slot_id 'media-card-rating' item %}" hx-swap-oob="outerHTML">
   {% include "app/components/media_card_rating.html" with rate_url=rate_url %}
 </span>

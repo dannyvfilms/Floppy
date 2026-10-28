@@ -118,9 +118,7 @@ def detail_promoted_facts(media_type, details):
                 and key == "status"
                 and details.get("format")
             ):
-                label = _("%(format)s series status") % {
-                    "format": _(details["format"])
-                }
+                label = _("%(format)s series status") % {"format": _(details["format"])}
         fields.append({"key": key, "label": label, "value": value})
     return {"fields": fields, "suppressed_keys": suppressed_keys}
 
@@ -1624,6 +1622,35 @@ def media_view_url(view_name, media):
         kwargs.pop("season_number", None)
 
     return reverse(view_name, kwargs=kwargs)
+
+
+@register.simple_tag
+def item_slot_id(prefix, item):
+    """Return an id for a card slot that a save or score response swaps in place.
+
+    Built from the item's own identity (source, type, ids), so it is the same
+    on a card for something not tracked yet and in the response after saving.
+    Unlike component_id it ignores route_media_type, which is only set on
+    some cards (e.g. grouped anime in search), and it includes the source,
+    since two providers can share a media id.
+    """
+    is_dict = isinstance(item, dict)
+    if not is_dict and not hasattr(item, "media_type"):
+        return ""
+
+    def get(name):
+        return item.get(name) if is_dict else getattr(item, name, None)
+
+    parts = [
+        prefix,
+        get("source"),
+        get("media_type"),
+        get("media_id"),
+        get("season_number"),
+        get("episode_number"),
+    ]
+    slot_id = "-".join(str(part) for part in parts if part not in (None, ""))
+    return re.sub(r"[^A-Za-z0-9_-]", "-", slot_id)
 
 
 @register.simple_tag

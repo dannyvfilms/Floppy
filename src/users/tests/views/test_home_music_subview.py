@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
+from django.urls import reverse
 
 from app.models import MediaTypes, Status
 from app.models.music import Album, AlbumTracker, Artist, ArtistTracker
@@ -122,14 +123,25 @@ class MusicSubviewHomeTests(TestCase):
         fields = home_screen.build_filter_field_data(self.user, MediaTypes.MOVIE.value)
         self.assertNotIn("subview", [f["key"] for f in fields])
 
-    def test_home_page_renders_album_card(self):
-        self._add_music_row("albums", Status.PLANNING.value)
+    def _hydrated_home_html(self):
+        """Home shell plus the deferred row fragments HTMX loads after it."""
         self.client.force_login(self.user)
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "A Night at the Opera")
+        html = response.content.decode()
+        for group in response.context.get("deferred_groups", []):
+            for row_id in group["row_ids"]:
+                html += self.client.get(
+                    reverse("home_row_fragment", args=[row_id]),
+                ).content.decode()
+        return html
+
+    def test_home_page_renders_album_card(self):
+        self._add_music_row("albums", Status.PLANNING.value)
+        html = self._hydrated_home_html()
+        self.assertIn("A Night at the Opera", html)
         # Album cards carry the artist as the hover subtitle (mirrors the library).
-        self.assertContains(response, "Queen")
+        self.assertIn("Queen", html)
 
     def test_recent_music_album_entries_are_picklable(self):
         # Regression test for #1122: the "Recently Played Music" row is cached
@@ -151,10 +163,7 @@ class MusicSubviewHomeTests(TestCase):
 
     def test_home_page_renders_artist_card(self):
         self._add_music_row("artists", Status.IN_PROGRESS.value)
-        self.client.force_login(self.user)
-        response = self.client.get("/")
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Queen")
+        self.assertIn("Queen", self._hydrated_home_html())
 
     def test_settings_page_renders(self):
         """Lazy translated labels serialize while filter values stay canonical."""

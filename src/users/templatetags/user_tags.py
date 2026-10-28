@@ -5,6 +5,7 @@ from django import template
 from django.templatetags.static import static
 from django.utils import formats, timezone
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django.utils.translation import gettext, gettext_noop, ngettext
 
 from users import currency
@@ -14,6 +15,7 @@ from users.appearance import (
     custom_theme_css,
     resolved_detail_layouts,
 )
+from users.media_tags import MEDIA_TAG_KEYS, MEDIA_TAGS
 from users.models import DateFormatChoices, TimeFormatChoices
 
 register = template.Library()
@@ -561,3 +563,29 @@ def user_price(context, amount):
     """Format a collection price in the user's currency (#1100)."""
     code = currency.resolve_currency(context.get("user"), context.get("request"))
     return currency.format_price(amount, code)
+
+
+@register.simple_tag
+def media_tag_choices(keys=""):
+    """Return the media type filter options, limited to ``keys`` when given.
+
+    ``keys`` is a space-separated list so a page can offer only the groups it
+    has cards for. The options keep the canonical order from MEDIA_TAGS.
+    """
+    wanted = set(keys.split()) if keys else None
+    return [
+        {"key": key, "label": gettext(label)}
+        for key, label in MEDIA_TAGS
+        if wanted is None or key in wanted
+    ]
+
+
+@register.filter
+def media_tag_list(tags):
+    """Render media tag keys as a JS array literal that is safe in an attribute.
+
+    Single quotes keep it valid inside a double-quoted Alpine expression, and
+    unknown keys are dropped so nothing user-controlled can reach the page.
+    """
+    keys = [tag for tag in tags or [] if tag in MEDIA_TAG_KEYS]
+    return mark_safe("[" + ", ".join(f"'{key}'" for key in keys) + "]")  # noqa: S308

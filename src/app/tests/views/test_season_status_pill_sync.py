@@ -6,6 +6,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources, Status
+from app.templatetags.app_tags import item_slot_id
 
 METADATA_PATH = "app.providers.services.get_media_metadata"
 
@@ -131,7 +132,9 @@ class SeasonStatusPillSyncTests(TestCase):
         self.season.refresh_from_db()
         self.assertEqual(self.season.status, Status.COMPLETED.value)
         content = response.content.decode()
-        self.assertIn(f'id="media-status-chip-{self.season.id}"', content)
+        self.assertIn(
+            f'id="{item_slot_id("media-status-chip", self.season.item)}"', content
+        )
         self.assertIn('hx-swap-oob="outerHTML"', content)
         self.assertIn("M21.801 10A10 10 0 1 1 17 3.335", content)
 
@@ -222,5 +225,100 @@ class SeasonStatusPillSyncTests(TestCase):
             request=request,
         )
 
-        self.assertIn(f'id="media-status-chip-{self.season.id}"', content)
+        self.assertIn(
+            f'id="{item_slot_id("media-status-chip", self.season.item)}"', content
+        )
         self.assertIn("M21.801 10A10 10 0 1 1 17 3.335", content)
+
+    def test_every_status_refreshes_the_card_chip_of_an_untracked_season(
+        self,
+        _mock_metadata,
+    ):
+        """Tracking a season for the first time still updates its card's chip.
+
+        An untracked season's card has no tracked row yet, so the chip
+        slot cannot be keyed by the row's id: the save response would
+        swap a slot the page does not have, and the badge (e.g. Dropped)
+        only appeared after a reload. The slot is keyed by the item, so
+        the same id is on the page before the save and in the response.
+        """
+        from django.template.loader import render_to_string
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/")
+        request.user = self.user
+        slot = f'id="{item_slot_id("media-status-chip", self.season.item)}"'
+        before = render_to_string(
+            "app/components/media_card.html",
+            {"item": self.season.item, "media": None},
+            request=request,
+        )
+        self.assertIn(slot, before)
+
+        self.season.delete()
+        for status in Status.values:
+            with self.subTest(status=status):
+                Season.objects.filter(item=self.season.item, user=self.user).delete()
+                response = self.client.post(
+                    reverse("media_save"),
+                    data={
+                        "media_id": "123",
+                        "source": Sources.TMDB.value,
+                        "media_type": MediaTypes.SEASON.value,
+                        "season_number": 1,
+                        "status": status,
+                    },
+                    HTTP_HX_REQUEST="true",
+                )
+
+                self.assertEqual(response.status_code, 200)
+                content = response.content.decode()
+                self.assertIn(slot, content)
+                self.assertIn(
+                    'class="media-status-chip ',
+                    content[content.index(slot) :],
+                )
+
+
+class ItemSlotIdTests(TestCase):
+    """The card slot id is the same wherever the item is rendered from."""
+
+    def test_ignores_route_media_type_and_keeps_provider_apart(self):
+        """Grouped-anime routing must not rename the slot; two providers must not share one."""
+        mal = Item(
+            media_id="1",
+            source=Sources.MAL.value,
+            media_type=MediaTypes.MANGA.value,
+        )
+        baka = Item(
+            media_id="1",
+            source=Sources.MANGABAKA.value,
+            media_type=MediaTypes.MANGA.value,
+        )
+        self.assertNotEqual(
+            item_slot_id("media-card-rating", mal),
+            item_slot_id("media-card-rating", baka),
+        )
+
+        plain = Item(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+        )
+        routed = Item(
+            media_id="123",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+        )
+        routed.route_media_type = MediaTypes.ANIME.value
+        self.assertEqual(
+            item_slot_id("media-card-rating", plain),
+            item_slot_id("media-card-rating", routed),
+        )
+        self.assertEqual(
+            item_slot_id(
+                "media-card-rating",
+                {"media_id": "123", "source": "tmdb", "media_type": "tv"},
+            ),
+            item_slot_id("media-card-rating", plain),
+        )

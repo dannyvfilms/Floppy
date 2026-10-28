@@ -456,7 +456,7 @@ def media_save(request):
                 return render_to_string(
                     "app/components/media_card_rating_oob.html",
                     {
-                        "media_instance_id": media.id,
+                        "item": media.item,
                         "rating_media_type": media.item.media_type,
                         "rating_value": media.formatted_score,
                         "rate_url": reverse(
@@ -472,6 +472,7 @@ def media_save(request):
                 return render_to_string(
                     "app/components/media_card_status_chip.html",
                     {
+                        "item": media.item,
                         "media": media,
                         "status_chip_oob": True,
                     },

@@ -198,6 +198,7 @@ class ProgressBreakdown:
             "percent": self.percent, "rewatch": self.rewatch_percent,
             "offset": self.rewatch_offset, "width": self.rewatch_width,
             "label": self.rewatch_label, "run_key": self.run_key,
+            "caught_up": self.caught_up,
         }
 
     @property
@@ -216,6 +217,33 @@ class ProgressBreakdown:
     def percent(self):
         """Return the overall watched percentage, or None."""
         return round(self.watched / self.total * 100) if self.total else None
+
+    @property
+    def caught_up(self):
+        """Return whether every aired episode is watched and more is still to come.
+
+        Display only (rule R5 in docs/architecture/status-rules.md): a show
+        or season that is up to date but not finished keeps its stored status.
+        A scope with nothing left to air is Completed, not caught up, and one
+        with nothing aired yet has nothing to be caught up on.
+        """
+        if self.catalogue_unavailable:
+            return False
+        # A season the provider left out may hold unwatched aired episodes, so
+        # a partial response cannot prove the user is caught up.
+        if any(
+            season.catalogue_missing and not season.is_specials and not season.dropped
+            for season in self.seasons
+        ):
+            return False
+        scope = self.overall
+        aired = [ep for row in scope for ep in row.episodes if ep["state"] != UPCOMING]
+        if not aired or any(ep["state"] == UNWATCHED for ep in aired):
+            return False
+        # An announced season with no episode list yet still counts as to come.
+        return any(
+            ep["state"] == UPCOMING for row in scope for ep in row.episodes
+        ) or any(not row.episodes for row in scope)
 
     @property
     def minutes_left(self):

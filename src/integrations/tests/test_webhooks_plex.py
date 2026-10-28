@@ -1267,6 +1267,90 @@ class PlexWebhookTests(TestCase):
         self.assertEqual(season.related_tv.status, Status.COMPLETED.value)
 
     @patch("app.providers.tmdb.search", return_value={"results": []})
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tmdb.find")
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_ten_plays_complete_a_season_of_a_returning_show(
+        self,
+        mock_tv_with_seasons,
+        mock_find,
+        mock_tmdb_tv,
+        _mock_tmdb_search,
+    ):
+        """A fully watched season is Completed while the returning show stays open (#1618).
+
+        Ten webhook plays finish a ten-episode season. The next season is
+        announced and unaired, so it neither reopens the finished season nor
+        finishes the show, whose provider says it is still running.
+        """
+        show_metadata = {
+            "title": "Rent-a-Girlfriend",
+            "image": "",
+            "tvdb_id": "371233",
+            "synopsis": "",
+            "external_links": {},
+            "details": {"status": "Returning Series"},
+            "related": {
+                "seasons": [
+                    {"season_number": 4, "episode_count": 10},
+                    {"season_number": 5, "first_air_date": "2099-01-01"},
+                ],
+            },
+        }
+
+        def fake_tv_with_seasons(_media_id, season_numbers):
+            metadata = dict(show_metadata)
+            if 4 in season_numbers:
+                metadata["season/4"] = self._season_payload(10)
+            return metadata
+
+        def fake_get_media_metadata(media_type, media_id, source, season_numbers=None, **_):
+            if media_type == "tv_with_seasons":
+                return fake_tv_with_seasons(media_id, season_numbers or [])
+            return dict(show_metadata)
+
+        mock_tv_with_seasons.side_effect = fake_tv_with_seasons
+        mock_tmdb_tv.return_value = dict(show_metadata)
+        mock_find.side_effect = lambda external_id, _source: {
+            "tv_episode_results": [
+                {
+                    "show_id": 96316,
+                    "season_number": 4,
+                    "episode_number": int(str(external_id)[-2:]),
+                },
+            ],
+            "tv_results": [],
+        }
+
+        processor = PlexWebhookProcessor()
+        with patch(
+            "app.providers.services.get_media_metadata",
+            side_effect=fake_get_media_metadata,
+        ):
+            for episode_number in range(1, 11):
+                processor._handle_tv_episode(
+                    "96316",
+                    5,
+                    episode_number,
+                    self._rag_payload(5, episode_number),
+                    self.user,
+                )
+
+        season = Season.objects.get(
+            item__media_id="96316",
+            item__season_number=4,
+            user=self.user,
+        )
+        self.assertEqual(season.status, Status.COMPLETED.value)
+        self.assertEqual(season.related_tv.status, Status.IN_PROGRESS.value)
+        self.assertFalse(
+            Season.objects.filter(
+                related_tv=season.related_tv,
+                item__season_number=5,
+            ).exists(),
+        )
+
+    @patch("app.providers.tmdb.search", return_value={"results": []})
     @patch(
         "app.providers.tmdb.find",
         return_value={"tv_episode_results": [], "tv_results": []},

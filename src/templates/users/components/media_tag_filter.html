@@ -1,0 +1,33 @@
+{% load i18n %}
+{% comment %}
+  Media type filter chips shared by Import Data, Integrations and Metadata.
+  The page's Alpine scope needs `activeMediaTag` set to 'all'.
+  Context: tags (from media_tag_choices), all_label, prompt, summary (optional,
+  shows a "Showing ..." line).
+{% endcomment %}
+<div class="bg-[var(--color-surface-strong)] rounded-lg p-4 mb-5" data-testid="media-tag-filter">
+  <p class="text-sm text-[var(--color-text-secondary)] mb-3">{{ prompt|default:_("Browse by media type:") }}</p>
+  <div class="flex flex-wrap gap-2">
+    <button type="button"
+            @click="activeMediaTag = 'all'"
+            :aria-pressed="activeMediaTag === 'all'"
+            class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
+            :class="activeMediaTag === 'all' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
+      {{ all_label|default:_("All") }}
+    </button>
+    {% for tag in tags %}
+      <button type="button"
+              @click="activeMediaTag = '{{ tag.key }}'"
+              :aria-pressed="activeMediaTag === '{{ tag.key }}'"
+              class="px-3 py-1.5 text-xs rounded-md border transition-colors cursor-pointer"
+              :class="activeMediaTag === '{{ tag.key }}' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:border-indigo-500 hover:text-[var(--color-text)]'">
+        {{ tag.label }}
+      </button>
+    {% endfor %}
+  </div>
+  {% if summary %}
+    <p class="text-xs text-[var(--color-text-muted)] mt-3"
+       x-text="gettext('Showing ') + ({ all: '{{ all_label|default:_("All")|escapejs }}'{% for tag in tags %}, {{ tag.key }}: '{{ tag.label|escapejs }}'{% endfor %} })[activeMediaTag] + '.'">
+    </p>
+  {% endif %}
+</div>

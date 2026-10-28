@@ -427,6 +427,111 @@ class BuildProgressBreakdownTests(BreakdownTestCase):
         self.assertEqual(format_minutes(125), "2h 5m")
 
 
+class CaughtUpTests(BreakdownTestCase):
+    """Caught Up is a display label: every aired episode watched, more to come (R5)."""
+
+    def test_all_aired_watched_with_an_upcoming_episode_is_caught_up(self):
+        season = self.season(1)
+        self.watch(season, 1, 2)
+
+        result = self.breakdown(
+            _catalogue(s1=[_episode(1), _episode(2), _episode(3, air_date=FUTURE)]),
+        )
+
+        self.assertTrue(result.caught_up)
+
+    def test_nothing_left_to_air_is_complete_not_caught_up(self):
+        season = self.season(1)
+        self.watch(season, 1, 2)
+
+        result = self.breakdown(_catalogue(s1=[_episode(1), _episode(2)]))
+
+        self.assertFalse(result.caught_up)
+
+    def test_an_unwatched_aired_episode_is_not_caught_up(self):
+        season = self.season(1)
+        self.watch(season, 1)
+
+        result = self.breakdown(
+            _catalogue(s1=[_episode(1), _episode(2), _episode(3, air_date=FUTURE)]),
+        )
+
+        self.assertFalse(result.caught_up)
+
+    def test_nothing_aired_yet_is_not_caught_up(self):
+        self.season(1)
+
+        result = self.breakdown(_catalogue(s1=[_episode(1, air_date=FUTURE)]))
+
+        self.assertFalse(result.caught_up)
+
+    def test_an_announced_season_with_no_episode_list_keeps_the_show_caught_up(self):
+        season = self.season(1, status=Status.COMPLETED.value)
+        self.season(2, status=Status.PLANNING.value)
+        self.watch(season, 1, 2)
+
+        result = self.breakdown(_catalogue(s1=[_episode(1), _episode(2)], s2=[]))
+
+        self.assertTrue(result.caught_up)
+
+    def test_a_season_page_is_judged_on_its_own_episodes(self):
+        """Season 1 is finished even though the show has a season still to come."""
+        season_one = self.season(1, status=Status.COMPLETED.value)
+        self.season(2, status=Status.PLANNING.value)
+        self.watch(season_one, 1, 2)
+        fake = _catalogue(s1=[_episode(1), _episode(2)], s2=[_episode(1, air_date=FUTURE)])
+
+        self.assertFalse(self.breakdown(fake, season=season_one).caught_up)
+        self.assertTrue(self.breakdown(fake, tv=self.tv).caught_up)
+
+    def test_a_tracked_season_missing_from_the_catalogue_is_not_caught_up(self):
+        """A partial provider answer cannot prove an omitted season is watched."""
+        season_one = self.season(1, status=Status.COMPLETED.value)
+        self.season(2, status=Status.IN_PROGRESS.value)
+        self.watch(season_one, 1, 2)
+
+        result = self.breakdown(
+            _catalogue(
+                s1=[_episode(1), _episode(2)],
+                s3=[_episode(1, air_date=FUTURE)],
+            ),
+        )
+
+        self.assertFalse(result.caught_up)
+
+    def test_unavailable_catalogue_is_not_caught_up(self):
+        self.watch(self.season(1), 1)
+
+        def broken(*_args, **_kwargs):
+            raise ProviderAPIError("tmdb", None)
+
+        self.assertFalse(self.breakdown(broken).caught_up)
+
+    def test_progress_card_shows_the_label_only_when_caught_up(self):
+        season = self.season(1)
+        self.watch(season, 1, 2)
+        self.tv.max_progress = 2
+        context = {
+            "media": self.tv.item,
+            "media_type": "tv",
+            "current_instance": self.tv,
+            "public_view": False,
+        }
+
+        def card(fake):
+            with patch("app.providers.services.get_media_metadata", side_effect=fake):
+                return render_to_string("app/components/detail_progress_card_slot.html", context)
+
+        caught_up = card(
+            _catalogue(s1=[_episode(1), _episode(2), _episode(3, air_date=FUTURE)]),
+        )
+        finished = card(_catalogue(s1=[_episode(1), _episode(2)]))
+
+        self.assertIn("caughtUp: true", caught_up)
+        self.assertIn("Caught Up", caught_up)
+        self.assertIn("caughtUp: false", finished)
+
+
 class ProgressBreakdownViewTests(BreakdownTestCase):
     """The endpoints behind the progress card."""
 

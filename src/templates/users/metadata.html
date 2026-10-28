@@ -10,6 +10,10 @@
   {# Modal state shared by every provider row, same shape as the Import Data page. #}
   <div class="space-y-6"
        x-data="{
+         activeMediaTag: 'all',
+         matchesTag(tags) {
+           return this.activeMediaTag === 'all' || tags.includes(this.activeMediaTag);
+         },
          activeModal: null,
          openModal(slug) { this.activeModal = slug },
          closeModal() { this.activeModal = null }
@@ -44,6 +48,12 @@
       </div>
     {% endif %}
 
+    {% media_tag_choices media_tag_keys as media_tags %}
+    {% if media_tags|length > 1 %}
+      {% translate "All" as all_label %}
+      {% include "users/components/media_tag_filter.html" with tags=media_tags all_label=all_label %}
+    {% endif %}
+
     {% if provider_summary %}
       <div class="bg-[var(--color-surface)] rounded-lg p-6">
         <h2 class="text-xl font-semibold mb-1">{% translate "Metadata Providers" %}</h2>
@@ -53,7 +63,8 @@
         <div class="space-y-3">
           {% for entry in provider_summary %}
             {# Same row shape as provider_credential_row.html below, so both lists read as one system. #}
-            <div class="bg-[var(--color-surface-strong)] rounded-lg">
+            <div class="bg-[var(--color-surface-strong)] rounded-lg"
+                 x-show="matchesTag({{ entry.media_tag_keys|media_tag_list }})">
               <div class="flex flex-wrap items-center gap-y-2 gap-x-3 p-3">
                 <div class="flex items-center gap-4 min-w-0 w-full sm:w-auto sm:flex-1">
                   <div class="flex items-center">
@@ -130,7 +141,8 @@
     {% endif %}
 
     {% for group in credential_groups %}
-      <div class="bg-[var(--color-surface)] rounded-lg p-6">
+      <div class="bg-[var(--color-surface)] rounded-lg p-6"
+           x-show="matchesTag({{ group.media_tags|media_tag_list }})">
         <div class="flex items-center mb-1">
           {% include "app/icons/key.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
           <h2 class="text-xl font-semibold">{{ group.label }}</h2>
@@ -138,7 +150,9 @@
         <p class="text-[var(--color-text-muted)] text-sm mb-4">{{ group.description }}</p>
         <div class="space-y-3">
           {% for provider in group.providers %}
-            {% include "users/components/provider_credential_row.html" %}
+            <div x-show="matchesTag({{ provider.media_tags|media_tag_list }})">
+              {% include "users/components/provider_credential_row.html" %}
+            </div>
           {% endfor %}
         </div>
       </div>

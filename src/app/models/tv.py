@@ -819,6 +819,65 @@ class TV(Media):
         except (AttributeError, TypeError, ValueError):
             return False
 
+    @staticmethod
+    def _first_air_date_is_future(value):
+        """Return whether a provider season's first air date is known and ahead."""
+        if not value:
+            return False
+        if isinstance(value, str):
+            try:
+                value = datetime.strptime(value[:10], "%Y-%m-%d")  # noqa: DTZ007
+            except ValueError:
+                return False
+        try:
+            if timezone.is_naive(value):
+                value = timezone.make_aware(value, timezone.get_current_timezone())
+            return timezone.localtime(value).date() > timezone.localdate()
+        except (AttributeError, TypeError, ValueError):
+            return False
+
+    def has_unfinished_aired_seasons(self):
+        """Return whether any season still has aired episodes left to finish.
+
+        A Planning season the provider dates in the future, with no history
+        and no released episode, is announced rather than unfinished, so it
+        never blocks the show from completing (rule R3 in
+        docs/architecture/status-rules.md). A season with no provider date
+        still counts: undated is not the same as unaired.
+        """
+        unfinished = list(
+            self.seasons.filter(item__season_number__gt=0).exclude(
+                status=Status.COMPLETED.value,
+            ),
+        )
+        announced = [
+            season
+            for season in unfinished
+            if season.status == Status.PLANNING.value
+            and not self._season_has_local_episode_evidence(season)
+        ]
+        if len(announced) < len(unfinished):
+            return True
+        if not announced:
+            return False
+
+        metadata = self._fetch_tv_metadata()
+        related = metadata.get("related") if isinstance(metadata, dict) else None
+        seasons_data = related.get("seasons") if isinstance(related, dict) else None
+        air_dates = {}
+        for season_data in seasons_data if isinstance(seasons_data, list) else []:
+            if isinstance(season_data, dict):
+                air_dates.setdefault(
+                    season_data.get("season_number"),
+                    season_data.get("first_air_date"),
+                )
+        return any(
+            not self._first_air_date_is_future(
+                air_dates.get(season.item.season_number),
+            )
+            for season in announced
+        )
+
     def _season_has_local_episode_evidence(self, season):
         """Return whether local history proves a season has episodes to watch."""
         return (
@@ -1019,17 +1078,7 @@ class TV(Media):
         ):
             return
 
-        incomplete_seasons_exist = (
-            self.seasons.filter(
-                item__season_number__gt=0,
-            )
-            .exclude(
-                status=Status.COMPLETED.value,
-            )
-            .exists()
-        )
-
-        if not incomplete_seasons_exist:
+        if not self.has_unfinished_aired_seasons():
             production_status = self.resolve_production_status()
 
             if production_status is None:
@@ -1877,9 +1926,7 @@ class Season(Media):
         if desired_status == Status.COMPLETED.value and (
             became_completed
             or plays_added
-            or not tv.seasons.filter(item__season_number__gt=0)
-            .exclude(status=Status.COMPLETED.value)
-            .exists()
+            or not tv.has_unfinished_aired_seasons()
         ):
             if tv.status == Status.PLANNING.value:
                 # Logged plays mean the show has started, whether or not

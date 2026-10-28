@@ -492,8 +492,10 @@ class AppConfig(AppConfig):
             from app.tasks_game_groups import (
                 GAME_GROUPS_BACKFILL_VERSION,
                 reconcile_game_groups_backfill,
+                reopen_unconfigured_game_groups,
             )
 
+            reopen_unconfigured_game_groups()
             version_key = f"game_groups_backfilled_v{GAME_GROUPS_BACKFILL_VERSION}"
             status = cache.get(version_key)
 

@@ -63,7 +63,7 @@
               </div>
             {% endwith %}
           {% elif show_status_chip|default_if_none:True %}
-            {% include "app/components/media_card_status_chip.html" with media=media current_sort_value=current_sort_value recommend_mode=recommend_mode show_next_event_chip=show_next_event_chip Status=Status only %}
+            {% include "app/components/media_card_status_chip.html" with item=item media=media current_sort_value=current_sort_value recommend_mode=recommend_mode show_next_event_chip=show_next_event_chip Status=Status only %}
           {% endif %}
 
           {# Bottom corner, so it never sits under the next-episode link at the top right. #}
@@ -450,14 +450,16 @@
                 </span>
               {% endif %}
               {% if media %}
-                <span id="media-card-rating-{{ media.id }}">
+                <span id="{% item_slot_id 'media-card-rating' item %}">
                   {% if not public_view|default:False and not recommend_mode and not rating_read_only|default:False and not use_podcast_show|default:False %}
                     {% url 'update_media_score' item.media_type media.id as card_rate_url %}
                   {% endif %}
                   {% include "app/components/media_card_rating.html" with rate_url=card_rate_url|default:"" %}
                 </span>
               {% else %}
-                {% include "app/components/media_card_rating.html" %}
+                <span id="{% item_slot_id 'media-card-rating' item %}">
+                  {% include "app/components/media_card_rating.html" %}
+                </span>
               {% endif %}
             </div>
               {% endwith %}

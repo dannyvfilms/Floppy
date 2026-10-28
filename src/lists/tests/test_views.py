@@ -28,6 +28,7 @@ from app.models import (
     Status,
     Video,
 )
+from app.templatetags.app_tags import item_slot_id
 from lists import smart_rules
 from lists.feeds import FloppyRssFeed
 from lists.models import CustomList, CustomListItem, ListActivity, ListRecommendation
@@ -2816,7 +2817,7 @@ class ListDetailViewTests(TestCase):
 
         response = self.client.get(reverse("list_detail", args=[episode_list.id]))
 
-        self.assertContains(response, f'id="media-card-rating-{episode.id}"')
+        self.assertContains(response, f'id="{item_slot_id("media-card-rating", episode_item)}"')
         self.assertContains(response, ">7.5</span>")
 
     @patch("lists.views.services.get_media_metadata")
@@ -5100,6 +5101,6 @@ class ListRecommendationsViewTests(TestCase):
 
         content = response.content.decode()
         self.assertIn("Untracked Recommendation", content)
-        self.assertIn(f'id="media-card-rating-{movie.id}"', content)
-        self.assertIn(f'id="media-status-chip-{movie.id}"', content)
+        self.assertIn(f'id="{item_slot_id("media-card-rating", movie.item)}"', content)
+        self.assertIn(f'id="{item_slot_id("media-status-chip", movie.item)}"', content)
         self.assertEqual(content.count('class="media-status-chip '), 1)

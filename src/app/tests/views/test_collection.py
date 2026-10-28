@@ -19,6 +19,7 @@ from app.models import (
     Status,
     Video,
 )
+from app.templatetags.app_tags import item_slot_id
 from integrations.models import CollectionSourceState
 
 
@@ -174,9 +175,9 @@ class CollectionListViewTest(TestCase):
         response = self.client.get(reverse("collection_list"))
 
         content = response.content.decode()
-        self.assertIn(f'id="media-card-rating-{movie.id}"', content)
+        self.assertIn(f'id="{item_slot_id("media-card-rating", movie.item)}"', content)
         self.assertIn(">8.5</span>", content)
-        self.assertIn(f'id="media-status-chip-{movie.id}"', content)
+        self.assertIn(f'id="{item_slot_id("media-status-chip", movie.item)}"', content)
         self.assertIn('class="media-status-chip ', content)
 
     def test_collection_card_for_untracked_item_has_no_rating_or_status(self):
@@ -188,7 +189,7 @@ class CollectionListViewTest(TestCase):
 
         content = response.content.decode()
         self.assertIn("Test Movie", content)
-        self.assertNotIn("media-card-rating-", content)
+        self.assertNotIn("media-card-rate-button", content)
         self.assertNotIn('class="media-status-chip ', content)
 
     def test_collection_card_rating_ignores_other_users_tracking(self):
@@ -209,7 +210,8 @@ class CollectionListViewTest(TestCase):
 
         response = self.client.get(reverse("collection_list"))
 
-        self.assertNotContains(response, "media-card-rating-")
+        self.assertNotContains(response, "media-card-rate-button")
+        self.assertNotContains(response, "text-yellow-300")
 
     def test_collection_card_lookup_does_not_grow_with_page_size(self):
         """Loading ratings for the page is a fixed number of queries, not one per card."""

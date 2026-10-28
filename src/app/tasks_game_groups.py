@@ -136,6 +136,12 @@ def _populate_game_groups_for_items(items):
                 strategy_version=GAME_GROUPS_BACKFILL_VERSION,
             )
             updated_count += 1
+        except services.ProviderNotConfiguredError:
+            # Missing keys say nothing about the item, so they must not burn
+            # its attempts; reopen_unconfigured_game_groups() picks it up
+            # once the provider is configured.
+            logger.info("Game groups backfill skipped: IGDB is not configured")
+            break
         except Exception as exc:
             error_count += 1
             logger.exception(
@@ -218,6 +224,36 @@ def populate_game_group_backfill_queue(batch_size: int = 25):
             return {"processed": 0, "message": "No queued game-group items"}
 
         return populate_game_group_data_for_items(batch)
+
+
+def reopen_unconfigured_game_groups(user=None) -> int:
+    """Retry games that failed only because IGDB had no credentials.
+
+    Those failures count toward give-up, and the startup sweep is one-time per
+    version, so without this a late-configured key would never backfill them.
+    Called only on events that show IGDB can now work (credentials saved, process
+    start), never per item. Returns the number of reopened items.
+    """
+    from app.models import MetadataBackfillState
+
+    if not credentials.is_configured("igdb", user):
+        return 0
+    reopened = MetadataBackfillState.objects.filter(
+        field=MetadataBackfillField.GAME_GROUPS,
+        last_success_at__isnull=True,
+        last_error__contains="ProviderNotConfiguredError",
+    ).update(
+        fail_count=0,
+        give_up=False,
+        next_retry_at=None,
+        last_error="",
+        terminal=False,
+    )
+    if reopened:
+        reconcile_game_groups_backfill.apply_async(
+            countdown=10, priority=BACKGROUND_TASK_PRIORITY
+        )
+    return reopened
 
 
 @shared_task(name="app.tasks.reconcile_game_groups_backfill")

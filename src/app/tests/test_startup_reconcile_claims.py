@@ -53,6 +53,12 @@ class StartupReconcileClaimTests(SimpleTestCase):
     def setUp(self):
         cache.clear()
         self.config = AppConfig("app", import_module("app"))
+        # The game-groups schedule first reopens rows that failed for lack of
+        # IGDB credentials, which queries the database; these tests only cover
+        # the claim logic and run without one.
+        reopen = patch("app.tasks_game_groups.reopen_unconfigured_game_groups")
+        reopen.start()
+        self.addCleanup(reopen.stop)
 
     def tearDown(self):
         cache.clear()

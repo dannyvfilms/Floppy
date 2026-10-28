@@ -3,12 +3,22 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from app.models import Game, Item, MediaTypes, Sources, Status
+from app.models import (
+    Game,
+    Item,
+    MediaTypes,
+    MetadataBackfillField,
+    MetadataBackfillState,
+    Sources,
+    Status,
+)
+from app.providers.services import ProviderNotConfiguredError
 from app.tasks_game_groups import (
     _users_by_item,
     count_game_group_backfill_items,
     populate_game_group_data_for_items,
     reconcile_game_groups_backfill,
+    reopen_unconfigured_game_groups,
 )
 
 
@@ -89,3 +99,49 @@ class GameGroupBackfillTests(TestCase):
 
         self.assertEqual(result["selected"], 1)
         self.assertEqual(mock_enqueue.call_args.args[0], [missing.id])
+
+
+    @patch("app.tasks_game_groups.services.get_media_metadata")
+    def test_unconfigured_provider_does_not_burn_attempts(self, mock_metadata):
+        item = self._game()
+        mock_metadata.side_effect = ProviderNotConfiguredError("igdb", "not set")
+
+        populate_game_group_data_for_items([item.id])
+
+        self.assertFalse(
+            MetadataBackfillState.objects.filter(
+                item=item, field=MetadataBackfillField.GAME_GROUPS
+            ).exists()
+        )
+
+    @patch("app.tasks_game_groups.reconcile_game_groups_backfill.apply_async")
+    @patch("app.tasks_game_groups.credentials.is_configured", return_value=True)
+    def test_reopen_resets_given_up_unconfigured_failures(
+        self, _configured, mock_reconcile
+    ):
+        stuck = self._game("1")
+        other = self._game("2")
+        for item, error in (
+            (stuck, "exception: ProviderNotConfiguredError"),
+            (other, "exception: timeout"),
+        ):
+            MetadataBackfillState.objects.create(
+                item=item,
+                field=MetadataBackfillField.GAME_GROUPS,
+                fail_count=6,
+                give_up=True,
+                last_error=error,
+            )
+
+        self.assertEqual(reopen_unconfigured_game_groups(), 1)
+
+        states = {
+            s.item_id: s
+            for s in MetadataBackfillState.objects.filter(
+                field=MetadataBackfillField.GAME_GROUPS
+            )
+        }
+        self.assertFalse(states[stuck.id].give_up)
+        self.assertEqual(states[stuck.id].fail_count, 0)
+        self.assertTrue(states[other.id].give_up)
+        mock_reconcile.assert_called_once()
