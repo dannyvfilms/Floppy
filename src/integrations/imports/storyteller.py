@@ -32,11 +32,17 @@ from app.models import MediaTypes, Sources, Status
 from app.providers import services
 from app.services.synced_status import keep_held_status
 from integrations import connection_health, import_progress
-from integrations.imports.helpers import MediaImportError, decrypt_or_raise
+from integrations.imports.helpers import (
+    MediaImportError,
+    decrypt_or_raise,
+    stamp_entry_source,
+)
 from integrations.models import StorytellerAccount
 from integrations.safe_fetch import send_to_self_hosted
 
 logger = logging.getLogger(__name__)
+
+ENTRY_SOURCE = "storyteller"
 
 HTTP_BAD_REQUEST = 400
 AUTH_TIMEOUT = 15
@@ -331,7 +337,7 @@ class StorytellerImporter:
                 position_time,
             ),
         )
-        return media
+        return stamp_entry_source(media, ENTRY_SOURCE)
 
     def _upsert_provider_item(
         self,

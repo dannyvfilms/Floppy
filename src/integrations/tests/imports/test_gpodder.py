@@ -89,6 +89,7 @@ class GPodderImporterTests(TestCase):
         podcast = Podcast.objects.get(item=item, user=self.user)
         self.assertEqual(podcast.status, Status.IN_PROGRESS.value)
         self.assertEqual(podcast.played_up_to_seconds, 120)
+        self.assertEqual(podcast.entry_source, "gpodder")
         self.account.refresh_from_db()
         self.assertEqual(self.account.episode_actions_since, 77)
 

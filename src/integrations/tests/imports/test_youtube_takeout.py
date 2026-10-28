@@ -119,6 +119,7 @@ class YouTubeTakeoutImportTests(TestCase):
         self.assertEqual(VideoPlay.objects.count(), 3)
         video = Video.objects.get(item__media_id="vidAAAAAAAA")
         self.assertEqual(video.status, Status.COMPLETED.value)
+        self.assertEqual(video.entry_source, "youtube")
         self.assertEqual(video.channel, "A Channel")
         self.assertEqual(video.watch_url, "https://www.youtube.com/watch?v=vidAAAAAAAA")
         self.assertEqual(video.end_date.isoformat()[:10], "2026-03-02")

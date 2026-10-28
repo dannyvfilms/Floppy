@@ -31,11 +31,17 @@ from app.models import (
 from app.providers import services
 from app.services.synced_status import keep_held_status
 from integrations import audiobookshelf_cover, connection_health, import_progress
-from integrations.imports.helpers import MediaImportError, decrypt_or_raise
+from integrations.imports.helpers import (
+    MediaImportError,
+    decrypt_or_raise,
+    stamp_entry_source,
+)
 from integrations.models import AudiobookshelfAccount
 from integrations.safe_fetch import send_to_self_hosted
 
 logger = logging.getLogger(__name__)
+
+ENTRY_SOURCE = "audiobookshelf"
 HTTP_BAD_REQUEST = 400
 BOOK_METADATA_PROVIDER_ORDER = (
     Sources.HARDCOVER.value,
@@ -428,7 +434,7 @@ class AudiobookshelfImporter:
             item=item,
             defaults=defaults,
         )
-        return media
+        return stamp_entry_source(media, ENTRY_SOURCE)
 
     def _is_finished_progress_entry(self, progress_entry: dict[str, Any]) -> bool:
         """Return whether ABS marks a title as completed."""
@@ -901,6 +907,7 @@ class AudiobookshelfImporter:
             return False
 
         Podcast.objects.create(
+            entry_source=ENTRY_SOURCE,
             user=self.user,
             item=item,
             show=show,

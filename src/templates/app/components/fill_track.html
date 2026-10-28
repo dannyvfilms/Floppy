@@ -2,6 +2,7 @@
 {% load i18n %}
 {% load widget_tweaks %}
 {% load user_tags %}
+{% load app_tags %}
 
 <div class="bg-[var(--color-surface-dim)] rounded-xl shadow-2xl overflow-hidden"
      data-track-modal-root
@@ -153,6 +154,12 @@
                     {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("Start:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes suggestion_extras=date_suggestion.extras runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.end_date|yesno:"end_date," copy_from_label=_("End") quick_action_mode="start" only %}
                   {% elif field.name == "end_date" %}
                     {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("End:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes suggestion_extras=date_suggestion.extras runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.start_date|yesno:"start_date," copy_from_label=_("Start") quick_action_mode="end" only %}
+                  {% elif field.name == "entry_source" %}
+                    {% entry_source_suggestions user as source_suggestions %}
+                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"|attr:"list:entry-source-suggestions" }}
+                    <datalist id="entry-source-suggestions">
+                      {% for source_name in source_suggestions %}<option value="{{ source_name }}">{% endfor %}
+                    </datalist>
                   {% else %}
                     {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
                   {% endif %}
