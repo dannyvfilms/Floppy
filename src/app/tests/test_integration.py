@@ -113,6 +113,10 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         )
         self.page.get_by_role("button", name="Sign in").click()
         expect(self.page.locator("#global-search")).to_be_visible()
+        # Home loads its rows as fragments after the shell. The in-memory
+        # SQLite test database fails a write at once while the live server is
+        # still reading, so let them finish before a test changes the user.
+        self.page.wait_for_load_state("networkidle")
         # htmx is a deferred script, so the page can be visible before it runs.
         self.page.wait_for_function("() => window.htmx")
 
@@ -351,6 +355,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         for theme in ("glass", "custom"):
             with self.subTest(theme=theme):
+                self.page.wait_for_load_state("networkidle")
                 self.user.theme = theme
                 self.user.save(update_fields=["theme"])
                 self.page.goto(f"{self.live_server_url}/medialist/movie?layout=grid")
@@ -370,6 +375,7 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         self.page.set_viewport_size({"width": 1600, "height": 1000})
         for theme in ("glass", "custom"):
             with self.subTest(theme=theme):
+                self.page.wait_for_load_state("networkidle")
                 self.user.theme = theme
                 self.user.save(update_fields=["theme"])
                 self.page.goto(
