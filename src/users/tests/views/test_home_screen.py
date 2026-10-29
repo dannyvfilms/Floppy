@@ -36,6 +36,7 @@ from app.services.item_merge import dedupe_cross_provider_items
 from lists import smart_rules
 from lists.models import CustomList
 from users import home_screen
+from users.home_screen import build_home_page_groups
 from users.models import (
     HOME_ALL_MEDIA_TYPE,
     DirectionChoices,
@@ -243,6 +244,7 @@ class HomeScreenViewTests(TestCase):
         self.assertEqual(
             [entry.item.title for entry in mixed["rows"][0]["items"]], ["Current Movie"]
         )
+        build_home_page_groups(self.user, 14)  # the shell only inlines warm shelves
         response = self.client.get(reverse("home"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'data-media-type-chip="movie"')
@@ -406,6 +408,7 @@ class HomeScreenViewTests(TestCase):
             filters={"status": [Status.IN_PROGRESS.value]},
         )
 
+        build_home_page_groups(self.user, 14)  # the shell only inlines warm shelves
         response = self.client.get(reverse("home"))
 
         self.assertContains(response, 'data-media-type-chip="anime"')
@@ -1007,6 +1010,7 @@ class HomeScreenViewTests(TestCase):
             [entry.item.title for entry in groups[0]["rows"][0]["items"]],
             ["Home Video"],
         )
+        self.assertTrue(groups[0]["rows"][0]["video_landscape"])
 
     def test_empty_library_query_rows_build_quickly_on_cold_cache(self):
         """Regression test for #621: empty rows must not stall the home page.

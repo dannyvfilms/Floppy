@@ -2508,11 +2508,11 @@ html.light .theme-toggle-icon-moon {
     min-height: 0;
   }
 
-  .detail-carousel-grid:has(.detail-carousel-overview-logo) {
+  .detail-carousel-grid:is(:has(.detail-carousel-overview-logo), :has(.video-channel-avatar)) {
     isolation: isolate;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):has(.detail-carousel-overview-logo) {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)):is(:has(.detail-carousel-overview-logo), :has(.video-channel-avatar):has(.detail-carousel-preview--overview)) {
     grid-template-areas:
       "poster preview"
       "strip strip"
@@ -2524,7 +2524,7 @@ html.light .theme-toggle-icon-moon {
     overflow-x: clip;
   }
 
-  .detail-carousel-grid:has(.detail-carousel-overview-logo) .detail-carousel-grid__poster {
+  .detail-carousel-grid:is(:has(.detail-carousel-overview-logo), :has(.video-channel-avatar)) .detail-carousel-grid__poster {
     position: relative;
     z-index: 2;
   }
@@ -2548,11 +2548,11 @@ html.light .theme-toggle-icon-moon {
     width: 100%;
   }
 
-  .detail-carousel-grid:has(.detail-carousel-preview--overview) .detail-carousel-grid__header > .min-w-0 > :not([id^="detail-activity-subtitle-slot"], #detail-carousel-logo-slot) {
+  .detail-carousel-grid:has(.detail-carousel-overview-logo):has(.detail-carousel-preview--overview) .detail-carousel-grid__header > .min-w-0 > :not([id^="detail-activity-subtitle-slot"], #detail-carousel-logo-slot) {
     display: none;
   }
 
-  .detail-carousel-grid:has(.detail-carousel-preview--overview) #detail-carousel-logo-slot {
+  .detail-carousel-grid:has(.detail-carousel-overview-logo):has(.detail-carousel-preview--overview) #detail-carousel-logo-slot {
     display: block;
     margin-bottom: 0.75rem;
   }
@@ -4590,5 +4590,47 @@ button.tier-label:focus-visible .tier-label-edit {
 
   .tier-tile {
     width: 4.25rem;
+  }
+}
+
+/* Video thumbnails retain their image; only dedicated video rows are wide. */
+.search-result-card.video-card-landscape {
+  aspect-ratio: 16 / 9;
+}
+.search-result-card.video-card .media-card-poster {
+  object-fit: contain !important;
+}
+
+/* Landscape video needs more width than poster artwork at the same density. */
+.media-grid.media-grid-video {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)) !important;
+}
+.home-row-card.home-row-card-video {
+  width: 17rem;
+}
+@media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
+  [data-mobile-grid] .media-grid.media-grid-video {
+    grid-template-columns: repeat(auto-fill, min(calc((100% - 0.75rem) / 2), 10.5rem)) !important;
+  }
+  [data-mobile-grid] .home-row-card.home-row-card-video {
+    width: min(calc((100% - 1rem) / 2), 10.5rem) !important;
+  }
+}
+
+/* Video channels use square artwork in the shared details layout. */
+.video-channel-avatar {
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 4rem;
+}
+@media (min-width: 768px) {
+  .detail-carousel-grid:has(.video-channel-avatar):has(.detail-carousel-preview--overview) .detail-carousel-grid__title {
+    color: white;
+    text-shadow: 0 1px 4px rgb(0 0 0 / 80%);
   }
 }

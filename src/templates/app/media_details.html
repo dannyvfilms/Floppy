@@ -26,9 +26,16 @@
         {# Phones get the compact header, or the backdrop hero once the carousel fragment brings one (reserved up front for movies and TV so the page does not jump); md+ gets the two-row carousel layout. See .detail-carousel-grid in input.css. #}
         <div class="detail-carousel-grid{% if not initial_carousel and media_type != MediaTypes.GAME.value %} detail-hero-pending{% endif %}">
           <div class="detail-carousel-grid__poster w-full max-w-[250px] mx-auto md:mx-0">
-            <img data-media-artwork alt="{{ media|display_title:user }}"
-                 class="w-full aspect-[2/3] rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
-                 src="{{ media.image|image_url }}">
+            {% if media_type == MediaTypes.VIDEO.value %}
+              <img data-media-artwork alt="{{ media|display_title:user }}" class="md:hidden w-full rounded-lg shadow-lg object-cover" src="{{ media.image|image_url }}">
+              <div id="video-channel-avatar" class="video-channel-avatar hidden md:flex" aria-label="{% translate 'Channel artwork' %}">
+                <span aria-hidden="true">{{ current_instance.channel|default:media.title|first|upper }}</span>
+              </div>
+            {% else %}
+              <img data-media-artwork alt="{{ media|display_title:user }}"
+                   class="w-full aspect-[2/3] rounded-lg shadow-lg bg-[var(--color-surface)] object-cover"
+                   src="{{ media.image|image_url }}">
+            {% endif %}
           </div>
 
           <div class="detail-carousel-grid__carousel relative min-w-0">
@@ -40,12 +47,20 @@
                  hx-on::after-settle="this.closest('.detail-carousel-grid').classList.remove('detail-hero-pending')"{% endif %}>{% if initial_carousel %}{% include "app/components/detail_carousel_fragment.html" with carousel=initial_carousel inline=True %}{% elif media_type != MediaTypes.GAME.value %}<div class="detail-carousel-content detail-carousel-pending" aria-hidden="true"><div class="detail-carousel-preview detail-carousel-preview--bounded"></div><div class="detail-carousel-strip-wrap"></div></div>{% endif %}</div>
           </div>
 
-          <div class="detail-carousel-grid__header flex flex-col md:flex-row md:flex-wrap md:items-center md:justify-between gap-4">
-            <div class="detail-carousel-grid__title min-w-0 flex-1 md:basis-64"><div id="detail-carousel-logo-slot">{% if initial_carousel.overview %}<img data-media-artwork class="detail-carousel-overview-logo" src="{{ initial_carousel.overview.logo_url }}" alt="{% translate 'Media title logo' %}">{% endif %}</div>{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
+          <div class="detail-carousel-grid__header flex flex-col md:flex-row md:flex-wrap md:items-center {% if media_type == MediaTypes.VIDEO.value %}md:justify-start{% else %}md:justify-between{% endif %} gap-4">
+            <div class="detail-carousel-grid__title min-w-0{% if media_type != MediaTypes.VIDEO.value %} flex-1 md:basis-64{% endif %}"><div id="detail-carousel-logo-slot">{% if initial_carousel.overview.logo_url %}<img data-media-artwork class="detail-carousel-overview-logo" src="{{ initial_carousel.overview.logo_url }}" alt="{% translate 'Media title logo' %}">{% endif %}</div>{% include "app/components/detail_title_block.html" %}{% include "app/components/detail_mobile_meta.html" %}</div>
             <div class="detail-carousel-grid__actions max-w-full shrink-0">{% include "app/components/detail_action_buttons.html" %}</div>
           </div>
           <div class="detail-carousel-grid__chips">{% include "app/components/detail_score_chips.html" %}</div>
-          <div class="detail-carousel-grid__synopsis">{% include "app/components/detail_synopsis.html" %}</div>
+          <div class="detail-carousel-grid__synopsis">
+            {% if media_type == MediaTypes.VIDEO.value %}
+              <h1 class="text-2xl font-bold mb-3">{{ media|display_title:user }}</h1>
+              <div id="video-synopsis-content">{% include "app/components/detail_synopsis.html" %}</div>
+              {% if media.source == 'youtube' %}<div hx-get="{{ request.path }}?fragment=video-metadata" hx-trigger="load" hx-swap="none"></div>{% endif %}
+            {% else %}
+              {% include "app/components/detail_synopsis.html" %}
+            {% endif %}
+          </div>
         </div>
       {% else %}
         <div class="detail-flat-top flex flex-col md:flex-row gap-8 md:gap-10 mb-2 md:mb-8">

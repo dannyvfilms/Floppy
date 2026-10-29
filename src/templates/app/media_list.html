@@ -91,7 +91,7 @@
       {% elif is_album_list %}
         <div class="media-grid">{% include "app/components/album_list_grid_items.html" %}</div>
       {% else %}
-        <div class="media-grid">{% include "app/components/media_grid_items.html" %}</div>
+        <div class="media-grid{% if media_type == 'video' %} media-grid-video{% endif %}">{% include "app/components/media_grid_items.html" %}</div>
       {% endif %}
     {% else %}
       <div class="bg-[var(--color-surface)] p-4 rounded-lg overflow-hidden max-w-[calc(100svw-4rem)] overflow-x-scroll">

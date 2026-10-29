@@ -354,6 +354,57 @@
       </div>
     {% endif %}
 
+    {% if not user.is_demo %}
+      <div class="bg-[var(--color-surface)] rounded-lg p-6 border border-red-700/60"
+           id="delete-account">
+        <div class="flex items-center mb-4">
+          {% include "app/icons/warning.svg" with classes="w-6 h-6 text-red-400 mr-3" %}
+          <h2 class="text-xl font-semibold">{% translate "Delete Account" %}</h2>
+        </div>
+        <p class="text-sm text-[var(--color-text-muted)] leading-relaxed mb-4">
+          {% translate "This permanently removes your account, tracking history, lists, tags, integrations, API tokens and scheduled syncs. It cannot be undone. Other users are not affected." %}
+        </p>
+        {% if is_last_superuser %}
+          <p class="flex items-start gap-2 text-sm text-[var(--color-warning-text)] leading-relaxed">
+            {% include "app/icons/info.svg" with classes="w-4 h-4 shrink-0 mt-0.5" %}
+            <span>{% translate "You are the only superuser. Promote another account before deleting this one." %}</span>
+          </p>
+        {% else %}
+          <form method="post" class="space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_account">
+            {% if user.has_usable_password %}
+              <label class="block text-sm" for="delete_account_password">{% translate "Current Password" %}</label>
+              <input id="delete_account_password"
+                     name="current_password"
+                     type="password"
+                     autocomplete="current-password"
+                     required
+                     class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md">
+            {% else %}
+              <label class="block text-sm" for="delete_account_username">
+                {% blocktranslate with username=user.username %}Type your username ({{ username }}) to confirm{% endblocktranslate %}
+              </label>
+              <input id="delete_account_username"
+                     name="confirm_username"
+                     type="text"
+                     autocomplete="off"
+                     required
+                     class="w-full p-2 bg-[var(--color-surface-strong)] rounded-md">
+            {% endif %}
+            <label class="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="confirm_delete" required>
+              {% translate "I understand this cannot be undone" %}
+            </label>
+            <button type="submit"
+                    class="px-4 py-2 bg-red-700 text-white rounded-md hover:bg-red-800 transition-colors text-sm cursor-pointer">
+              {% translate "Delete My Account" %}
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+
   </div>
 
 {% endblock settings_content %}

@@ -9,6 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from app.models import Item, MediaTypes, Sources, Status, Video, VideoPlay
+from integrations import import_progress
 from integrations.imports import youtube_takeout
 from integrations.imports.helpers import MediaImportError
 
@@ -34,6 +35,12 @@ def as_file(records):
 
 class YouTubeTakeoutParsingTests(TestCase):
     """Pure parsing rules."""
+
+    def test_youtube_task_is_tracked_in_import_activity(self):
+        from app.signals import _is_tracked_task
+        from integrations import tasks
+
+        self.assertTrue(_is_tracked_task(tasks.import_youtube_takeout.name))
 
     def test_video_id_from_the_url_shapes_takeout_uses(self):
         """Watch, shorts and youtu.be URLs give the id. Posts and junk give none."""
@@ -99,6 +106,19 @@ class YouTubeTakeoutImportTests(TestCase):
     def run_import(self, records):
         """Import the records for the user."""
         return youtube_takeout.importer(as_file(records), self.user, "new")
+
+    def test_reports_reading_before_loading_history(self):
+        def load(_file):
+            progress = import_progress.get_progress("youtube-task")
+            self.assertEqual(progress["current"], 0)
+            self.assertIsNone(progress["total"])
+            self.assertEqual(progress["label"], "Reading YouTube history")
+            return []
+
+        with import_progress.tracking("youtube-task"), patch.object(
+            youtube_takeout, "load_records", side_effect=load
+        ):
+            self.run_import([])
 
     def test_creates_completed_videos_and_plays(self):
         """Each video is Completed with a channel, URL and poster, one play per day."""
@@ -205,6 +225,38 @@ class YouTubeTakeoutImportTests(TestCase):
         counts, _ = youtube_takeout.importer(buffer, self.user, "new")
         self.assertEqual(counts["created"], 1)
 
+    def test_imports_html_directly_and_from_zip(self):
+        html = b"""<html><body><div class="outer-cell"><div>
+        <div class="header-cell">YouTube<br></div>
+        <div class="content-cell mdl-typography--body-1">Watched&nbsp;
+        <a href="https://www.youtube.com/watch?v=vidAAAAAAAA">A &amp; B</a><br>
+        <a href="https://www.youtube.com/channel/abc">Channel</a><br>
+        Jan 9, 2023, 11:45:14&#8239;AM CDT<br></div></div></div></body></html>"""
+        counts, _ = youtube_takeout.importer(BytesIO(html), self.user, "new")
+        self.assertEqual(counts["created"], 1)
+        video = Video.objects.get()
+        self.assertEqual(video.item.title, "A & B")
+        self.assertEqual(
+            VideoPlay.objects.get().end_date,
+            youtube_takeout.parse_time("2023-01-09T16:45:14Z"),
+        )
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("Takeout/history/watch-history.html", html)
+        buffer.seek(0)
+        youtube_takeout.importer(buffer, self.user, "new")
+        self.assertEqual(VideoPlay.objects.count(), 1)
+
+    def test_html_rejects_an_unrecognized_watch_timestamp(self):
+        html = b"""<html><div class="outer-cell"><div class="header-cell">YouTube</div>
+        <div class="content-cell mdl-typography--body-1">
+        Watched <a href="https://www.youtube.com/watch?v=vidAAAAAAAA">Video</a><br>
+        Jan 9, 2023, 11:45:14 AM XYZ</div></div></html>"""
+        with self.assertRaisesMessage(
+            MediaImportError, "Could not read a YouTube watch timestamp"
+        ):
+            youtube_takeout.load_records(BytesIO(html))
+
     def test_zip_is_opened_in_place_not_read_whole(self):
         """A big export is never loaded into memory just to find the history."""
         buffer = io.BytesIO()
@@ -241,9 +293,9 @@ class YouTubeTakeoutImportTests(TestCase):
         self.assertEqual(VideoPlay.objects.count(), 1)
 
     def test_bad_files_get_plain_errors(self):
-        """HTML, an unrelated JSON object and a zip without history fail clearly."""
+        """Unrelated files and a zip without history fail clearly."""
         for payload, text in (
-            (b"<html></html>", "JSON"),
+            (b"<html></html>", "isn't a YouTube watch history"),
             (b'{"a": 1}', "isn't a YouTube watch history"),
         ):
             with self.assertRaisesMessage(MediaImportError, text):

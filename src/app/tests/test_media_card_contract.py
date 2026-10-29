@@ -6,6 +6,7 @@ declare the surface in app.card_surfaces rather than special-casing the card.
 
 import re
 from pathlib import Path
+from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -103,6 +104,93 @@ class MediaCardSurfaceContractTest(TestCase):
                 self.assertIn('loading="lazy"', content)
                 self.assertNotIn("data-src=", content)
                 self.assertNotIn("lazyload", content)
+
+    @patch("app.image_cache.is_enabled", return_value=False)
+    def test_video_cards_use_landscape_only_on_dedicated_surfaces(self, _is_enabled):
+        self.item.media_type = MediaTypes.VIDEO.value
+        self.item.image = "https://i.ytimg.com/vi/vidAAAAAAAA/hqdefault.jpg"
+        template = "{% media_card surface item=item card_media_type='video' video_landscape=wide %}"
+        for surface, wide, landscape in (
+            ("library", False, True),
+            ("home", True, True),
+            ("home", False, False),
+            ("list", False, False),
+        ):
+            with self.subTest(surface=surface, wide=wide):
+                content = self.render(
+                    template, surface=surface, item=self.item, wide=wide
+                )
+                self.assertIn("video-card", content)
+                self.assertEqual("video-card-landscape" in content, landscape)
+                self.assertIn("/maxresdefault.jpg", content)
+                self.assertIn(
+                    'data-image-fallback="https://i.ytimg.com/vi/vidAAAAAAAA/hqdefault.jpg"',
+                    content,
+                )
+
+    @patch("app.image_cache.is_enabled", return_value=False)
+    def test_history_places_video_in_its_own_landscape_row(self, _is_enabled):
+        from django.utils import timezone
+
+        video = Item.objects.create(
+            media_id="vidAAAAAAAA",
+            source=Sources.YOUTUBE.value,
+            media_type=MediaTypes.VIDEO.value,
+            title="Video example",
+            image="https://i.ytimg.com/vi/vidAAAAAAAA/hqdefault.jpg",
+        )
+        entries = [
+            {
+                "media_type": "movie",
+                "item": self.item,
+                "poster": self.item.image,
+                "title": self.item.title,
+                "display_title": self.item.title,
+                "entry_key": "movie",
+                "played_at_local": timezone.now(),
+            },
+            {
+                "media_type": "video",
+                "item": video,
+                "poster": video.image,
+                "title": video.title,
+                "display_title": video.title,
+                "entry_key": "video",
+                "played_at_local": timezone.now(),
+            },
+        ]
+        request = RequestFactory().get("/history")
+        request.user = self.user
+        content = render_to_string(
+            "app/components/history_day.html",
+            {
+                "day": {"entries": entries, "entry_count": 2, "day_key": "today"},
+                "user": self.user,
+                "history_mode": "activity",
+            },
+            request=request,
+        )
+        self.assertEqual(content.count('data-media-type="video"'), 1)
+        self.assertEqual(content.count("video-card-landscape"), 1)
+        self.assertIn("media-grid media-grid-video", content)
+        self.assertIn("/maxresdefault.jpg", content)
+        self.assertIn("/hqdefault.jpg", content)
+
+    def test_video_thumbnail_does_not_rewrite_custom_artwork(self):
+        from app.templatetags.app_tags import youtube_landscape_thumbnail
+
+        self.assertEqual(
+            youtube_landscape_thumbnail(
+                "https://i.ytimg.com/vi/vidAAAAAAAA/mqdefault.jpg"
+            ),
+            "https://i.ytimg.com/vi/vidAAAAAAAA/maxresdefault.jpg",
+        )
+        custom = "https://example.com/cover.jpg"
+        self.assertEqual(youtube_landscape_thumbnail(custom), custom)
+        self.assertEqual(
+            youtube_landscape_thumbnail("https://i.ytimg.com/vi/other/hqdefault.jpg"),
+            "https://i.ytimg.com/vi/other/hqdefault.jpg",
+        )
 
     def test_credit_runtime_chip_stays_clear_of_the_next_episode_link(self):
         """The watched-runtime chip sits at the bottom, not under the top-right link."""

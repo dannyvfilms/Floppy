@@ -3447,6 +3447,7 @@ def _build_row_section(
         "show_played_chip": row.row_type == HomeScreenRowTypeChoices.RECENTLY_UNRATED,
         "show_media_type_chip": _show_media_type_chip(user, row, media_type),
         "card_width_class": "w-44",
+        "video_landscape": media_type == "video",
         "grid_class": "media-grid media-grid-square"
         if media_type in SQUARE_HOME_MEDIA_TYPES
         else "media-grid",
@@ -3576,6 +3577,33 @@ def build_home_page_manifest(
             },
         )
     return groups
+
+
+def warm_first_group_split(user, manifest: list[dict], items_limit: int):
+    """Split the manifest into an inline first group and the groups to defer.
+
+    Returns ``(inline_index, defer_from)``. A group renders inline only when
+    every row it needs is already cached, so the shell never computes a
+    shelf; the first group with a cold row, and everything after it, loads as
+    row fragments. ``inline_index`` is ``None`` when nothing is warm.
+    """
+    from django.core.cache import cache
+
+    from app import cache_utils
+
+    keys = {
+        row.id: cache_utils.build_home_row_cache_key(user.id, row.id, items_limit)
+        for group in manifest
+        for row in group["rows"]
+    }
+    cached = cache.get_many(list(keys.values()))
+    for index, group in enumerate(manifest):
+        values = [cached.get(keys[row.id]) for row in group["rows"]]
+        if any(value is None for value in values):
+            return None, index
+        if any(value != _HOME_ROW_EMPTY_SENTINEL for value in values):
+            return index, index + 1
+    return None, len(manifest)
 
 
 def build_home_row(

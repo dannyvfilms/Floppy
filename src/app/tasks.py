@@ -320,6 +320,10 @@ from app.tasks_watch_state import (  # noqa: E402
     backfill_watch_state,
     ensure_watch_state_repair,
 )
+from app.tasks_youtube_game import (  # noqa: E402,F401
+    backfill_youtube_game_tags,
+    lookup_youtube_game_tag,
+)
 
 RELEASE_BACKFILL_SOURCES = (
     Sources.TMDB.value,

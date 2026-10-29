@@ -2189,6 +2189,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Sync IMDB ratings from datasets",
         "schedule": crontab(hour=5, minute=0),  # every day at 5 AM
     },
+    "backfill_youtube_game_tags": {
+        "task": "Backfill YouTube game tags",
+        "schedule": 60 * 30,  # 20 videos per run keeps requests to YouTube slow
+    },
     "sync_mal_ratings": {
         "task": "Sync MAL ratings from API",
         "schedule": crontab(hour=5, minute=15),  # every day at 5:15 AM

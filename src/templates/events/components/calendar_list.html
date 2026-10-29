@@ -16,7 +16,7 @@
 
       <div class="p-4 space-y-3">
         {% for release in releases %}
-          <a data-release-media-type="{{ release.item.media_type }}" data-release-type="{{ release.release_type }}" data-release-status="{{ release.status }}" href="{{ release.item|media_url }}" class="block">
+          <a data-release-media-type="{{ release.item.media_type }}" data-release-type="{{ release.release_type }}" data-release-status="{{ release.status|default_if_none:"" }}" href="{{ release.item|media_url }}" class="block">
             <div class="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
               <img data-media-artwork loading="lazy" decoding="sync" alt="{{ release }}"
                    class="w-10 h-10 object-cover rounded-md shrink-0"

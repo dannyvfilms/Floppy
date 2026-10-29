@@ -35,6 +35,22 @@ lookup, which aggregates repeat viewings. It costs one query per media type on t
 #1271 was a surface that passed `media=None` for items the user tracks. Collection and
 the list recommendations queue now use the shared lookup.
 
+## Video artwork
+
+Video-only library grids and video Home shelves use 16:9 cards. Mixed Home
+shelves and other mixed card surfaces retain the poster-sized card, containing
+rather than cropping video artwork. History groups video plays in a separate
+16:9 row after its poster and square rows. These dedicated video rows use wider
+cards than posters and the comfortable phone card size even in compact mode.
+All three use the existing card interactions and lazy artwork loading.
+
+For standard YouTube `hqdefault.jpg`, `mqdefault.jpg`, or `sddefault.jpg`
+artwork, these cards display YouTube's
+high-resolution `maxresdefault.jpg` variant and fall back to the stored image
+if the high-resolution thumbnail is missing. The
+stored image is unchanged, including client-supplied or user-selected artwork.
+Thumbnail dimensions do not classify a video as a Short.
+
 ## Rating from the card
 
 A tracked card's rating is a button (`media_card_rate_button.html`): the filled star and score,

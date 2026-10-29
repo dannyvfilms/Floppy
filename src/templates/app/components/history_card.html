@@ -6,7 +6,7 @@
 {# History card component - used for both 2:3 and 1:1 aspect ratio cards #}
 {# Args: entry, card_class (search-result-card or search-result-card-square), history_mode, user #}
 
-<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% card_subtitle_class entry.media_type %}{% card_title_classes entry.media_type %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
+<div class="media-card bg-[var(--color-surface)] rounded-lg overflow-hidden shadow-lg relative {{ card_class }}{% if entry.media_type == MediaTypes.VIDEO.value %} video-card{% endif %}{% card_subtitle_class entry.media_type %}{% card_title_classes entry.media_type %}{% if user.clickable_media_cards %} media-card-hide-overlay{% endif %}"
      data-media-type="{{ entry.media_type }}"
      x-data="{ trackOpen: false, historyOpen: false, listsOpen: false, revealed: false, tapToReveal(e) { if (this.revealed) { if (e.target.closest('button, a, input, select, textarea')) { return; } const link = this.$root.querySelector('.media-card-overlay a[href]') || this.$root.querySelector('a.media-card-title[href]'); if (link) { e.preventDefault(); e.stopPropagation(); link.click(); } return; } if (!window.matchMedia('(pointer: coarse)').matches || this.$root.classList.contains('media-card-hide-overlay') || !this.$root.querySelector('.media-card-overlay')) { return; } e.preventDefault(); e.stopPropagation(); this.revealed = true; window.dispatchEvent(new CustomEvent('media-card-revealed', { detail: this.$root })); } }"
      @click.capture="tapToReveal($event)"
@@ -19,7 +19,8 @@
        href="{% if entry.media_type == MediaTypes.MUSIC.value and entry.album %}{{ entry.album|music_album_url }}{% elif entry.media_type == MediaTypes.PODCAST.value and entry.show and entry.show.podcast_uuid %}{% url 'media_details' source='pocketcasts' media_type='podcast' media_id=entry.show.podcast_uuid title=entry.show.slug|default:entry.show.title|slug %}{% else %}{{ entry.item|media_url }}{% endif %}">
       <img loading="lazy" decoding="sync" alt="{{ preferred_entry_title|default:entry.display_title|default:entry.title }}"
            class="media-card-poster w-full {% if card_class == 'search-result-card-square' %}aspect-[1/1]{% else %}aspect-[2/3]{% endif %} {% if entry.poster != IMG_NONE %}object-cover{% endif %}"
-           src="{{ entry.poster|image_url }}">
+           src="{% if entry.media_type == MediaTypes.VIDEO.value %}{{ entry.poster|youtube_landscape_thumbnail|image_url }}{% else %}{{ entry.poster|image_url }}{% endif %}"
+           {% if entry.media_type == MediaTypes.VIDEO.value %}data-image-fallback="{{ entry.poster|image_url }}" data-image-fallback-on-small="true"{% endif %}>
     </a>
     {% endwith %}
 

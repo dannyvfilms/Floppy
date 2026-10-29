@@ -105,6 +105,7 @@ SpecialModels = [
     "Episode",
     "MoviePlay",
     "VideoPlay",
+    "VideoGameTag",
     "BasicMedia",
     "Artist",
     "Album",
