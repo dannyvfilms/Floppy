@@ -80,6 +80,33 @@ Home caches a Python-ordered shelf's id order for longer than the rendered
 section, so "load more" and a warm revisit cost one page. A random shelf keeps
 the short row lifetime: each new seed is a different order.
 
+### Display levels on mixed Home shelves
+
+An All Media library row stores selected families in `filters.media_types` and
+one display level per hierarchical family in `filters.media_subviews`. TV can
+show shows, seasons or episodes; music can show artists, albums or tracks;
+podcasts can show shows or episodes. Missing selections preserve the original
+mixed-row defaults: TV shows, music tracks and podcast episodes. The dedicated
+music and podcast row defaults are independent.
+
+Ordinary mixed shelves retain the normal executor path. A shelf with another
+display level uses `users.home_mixed_rows`: item sources contribute the engine's
+compact `rank_rows()` values, and Home's existing album, artist and podcast-show
+adapters contribute equivalent ranks from batches of their trackers. One global
+order uses nulls last, stable entity identities and the row's random seed. Only
+the requested page is decorated; only its projected cards persist shell Items.
+The combined identity order uses the existing Home cache registry and tracker
+invalidation, including the row's display choices in its cache key.
+
+Status and rating refer to the displayed entity, not its parent. TV child
+membership is scoped through the viewer's TV library, including anime routing;
+episode state comes from active episode plays and excludes archived/rating-only
+rows. Collection and tags refer to the displayed Item (the existing shell for
+projected entities). Release filtering uses the album's release date, a podcast
+show's first publication date, or an unknown date for artists. Unknown dates
+follow the shared Released/Not Released rule. Caught-up filters apply to shows
+and seasons, as on other engine queries.
+
 ## Where filters come from
 
 The engine is one half. The other half turns what a surface was given into

@@ -4608,12 +4608,28 @@ button.tier-label:focus-visible .tier-label-edit {
 .home-row-card.home-row-card-video {
   width: 17rem;
 }
+/* Mixed shelves share the poster height while retaining native artwork shapes. */
+.home-row-card.home-row-card-mixed-square {
+  width: 16.5rem;
+}
+.home-row-card.home-row-card-mixed-video {
+  width: 29.333333rem;
+}
+.home-row-card-mixed-video .video-card {
+  aspect-ratio: 16 / 9;
+}
 @media (max-width: 600px), (orientation: landscape) and (pointer: coarse) and (max-width: 1000px) and (max-height: 720px), (orientation: landscape) and (hover: none) and (max-width: 1000px) and (max-height: 720px) {
   [data-mobile-grid] .media-grid.media-grid-video {
     grid-template-columns: repeat(auto-fill, min(calc((100% - 0.75rem) / 2), 10.5rem)) !important;
   }
   [data-mobile-grid] .home-row-card.home-row-card-video {
     width: min(calc((100% - 1rem) / 2), 10.5rem) !important;
+  }
+  [data-mobile-grid] .home-row-card.home-row-card-mixed-square {
+    width: calc(min((100% - (var(--card-cols) - 1) * 1rem) / var(--card-cols), var(--card-cap)) * 1.5) !important;
+  }
+  [data-mobile-grid] .home-row-card.home-row-card-mixed-video {
+    width: calc(min((100% - (var(--card-cols) - 1) * 1rem) / var(--card-cols), var(--card-cap)) * 8 / 3) !important;
   }
 }
 

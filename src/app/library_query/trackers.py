@@ -16,7 +16,7 @@ from django.db import models
 from django.db.models import Case, F, OuterRef, Q, When
 
 from app.library_query.spec import ROUTING_MODEL
-from app.models.choices import MediaTypes
+from app.models.choices import MediaTypes, Status
 from app.services import metadata_resolution
 
 
@@ -74,7 +74,7 @@ class TrackerSource:
         """Return the expression that orders rows by most recent activity."""
         whens = [
             When(**{f"{name}__isnull": False}, then=F(name))
-            for name in ("end_date", "progressed_at")
+            for name in (("end_date", "start_date") if self.is_episode else ("end_date", "progressed_at"))
             if self.has_field(name)
         ]
         if not whens:
@@ -88,7 +88,7 @@ def _source(media_type: str, item_q: Q | None = None) -> TrackerSource:
         return TrackerSource(
             model=model,
             user_lookup="related_season__user",
-            status_field="related_season__status",
+            status_field="status",
             item_q=item_q or Q(),
         )
     return TrackerSource(
@@ -124,3 +124,42 @@ def tracker_sources(user, media_type: str, routing: str) -> list[TrackerSource]:
         )
         return [_source(MediaTypes.TV.value, None if include_in_tv else ~anime_bucket)]
     return [_source(media_type)]
+
+
+def episode_media_for_items(user, item_ids):
+    """Load unique active episode cards with their own latest tracking state."""
+    source = _source(MediaTypes.EPISODE.value)
+    rows = (
+        source.rows(user).filter(item_id__in=item_ids)
+        .select_related("item", "related_season__item", "related_season__related_tv__item")
+        .defer("item__watch_providers", "related_season__item__watch_providers",
+               "related_season__related_tv__item__watch_providers")
+        .annotate(_activity=source.activity())
+        .order_by(F("_activity").desc(nulls_last=True), "-pk")
+    )
+    latest = {}
+    for media in rows:
+        primary = latest.setdefault(media.item_id, media)
+        activity = media.end_date or media.start_date
+        watched = media.end_date or (
+            media.start_date if media.status == Status.IN_PROGRESS.value else None
+        )
+        if not hasattr(primary, "last_played_at"):
+            primary.last_played_at = None
+            primary.aggregated_last_watched = None
+            primary.aggregated_score = media.score
+            primary.aggregated_start_date = None
+            primary.aggregated_end_date = None
+            primary.aggregated_created_at = media.created_at
+        if activity and (primary.last_played_at is None or activity > primary.last_played_at):
+            primary.last_played_at = activity
+        if watched and (primary.aggregated_last_watched is None or watched > primary.aggregated_last_watched):
+            primary.aggregated_last_watched = watched
+        if primary.aggregated_score is None and media.score is not None:
+            primary.aggregated_score = media.score
+        if media.start_date and (primary.aggregated_start_date is None or media.start_date < primary.aggregated_start_date):
+            primary.aggregated_start_date = media.start_date
+        if media.end_date and (primary.aggregated_end_date is None or media.end_date > primary.aggregated_end_date):
+            primary.aggregated_end_date = media.end_date
+        primary.aggregated_created_at = max(primary.aggregated_created_at, media.created_at)
+    return latest

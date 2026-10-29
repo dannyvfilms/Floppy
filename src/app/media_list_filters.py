@@ -858,7 +858,7 @@ def _sort_value(entry, sort, next_episode):
     if sort in {"release_date", "release_datetime"}:
         return getattr(item, "release_datetime", None)
     if sort in {"date_added", "added", "created_at"}:
-        return getattr(media, "created_at", None)
+        return getattr(media, "aggregated_created_at", None) or getattr(media, "created_at", None)
     if sort in {"start_date", "started"}:
         return getattr(media, "aggregated_start_date", None) or getattr(
             media, "start_date", None

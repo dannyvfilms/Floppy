@@ -22,6 +22,7 @@ from django.db.models import (
     F,
     IntegerField,
     Max,
+    Min,
     OuterRef,
     Q,
     Subquery,
@@ -103,6 +104,17 @@ def _tracker_aggregate(sort_key: str):
         subqueries = []
         for source in ctx.sources:
             if source.is_episode:
+                value = F(field_name)
+                if sort_key == "last_watched":
+                    value = Coalesce("end_date", Case(
+                        When(status=Status.IN_PROGRESS.value, then=F("start_date")),
+                    ))
+                if sort_key != "progress":
+                    aggregate = Min if sort_key == "start_date" else Max
+                    subqueries.append(Subquery(
+                        source.item_rows(ctx.user).order_by().values("item_id")
+                        .annotate(value=aggregate(value)).values("value")[:1],
+                    ))
                 continue
             if not source.has_field(field_name):
                 # The value is derived in Python (TV dates come from seasons).

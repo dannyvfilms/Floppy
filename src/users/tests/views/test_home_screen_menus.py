@@ -64,6 +64,114 @@ class HomeScreenMenuTests(SerialStaticLiveServerTestCase):
         self.section = self.page.locator('[data-section-media-type="movie"]')
         self.section.locator("h3").click()
 
+    def test_row_title_can_be_clicked_and_saved(self):
+        self.page.wait_for_function("window.homeScreenSettingsInstance.sortables.length > 0")
+        title = self.section.locator("article").first.get_by_label("Row name")
+        title.click()
+        expect(title).to_be_focused()
+        title.fill("My movies")
+        self.page.get_by_role("button", name="Save Home Screen").click()
+        self.section.locator("h3").click()
+        expect(self.section.locator("article").first.get_by_label("Row name")).to_have_value(
+            "My movies"
+        )
+
+    def test_last_watched_preset_saves_a_mixed_library_row(self):
+        section = self.page.locator('[data-section-media-type="all"]')
+        section.locator("h3").click()
+        section.get_by_role("button", name="Add Row", exact=True).click()
+        section.get_by_role("button", name="Last Watched", exact=True).click()
+        row = section.locator("article").last
+        expect(row.get_by_label("Row name")).to_have_value("Last Watched")
+        self.page.get_by_role("button", name="Save Home Screen").click()
+        self.page.reload()
+        saved = self.page.evaluate("""() => window.homeScreenSettingsInstance.sections
+            .find(section => section.media_type === 'all').rows
+            .find(row => row.custom_title === 'Last Watched')""")
+        self.assertEqual(saved["row_type"], "library_query")
+        self.assertEqual(saved["sort_by"], "end_date")
+        self.assertEqual(saved["direction"], "desc")
+        self.assertEqual(set(saved["filters"]["media_types"]), {"movie", "tv"})
+        self.assertEqual(
+            set(saved["filters"]["status"]),
+            {"In progress", "Completed", "Paused", "Dropped"},
+        )
+        self.assertEqual(saved["filters"]["progress"], "all")
+
+    def test_all_media_nested_levels_save_and_keyboard_backtracks(self):
+        errors = []
+        self.page.on("pageerror", lambda error: errors.append(str(error)))
+        section = self.page.locator('[data-section-media-type="all"]')
+        section.locator("h3").click()
+        section.get_by_role("button", name="Add Row", exact=True).click()
+        section.get_by_role("button", name="Library Row", exact=True).click()
+        row = section.locator("article").last
+        trigger = row.locator(".filter-control").first.locator("button").first
+        trigger.click()
+        row.get_by_role("button", name="Media types", exact=False).last.click()
+        for family, level in (("TV Shows", "Episodes"), ("Music", "Albums"), ("Podcasts", "Shows")):
+            arrow = row.get_by_role("button", name=f"Display level for {family}", exact=True)
+            if family == "Music":
+                arrow.focus()
+                self.page.keyboard.press("Enter")
+            else:
+                arrow.click()
+            family_value = {"TV Shows": "tv", "Music": "music", "Podcasts": "podcast"}[family]
+            self.assertEqual(row.evaluate("element => Alpine.$data(element).filterView"), f"media_subview:{family_value}", errors)
+            option = row.get_by_role("button", name=level, exact=True)
+            if family == "Music":
+                option.focus()
+                self.page.keyboard.press("Enter")
+            else:
+                option.click()
+            expect(option).to_have_attribute("aria-pressed", "true")
+            expect(option.locator("svg.text-green-400")).to_be_visible()
+            if family == "TV Shows":
+                row.get_by_role("button", name="Back", exact=True).click()
+                expect(arrow).to_be_focused()
+                arrow.click()
+                option.focus()
+            self.page.keyboard.press("Escape")
+            expect(arrow).to_be_visible()
+            expect(arrow).to_be_focused()
+        self.page.keyboard.press("Escape")
+        expect(trigger).to_have_attribute("aria-expanded", "true")
+        expect(row.locator('[data-filter-field="media_types"]')).to_be_focused()
+        self.page.keyboard.press("Escape")
+        expect(trigger).to_have_attribute("aria-expanded", "false")
+        expect(trigger).to_be_focused()
+        self.assertEqual(errors, [])
+        self.page.get_by_role("button", name="Save Home Screen").click()
+        self.page.reload()
+        saved = self.page.evaluate("""() => window.homeScreenSettingsInstance.sections
+            .find(section => section.media_type === 'all').rows.at(-1)""")
+        self.assertEqual(saved["filters"]["media_subviews"], {"tv": "episodes", "music": "albums", "podcast": "shows"})
+
+    def test_filter_menu_does_not_render_unopened_option_lists(self):
+        def many_tags(route):
+            response = route.fetch()
+            payload = response.json()
+            field = next(field for field in payload["filter_fields"] if field["key"] == "tag")
+            field["options"] = [{"value": f"Tag {index}", "label": f"Tag {index}"} for index in range(2000)]
+            route.fulfill(response=response, json=payload)
+
+        self.page.route("**/filter-fields?media_type=all", many_tags)
+        section = self.page.locator('[data-section-media-type="all"]')
+        section.locator("h3").click()
+        section.get_by_role("button", name="Add Row", exact=True).click()
+        section.get_by_role("button", name="Library Row", exact=True).click()
+        row = section.locator("article").last
+        trigger = row.locator(".filter-control").first.locator("button").first
+        self.page.wait_for_function("""() => window.homeScreenSettingsInstance.sections
+            .find(section => section.media_type === 'all').filter_fields
+            .find(field => field.key === 'tag')?.options.length === 2000""")
+        trigger.click()
+        expect(row.get_by_role("button", name="Media types", exact=False)).to_be_visible()
+        self.assertEqual(row.locator("button").filter(has_text="Tag 1999").count(), 0)
+        row.get_by_role("button", name="Media types", exact=False).click()
+        expect(row.get_by_role("button", name="Display level for TV Shows")).to_be_visible()
+        self.assertEqual(row.locator("button").filter(has_text="Tag 1999").count(), 0)
+
     def test_sort_menu_receives_clicks_and_escape_restores_focus(self):
         for width in (1280, 768, 390):
             with self.subTest(width=width):

@@ -37,9 +37,11 @@ the list recommendations queue now use the shared lookup.
 
 ## Video artwork
 
-Video-only library grids and video Home shelves use 16:9 cards. Mixed Home
-shelves and other mixed card surfaces retain the poster-sized card, containing
-rather than cropping video artwork. History groups video plays in a separate
+Video-only library grids and video Home shelves use 16:9 cards. All Media Home
+shelves align poster, square and landscape cards at the poster height, retaining
+their native aspect ratios and allowing their widths to grow. Other mixed card
+surfaces retain the poster-sized video card, containing rather than cropping
+video artwork. History groups video plays in a separate
 16:9 row after its poster and square rows. These dedicated video rows use wider
 cards than posters and the comfortable phone card size even in compact mode.
 All three use the existing card interactions and lazy artwork loading.
@@ -65,7 +67,7 @@ and untracked items keep the plain read-only rating. `update_media_score` return
 | Surface | Differs from the default | Why |
 |---|---|---|
 | `library`, `collection`, `related`, `seasons`, `list_recommendations` | Nothing | |
-| `home` | Next-event chip and subtitle | Upcoming shelves lead with the next release |
+| `home` | Next-event chip and subtitle | Upcoming shelves lead with the next release; episode cards supply show and S01E02 identity as their subtitle |
 | `up_next` | Queue chip and always-visible subtitle | Next episode and backlog/countdown must be readable without hover, including on touch screens |
 | `list` | S01E02 subtitle on episodes | A list can hold single episodes |
 | `credit` | Role line and watched-runtime chip from the `credit` value | A person's or studio's titles show what that person did on each one |

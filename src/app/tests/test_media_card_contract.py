@@ -88,6 +88,28 @@ class MediaCardSurfaceContractTest(TestCase):
         self.assertIn("Existing Home subtitle", content)
         self.assertIn("Contract Movie", content)
 
+    def test_mixed_home_row_marks_square_and_video_cards(self):
+        for media_type, expected_class in (
+            (MediaTypes.MUSIC.value, "home-row-card-mixed-square"),
+            (MediaTypes.PODCAST.value, "home-row-card-mixed-square"),
+            (MediaTypes.VIDEO.value, "home-row-card-mixed-video"),
+            (MediaTypes.MOVIE.value, None),
+        ):
+            with self.subTest(media_type=media_type):
+                self.item.media_type = media_type
+                for mixed in (True, False):
+                    content = self.render(
+                        '{% include "app/components/home_grid.html" %}',
+                        media_list={
+                            "items": [{"item": self.item}],
+                            "mixed_media": mixed,
+                        },
+                    )
+                    if expected_class:
+                        self.assertEqual(expected_class in content, mixed)
+                    else:
+                        self.assertNotIn("home-row-card-mixed-", content)
+
     def test_rating_shows_on_every_surface(self):
         """A rating is never a per-surface choice: a tracked card always shows it."""
         for surface in SURFACES:
