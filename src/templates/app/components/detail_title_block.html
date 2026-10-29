@@ -177,6 +177,7 @@
     </h2>
   {% endif %}
 
+  {% if media_type != MediaTypes.VIDEO.value or not carousel_supported %}
   {% with media|alternative_title:user as detail_alt_title %}
     <div class="mb-3 md:mb-1 text-center md:text-start">
       <div class="inline-flex items-center gap-2 md:flex md:gap-2">
@@ -210,6 +211,7 @@
       </div>
     </div>
   {% endwith %}
+  {% endif %}
   {% include "app/components/detail_activity_subtitle_slot.html" with media=media media_type=media_type activity_subtitle=activity_subtitle podcast_show=podcast_show user=user only %}
   {% if media.media_type == MediaTypes.BOOK.value and media.series_name %}
     <p class="text-[var(--color-link)] font-medium mb-4 text-center md:text-start">

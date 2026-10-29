@@ -538,6 +538,7 @@ class MediaListViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["media_list"].paginator.count, 1)
         self.assertContains(response, "Rick Astley · 3:33")
+        self.assertContains(response, 'class="media-grid media-grid-video"')
 
     def test_season_media_list_with_status_filter_does_not_500(self):
         """Season rows derive end_date from episodes, so the SQL latest-status

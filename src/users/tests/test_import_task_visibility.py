@@ -3,7 +3,9 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from django_celery_results.models import TaskResult
 
+from app import signals
 from config.celery import app
 from integrations import tasks
 
@@ -47,34 +49,72 @@ class StremioPeriodicImportVisibilityTests(TestCase):
 
 
 class ImportTaskRegistryConsistencyTests(TestCase):
-    """Guard the runtime schedule query against unmapped recurring imports."""
+    """New import names appear without a separate registration."""
 
-    def test_every_registered_recurring_import_is_queried(self):
-        """Every registered recurring import must reach the schedule lookup."""
-        # A worker populates its registry by importing the task modules at
-        # boot. Nothing in a test process does that, and ``integrations.tasks``
-        # only imports its implementations on attribute access, so reading
-        # ``app.tasks`` first would compare against an empty registry.
+    def test_registered_recurring_imports_match_the_schedule_query(self):
         app.loader.import_default_modules()
-        recurring_task_names = {
-            name for name in app.tasks if name.endswith("(Recurring)")
-        }
-        self.assertIn(tasks.import_stremio_recurring.name, recurring_task_names)
-
-        user = get_user_model().objects.create_user(
-            username="registry-check",
-            password="12345",
-        )
+        recurring = {name for name in app.tasks if name.endswith("(Recurring)")}
+        self.assertIn(tasks.import_stremio_recurring.name, recurring)
+        user = get_user_model().objects.create_user(username="registry-check")
         with patch("users.models.PeriodicTask.objects.filter") as periodic_filter:
             periodic_filter.return_value.select_related.return_value = []
             user.get_import_tasks()
+        query = periodic_filter.call_args.args[1]
+        for name in recurring:
+            self.assertTrue(name.startswith("Import "), name)
+        self.assertIn("task__startswith", str(query))
 
-        queried_schedule_names = set(periodic_filter.call_args.kwargs["task__in"])
-        missing = recurring_task_names - queried_schedule_names
-        self.assertEqual(
-            missing,
-            set(),
-            "Recurring import task(s) are registered with Celery but missing from "
-            "the Active Periodic Imports schedule lookup: "
-            f"{sorted(missing)}.",
+    def test_registered_import_functions_follow_the_tracking_convention(self):
+        app.loader.import_default_modules()
+        untracked = {
+            name
+            for name, task in app.tasks.items()
+            if getattr(getattr(task, "run", None), "__name__", "").startswith("import_")
+            and not signals._is_tracked_task(name)
+        }
+        self.assertEqual(untracked, set())
+
+    def test_unmapped_import_is_published_and_visible_for_its_owner(self):
+        user = get_user_model().objects.create_user(username="new-import-owner")
+        other = get_user_model().objects.create_user(username="other-import-owner")
+        task_id = "new-import-task"
+        signals.create_task_result_on_publish(
+            headers={
+                "task": "Import from New Source",
+                "id": task_id,
+                "kwargsrepr": f"{{'user_id': {user.id}}}",
+            }
         )
+        self.assertEqual(TaskResult.objects.get(task_id=task_id).status, "PENDING")
+        with patch("users.models.AsyncResult") as result:
+            result.return_value.status = "PENDING"
+            rows = user.get_import_tasks()["results"]
+            self.assertEqual(other.get_import_tasks()["results"], [])
+        self.assertEqual(rows[0]["source"], "New Source")
+        sender = type("Sender", (), {"name": "Import from New Source"})()
+        signals.update_task_result_on_failure(
+            sender=sender,
+            task_id=task_id,
+            exception=ValueError("bad file"),
+        )
+        rows = user.get_import_tasks()["results"]
+        self.assertEqual(rows[0]["status"], "FAILURE")
+        self.assertIn("bad file", TaskResult.objects.get(task_id=task_id).result)
+
+    def test_unmapped_import_schedule_is_visible(self):
+        user = get_user_model().objects.create_user(username="schedule-owner")
+        crontab = CrontabSchedule.objects.create(
+            minute="0",
+            hour="0",
+            day_of_week="*",
+            day_of_month="*",
+            month_of_year="*",
+        )
+        PeriodicTask.objects.create(
+            name="Import from New Source",
+            task="Import from New Source (Recurring)",
+            kwargs=f'{{"user_id": {user.id}}}',
+            crontab=crontab,
+        )
+        rows = user.get_import_tasks()["schedules"]
+        self.assertEqual(rows[0]["source"], "New Source (Recurring)")

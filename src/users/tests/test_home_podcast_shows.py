@@ -18,6 +18,7 @@ from app.models import (
     Status,
 )
 from users import home_screen
+from users.home_screen import build_home_page_groups
 from users.models import (
     DirectionChoices,
     HomeScreenRow,
@@ -209,6 +210,7 @@ class HomePodcastShowShelfTests(TestCase):
         """The Home page lists the show title once, not once per episode."""
         self.row({"status": [Status.IN_PROGRESS.value]})
         self.client.force_login(self.user)
+        build_home_page_groups(self.user, 14)  # the shell only inlines warm shelves
 
         response = self.client.get(reverse("home"))
 

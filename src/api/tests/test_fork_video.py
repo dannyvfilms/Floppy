@@ -211,6 +211,110 @@ class VideoPlayApiTests(FloppyApiTestCase):
             "What this video is about.",
         )
 
+    def test_video_details_render_backdrop_and_channel_avatar_fragment(self):
+        self._post(
+            media_id="vidAAAAAAAA",
+            channel="Example Channel",
+            thumbnailUrl="https://i.ytimg.com/vi/vidAAAAAAAA/hqdefault.jpg",
+        )
+        self._metadata_patcher.stop()
+        self.client.force_login(self.user1)
+        url = reverse(
+            "media_details",
+            kwargs={
+                "source": "youtube",
+                "media_type": MediaTypes.VIDEO.value,
+                "media_id": "vidAAAAAAAA",
+                "title": "a-video",
+            },
+        )
+        response = self.client.get(url)
+        self.assertContains(response, "detail-carousel-content")
+        self.assertContains(response, "detail-carousel-overview-caption")
+        self.assertContains(response, "detail-carousel-overview-extension")
+        self.assertContains(response, "video-channel-avatar")
+        self.assertContains(response, "md:justify-start")
+        self.assertContains(response, 'class="detail-carousel-grid__title min-w-0"')
+        html = response.content.decode()
+        self.assertLess(
+            html.index('class="detail-carousel-grid__synopsis"'),
+            html.index('<h1 class="text-2xl'),
+        )
+        self.assertContains(response, "maxresdefault.jpg")
+        self.assertContains(response, "hqdefault.jpg")
+        self.assertContains(response, "data-image-fallback-on-small")
+        self.assertContains(response, "selected = 1; videoPlaying = true")
+        self.assertContains(response, "detail-carousel-preview--bounded")
+        self.assertNotContains(response, "detail-carousel-overview-player")
+        with patch(
+            "app.youtube_channel_art.video_details",
+            return_value={
+                "avatar": "https://yt3.ggpht.com/avatar",
+                "description": "Example description <script>alert(1)</script>",
+            },
+        ):
+            response = self.client.get(url, {"fragment": "video-metadata"})
+        self.assertContains(response, "yt3.ggpht.com/avatar")
+        self.assertContains(response, "Example description")
+        self.assertNotContains(response, "<script>alert(1)</script>")
+        self.assertEqual(Item.objects.get(media_id="vidAAAAAAAA").synopsis, "")
+
+    def test_fetched_description_does_not_replace_stored_description(self):
+        self._post(media_id="vidAAAAAAAA", description="Description from client")
+        self._metadata_patcher.stop()
+        self.client.force_login(self.user1)
+        url = reverse(
+            "media_details",
+            kwargs={
+                "source": "youtube",
+                "media_type": "video",
+                "media_id": "vidAAAAAAAA",
+                "title": "a-video",
+            },
+        )
+        with patch(
+            "app.youtube_channel_art.video_details",
+            return_value={"avatar": "", "description": "Fetched description"},
+        ):
+            response = self.client.get(url, {"fragment": "video-metadata"})
+        self.assertNotContains(response, "Fetched description")
+        self.assertEqual(
+            Item.objects.get(media_id="vidAAAAAAAA").synopsis, "Description from client"
+        )
+
+    def test_video_player_does_not_require_stored_thumbnail(self):
+        self._post(media_id="vidAAAAAAAA", channel="Example Channel")
+        self._metadata_patcher.stop()
+        self.client.force_login(self.user1)
+        url = reverse(
+            "media_details",
+            kwargs={
+                "source": "youtube",
+                "media_type": "video",
+                "media_id": "vidAAAAAAAA",
+                "title": "a-video",
+            },
+        )
+        response = self.client.get(url)
+        self.assertContains(response, "selected = 1; videoPlaying = true")
+        self.assertContains(response, "vidAAAAAAAA")
+        self.assertContains(response, "maxresdefault.jpg")
+
+    def test_youtube_player_wrapper_sends_only_the_origin(self):
+        url = reverse("youtube_player")
+        response = self.client.get(url, {"v": "vidAAAAAAAA"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.headers["Referrer-Policy"], "strict-origin-when-cross-origin"
+        )
+        self.assertEqual(response.headers["X-Frame-Options"], "SAMEORIGIN")
+        self.assertContains(response, 'src="https://www.youtube.com/embed/vidAAAAAAAA"')
+        self.assertNotContains(response, "autoplay=1")
+        response = self.client.get(url, {"v": "vidAAAAAAAA", "autoplay": "1"})
+        self.assertContains(response, "/embed/vidAAAAAAAA?autoplay=1")
+        response = self.client.get(url, {"v": "<invalid>"})
+        self.assertEqual(response.status_code, 400)
+
     def test_the_details_page_shows_what_the_client_reported(self):
         """Channel and length in the sidebar, description and YouTube link on the page."""
         self._post(
@@ -293,6 +397,28 @@ class VideoPlayApiTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["results"], [])
+
+
+class VideoGameTagTriggerTests(FloppyApiTestCase):
+    """A first post queues one game-tag lookup, later posts do not."""
+
+    def test_first_post_queues_one_lookup(self):
+        url = reverse(
+            "api_video_play",
+            kwargs={"source": "youtube", "media_id": "HQp_b8VHtgI"},
+        )
+        payload = {
+            "title": "A Minecraft video",
+            "lengthSeconds": 1000,
+            "progressSeconds": 100,
+            "externalId": "youtube:HQp_b8VHtgI:2026-10-02",
+        }
+        with (
+            patch("api.fork_views_video.lookup_youtube_game_tag.delay") as delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            self.client.post(url, payload, format="json", **self.auth_headers)
+        delay.assert_called_once_with(Item.objects.get(media_id="HQp_b8VHtgI").pk)
 
 
 class VideoPlayManageApiTests(FloppyApiTestCase):

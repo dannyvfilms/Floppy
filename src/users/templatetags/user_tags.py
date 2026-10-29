@@ -314,7 +314,7 @@ def source_display(source_name):
     """Generate HTML display for a media source with logo and name."""
     info = SOURCES_CONFIG.get(source_name)
     if not info:
-        return ""
+        return format_html('<h4 class="font-medium">{}</h4>', source_name)
 
     html = f"""
         <div class="flex items-center">

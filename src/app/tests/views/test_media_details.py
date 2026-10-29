@@ -2561,6 +2561,70 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertEqual(external_entry["logo_src"], "/static/img/hltb-logo.png")
 
+    @patch("app.media_details_views._queue_game_lengths_refresh", return_value=True)
+    @patch("app.providers.services.get_media_metadata")
+    def test_game_details_show_estimated_youtube_watch_time(
+        self,
+        mock_get_metadata,
+        _mock_queue_game_lengths_refresh,
+    ):
+        """Videos YouTube tags with the game show apart from playtime."""
+        from django.utils import timezone
+
+        from app.models import Video, VideoGameTag
+
+        mock_get_metadata.return_value = {
+            "media_id": "325609",
+            "title": "Dispatch",
+            "media_type": MediaTypes.GAME.value,
+            "source": Sources.IGDB.value,
+            "image": "http://example.com/image.jpg",
+            "synopsis": "Test overview",
+            "details": {},
+            "related": {},
+        }
+        Item.objects.create(
+            media_id="325609",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Dispatch",
+        )
+        video_item = Item.objects.create(
+            media_id="HQp_b8VHtgI",
+            source=Sources.YOUTUBE.value,
+            media_type=MediaTypes.VIDEO.value,
+            title="Dispatch ep 1",
+        )
+        VideoGameTag.objects.create(
+            item=video_item,
+            status=VideoGameTag.Status.FOUND,
+            game_title="Dispatch",
+            checked_at=timezone.now(),
+        )
+        Video.objects.create(
+            item=video_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=1800,
+            length_seconds=3600,
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.IGDB.value,
+                    "media_type": MediaTypes.GAME.value,
+                    "media_id": "325609",
+                    "title": "dispatch",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertContains(response, "Watched on YouTube")
+        self.assertEqual(response.context["youtube_watch"]["seconds"], 1800)
+
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_notes_button_opens_notes_for_latest_entry(
         self,

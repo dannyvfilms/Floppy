@@ -21,7 +21,7 @@ from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -36,7 +36,7 @@ from django_celery_beat.models import PeriodicTask
 from django_celery_results.models import TaskResult
 
 from api import scopes as api_scopes
-from app import cache_utils, history_cache, image_cache, statistics_cache
+from app import cache_utils, history_cache, image_cache, signals, statistics_cache
 from app import helpers as app_helpers
 from app.discover.feeds import get_external_row_definitions
 from app.discover.registry import DISCOVER_MEDIA_TYPES
@@ -382,9 +382,10 @@ def _delete_own_account(request):
     username = user.username
     # Scheduled syncs and imports hold only the user's id, so the cascade
     # delete would leave them behind to fail on every run.
-    PeriodicTask.objects.filter(**periodic_task_user_kwargs(user_id)).delete()
+    with transaction.atomic(), signals.deleting_account():
+        PeriodicTask.objects.filter(**periodic_task_user_kwargs(user_id)).delete()
+        user.delete()
     logout(request)
-    user.delete()
     logger.info("Account deleted by its owner: %s (id %s)", username, user_id)
     messages.success(request, "Your account and all its data have been deleted.")
     return redirect("account_login")

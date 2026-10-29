@@ -109,6 +109,20 @@ class ImportDataViewTests(TestCase):
             )
         self.assertEqual(response.status_code, 200)
 
+    def test_import_activity_shows_initial_reading_stage(self):
+        TaskResult.objects.create(
+            task_id="youtube-reading", task_name="Import from YouTube Takeout",
+            task_kwargs=f'{{"user_id": {self.user.id}}}', status="STARTED",
+        )
+        with patch("users.models.AsyncResult") as result, patch(
+            "integrations.import_progress.get_progress",
+            return_value={"current": 0, "total": None, "label": "Reading YouTube history"},
+        ):
+            result.return_value.status = "STARTED"
+            response = self.client.get(reverse("import_data_activity"), HTTP_HX_REQUEST="true")
+        self.assertContains(response, "Started")
+        self.assertContains(response, "Reading YouTube history")
+
     def test_import_data_activity_keeps_polling_for_running_import_run(self):
         """A running ImportRun keeps the poll alive."""
         from integrations.models import ImportRun

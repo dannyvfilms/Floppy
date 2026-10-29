@@ -5,6 +5,7 @@ from app import (
     converters,
     cover_views,
     episode_order_views,
+    media_details_views,
     progress_views,
     views,
 )
@@ -15,6 +16,7 @@ register_converter(converters.SourceChecker, "source")
 
 
 urlpatterns = [
+    path("youtube-player", media_details_views.youtube_player, name="youtube_player"),
     path("progress/cancel-rewatch/", progress_views.cancel_progress_rewatch, name="cancel_progress_rewatch"),
     path(
         "tv/<int:tv_id>/episode-ordering/",

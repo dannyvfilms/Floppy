@@ -4,9 +4,20 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
-from app.models import Item, MediaTypes, Sources
+from app.models import (
+    TV,
+    DeletedMedia,
+    Episode,
+    Item,
+    MediaTypes,
+    Movie,
+    Season,
+    Sources,
+    Status,
+)
 from lists.models import CustomList
 
 User = get_user_model()
@@ -71,6 +82,64 @@ class DeleteAccountTests(TestCase):
         self.assertFalse(CustomList.objects.filter(pk=mine.pk).exists())
         self.assertTrue(CustomList.objects.filter(pk=theirs.pk).exists())
         self.assertTrue(Item.objects.filter(pk=item.pk).exists())
+
+    def test_deletes_account_with_tracked_media(self):
+        item = Item.objects.create(
+            media_id="2",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.MOVIE.value,
+            title="Tracked",
+        )
+        Movie.objects.create(item=item, user=self.user, status=Status.COMPLETED.value)
+        Movie.objects.create(item=item, user=self.other, status=Status.COMPLETED.value)
+        self.client.force_login(self.user)
+
+        self._post()
+
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+        self.assertFalse(Movie.objects.filter(item=item, user_id=self.user.pk).exists())
+        self.assertTrue(Movie.objects.filter(item=item, user=self.other).exists())
+        self.assertFalse(DeletedMedia.objects.exists())
+
+    def test_deletes_account_with_tracked_show_and_episodes(self):
+        tv_item = Item.objects.create(
+            media_id="3",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.TV.value,
+            title="Show",
+        )
+        season_item = Item.objects.create(
+            media_id="3",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Show",
+            season_number=1,
+        )
+        episode_item = Item.objects.create(
+            media_id="3",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.EPISODE.value,
+            title="Pilot",
+            season_number=1,
+            episode_number=1,
+        )
+        tv = TV.objects.create(item=tv_item, user=self.user)
+        season = Season.objects.create(
+            item=season_item,
+            user=self.user,
+            related_tv=tv,
+            status=Status.COMPLETED.value,
+        )
+        Episode.objects.create(
+            item=episode_item, related_season=season, end_date=timezone.now()
+        )
+        self.client.force_login(self.user)
+
+        self._post()
+
+        self.assertFalse(User.objects.filter(pk=self.user.pk).exists())
+        self.assertFalse(Episode.objects.filter(item=episode_item).exists())
+        self.assertFalse(DeletedMedia.objects.exists())
 
     def test_removes_only_own_scheduled_tasks(self):
         schedule = IntervalSchedule.objects.create(

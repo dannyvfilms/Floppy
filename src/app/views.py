@@ -407,6 +407,7 @@ from users.home_screen import (
     build_home_page_groups,
     build_home_page_manifest,
     build_home_row,
+    warm_first_group_split,
 )
 from users.models import (
     HomeSortChoices,
@@ -457,38 +458,42 @@ def home(request):
             if defer_remaining_groups
             else None
         )
-        home_groups = build_home_page_groups(
-            request.user,
-            items_limit,
-            load_row_id=load_row_id,
-            load_row_offset=load_row_offset,
-            load_row_seed=load_row_seed,
-            append_only=bool(request.headers.get("HX-Request") and load_row_id),
-            only_row_id=load_row_id if request.headers.get("HX-Request") else None,
-            first_group_only=defer_remaining_groups,
-            groups=manifest,
+        deferred_source = []
+        if manifest is not None:
+            # The shell renders a group only if its shelves are already
+            # cached; cold shelves load as their own fragments.
+            inline_index, defer_from = warm_first_group_split(
+                request.user, manifest, items_limit
+            )
+            deferred_source = manifest[defer_from:]
+            groups = [manifest[inline_index]] if inline_index is not None else []
+        else:
+            groups = None
+        home_groups = (
+            build_home_page_groups(
+                request.user,
+                items_limit,
+                load_row_id=load_row_id,
+                load_row_offset=load_row_offset,
+                load_row_seed=load_row_seed,
+                append_only=bool(request.headers.get("HX-Request") and load_row_id),
+                only_row_id=load_row_id if request.headers.get("HX-Request") else None,
+                first_group_only=defer_remaining_groups,
+                groups=groups,
+            )
+            if groups != []
+            else []
         )
 
-        deferred_groups = []
-        if manifest and home_groups:
-            first_media_type = home_groups[0]["media_type"]
-            first_index = next(
-                (
-                    index
-                    for index, group in enumerate(manifest)
-                    if group["media_type"] == first_media_type
-                ),
-                len(manifest),
-            )
-            deferred_groups = [
-                {
-                    "media_type": group["media_type"],
-                    "label": group["label"],
-                    "icon_svg": group["icon_svg"],
-                    "row_ids": [row.id for row in group["rows"]],
-                }
-                for group in manifest[first_index + 1 :]
-            ]
+        deferred_groups = [
+            {
+                "media_type": group["media_type"],
+                "label": group["label"],
+                "icon_svg": group["icon_svg"],
+                "row_ids": [row.id for row in group["rows"]],
+            }
+            for group in deferred_source
+        ]
 
         if request.headers.get("HX-Request") and load_row_id:
             target_row = next(
