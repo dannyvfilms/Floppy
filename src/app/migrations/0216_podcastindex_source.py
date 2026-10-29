@@ -41,7 +41,7 @@ class RemoveConstraintIfExists(migrations.RemoveConstraint):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("app", "0214_video_channel_as_author"),
+        ("app", "0215_video_game_tag"),
     ]
 
     operations = [
