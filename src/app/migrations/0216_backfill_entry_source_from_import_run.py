@@ -23,7 +23,7 @@ def fill_blank_entry_sources(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("app", "0214_video_channel_as_author"),
+        ("app", "0215_video_game_tag"),
         ("integrations", "0063_wetrakr_account"),
     ]
 

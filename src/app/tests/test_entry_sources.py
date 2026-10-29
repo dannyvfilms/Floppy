@@ -164,7 +164,7 @@ class BackfillEntrySourceMigrationTests(TestCase):
         from importlib import import_module
 
         migration = import_module(
-            "app.migrations.0215_backfill_entry_source_from_import_run",
+            "app.migrations.0216_backfill_entry_source_from_import_run",
         )
         user = get_user_model().objects.create_user(username="a", password="x")
         run = ImportRun.objects.create(user=user, source="trakt")
@@ -184,7 +184,7 @@ class BackfillEntrySourceMigrationTests(TestCase):
 
         executor = MigrationExecutor(connection)
         apps = executor.loader.project_state(
-            [("app", "0215_backfill_entry_source_from_import_run")],
+            [("app", "0216_backfill_entry_source_from_import_run")],
         ).apps
         migration.fill_blank_entry_sources(apps, None)
 
