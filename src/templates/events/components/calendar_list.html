@@ -20,7 +20,7 @@
             <div class="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
               <img data-media-artwork loading="lazy" decoding="sync" alt="{{ release }}"
                    class="w-10 h-10 object-cover rounded-md shrink-0"
-                   src="{{ release.item.image|image_url }}">
+                   src="{{ release.calendar_backdrop|default:release.item.image|image_url }}">
               <div class="flex-1 min-w-0">
                 <h4 class="font-medium text-sm line-clamp-1">{{ release.item }}</h4>
                 <div class="flex items-center">

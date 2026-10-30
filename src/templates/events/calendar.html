@@ -22,7 +22,7 @@
     {% endif %}
   </div>
 
-  <div class="bg-[var(--color-surface)] rounded-lg p-6 mb-6" x-data="calendarFilters()">
+  <div class="mb-6" x-data="calendarFilters()">
     <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
       <div class="flex items-center gap-4">
         <div class="flex items-center bg-[var(--color-surface-strong)] rounded-md p-1">
@@ -100,7 +100,7 @@
           </div>
         </div>
 
-        <div class="bg-[var(--color-surface-strong)] rounded-md p-1 space-x-0.5 flex">
+        <div class="bg-[var(--color-surface-strong)] rounded-md p-1 space-x-0.5 flex md:hidden">
           <a class="p-2 rounded-md transition-colors cursor-pointer {% if view_type == 'grid' %}bg-indigo-600 text-white{% else %}hover:bg-[var(--color-surface-hover)]{% endif %}"
              href="{% url 'calendar' %}?month={{ month }}&year={{ year }}&view=grid">
             {% include "app/icons/grid.svg" with classes="w-4 h-4" %}
@@ -114,13 +114,12 @@
       </div>
     </div>
 
-    {% if view_type == 'grid' %}
-      <div x-html="filteredGridHtml"></div>
-      <template x-ref="gridTemplate">
-        {% include "events/components/calendar_grid.html" %}
-      </template>
-    {% else %}
-      <div x-html="filteredListHtml"></div>
+    <div class="{% if view_type == 'list' %}hidden md:block{% endif %}" x-html="filteredGridHtml"></div>
+    <template x-ref="gridTemplate">
+      {% include "events/components/calendar_grid.html" %}
+    </template>
+    {% if view_type == 'list' %}
+      <div class="md:hidden bg-[var(--color-surface)] rounded-lg p-6" x-html="filteredListHtml"></div>
       <template x-ref="listTemplate">
         {% include "events/components/calendar_list.html" %}
       </template>
@@ -401,6 +400,8 @@
           {% endfor %}
         },
         mobileSelectedDay: null,
+        agendaOpen: true,
+        calendarTypeCounts: {},
         filteredGridHtml: '',
         filteredListHtml: '',
         init() {
@@ -496,6 +497,39 @@
             ).map(status => status.value);
           });
           this.selectedStatusesByType = allStatuses;
+        },
+        selectCalendarType(type) {
+          this.selectedTypes = type === 'all'
+            ? this.availableMediaTypes.map(item => item.value)
+            : this.availableMediaTypes.map(item => item.value).filter(
+              value => value === type || (type === 'tv' && value === 'season'),
+            );
+        },
+        isCalendarTypeSelected(type) {
+          const types = type === 'all'
+            ? this.availableMediaTypes.map(item => item.value)
+            : this.availableMediaTypes.map(item => item.value).filter(
+              value => value === type || (type === 'tv' && value === 'season'),
+            );
+          return types.length > 0 && types.length === this.selectedTypes.length
+            && types.every(value => this.selectedTypes.includes(value));
+        },
+        updateCalendarTypeCounts(day) {
+          const panel = this.$refs.gridTemplate.content.querySelector(`[data-day-panel="${day}"]`);
+          const counts = { all: 0 };
+          if (panel) {
+            panel.querySelectorAll('[data-release-media-type]').forEach((release) => {
+              const type = release.dataset.releaseMediaType;
+              const status = release.dataset.releaseStatus;
+              const releaseType = release.dataset.releaseType;
+              if ((status && !(this.selectedStatusesByType[type] || []).includes(status))
+                  || (releaseType && !this.selectedReleaseTypes.includes(releaseType))) return;
+              const group = type === 'season' ? 'tv' : type;
+              counts[group] = (counts[group] || 0) + 1;
+              counts.all += 1;
+            });
+          }
+          this.calendarTypeCounts = counts;
         },
         // The button label also flags filters the Media Types pane hides.
         extraFilterLabels() {
@@ -624,12 +658,44 @@
           });
 
           container.querySelectorAll('[data-day-panel]').forEach(panel => {
-            const releaseCount = panel.querySelectorAll('[data-release-media-type]').length;
+            const releases = [...panel.querySelectorAll('[data-release-media-type]')];
+            const releaseCount = releases.length;
             const emptyState = panel.querySelector('[data-mobile-empty-state]');
 
             if (emptyState) {
               emptyState.classList.toggle('hidden', releaseCount > 0);
             }
+
+            const groups = new Map();
+            releases.forEach((release) => {
+              const type = release.dataset.releaseMediaType === 'season'
+                ? 'tv' : release.dataset.releaseMediaType;
+              if (!groups.has(type)) groups.set(type, []);
+              groups.get(type).push(release);
+            });
+            const collator = new Intl.Collator(document.documentElement.lang || undefined, { sensitivity: 'base', numeric: true });
+            [...groups.entries()].sort(([typeA, a], [typeB, b]) => {
+              const labelA = container.querySelector(`template[data-agenda-icon="${typeA}"]`)?.dataset.label || typeA;
+              const labelB = container.querySelector(`template[data-agenda-icon="${typeB}"]`)?.dataset.label || typeB;
+              return b.length - a.length || collator.compare(labelA, labelB);
+            }).forEach(([type, items], index) => {
+              const icon = container.querySelector(`template[data-agenda-icon="${type}"]`);
+              const section = document.createElement('section');
+              section.className = index ? 'border-t border-[var(--color-text-muted)]/40 pt-3' : '';
+              const heading = document.createElement('h3');
+              heading.className = 'flex items-center gap-2 px-2 py-2 text-sm font-semibold text-[var(--color-text-secondary)]';
+              if (icon) heading.append(icon.content.cloneNode(true));
+              heading.append(document.createTextNode(`${icon?.dataset.label || type} (${items.length})`));
+              section.append(heading);
+              items.sort((a, b) => {
+                const unknownA = a.dataset.releaseUnknown === 'true';
+                const unknownB = b.dataset.releaseUnknown === 'true';
+                return Number(unknownA) - Number(unknownB)
+                  || (!unknownA && Number(a.dataset.releaseTime) - Number(b.dataset.releaseTime))
+                  || collator.compare(a.dataset.releaseTitle, b.dataset.releaseTitle);
+              }).forEach(item => section.append(item));
+              panel.insertBefore(section, emptyState);
+            });
           });
 
           return container.innerHTML;
@@ -648,7 +714,16 @@
 
           const agendaTitle = mobileCalendar.querySelector('[data-agenda-title]');
           const agendaCount = mobileCalendar.querySelector('[data-agenda-count]');
+          const agenda = mobileCalendar.querySelector('[data-agenda]');
+          const closeAgenda = mobileCalendar.querySelector('[data-agenda-close]');
           const monthName = mobileCalendar.dataset.monthName || '';
+          const year = mobileCalendar.dataset.year || '';
+
+          const setAgendaOpen = (open) => {
+            this.agendaOpen = open;
+            agenda.classList.toggle('hidden', !open);
+            mobileCalendar.classList.toggle('md:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]', open);
+          };
 
           const releaseCountByDay = new Map();
           dayPanels.forEach((panel) => {
@@ -672,14 +747,17 @@
             });
           };
 
-          const selectDay = (day) => {
+          const selectDay = (day, reopen = true) => {
             this.mobileSelectedDay = day;
+            this.updateCalendarTypeCounts(day);
+            if (reopen) setAgendaOpen(true);
 
             dayTriggers.forEach((trigger) => {
               const isSelected = trigger.dataset.dayTrigger === day;
               trigger.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
-              trigger.classList.toggle('ring-1', isSelected);
-              trigger.classList.toggle('ring-indigo-400', isSelected);
+              const highlight = trigger.closest('[data-day-cell]') || trigger;
+              highlight.classList.toggle('ring-1', isSelected);
+              highlight.classList.toggle('ring-indigo-400', isSelected);
             });
 
             dayPanels.forEach((panel) => {
@@ -688,7 +766,7 @@
 
             const eventCount = releaseCountByDay.get(day) || 0;
             if (agendaTitle) {
-              agendaTitle.textContent = monthName ? `${monthName} ${day}` : `${gettext('Day')} ${day}`;
+              agendaTitle.textContent = monthName ? `${monthName} ${day}, ${year}` : `${gettext('Day')} ${day}, ${year}`;
             }
             if (agendaCount) {
               agendaCount.textContent = `${eventCount} ${gettext(eventCount === 1 ? 'release' : 'releases')}`;
@@ -698,13 +776,23 @@
           dayTriggers.forEach((trigger) => {
             trigger.addEventListener('click', () => selectDay(trigger.dataset.dayTrigger));
           });
+          mobileCalendar.querySelectorAll('[data-day-cell]').forEach((cell) => {
+            cell.addEventListener('click', (event) => {
+              if (!event.target.closest('a, button')) selectDay(cell.dataset.dayCell);
+            });
+          });
+          closeAgenda.addEventListener('click', () => {
+            setAgendaOpen(false);
+            dayTriggers.find(trigger => trigger.dataset.dayTrigger === this.mobileSelectedDay && trigger.offsetParent)?.focus();
+          });
 
           updateDayIndicators();
 
           const defaultDay = this.mobileSelectedDay
             || mobileCalendar.dataset.selectedDay
             || dayTriggers[0].dataset.dayTrigger;
-          selectDay(defaultDay);
+          setAgendaOpen(this.agendaOpen);
+          selectDay(defaultDay, false);
         }
       };
     }
