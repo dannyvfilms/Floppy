@@ -368,8 +368,8 @@ class CalendarViewTests(TestCase):
         response = self.client.get(reverse("calendar") + "?view=list")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "https://example.com/backdrop.jpg", count=4)
-        self.assertContains(response, "https://example.com/movie-poster.jpg", count=2)
+        self.assertContains(response, "https://example.com/backdrop.jpg", count=6)
+        self.assertContains(response, "https://example.com/movie-poster.jpg", count=4)
         self.assertEqual(mock_backdrop.call_count, 2)
         self.backdrop_warm.assert_called_once_with([movie])
 

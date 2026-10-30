@@ -649,6 +649,37 @@
           });
 
           container.querySelectorAll('[data-calendar-day]').forEach(dayEl => {
+            const artwork = dayEl.querySelector('[data-day-artwork]');
+            if (artwork) {
+              const releases = [...artwork.querySelectorAll('[data-release-media-type]')];
+              dayEl.classList.toggle('p-1', releases.length === 0);
+              dayEl.classList.toggle('aspect-[3/4]', releases.length === 0);
+              dayEl.classList.toggle('overflow-hidden', releases.length > 0);
+              releases.forEach((release, index) => {
+                if (index >= (releases.length > 4 ? 3 : 4)) {
+                  release.remove();
+                } else {
+                  if (index === 0) release.src = release.dataset.poster;
+                  release.classList.add(index === 0 ? 'col-span-3' : 'col-span-1');
+                  release.classList.add(index === 0 && releases.length === 1 ? 'aspect-[3/4]' : 'aspect-square');
+                  if (index === 0) {
+                    release.classList.add('rounded-t-[var(--theme-radius)]');
+                    if (releases.length === 1) release.classList.add('rounded-b-[var(--theme-radius)]');
+                  } else if (index === 1) {
+                    release.classList.add('rounded-bl-[var(--theme-radius)]');
+                  } else if (index === 3) {
+                    release.classList.add('rounded-br-[var(--theme-radius)]');
+                  }
+                }
+              });
+              if (releases.length > 4) {
+                const more = document.createElement('span');
+                more.className = 'aspect-square min-w-0 rounded-[4px] rounded-br-[var(--theme-radius)] bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] flex items-center justify-center text-[clamp(0.5rem,1vw,0.75rem)] leading-none font-semibold';
+                more.textContent = `+${releases.length - 3}`;
+                artwork.append(more);
+              }
+              return;
+            }
             const hasReleases = dayEl.querySelector('[data-release-media-type]');
             const emptyState = dayEl.querySelector('[data-empty-state]');
 
@@ -722,7 +753,7 @@
           const setAgendaOpen = (open) => {
             this.agendaOpen = open;
             agenda.classList.toggle('hidden', !open);
-            mobileCalendar.classList.toggle('md:grid-cols-[minmax(0,3fr)_minmax(16rem,2fr)]', open);
+            mobileCalendar.classList.toggle('md:grid-cols-[minmax(0,1fr)_minmax(15rem,min(30%,22rem))]', open);
           };
 
           const releaseCountByDay = new Map();
@@ -732,20 +763,6 @@
               panel.querySelectorAll('[data-release-media-type]').length,
             );
           });
-
-          const updateDayIndicators = () => {
-            dayTriggers.forEach((trigger) => {
-              const count = releaseCountByDay.get(trigger.dataset.dayTrigger) || 0;
-              const activeDots = Math.min(count, 3);
-              const dots = [...trigger.querySelectorAll('[data-day-indicator-dot]')];
-
-              dots.forEach((dot, index) => {
-                dot.style.backgroundColor = index < activeDots
-                  ? '#6366f1'
-                  : 'rgba(148, 163, 184, 0.75)';
-              });
-            });
-          };
 
           const selectDay = (day, reopen = true) => {
             this.mobileSelectedDay = day;
@@ -776,17 +793,10 @@
           dayTriggers.forEach((trigger) => {
             trigger.addEventListener('click', () => selectDay(trigger.dataset.dayTrigger));
           });
-          mobileCalendar.querySelectorAll('[data-day-cell]').forEach((cell) => {
-            cell.addEventListener('click', (event) => {
-              if (!event.target.closest('a, button')) selectDay(cell.dataset.dayCell);
-            });
-          });
           closeAgenda.addEventListener('click', () => {
             setAgendaOpen(false);
             dayTriggers.find(trigger => trigger.dataset.dayTrigger === this.mobileSelectedDay && trigger.offsetParent)?.focus();
           });
-
-          updateDayIndicators();
 
           const defaultDay = this.mobileSelectedDay
             || mobileCalendar.dataset.selectedDay
