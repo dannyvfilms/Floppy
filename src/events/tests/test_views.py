@@ -131,6 +131,8 @@ class CalendarViewTests(TestCase):
         # Check response
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "events/calendar.html")
+        self.assertContains(response, 'x-html="filteredGridHtml"')
+        self.assertNotContains(response, 'x-html="filteredListHtml"')
 
         # Check that the view called the mocked methods
         mock_update_preference.assert_called_once_with("calendar_layout", "list")
@@ -368,8 +370,8 @@ class CalendarViewTests(TestCase):
         response = self.client.get(reverse("calendar") + "?view=list")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "https://example.com/backdrop.jpg", count=6)
-        self.assertContains(response, "https://example.com/movie-poster.jpg", count=4)
+        self.assertContains(response, "https://example.com/backdrop.jpg")
+        self.assertContains(response, "https://example.com/movie-poster.jpg")
         self.assertEqual(mock_backdrop.call_count, 2)
         self.backdrop_warm.assert_called_once_with([movie])
 

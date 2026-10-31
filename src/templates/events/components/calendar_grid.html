@@ -15,23 +15,23 @@
       <template data-agenda-icon="{{ media_type }}" data-label="{{ media_type|media_type_readable }}">{% icon media_type is_active=False %}</template>
     {% endif %}
   {% endfor %}
-  <div class="bg-[var(--color-surface)] rounded-lg p-4 sm:p-6 min-w-0">
-  <div class="grid grid-cols-7 gap-1 mb-2">
+  <div class="bg-[var(--color-surface)] rounded-lg p-2 sm:p-6 min-w-0">
+  <div class="grid grid-cols-7 gap-1 md:gap-1.5 mb-2">
     {% for header in weekday_headers %}
       <div class="text-center text-xs md:text-sm font-medium text-[var(--color-text-muted)] py-1 md:py-2">{{ header }}</div>
     {% endfor %}
   </div>
-  <div class="grid grid-cols-7 gap-1.5" role="grid" aria-label="{% translate "Monthly calendar" %}">
+  <div class="grid grid-cols-7 gap-1 md:gap-1.5" role="grid" aria-label="{% translate "Monthly calendar" %}">
     {% for week in calendar %}
       {% for day in week %}
         {% if day == 0 %}
-          <div class="min-w-0 aspect-[3/4] rounded-md bg-[var(--color-surface-muted)] opacity-40"></div>
+          <div class="min-w-0 aspect-square md:aspect-[3/4] rounded-md bg-[var(--color-surface-muted)] opacity-40"></div>
         {% else %}
           <button type="button" data-calendar-day data-day-cell="{{ day }}" data-day-trigger="{{ day }}"
                   aria-label="{{ month_name }} {{ day }}"
                   aria-pressed="{% if day == selected_day %}true{% else %}false{% endif %}"
-                  class="relative min-w-0 aspect-[3/4] p-1 rounded-md bg-[var(--color-surface-muted)]/40 hover:bg-[var(--color-surface-hover)] hover:ring-1 hover:ring-indigo-400 cursor-pointer text-left flex flex-col items-stretch {% if day == today.day and month == today.month and year == today.year %}ring-1 ring-indigo-500{% endif %}">
-            <span class="absolute z-10 top-1 right-1 min-w-5 px-1 rounded-[4px] text-center text-xs leading-5 font-medium text-white {% if day == today.day and month == today.month and year == today.year %}bg-indigo-600{% else %}bg-black/70{% endif %}">{{ day }}</span>
+                  class="relative min-w-0 aspect-[3/4] max-md:aspect-square p-1 rounded-md bg-[var(--color-surface-muted)]/40 hover:bg-[var(--color-surface-hover)] hover:ring-1 hover:ring-indigo-400 cursor-pointer text-left flex flex-col items-stretch {% if day == today.day and month == today.month and year == today.year %}ring-1 ring-indigo-500{% endif %}">
+            <span class="absolute z-10 inset-0 flex items-center justify-center rounded-[var(--theme-radius)] bg-black/50 text-center text-base font-semibold text-white md:inset-auto md:top-1 md:right-1 md:min-w-5 md:px-1 md:rounded-[4px] md:text-xs md:leading-5 md:font-medium {% if day == today.day and month == today.month and year == today.year %}md:bg-indigo-600{% else %}md:bg-black/70{% endif %}">{{ day }}</span>
             <span data-day-artwork class="grid grid-cols-3 gap-0.5">
               {% for release in release_dict|get_item:day %}
                 <img data-release-media-type="{{ release.item.media_type }}" data-release-type="{{ release.release_type }}" data-release-status="{{ release.status|default_if_none:"" }}"

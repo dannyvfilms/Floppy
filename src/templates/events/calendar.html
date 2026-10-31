@@ -11,53 +11,30 @@
 {% endblock title %}
 
 {% block content %}
-  <div class="mb-8">
-    <h1 class="text-3xl font-bold mb-2">{% translate "Calendar" %}</h1>
-    <p class="text-[var(--color-text-muted)]">
-      {% url 'history' as history_url %}
-      {% blocktranslate trimmed %}Upcoming episodes and releases for everything you're tracking, unless it's paused or dropped. What you've already watched, read or played is in <a href="{{ history_url }}" class="underline hover:text-[var(--color-link)]">History</a>.{% endblocktranslate %}
-    </p>
+  <div class="mb-3">
+    <h1 class="text-2xl font-bold">{% translate "Calendar" %}</h1>
     {% if not release_dict %}
       <p class="mt-1 text-sm text-[var(--color-text-muted)]">{% translate "Nothing this month. Add a show, movie, book or game to your library and its upcoming dates appear here." %}</p>
     {% endif %}
   </div>
 
   <div class="mb-6" x-data="calendarFilters()">
-    <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
-      <div class="flex items-center gap-4">
+    <div class="flex justify-between items-center mb-4 gap-2">
+      <div class="flex items-center min-w-0">
         <div class="flex items-center bg-[var(--color-surface-strong)] rounded-md p-1">
-          <a class="p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
-             href="{% url 'calendar' %}?month={{ prev_month }}&year={{ prev_year }}&view={{ view_type }}">
+          <a class="p-1 sm:p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
+             href="{% url 'calendar' %}?month={{ prev_month }}&year={{ prev_year }}">
             {% include "app/icons/chevron-left.svg" with classes="w-5 h-5" %}
           </a>
-          <h2 class="px-4 text-lg font-semibold min-w-40 text-center">{{ month_name }} {{ year }}</h2>
-          <a class="p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
-             href="{% url 'calendar' %}?month={{ next_month }}&year={{ next_year }}&view={{ view_type }}">
+          <h2 class="px-1 sm:px-4 text-sm sm:text-lg font-semibold sm:min-w-40 text-center whitespace-nowrap">{{ month_name }} {{ year }}</h2>
+          <a class="p-1 sm:p-2 hover:bg-[var(--color-surface-hover)] rounded-md transition-colors"
+             href="{% url 'calendar' %}?month={{ next_month }}&year={{ next_year }}">
             {% include "app/icons/chevron-right.svg" with classes="w-5 h-5" %}
           </a>
         </div>
-        <a class="hidden sm:flex w-10 h-10 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex-col items-center justify-center leading-none"
-           href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}&view={{ view_type }}"
-           aria-label="{% translate "Go to Today" %}">
-          <span class="text-xl font-bold leading-none">{{ today|date:"j" }}</span>
-          <span class="uppercase text-[var(--color-text-secondary)]/90 mt-0.5"
-                style="font-size: 9px; font-weight: 400; letter-spacing: 0.04em; line-height: 1;">
-            {{ today|date:"M" }}
-          </span>
-        </a>
       </div>
 
-      <div class="flex items-center gap-2 flex-wrap justify-end">
-        <a class="sm:hidden w-10 h-10 bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md transition-colors flex flex-col items-center justify-center leading-none shrink-0"
-           href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}&view={{ view_type }}"
-           aria-label="{% translate "Go to Today" %}">
-          <span class="text-xl font-bold leading-none">{{ today|date:"j" }}</span>
-          <span class="uppercase text-[var(--color-text-secondary)]/90 mt-0.5"
-                style="font-size: 9px; font-weight: 400; letter-spacing: 0.04em; line-height: 1;">
-            {{ today|date:"M" }}
-          </span>
-        </a>
-
+      <div class="flex items-center gap-2 shrink-0">
         <div class="h-10 flex items-center bg-[var(--color-surface-strong)] hover:bg-[var(--color-surface-hover)] rounded-md px-1 transition-colors"
              @click="actionsOpen = false">
           {% include "app/components/filter_menu.html" with filter_data_id="calendar-filter-data" filter_show_media_types=True filter_media_types_only=True filter_type_statuses=True filter_release_types=True %}
@@ -82,6 +59,9 @@
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95"
                class="absolute right-0 mt-2 w-60 rounded-md bg-[var(--color-surface-strong)] border border-[var(--color-border)] shadow-lg overflow-hidden z-40">
+            <a href="{% url 'calendar' %}?month={{ today.month }}&year={{ today.year }}"
+               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+               @click="actionsOpen = false">{% translate "Go to Today" %}</a>
             <form method="post" action="{% url 'reload_calendar' %}">
               {% csrf_token %}
               <button type="submit"
@@ -100,30 +80,13 @@
           </div>
         </div>
 
-        <div class="bg-[var(--color-surface-strong)] rounded-md p-1 space-x-0.5 flex md:hidden">
-          <a class="p-2 rounded-md transition-colors cursor-pointer {% if view_type == 'grid' %}bg-indigo-600 text-white{% else %}hover:bg-[var(--color-surface-hover)]{% endif %}"
-             href="{% url 'calendar' %}?month={{ month }}&year={{ year }}&view=grid">
-            {% include "app/icons/grid.svg" with classes="w-4 h-4" %}
-          </a>
-          <a class="p-2 rounded-md transition-colors cursor-pointer {% if view_type == 'list' %}bg-indigo-600 text-white{% else %}hover:bg-[var(--color-surface-hover)]{% endif %}"
-             href="{% url 'calendar' %}?month={{ month }}&year={{ year }}&view=list">
-            {% include "app/icons/list.svg" with classes="w-4 h-4" %}
-          </a>
-        </div>
-
       </div>
     </div>
 
-    <div class="{% if view_type == 'list' %}hidden md:block{% endif %}" x-html="filteredGridHtml"></div>
+    <div x-html="filteredGridHtml"></div>
     <template x-ref="gridTemplate">
       {% include "events/components/calendar_grid.html" %}
     </template>
-    {% if view_type == 'list' %}
-      <div class="md:hidden bg-[var(--color-surface)] rounded-lg p-6" x-html="filteredListHtml"></div>
-      <template x-ref="listTemplate">
-        {% include "events/components/calendar_list.html" %}
-      </template>
-    {% endif %}
   </div>
 
   <div class="bg-[var(--color-surface)] p-5 rounded-lg mb-6"
@@ -403,7 +366,6 @@
         agendaOpen: true,
         calendarTypeCounts: {},
         filteredGridHtml: '',
-        filteredListHtml: '',
         init() {
           this.loadSavedFilters();
           this.$watch('selectedTypes', () => {
@@ -624,9 +586,6 @@
           if (this.$refs.gridTemplate) {
             this.filteredGridHtml = this.filterReleaseMarkup(this.$refs.gridTemplate.innerHTML);
           }
-          if (this.$refs.listTemplate) {
-            this.filteredListHtml = this.filterReleaseMarkup(this.$refs.listTemplate.innerHTML);
-          }
           this.$nextTick(() => this.bindMobileCalendar());
         },
         filterReleaseMarkup(html) {
@@ -664,17 +623,20 @@
                   release.classList.add(index === 0 && releases.length === 1 ? 'aspect-[3/4]' : 'aspect-square');
                   if (index === 0) {
                     release.classList.add('rounded-t-[var(--theme-radius)]');
+                    release.classList.add('max-md:aspect-square', 'max-md:rounded-b-[var(--theme-radius)]');
                     if (releases.length === 1) release.classList.add('rounded-b-[var(--theme-radius)]');
                   } else if (index === 1) {
-                    release.classList.add('rounded-bl-[var(--theme-radius)]');
+                    release.classList.add('rounded-bl-[var(--theme-radius)]', 'max-md:hidden');
                   } else if (index === 3) {
-                    release.classList.add('rounded-br-[var(--theme-radius)]');
+                    release.classList.add('rounded-br-[var(--theme-radius)]', 'max-md:hidden');
+                  } else {
+                    release.classList.add('max-md:hidden');
                   }
                 }
               });
               if (releases.length > 4) {
                 const more = document.createElement('span');
-                more.className = 'aspect-square min-w-0 rounded-[4px] rounded-br-[var(--theme-radius)] bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] flex items-center justify-center text-[clamp(0.5rem,1vw,0.75rem)] leading-none font-semibold';
+                more.className = 'aspect-square min-w-0 rounded-[4px] rounded-br-[var(--theme-radius)] bg-[var(--color-surface-strong)] text-[var(--color-text-muted)] flex max-md:hidden items-center justify-center text-[clamp(0.5rem,1vw,0.75rem)] leading-none font-semibold';
                 more.textContent = `+${releases.length - 3}`;
                 artwork.append(more);
               }
