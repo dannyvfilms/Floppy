@@ -1269,6 +1269,17 @@ def decrypt(token):
     return fernet().decrypt(token.encode()).decode()
 
 
+def stamp_entry_source(media, label):
+    """Record where an entry came from when nothing is recorded yet.
+
+    A value the user typed, or one an earlier sync set, is never replaced.
+    """
+    if label and not media.entry_source:
+        media.entry_source = label
+        media.save(update_fields=["entry_source"])
+    return media
+
+
 def decrypt_or_raise(token):
     """Decrypt a stored credential, raising a friendly MediaImportError on failure."""
     try:
