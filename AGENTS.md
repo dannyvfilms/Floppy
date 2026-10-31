@@ -347,6 +347,25 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - Run Tailwind: `cd src && tailwindcss -i ./static/css/input.css -o ./static/css/main.css --watch`
 - For local setup, see `README.md` for the required `.env` values and Redis startup details.
 
+## Incremental UI Modernization
+
+- For meaningful UI work, consult `docs/ui/component-register.md` and its source map;
+  follow `docs/architecture/ui-modernization.md`. Update affected records when
+  components change, move, consolidate or retire; record blockers and verification.
+- Until the separately authorized web/iOS/Android architecture proof passes, identify
+  opportunities using the current stack; do not independently introduce a framework.
+  After it passes, prefer the validated shared implementation alongside relevant UI
+  work when feasible. This is a bounded exception to preferring existing patterns,
+  not authorization for a rewrite, new application or speculative tooling.
+- Preserve behavior, appearance, responsive states, accessibility, permissions and
+  performance unless the issue explicitly approves a redesign. Migration alone does
+  not authorize simplification or removal of functionality.
+- Defer modernization when it disproportionately expands a narrow fix; record the
+  opportunity/blocker. Trivial copy or styling edits need no migration or full audit.
+- Replace legacy consumers where practical. Document necessary coexistence and its
+  retirement condition. Record web implementation and native verification separately;
+  never claim native compatibility from React syntax or a web build alone.
+
 ## Frontend Tooling
 - Tailwind CLI install (supported): `brew install tailwindcss`.
 - Alternatives: `npm/pnpm/yarn add -D tailwindcss` and run `npx tailwindcss ...`, or download the standalone Tailwind binary and add it to `PATH`.
