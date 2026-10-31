@@ -30,7 +30,11 @@ outbound writes from Floppy. A recurring import is still Import.
 for a provider. Credential storage and resolution stay in
 `app.providers.credentials`; personal keys, instance-wide keys and environment
 values retain their existing precedence and permission checks. Provider pages
-do not render stored personal secrets or place them in navigation URLs.
+do not render stored personal secrets or place them in navigation URLs. Connection
+shows instance and personal fields inline; instance fields remain read-only for
+non-superusers and when their values are set in the environment. The Read-only
+badge explains access, and the key badge links to the provider or opens its
+additional setup instructions when needed.
 
 Metadata source cards share the existing user preference for each library type.
 TV, anime, books and comics have a selectable default; other library types show

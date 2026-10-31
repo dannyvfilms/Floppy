@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+from bs4 import BeautifulSoup
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.template.loader import render_to_string
@@ -130,6 +131,46 @@ class MetadataSettingsPageTests(TestCase):
         self.assertIn(reverse("save_personal_credential", args=["hardcover"]), html)
         self.assertNotIn("private-provider-key", html)
         self.assertNotIn(reverse("save_personal_credential", args=["tmdb"]), html)
+
+    @override_settings(HARDCOVER_API="")
+    def test_member_sees_inline_read_only_instance_and_personal_forms(self, _probe):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse("provider_detail", args=["hardcover"]), {"tab": "connection"}
+        )
+
+        soup = BeautifulSoup(response.content, "html.parser")
+        instance = soup.find("input", id="hardcover-api_key")
+        self.assertTrue(instance.has_attr("disabled"))
+        self.assertIsNotNone(soup.find("input", id="hardcover-personal-api_key"))
+        self.assertIsNotNone(
+            soup.find("button", attrs={"aria-label": "Read-only: explain instance credential access"})
+        )
+        self.assertIsNotNone(soup.find(attrs={"role": "dialog", "aria-modal": "true"}))
+        key_link = soup.find("a", href="https://hardcover.app/account/api")
+        self.assertEqual(key_link.get_text(strip=True), "Get a key from Hardcover")
+        self.assertIsNone(soup.find("button", attrs={"x-ref": "setupInfoTrigger"}))
+        self.assertNotContains(response, "Back to Providers")
+
+    @override_settings(IGDB_ID="environment-id", IGDB_SECRET="")
+    def test_superuser_can_edit_unlocked_fields_without_exposing_environment(self, _probe):
+        self.client.force_login(self.admin)
+        response = self.client.get(
+            reverse("provider_detail", args=["igdb"]), {"tab": "connection"}
+        )
+
+        soup = BeautifulSoup(response.content, "html.parser")
+        self.assertTrue(soup.find("input", id="igdb-client_id").has_attr("disabled"))
+        self.assertFalse(soup.find("input", id="igdb-client_secret").has_attr("disabled"))
+        self.assertEqual(soup.find("input", id="igdb-client_secret")["type"], "password")
+        self.assertContains(response, "IGDB_ID")
+        self.assertContains(response, "Twitch Developer Console")
+        self.assertNotContains(response, "environment-id")
+        setup_button = soup.find("button", attrs={"x-ref": "setupInfoTrigger"})
+        self.assertEqual(setup_button.get_text(strip=True), "Get a key from IGDB")
+        setup_dialog = soup.find(attrs={"role": "dialog", "aria-labelledby": "setup-info-title"})
+        self.assertIn("Twitch Developer Console", str(setup_dialog))
+        self.assertIsNotNone(setup_dialog.find("a", href="https://dev.twitch.tv/console/apps/create"))
 
     def test_personal_credential_save_returns_to_local_provider_tab(self, _probe):
         self.client.force_login(self.user)

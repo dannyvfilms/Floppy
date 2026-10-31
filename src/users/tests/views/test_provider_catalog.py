@@ -50,10 +50,8 @@ class ProviderSettingsTests(TestCase):
         credentials = self.client.get(
             reverse("provider_detail", args=["hardcover"]), {"tab": "connection"}
         )
-        self.assertTemplateUsed(credentials, "users/components/provider_row.html")
-        self.assertTemplateUsed(
-            credentials, "users/components/provider_status_badge.html"
-        )
+        self.assertTemplateUsed(credentials, "users/components/provider_instance_credentials.html")
+        self.assertTemplateUsed(credentials, "users/components/provider_personal_credentials.html")
 
     def test_shared_source_identity_keeps_fallback_labels_safe(self):
         html = str(source_display("unknown", label="A <service>", heading_level=2))

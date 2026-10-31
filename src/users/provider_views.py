@@ -32,7 +32,9 @@ def providers(request):
             item
             for item in items
             if query.casefold()
-            in (item["label"] + " " + item["description"]).casefold()
+            in (
+                item["label"] + " " + item["description"] + " " + item["card_description"]
+            ).casefold()
         ]
     if capability in CAPABILITIES:
         items = [item for item in items if item.get(capability)]

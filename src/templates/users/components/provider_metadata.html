@@ -22,7 +22,7 @@
       {% include "users/components/media_type_provider_modal.html" %}
     {% endfor %}
   {% else %}
-    <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-3">
+    <div class="space-y-3">
       {% if provider.metadata_role == "supplemental" %}
         <h3 class="text-lg font-semibold">{% translate "Supplemental metadata" %}</h3>
         <p class="text-sm text-[var(--color-text-muted)]">{{ metadata_provider.description|default:provider.description }}</p>

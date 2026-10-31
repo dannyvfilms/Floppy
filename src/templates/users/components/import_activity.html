@@ -4,7 +4,7 @@
 {% load app_tags %}
 
 {# Active Periodic Imports #}
-<div class="bg-[var(--color-surface)] rounded-lg p-6">
+<div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
   <div class="flex items-center mb-4">
     {% include "app/icons/clock.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
     <h2 class="text-xl font-semibold">{% translate "Active Periodic Imports" %}</h2>
@@ -47,7 +47,7 @@
 </div>
 
 {# Import History #}
-<div class="bg-[var(--color-surface)] rounded-lg p-6">
+<div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
   <div class="flex items-center mb-4">
     {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
     <h2 class="text-xl font-semibold">{% translate "Import History" %}</h2>
@@ -165,7 +165,7 @@
 
 {% if import_runs %}
   {# Import Run Summary #}
-  <div class="bg-[var(--color-surface)] rounded-lg p-6">
+  <div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
     <div class="flex items-center mb-4">
       {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
       <h2 class="text-xl font-semibold">{% translate "Recent Import Runs" %}</h2>

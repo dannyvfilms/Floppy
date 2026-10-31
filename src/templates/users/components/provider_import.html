@@ -233,7 +233,7 @@
           hx-swap="none">
       {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
-    <div class="bg-[var(--color-surface)] rounded-lg p-6">
+    <div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
       <div class="flex items-center mb-4">
         {% include "app/icons/horizontal-sliders.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
         <h2 class="text-xl font-semibold">{% translate "Import Settings" %}</h2>

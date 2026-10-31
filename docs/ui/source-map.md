@@ -526,7 +526,10 @@ PY
 - `src/templates/users/components/provider_credential_modal.html`
 - `src/templates/users/components/provider_credential_row.html`
 - `src/templates/users/components/provider_credential_status.html`
+- `src/templates/users/components/provider_default_shortcuts.html`
+- `src/templates/users/components/provider_instance_credentials.html`
 - `src/templates/users/components/provider_metadata.html`
+- `src/templates/users/components/provider_personal_credentials.html`
 - `src/templates/users/metadata.html`
 
 ## SET-IMPORT

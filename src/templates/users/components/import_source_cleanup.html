@@ -1,7 +1,7 @@
 {% load i18n app_tags user_tags %}
 {% if import_source_media %}
   {# Bulk Delete by Import Source #}
-  <div class="bg-[var(--color-surface)] rounded-lg p-6">
+  <div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
     <div class="flex items-center mb-4">
       {% include "app/icons/trashcan.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
       <h2 class="text-xl font-semibold">{% translate "Imported Media by Source" %}</h2>

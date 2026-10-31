@@ -8,8 +8,8 @@
         <p class="text-sm text-[var(--color-text-muted)]">
           {% translate "Instance-wide keys can only be changed by a superuser, so those fields are read-only for you. Every provider still accepts a personal key of your own, which is used for your requests instead of the instance key." %}
         </p>
-        <div class="rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300 space-y-2">
-          <p class="text-indigo-200 font-medium">
+        <div class="rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-[var(--color-text-secondary)] space-y-2">
+          <p class="text-[var(--color-info-text)] font-medium">
             {% if instance_has_superuser %}
               {% translate "Ask an administrator, or promote your own account" %}
             {% else %}
@@ -20,10 +20,10 @@
             {% translate "Floppy does not make anyone a superuser during setup, so a fresh install has none. Run this" %}
             {% if in_container %}{% translate "on the host running the container" %}{% else %}{% translate "where Floppy is installed" %}{% endif %}:
           </p>
-          <pre class="overflow-x-auto rounded bg-[var(--color-surface)] p-2 text-indigo-200"><code>{{ promote_command }}</code></pre>
+          <pre class="overflow-x-auto rounded bg-[var(--color-surface)] p-2 text-[var(--color-info-text)]"><code>{{ promote_command }}</code></pre>
           <p>
             {% translate "Then sign out and back in. Shell access already lets you do anything to this instance, so this grants nothing you could not do there already. Add" %}
-            <code class="text-indigo-200">--list</code> {% translate "to see every account first." %}
+            <code class="text-[var(--color-info-text)]">--list</code> {% translate "to see every account first." %}
           </p>
         </div>
       </div>

@@ -215,6 +215,68 @@ DESCRIPTIONS = {
     "youtube": "Video metadata and watch-history file imports.",
 }
 
+# Short, action-oriented summaries for the provider directory cards.
+CARD_DESCRIPTIONS = {
+    "anilist": "Import anime and manga lists.",
+    "audiobookshelf": "Import audiobook progress.",
+    "bgg": "Find metadata for board games.",
+    "clz": "Import CLZ collection files.",
+    "comicvine": "Find metadata for comics and issues.",
+    "emby": "Track playback from your media server.",
+    "goodreads": "Import reading history from a file.",
+    "googlebooks": "Find book metadata and cover art.",
+    "gpodder": "Import podcast listening history.",
+    "gcd": "Find metadata for comics and issues.",
+    "grouvee": "Import a game library from a file.",
+    "hardcover": "Find books and import reads.",
+    "hltb": "Import game history from a file.",
+    "igdb": "Find game metadata and artwork.",
+    "imdb": "Import your movie and TV ratings.",
+    "jellyfin": "Import and track your plays.",
+    "kapowarr": "Import comics from your collection.",
+    "kavita": "Import your reading progress.",
+    "kitsu": "Import anime and manga lists.",
+    "kodi": "Track playback from your media player.",
+    "koito": "Import music listening history.",
+    "komga": "Import your reading progress.",
+    "koreader": "Import your reading progress.",
+    "lastfm": "Import listens and music data.",
+    "libretro": "Find artwork for retro games.",
+    "mangabaka": "Find manga and import your library.",
+    "mangaupdates": "Find metadata for manga titles.",
+    "mdblist": "Import your watch history and ratings.",
+    "musicbrainz": "Find artist and album metadata.",
+    "mal": "Import and sync anime and manga.",
+    "mylar": "Import comics from your collection.",
+    "navidrome": "Track your music listening.",
+    "nuvio": "Playback tracking is not yet supported.",
+    "openlibrary": "Find book metadata and cover art.",
+    "opencritic": "Find critic scores for your games.",
+    "playnite": "Import a game library from a file.",
+    "psn": "Import your games and played hours.",
+    "plex": "Import and track your plays.",
+    "pocketcasts": "Import podcast progress.",
+    "radarr": "Import movies from your library.",
+    "screenscraper": "Find artwork for retro games.",
+    "seerr": "Track requests and approvals.",
+    "simkl": "Import your movies, shows and anime.",
+    "sonarr": "Import TV shows from your library.",
+    "steam": "Import your games and find artwork.",
+    "steamgriddb": "Find game logos and backdrops.",
+    "storygraph": "Import reading history from a file.",
+    "storyteller": "Import your reading progress.",
+    "stremio": "Import and track watched titles.",
+    "thegamesdb": "Find logos and artwork for games.",
+    "tvdb": "Find TV and anime metadata.",
+    "tmdb": "Find metadata and sync ratings.",
+    "trakt": "Import history and find trends.",
+    "tvtime": "Import your watch history from a file.",
+    "wetrakr": "Import and sync your activity.",
+    "xbox": "Import your games and played hours.",
+    "yamtrack_native": "Import a library from CSV.",
+    "youtube": "Find videos and import history.",
+}
+
 
 def catalog():
     """Return declared capabilities without inferring them from credentials."""
@@ -299,6 +361,7 @@ def catalog():
         )
         if slug in DESCRIPTIONS and item.get("available", True):
             item["description"] = DESCRIPTIONS[slug]
+        item["card_description"] = CARD_DESCRIPTIONS.get(slug, item["description"])
         item["activity"] = bool(
             item.get("import")
             or item.get("sync")

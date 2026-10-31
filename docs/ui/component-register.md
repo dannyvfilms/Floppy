@@ -71,8 +71,8 @@ can inform a focused completion pass.
 - Data: owning Django forms/errors/messages, Alpine state and response events; feature endpoints retain action semantics.
 - Reuse/blockers: strong primitive reuse; dropdowns are duplicated inline implementations. Define only needed primitives; native focus/portal/keyboard behavior needs proof.
 - Validation targets: owning feature tests, `src/users/tests/views/test_preferences.py`; general accessibility interaction coverage unverified.
-- Status: `Existing`. The provider credential information dialog uses the existing Alpine/teleport stack and restores focus to its trigger on close.
-- Verification: provider Connection dialog opened and dismissed with Escape, including focus return, in Chromium 151 on macOS at 1440×1000 and 390×844 in system light and dark. Native and assistive-technology testing not performed.
+- Status: `Existing`. Provider credential access and setup dialogs use the existing Alpine/teleport stack, contain keyboard focus, and restore focus to their triggering badges on close.
+- Verification: both provider Connection dialogs opened and dismissed with Escape, including focus return and setup-dialog Tab/Shift+Tab wrapping, in Chromium 151 on macOS at 1440×1000 and 390×844 in system light and dark. Native and assistive-technology testing not performed.
 - Related work: [provider consolidation #1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: broader shared dialog primitives await the separately authorized foundation proof.
 
 ### TOKENS — Theme, typography, motion and icons
@@ -478,7 +478,7 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: `src/users/metadata_views.py`, credential services/repair handlers.
 - Reuse/blockers: field/status reusable; authorization/secrets remain server-owned, mobile endpoint/secret audit required.
 - Validation targets: `src/users/tests/views/test_metadata_settings.py`.
-- Status: `Existing`. Instance and personal credential forms render inline, with editable/read-only and environment-lock states; permission details open from the information button.
+- Status: `Existing`. Instance and personal credential forms render inline, with editable/read-only and environment-lock states. The Read-only badge opens permission details; the key badge opens setup instructions when present or links directly to the provider.
 - Verification: 78 targeted provider, metadata, sync and import tests passed with `FLOPPY_TEST_FAST_DB=1` (migrations not replayed); Chromium 151 on macOS, system light/dark at 1440×1000 and 390×844, including permission dialog focus and Escape. Native and assistive-technology testing not performed.
 - Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: the legacy metadata template retains its modal for compatibility; retire that consumer when the retained legacy template is removed. Native credential transport and secure storage await separate design and the foundation proof.
 

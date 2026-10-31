@@ -1,6 +1,6 @@
 {% load i18n app_tags user_tags %}
     {% if provider_summary %}
-      <div class="bg-[var(--color-surface)] rounded-lg p-6">
+      <div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
         <h2 class="text-xl font-semibold mb-1">{% translate "Metadata Providers" %}</h2>
         <p class="text-[var(--color-text-muted)] text-sm mb-4">
           {% translate "Choose where new titles come from. Existing titles keep the provider they were added with and keep receiving new plays until you move them." %}

@@ -183,6 +183,7 @@ def _provider_view(spec, user):
         "logo_slug": spec.logo_slug or spec.slug,
         "description": spec.description,
         "docs_url": spec.docs_url,
+        "setup_hint": spec.setup_hint,
         "user_scope": spec.user_scope,
         "configured": credentials.is_configured(spec.slug, user),
         "status": status,

@@ -2300,6 +2300,7 @@ def import_data_activity(request):
         "import_tasks": import_tasks,
         "import_runs": import_runs,
         "import_source_media": source_media,
+        "provider_navigation": bool(sources),
     }
     response = render(request, "users/components/import_activity.html", context)
     is_active = any(

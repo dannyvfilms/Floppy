@@ -430,7 +430,7 @@
     <div id="mal-sync-panel" role="tabpanel" aria-labelledby="mal-sync-tab"
          x-show="activeTab === 'sync'" class="space-y-6">
     {# Connection #}
-    <div class="bg-[var(--color-surface)] rounded-lg p-6">
+    <div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
     {% if provider_tab != "activity" %}
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center">
@@ -614,7 +614,7 @@
 
     {% if mal_account and mal_account.is_connected %}
       {# Sync filters #}
-      <div class="bg-[var(--color-surface)] rounded-lg p-6">
+      <div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
         <div class="flex items-center mb-4">
           {% include "app/icons/list.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
           <h2 class="text-xl font-semibold">{% translate "Sync Filters" %}</h2>
@@ -698,7 +698,7 @@
       </div>
 
       {# Schedule #}
-      <div class="bg-[var(--color-surface)] rounded-lg p-6">
+      <div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
         <div class="flex items-center mb-4">
           {% include "app/icons/repeat.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
           <h2 class="text-xl font-semibold">{% translate "Scheduled Export" %}</h2>
@@ -736,7 +736,7 @@
       </div>
 
       {# Active schedule #}
-      <div class="bg-[var(--color-surface)] rounded-lg p-6">
+      <div class="{% if not provider_navigation %}bg-[var(--color-surface)] rounded-lg p-6{% endif %}">
         <div class="flex items-center mb-4">
           {% include "app/icons/repeat.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
           <h2 class="text-xl font-semibold">{% translate "Active Schedule" %}</h2>
