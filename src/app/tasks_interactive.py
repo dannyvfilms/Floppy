@@ -10,11 +10,11 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(name="Resolve live playback image")
-def resolve_playback_image(user_id: int):
+def resolve_playback_image(user_id: int, slot: str | None = None):
     """Resolve artwork for a cached live playback state in the background."""
     from app import live_playback
 
-    live_playback.resolve_state_image(user_id)
+    live_playback.resolve_state_image(user_id, slot)
 
 
 @shared_task(name="app.tasks.statistics_sync_task")

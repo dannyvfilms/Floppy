@@ -530,7 +530,7 @@ def home(request):
             "user": request.user,
             "home_groups": home_groups,
             "items_limit": items_limit,
-            "active_playback_card": live_playback.build_home_playback_card(
+            "active_playback_cards": live_playback.build_home_playback_cards(
                 request.user
             ),
             "MediaTypes": MediaTypes,
@@ -547,7 +547,7 @@ def home(request):
             "home_groups": [],
             "items_limit": 14,
             "database_error": True,
-            "active_playback_card": None,
+            "active_playback_cards": [],
             "MediaTypes": MediaTypes,
             "IMG_NONE": settings.IMG_NONE,
             "defer_remaining_groups": False,
@@ -815,15 +815,15 @@ def trakt_series_graph_fragment(request, source, media_id):
 
 
 def active_playback_fragment(request):
-    """HTMX fragment: return the active playback card or empty response."""
-    card = live_playback.build_home_playback_card(request.user)
-    if not card:
+    """HTMX fragment: return the active playback cards or empty response."""
+    cards = live_playback.build_home_playback_cards(request.user)
+    if not cards:
         return HttpResponse("")
     return render(
         request,
-        "app/components/active_playback_card.html",
+        "app/components/active_playback_cards.html",
         {
-            "active_playback_card": card,
+            "active_playback_cards": cards,
         },
     )
 

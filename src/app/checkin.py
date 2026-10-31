@@ -53,6 +53,9 @@ SETTLE_DELAY_SECONDS = 5
 # Without a runtime there is no end to assume; the card closes like any stale one.
 UNKNOWN_RUNTIME_SECONDS = live_playback.PLAYBACK_HARD_STALE_SECONDS
 
+# One running check-in per media type; movies and shows are separate types.
+SLOTS = (MediaTypes.MOVIE.value, MediaTypes.TV.value)
+
 PHASE_IDLE = "idle"
 PHASE_ACTIVE = "active"
 PHASE_FINISHABLE = "finishable"
@@ -98,17 +101,36 @@ def card_control(user_id, state):
     token = state.get("checkin_token")
     if not token:
         return None
+    found = find_by_token(user_id, token)
+    if found is None:
+        return None
+    record, action = found
+    return {
+        "token": token,
+        "source": record.get("source", Sources.TMDB.value),
+        "media_type": record["media_type"],
+        "media_id": record["media_id"],
+        "action": action,
+    }
+
+
+def find_by_token(user_id, token):
+    """Return (record, card action) of the check-in whose card carries this token, or None."""
     from app import checkin_session
 
-    for record, action in ((_record(user_id), "pause"), (checkin_session._record(user_id), "stop")):
+    candidates = [
+        (_record(user_id, slot), "pause") for slot in SLOTS
+    ] + [
+        (checkin_session._record(user_id, slot), "stop")
+        for slot in checkin_session.MODELS
+    ]
+    for record, action in candidates:
         if record and record["token"] == token:
-            return {
-                "token": token,
-                "source": record.get("source", Sources.TMDB.value),
-                "media_type": record["media_type"],
-                "media_id": record["media_id"],
-                "action": action,
-            }
+            # Only while its own card is still showing: a real scrobble that
+            # took over has removed it, and the controls go with it.
+            card = live_playback.peek_user_playback_state(user_id, record["media_type"])
+            if card and card.get("checkin_token") == token:
+                return record, action
     return None
 
 
@@ -117,16 +139,16 @@ def episode_code(season_number, episode_number):
     return f"S{int(season_number):02d}E{int(episode_number):02d}"
 
 
-def _key(user_id):
-    return f"checkin_v2:{user_id}"
+def _key(user_id, media_type):
+    return f"checkin_v3:{user_id}:{media_type}"
 
 
 def _rollback_key(user_id, media_type, media_id):
     return f"checkin_rollback_v1:{user_id}:{media_type}:{media_id}"
 
 
-def _record(user_id):
-    return cache.get(_key(user_id))
+def _record(user_id, media_type):
+    return cache.get(_key(user_id, media_type))
 
 
 def _save_record(user_id, record):
@@ -136,7 +158,7 @@ def _save_record(user_id, record):
             timeout,
             record["end_ts"] - _now_ts() + RECORD_END_MARGIN_SECONDS,
         )
-    cache.set(_key(user_id), record, timeout=timeout)
+    cache.set(_key(user_id, record["media_type"]), record, timeout=timeout)
 
 
 def mark_taken_over(user_id, token):
@@ -145,14 +167,15 @@ def mark_taken_over(user_id, token):
     The replacement card can expire before the assumed end, and that must not
     read as the check-in's own card disappearing.
     """
-    record = _record(user_id)
-    if record is not None and record["token"] == token:
-        record["taken_over"] = True
-        _save_record(user_id, record)
+    for slot in SLOTS:
+        record = _record(user_id, slot)
+        if record is not None and record["token"] == token:
+            record["taken_over"] = True
+            _save_record(user_id, record)
 
 
-def _drop_record(user_id):
-    cache.delete(_key(user_id))
+def _drop_record(user_id, media_type):
+    cache.delete(_key(user_id, media_type))
 
 
 def _now_ts():
@@ -325,17 +348,28 @@ def _position(record, now_ts):
 
 def _owns_card(user_id, record):
     """Return whether the Now Playing card is still this check-in's."""
-    card = live_playback.peek_user_playback_state(user_id)
+    card = live_playback.peek_user_playback_state(user_id, record["media_type"])
     return card is None or card.get("checkin_token") == record["token"]
 
 
-def release_running(user):
-    """Keep a running movie or show check-in's place before another check-in replaces it."""
-    running = _record(user.id)
+def _clear_scrobble_card(user_id, media_type, media_id):
+    card = live_playback.peek_user_playback_state(user_id)
+    card_type = (
+        MediaTypes.TV.value
+        if card and card.get("media_type") == MediaTypes.EPISODE.value
+        else card and card.get("media_type")
+    )
+    if card and card_type == media_type and str(card.get("media_id")) == str(media_id):
+        live_playback.clear_user_playback_state(user_id)
+
+
+def release_running(user, media_type):
+    """Keep a running check-in's place before another of its type replaces it."""
+    running = _record(user.id, media_type)
     if running is None:
         return
     if running.get("taken_over") or not _owns_card(user.id, running):
-        _drop_record(user.id)
+        _drop_record(user.id, media_type)
     else:
         pause(user, running["media_type"], running["media_id"])
 
@@ -344,11 +378,10 @@ def start(user, media_type, media_id):
     """Check in, resuming from a saved Pause if there is one."""
     subject = _subject(user, media_type, media_id)
 
-    # One check-in per user, across movies, shows and sessions.
-    from app import checkin_session
-
-    checkin_session.interrupt(user)
-    release_running(user)
+    # One check-in per media type; other types keep running beside it.
+    release_running(user, media_type)
+    # A real scrobble of this title on Home gives way to the check-in's card.
+    _clear_scrobble_card(user.id, media_type, subject.media_id)
 
     offset = _saved_position(user, subject.item)
     if subject.duration and offset >= subject.duration:
@@ -404,6 +437,7 @@ def start(user, media_type, media_id):
         duration_seconds=subject.duration,
         checkin_token=token,
         ends_at_ts=end_ts,
+        slot=media_type,
         **subject.card,
     )
     _save_record(user.id, record)
@@ -417,12 +451,8 @@ def start(user, media_type, media_id):
 
 
 def _active_record(user, media_type, media_id):
-    record = _record(user.id)
-    if (
-        record is None
-        or record["media_type"] != media_type
-        or record["media_id"] != str(media_id)
-    ):
+    record = _record(user.id, media_type)
+    if record is None or record["media_id"] != str(media_id):
         msg = "No check-in is running here."
         raise CheckInError(msg)
     return record
@@ -430,8 +460,8 @@ def _active_record(user, media_type, media_id):
 
 def _close_card(user_id, record):
     if _owns_card(user_id, record):
-        live_playback.clear_user_playback_state(user_id)
-    _drop_record(user_id)
+        live_playback.clear_user_playback_state(user_id, record["media_type"])
+    _drop_record(user_id, record["media_type"])
 
 
 def _row(user, record):
@@ -516,12 +546,17 @@ def cancel(user, media_type, media_id):
 
 
 def settle(user_id):
-    """Complete the row once the assumed end has passed, if the card is still ours.
+    """Complete the rows whose assumed end has passed, if the card is still ours.
 
     Run by a delayed task, and by the detail page as a catch-up, so a lost task
     cannot leave a finished check-in running.
     """
-    record = _record(user_id)
+    for slot in SLOTS:
+        _settle_slot(user_id, slot)
+
+
+def _settle_slot(user_id, media_type):
+    record = _record(user_id, media_type)
     if record is None or record["end_ts"] is None or _now_ts() < record["end_ts"]:
         return
     owned = not record.get("taken_over") and _owns_card(user_id, record)
@@ -589,14 +624,10 @@ def phase(user, instance):
         return None
 
     settle(user.id)
-    record = _record(user.id)
-    now_ts = _now_ts()
     media_type = item.media_type
-    if (
-        record is not None
-        and record["media_type"] == media_type
-        and record["media_id"] == str(item.media_id)
-    ):
+    record = _record(user.id, media_type)
+    now_ts = _now_ts()
+    if record is not None and record["media_id"] == str(item.media_id):
         return {**_running_phase(record, now_ts), "code": record["code"]}
 
     if media_type == MediaTypes.MOVIE.value:

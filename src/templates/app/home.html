@@ -75,15 +75,13 @@
   <div class="space-y-4 sm:space-y-8">
     <div id="active-playback-container"
          class="media-grid"
-         {% if not active_playback_card %}style="display:none"{% endif %}
+         {% if not active_playback_cards %}style="display:none"{% endif %}
          hx-get="{% url 'active_playback_fragment' %}"
          hx-trigger="playback-poll queue:none"
          hx-sync="this:drop"
          hx-swap="innerHTML"
          hx-on::after-swap="this.style.display=this.children.length?'':'none'">
-      {% if active_playback_card %}
-        {% include "app/components/active_playback_card.html" %}
-      {% endif %}
+      {% include "app/components/active_playback_cards.html" %}
     </div>
     {% include "app/components/home_groups.html" %}
     {% if deferred_groups %}
