@@ -2274,18 +2274,18 @@ html.light .theme-toggle-icon-moon {
 
   /* Reveal-on-hover only where there is a real hover; a tap leaves :hover stuck on touch. */
   @media (hover: hover) {
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:hover,
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:focus-within {
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within {
       grid-template-rows: 1.5rem 1.25rem 1rem;
     }
 
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:hover .detail-provider-score-card__graph,
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:focus-within .detail-provider-score-card__graph {
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__graph,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__graph {
       grid-template-rows: 1.5rem 1.25rem 1rem;
     }
 
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:hover .detail-provider-score-card__prompt,
-    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:focus-within .detail-provider-score-card__prompt {
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__prompt,
+    :is(.detail-carousel-grid, .detail-flat-top) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__prompt {
       max-height: 1rem;
       opacity: 1;
       transform: translateY(0);
@@ -2835,8 +2835,8 @@ html.light .theme-toggle-icon-moon {
     transition: grid-template-rows 180ms ease;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:hover,
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:focus-within {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within {
     grid-template-rows: 1.5rem 1.25rem 1rem;
   }
 
@@ -2878,8 +2878,8 @@ html.light .theme-toggle-icon-moon {
     transition: grid-template-rows 180ms ease;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:hover .detail-provider-score-card__graph,
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:focus-within .detail-provider-score-card__graph {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__graph,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__graph {
     grid-template-rows: 1.5rem 1.25rem 1rem;
   }
 
@@ -2914,8 +2914,8 @@ html.light .theme-toggle-icon-moon {
     pointer-events: none;
   }
 
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:hover .detail-provider-score-card__prompt,
-  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:focus-within .detail-provider-score-card__prompt {
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):hover .detail-provider-score-card__prompt,
+  .detail-carousel-grid:has(#detail-carousel-wrap:not(:empty)) .detail-provider-score-card.group:has(.detail-provider-score-card__prompt):focus-within .detail-provider-score-card__prompt {
     max-height: 1rem;
     opacity: 1;
     transform: translateY(0);

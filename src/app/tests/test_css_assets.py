@@ -135,7 +135,11 @@ class PhoneLayoutCssContractTests(SimpleTestCase):
         ),
         "phone chip cards only reveal on hover where hover exists": (
             r"@media \(hover: hover\) \{\s+:is\(\.detail-carousel-grid, \.detail-flat-top\) "
-            r"\.detail-provider-score-card\.group:hover"
+            r"\.detail-provider-score-card\.group:has\(\.detail-provider-score-card__prompt\):hover"
+        ),
+        "phone chip cards only open a third line when they have a graph prompt": (
+            r"\.detail-provider-score-card\.group:has\(\.detail-provider-score-card__prompt\):"
+            r"focus-within \.detail-provider-score-card__graph"
         ),
         "unfolded portrait keeps the poster beside the info": (
             r"@media \(min-width: 600px\) and \(max-width: 767\.98px\)"
@@ -152,3 +156,14 @@ class PhoneLayoutCssContractTests(SimpleTestCase):
             css = (css_dir / name).read_text(encoding="utf-8")
             for rule, pattern in self.RULES.items():
                 self.assertRegex(css, pattern, f"{name}: {rule}")
+
+    def test_hover_reveal_is_never_unconditional(self):
+        """Chips with no series graph (IGDB, MAL, OpenCritic) must not move on hover."""
+        css_dir = Path(settings.BASE_DIR) / "static" / "css"
+        for name in ("input.css", "main.css"):
+            css = (css_dir / name).read_text(encoding="utf-8")
+            self.assertNotRegex(
+                css,
+                r"\.detail-provider-score-card\.group:(hover|focus-within)",
+                f"{name}: a hover rule on the chip is missing the graph-prompt guard",
+            )
