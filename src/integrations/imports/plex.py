@@ -54,6 +54,9 @@ MARK_WATCHED_OVERLAP = timedelta(minutes=10)
 # How long an entry that failed to import keeps the checkpoint held back, so a
 # transient failure is retried but a permanent one cannot pin it forever.
 MARK_WATCHED_RETRY_WINDOW = timedelta(days=1)
+# A watched mark Floppy pushed lands in Plex history at the push time; this
+# much clock skew between the two servers is still recognized as that echo.
+PUSH_ECHO_WINDOW = timedelta(minutes=10)
 
 # Matching an imported history record against a pre-existing row (e.g. one
 # already created by a live webhook, or by a Trakt import) is handled by the
@@ -170,6 +173,7 @@ class PlexHistoryImporter:
         self.summary_counts = defaultdict(int)
         self.warnings = []
         self.resources = []
+        self._push_times: dict[tuple[str, str], list[datetime]] | None = None
         self._metadata_cache: dict[str, dict] = {}
         self._movie_records: list[dict] = []
         self._episode_records: list[dict] = []
@@ -757,6 +761,32 @@ class PlexHistoryImporter:
             uris.extend([c.get("uri") for c in sorted_conns if c.get("uri")])
         return uris
 
+    def _is_floppy_push_echo(self, entry: dict) -> bool:
+        """Return whether this history row is a watched mark Floppy pushed.
+
+        Importing it would record a second play, dated the push, of something
+        Floppy already had as watched.
+        """
+        if self._push_times is None:
+            from integrations.models import PlexWatchedPush
+
+            self._push_times = defaultdict(list)
+            for machine, rating_key, pushed_at in PlexWatchedPush.objects.filter(
+                user=self.user,
+            ).values_list("machine_identifier", "rating_key", "pushed_at"):
+                self._push_times[(machine, rating_key)].append(pushed_at)
+
+        times = self._push_times.get(
+            (self._current_section_machine_id, str(entry.get("ratingKey") or "")),
+        )
+        if not times:
+            return False
+        try:
+            viewed_at = datetime.fromtimestamp(int(entry.get("viewedAt")), tz=UTC)
+        except (TypeError, ValueError):
+            return False
+        return any(abs(viewed_at - pushed) <= PUSH_ECHO_WINDOW for pushed in times)
+
     def _process_entry(self, entry: dict, uri: str, section_type: str | None = None):
         """Process a single history entry."""
         metadata = self._build_metadata(entry)
@@ -767,6 +797,9 @@ class PlexHistoryImporter:
             section_type,
         )
         if not self._is_allowed_history_user(metadata):
+            return
+        if self._is_floppy_push_echo(entry):
+            self.summary_counts["skipped_floppy_push"] += 1
             return
         metadata["Guid"] = self._normalize_guid_list(
             metadata.get("Guid") or metadata.get("guid"),

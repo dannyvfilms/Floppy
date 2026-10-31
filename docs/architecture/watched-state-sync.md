@@ -223,7 +223,7 @@ what the user approved, and the settings page names the shortfall as
 | Jellyfin | Yes | Yes — `PlayedItems` is a *set*, so read-first retry is safe | inbound + outbound |
 | Emby | Yes | Unverified here | inbound only |
 | Kodi | Yes, via library id lookup | Unverified; its write assigns a *count* | inbound only |
-| Plex | Existing webhooks and history; manual marks via an opt-in 15-minute history poll (Plex sends no webhook for them) | `/:/scrobble` is undocumented | inbound only |
+| Plex | Existing webhooks and history; manual marks via an opt-in 15-minute history poll (Plex sends no webhook for them) | `/:/scrobble` is undocumented and adds a play per call | inbound only through the engine; a person-confirmed watched-only push outside it, see [Plex](../agents/plex_integration.md#sending-watched-to-plex) |
 | Stremio | Existing bitfield parsing | `datastorePut` is a read-modify-write of an opaque bitfield with no CAS | inbound only |
 | Audiobookshelf | Existing pull | Documented, unverified | inbound only |
 | WeTrakr | No | Batched plays (dated), statuses and ratings with a per-item reply; no unwatch yet | outbound only, see [WeTrakr](../integrations/wetrakr.md) |

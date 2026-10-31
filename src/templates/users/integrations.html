@@ -780,6 +780,40 @@
         {% endif %}
       </div>
 
+      <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4" x-data="{ plexPushOpen: false }">
+        <h4 class="text-sm font-medium mb-3">{% translate "Send Watched to Plex" %}</h4>
+        <p class="text-[var(--color-text-muted)] mb-4 text-sm">
+          {% translate "Mark what you watched in Floppy as watched for you or a Plex Home user. You review every change first; nothing is marked unwatched." %}
+        </p>
+        {% if plex_connected %}
+          <button type="button"
+                  @click="plexPushOpen = true"
+                  class="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm cursor-pointer">
+            {% translate "Review and send" %}
+          </button>
+          <div x-show="plexPushOpen"
+               x-cloak
+               @keydown.escape.window="plexPushOpen = false"
+               x-transition.opacity.duration.150ms
+               class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+               @mousedown.self="plexPushOpen = false">
+            <div class="modal-max-height overflow-y-auto w-full" style="width: min(96vw, 32rem);">
+              <button type="button"
+                      @click="plexPushOpen = false"
+                      title="{% translate 'Close' %}"
+                      class="block w-fit ml-auto mb-2 text-[var(--color-text-muted)] hover:text-[var(--color-text)] cursor-pointer p-1 rounded-md hover:bg-[var(--color-surface-hover)] bg-[var(--color-surface)]">
+                {% include "app/icons/x.svg" with classes="w-4 h-4" %}
+              </button>
+              <div class="bg-[var(--color-surface-strong)] p-4 rounded-lg space-y-3">
+                {% include "users/components/plex_watched_push.html" %}
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <p class="text-sm text-[var(--color-warning-text)]">{% translate "Connect Plex from the Import page to use this." %}</p>
+        {% endif %}
+      </div>
+
       <div class="bg-[var(--color-surface-dim)] p-4 rounded-md mb-4">
         <h4 class="text-sm font-medium mb-3">{% translate "Share Plex Webhook" %}</h4>
         <p class="text-[var(--color-text-muted)] mb-4 text-sm">
