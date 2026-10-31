@@ -420,6 +420,22 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             fields=(CredentialField("api_key", "RapidAPI key", "OPENCRITIC_API_KEY"),),
         ),
         ProviderCredentialSpec(
+            slug="podcastindex",
+            media_tags=("podcasts",),
+            user_scope=True,
+            label="Podcast Index",
+            description="Open podcast directory. Finds shows other sources miss.",
+            docs_url="https://api.podcastindex.org/signup",
+            fields=(
+                CredentialField("api_key", "API key", "PODCASTINDEX_API_KEY"),
+                CredentialField(
+                    "api_secret",
+                    "API secret",
+                    "PODCASTINDEX_API_SECRET",
+                ),
+            ),
+        ),
+        ProviderCredentialSpec(
             slug="bgg",
             media_tags=("games",),
             user_scope=True,

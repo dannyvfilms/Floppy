@@ -45,6 +45,13 @@
     </div>
   </div>
 
+  {% if media_type == "podcast" %}
+    <p class="mb-6 text-sm text-[var(--color-text-muted)]">{% translate "Search by name, or paste an Apple Podcasts link or an RSS feed address to add a show directly." %}</p>
+    {% if fallback_source_label %}
+      <p class="mb-6 text-sm text-[var(--color-text-muted)]">{% blocktranslate trimmed with value_1=source_label value_2=fallback_source_label %}{{ value_1 }} had no match, so these results come from {{ value_2 }}.{% endblocktranslate %}</p>
+    {% endif %}
+  {% endif %}
+
   {% if media_type == "all" %}
     <p class="mb-6 text-sm text-[var(--color-text-muted)]">{% translate "Searching your library only: items you track, collect or tag. Pick a media type to search online." %}</p>
 
@@ -370,6 +377,9 @@
         <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">
           {% blocktranslate trimmed with value_1=request.GET.q %}We couldn't find any matches for "{{ value_1 }}". Try checking your spelling or using different keywords.{% endblocktranslate %}
         </p>
+        {% if media_type == "podcast" %}
+          <p class="text-[var(--color-text-muted)] text-center max-w-md mb-8">{% translate "Can't find it? Paste the show's RSS feed address into the search box to add it directly." %}</p>
+        {% endif %}
       </div>
     {% endif %}
   {% endif %}
