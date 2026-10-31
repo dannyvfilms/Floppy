@@ -88,7 +88,7 @@ def tmdb_connect(request):
             expires = None
         if not isinstance(token, str) or not token or expires is None:
             messages.error(request, "TMDb returned an invalid authorization token.")
-            return redirect("mal_export")
+            return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
         if timezone.is_naive(expires):
             expires = timezone.make_aware(
                 expires, timezone=timezone.get_fixed_timezone(0)
@@ -97,7 +97,7 @@ def tmdb_connect(request):
             messages.error(
                 request, "TMDb returned an expired authorization token. Try again."
             )
-            return redirect("mal_export")
+            return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
         request.session["tmdb_auth"] = {
             "request_token": token,
             "expires_at": expires.timestamp(),
@@ -105,7 +105,7 @@ def tmdb_connect(request):
         }
     except AdapterError as error:
         messages.error(request, str(error))
-        return redirect("mal_export")
+        return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
     callback = request.build_absolute_uri(reverse("tmdb_callback"))
     return redirect(
         f"https://www.themoviedb.org/authenticate/{token}?{urlencode({'redirect_to': callback})}"
@@ -132,7 +132,7 @@ def tmdb_callback(request):
             request,
             "TMDb authorization was denied, expired or did not match this session.",
         )
-        return redirect("mal_export")
+        return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
     client = TMDbClient(request.user)
     try:
         result = client.request(
@@ -141,15 +141,15 @@ def tmdb_callback(request):
         session_id = result.get("session_id")
         if not isinstance(session_id, str) or not session_id:
             messages.error(request, "TMDb returned an invalid session.")
-            return redirect("mal_export")
+            return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
         client.session_id = session_id
         account = client.request("GET", "account")
         if not isinstance(account.get("id"), int) or account["id"] <= 0:
             messages.error(request, "TMDb could not verify the account identity.")
-            return redirect("mal_export")
+            return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
     except AdapterError as error:
         messages.error(request, str(error))
-        return redirect("mal_export")
+        return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
     with transaction.atomic():
         get_user_model().objects.select_for_update().get(pk=request.user.pk)
         _stop_bindings(request.user)
@@ -177,7 +177,7 @@ def tmdb_callback(request):
     messages.success(
         request, "TMDb connected. Enable rating sync to send future rating edits."
     )
-    return redirect("mal_export")
+    return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
 
 
 @login_required
@@ -189,7 +189,7 @@ def tmdb_settings(request):
         account = TMDbAccount.objects.filter(user=request.user).first()
         if account is None:
             messages.error(request, "Connect your TMDb account first.")
-            return redirect("mal_export")
+            return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=sync")
         binding = SyncBinding.objects.select_for_update().get(
             user=request.user,
             client_kind=SyncClientKind.TMDB.value,
@@ -205,7 +205,7 @@ def tmdb_settings(request):
         else:
             _stop_bindings(request.user)
     messages.success(request, "Updated TMDb rating sync.")
-    return redirect("mal_export")
+    return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=sync")
 
 
 @login_required
@@ -236,7 +236,7 @@ def tmdb_disconnect(request):
                 "Disconnected locally. TMDb session revocation could not be confirmed.",
             )
     messages.success(request, "TMDb disconnected.")
-    return redirect("mal_export")
+    return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=connection")
 
 
 @login_required
@@ -252,9 +252,9 @@ def tmdb_export_ratings(request):
         kill_switch=False,
     ).exists():
         messages.error(request, "Enable TMDb rating sync before exporting.")
-        return redirect("mal_export")
+        return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=sync")
     export_tmdb_ratings.delay(request.user.pk)
     messages.success(
         request, "Export queued. Delivery results will appear in TMDb ratings."
     )
-    return redirect("mal_export")
+    return redirect(f"{reverse('provider_detail', args=['tmdb'])}?tab=sync")

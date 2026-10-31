@@ -4,7 +4,11 @@
   {% translate "Send the movies and episodes you watch, your statuses and your ratings to WeTrakr. Each play keeps the date you watched it. Imports are never sent on their own." %}
 </p>
 {% with account=wetrakr_sync.account %}
+  {% if provider_tab == "activity" %}
+    {% include "users/components/outbound_service_activity.html" with counts=wetrakr_sync.counts recent=wetrakr_sync.recent last_flushed=wetrakr_sync.binding.last_flushed_at %}
+  {% else %}
   {% if account.is_pending %}
+    {% if not provider_tab or provider_tab == "connection" %}
     <div class="rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 space-y-2"
          x-data="{
            interval: {{ account.device_interval }},
@@ -28,12 +32,16 @@
         <button type="submit" class="text-sm text-[var(--color-link)] hover:underline cursor-pointer">{% translate "Cancel" %}</button>
       </form>
     </div>
+    {% else %}
+      <p class="text-sm"><a class="text-[var(--color-link)] underline" href="{% url 'provider_detail' 'wetrakr' %}?tab=connection">{% translate "Finish authorizing WeTrakr on the Connection tab." %}</a></p>
+    {% endif %}
   {% elif account.is_connected or account.connection_broken and account.refresh_token %}
     {% if account.connection_broken %}
       <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{% translate "WeTrakr rejected your login. Disconnect and connect again." %}</div>
     {% elif account.last_error_message %}
       <div class="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-[var(--color-warning-text)]">{{ account.last_error_message }}</div>
     {% endif %}
+    {% if not provider_tab or provider_tab == "sync" %}
     <form method="post" action="{% url 'wetrakr_settings' %}" class="space-y-2">
       {% csrf_token %}
       <label class="flex items-center gap-2 text-sm text-[var(--color-text)]">
@@ -77,21 +85,31 @@
         <button type="submit" class="w-full px-4 py-2 rounded-lg text-sm bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] cursor-pointer">{% translate "Send existing library" %}</button>
       </form>
     {% endif %}
-    {% include "users/components/outbound_service_activity.html" with counts=wetrakr_sync.counts recent=wetrakr_sync.recent last_flushed=wetrakr_sync.binding.last_flushed_at %}
+    {% endif %}
+    {% if not provider_tab or provider_tab == "activity" %}
+      {% include "users/components/outbound_service_activity.html" with counts=wetrakr_sync.counts recent=wetrakr_sync.recent last_flushed=wetrakr_sync.binding.last_flushed_at %}
+    {% endif %}
+    {% if not provider_tab or provider_tab == "connection" %}
     <form method="post" action="{% url 'wetrakr_disconnect' %}">
       {% csrf_token %}
       <button type="submit" class="text-sm text-[var(--color-link)] hover:underline cursor-pointer">{% translate "Disconnect WeTrakr" %}</button>
     </form>
+    {% endif %}
   {% elif wetrakr_sync.has_key %}
+    {% if not provider_tab or provider_tab == "connection" %}
     <form method="post" action="{% url 'wetrakr_connect' %}">
       {% csrf_token %}
       <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm cursor-pointer">{% translate "Connect WeTrakr" %}</button>
     </form>
+    {% else %}
+      <p class="text-sm"><a class="text-[var(--color-link)] underline" href="{% url 'provider_detail' 'wetrakr' %}?tab=connection">{% translate "Connect WeTrakr to use outbound sync." %}</a></p>
+    {% endif %}
   {% else %}
     <div class="rounded-md border border-indigo-500/30 bg-indigo-500/10 p-3 text-xs text-gray-300">
       {% translate "WeTrakr gives out app keys on request. Once you have one, add it under" %}
-      <a href="{% url 'metadata_settings' %}" class="text-[var(--color-link)] hover:underline">{% translate "Settings > Metadata" %}</a>
+      <a href="{% url 'provider_detail' 'wetrakr' %}?tab=connection" class="text-[var(--color-link)] hover:underline">{% translate "Connection credentials" %}</a>
       {% translate "and come back to connect." %}
     </div>
+  {% endif %}
   {% endif %}
 {% endwith %}

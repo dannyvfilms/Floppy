@@ -96,7 +96,7 @@ class ExportScheduleTests(TestCase):
             {"frequency": "once"},
         )
 
-        self.assertRedirects(response, reverse("export_data"))
+        self.assertRedirects(response, reverse("export_data"), fetch_redirect_response=False)
         self.assertEqual(PeriodicTask.objects.count(), 0)
         self.assertIn(
             "Select at least one media type, Custom Lists, or Collection to export.",
@@ -129,7 +129,7 @@ class ExportScheduleTests(TestCase):
 
     def test_export_page_describes_and_blocks_empty_selection(self):
         """The export page explains valid selections and disables empty submits."""
-        response = self.client.get(reverse("export_data"))
+        response = self.client.get(reverse("data_management"))
 
         self.assertContains(
             response,
@@ -177,7 +177,7 @@ class ExportScheduleTests(TestCase):
             enabled=True,
         )
 
-        response = self.client.get(reverse("export_data"))
+        response = self.client.get(reverse("data_management"))
 
         self.assertContains(response, "Media Types: All")
         self.assertContains(response, "Media Types: None (Lists/Collection only)")
@@ -219,7 +219,7 @@ class ExportScheduleTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("export_data"))
+        self.assertRedirects(response, reverse("export_data"), fetch_redirect_response=False)
         self.assertEqual(PeriodicTask.objects.count(), 0)
 
 

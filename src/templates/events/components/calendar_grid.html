@@ -79,6 +79,7 @@
                      src="{{ release.calendar_backdrop|default:release.item.image|image_url }}">
                 <div class="flex-1 min-w-0">
                   <h4 class="font-medium text-sm line-clamp-1">{{ release.calendar_title }}</h4>
+                  {% card_lines release.item.media_type release.item %}
                   {% with event_time=release|user_event_time:user %}
                     <div class="text-xs text-[var(--color-text-muted)]" data-agenda-subtitle>
                       {% if release.item.media_type == 'season' and release.item.season_number != None and release.content_number != None %}S{{ release.item.season_number|stringformat:'02d' }}E{{ release.content_number|stringformat:'02d' }}{% elif release.readable_content_number %}{{ release.readable_content_number }}{% elif release.release_type %}{{ release.get_release_type_display }} {% translate "release" %}{% endif %}{% if event_time %} {{ event_time }}{% elif not release.readable_content_number and not release.release_type %}{% translate "Time unknown" %}{% endif %}

@@ -32,15 +32,15 @@ class ImportDataViewTests(TestCase):
             result='["child-task-id", null]',
         )
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_activity"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertTemplateUsed(response, "users/import_data.html")
+        self.assertTemplateUsed(response, "users/provider_activity.html")
 
     @patch("users.models.User.get_import_tasks")
     def test_import_data_defers_import_activity_loading(self, mock_get_import_tasks):
         """The initial page should not block on import activity queries."""
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["plex"]) + "?tab=import")
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse("import_data_activity"))
@@ -70,7 +70,7 @@ class ImportDataViewTests(TestCase):
 
     def test_import_activity_polling_pauses_while_details_open(self):
         """An open failed-items/traceback section must not be refreshed away."""
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_activity"))
         self.assertContains(response, "[data-keep-open=true]", count=2)
         self.assertContains(response, "shouldSwap = false")
 
@@ -246,7 +246,7 @@ class ImportDataViewTests(TestCase):
             history_import_last_error_message="Temporary Last.fm error",
         )
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["lastfm"]) + "?tab=import")
 
         self.assertContains(response, "Full history import:")
         self.assertContains(response, "Failed")
@@ -255,7 +255,6 @@ class ImportDataViewTests(TestCase):
 
     def test_file_upload_forms_disclose_one_time_import_and_ignore_frequency(self):
         """Uploads run once whatever Import Frequency says: never disabled, badged One-time."""
-        html = self.client.get(reverse("import_data")).content.decode()
         badge = ">One-time</span>"
         upload_routes = (
             "import_trakt_export_file",
@@ -274,6 +273,9 @@ class ImportDataViewTests(TestCase):
         )
         for route in upload_routes:
             with self.subTest(route=route):
+                slug = {"import_trakt_export_file": "trakt", "import_yamtrack": "yamtrack", "import_youtube_takeout": "youtube"}.get(route, route.removeprefix("import_"))
+                target = reverse("data_management") if slug == "yamtrack" else reverse("provider_detail", args=[slug]) + "?tab=import"
+                html = self.client.get(target).content.decode()
                 action = f'action="{reverse(route)}"'
                 self.assertIn(action, html)
                 start = html.index(action)
@@ -288,7 +290,7 @@ class ImportDataViewTests(TestCase):
     )
     def test_import_data_renders_trakt_profile_dropdown_when_configured(self):
         """With TRAKT_API/SECRET set, the Trakt card offers the public/private dropdown."""
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["trakt"]) + "?tab=import")
 
         self.assertContains(
             response, "x-data=\"{ traktProfileType: 'public' }\"", html=False
@@ -310,7 +312,7 @@ class ImportDataViewTests(TestCase):
     @override_settings(TRAKT_API="", TRAKT_API_SECRET="")
     def test_import_data_hides_trakt_public_private_when_unconfigured(self):
         """Without TRAKT_API/SECRET, only the data-export fallback should render."""
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["trakt"]) + "?tab=import")
 
         self.assertContains(
             response, "x-data=\"{ traktProfileType: 'csv' }\"", html=False
@@ -327,7 +329,7 @@ class ImportDataViewTests(TestCase):
 
     def test_import_data_renders_playnite_upload(self):
         """The import page should expose Playnite's library CSV upload."""
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["playnite"]) + "?tab=import")
 
         self.assertContains(response, reverse("import_playnite"))
         self.assertContains(response, 'name="playnite_csv"', html=False)
@@ -335,7 +337,7 @@ class ImportDataViewTests(TestCase):
 
     def test_import_data_renders_trakt_export_upload(self):
         """The Trakt card should offer a data-export file upload fallback."""
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["trakt"]) + "?tab=import")
 
         self.assertContains(response, reverse("import_trakt_export_file"))
         self.assertContains(response, "trakt_export")
@@ -356,7 +358,7 @@ class ImportDataViewTests(TestCase):
             plex_username="listener",
         )
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["plex"]) + "?tab=import")
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Checking")
@@ -486,7 +488,7 @@ class ImportDataViewTests(TestCase):
             user=self.user, base_url="https://mylar.local", api_key=encrypt("k")
         )
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["radarr"]) + "?tab=import")
 
         self.assertTrue(response.context["radarr_connected"])
         self.assertFalse(response.context["sonarr_connected"])

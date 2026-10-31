@@ -54,7 +54,7 @@ class IntegrationTokenLifecycleTests(TestCase):
         self.assertTrue(secret.startswith("flp_"))
         self.assertContains(response, secret)
 
-        again = self.client.get(reverse("integrations"))
+        again = self.client.get(reverse("access_tokens"))
         self.assertIsNone(again.context["new_integration_token"])
         self.assertNotContains(again, secret)
 
@@ -109,7 +109,7 @@ class IntegrationTokenLifecycleTests(TestCase):
         self.create()
         token = IntegrationToken.objects.get(user=self.user)
 
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(reverse("access_tokens"))
         self.assertContains(response, token.token_prefix)
         self.assertContains(response, "Nuvio living room")
 
@@ -143,7 +143,7 @@ class IntegrationTokenLifecycleTests(TestCase):
         """The page shows only the logged-in user's tokens."""
         IntegrationToken.generate(user=self.other, name="theirs")
 
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(reverse("access_tokens"))
 
         self.assertNotContains(response, "theirs")
 
@@ -156,7 +156,7 @@ class IntegrationTokenLifecycleTests(TestCase):
 
     def test_scope_choices_are_offered_with_the_tracking_preset(self):
         """The form offers the vocabulary and pre-selects the tracking preset."""
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(reverse("access_tokens"))
 
         values = [
             choice["value"] for choice in response.context["integration_scope_choices"]
@@ -175,7 +175,7 @@ class IntegrationTokenLifecycleTests(TestCase):
         )
         self.assertTrue(token.is_expired())
 
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(reverse("access_tokens"))
 
         self.assertContains(response, "Old tablet")
         self.assertContains(response, "Expired")
@@ -197,7 +197,7 @@ class IntegrationTokenLifecycleTests(TestCase):
         token.revoked_at = timezone.now()
         token.save(update_fields=["revoked_at"])
 
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(reverse("access_tokens"))
 
         self.assertNotContains(response, "Retired")
 

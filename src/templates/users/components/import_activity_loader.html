@@ -1,0 +1,23 @@
+{% load i18n %}
+    <div id="import-activity-panel"
+         class="space-y-6"
+         hx-get="{% url 'import_data_activity' %}{% if activity_source %}?source={{ activity_source|urlencode }}{% endif %}"
+         hx-trigger="load, every 5s [!document.querySelector('#import-activity-panel [data-keep-open=true]')]"
+         hx-sync="this:replace"
+         hx-on::before-swap="if (document.querySelector('#import-activity-panel [data-keep-open=true]')) { event.detail.shouldSwap = false; }"
+         hx-swap="innerHTML">
+      <div class="bg-[var(--color-surface)] rounded-lg p-6">
+        <div class="flex items-center mb-4">
+          {% include "app/icons/clock.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
+          <h2 class="text-xl font-semibold">{% translate "Active Periodic Imports" %}</h2>
+        </div>
+        <p class="text-[var(--color-text-muted)] text-sm">{% translate "Loading scheduled import activity..." %}</p>
+      </div>
+      <div class="bg-[var(--color-surface)] rounded-lg p-6">
+        <div class="flex items-center mb-4">
+          {% include "app/icons/clock-reversing.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
+          <h2 class="text-xl font-semibold">{% translate "Import History" %}</h2>
+        </div>
+        <p class="text-[var(--color-text-muted)] text-sm">{% translate "Loading recent import history..." %}</p>
+      </div>
+    </div>

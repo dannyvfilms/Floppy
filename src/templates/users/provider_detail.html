@@ -1,0 +1,60 @@
+{% extends "users/base.html" %}
+{% load i18n static user_tags %}
+{% block title %}{{ provider.label }} - Floppy{% endblock title %}
+{% block settings_content %}
+  <div class="space-y-6">
+    <a href="{% url 'providers' %}" class="text-sm text-[var(--color-link)]">← {% translate "Providers" %}</a>
+    <div>
+      <div class="text-xl">{% source_display provider.logo_slug|default:provider.slug label=provider.label heading_level=2 %}</div>
+      <p class="mt-1 text-sm text-[var(--color-text-muted)]">{{ provider.description }}</p>
+      <p class="mt-2 text-xs text-[var(--color-text-muted)]">{{ provider.media_labels|join:", " }}</p>
+    </div>
+    <nav aria-label="{% translate 'Provider sections' %}" class="flex gap-5 overflow-x-auto border-b border-[var(--color-surface-border)]">
+      {% for tab in provider.tabs %}
+        <a href="{% url 'provider_detail' provider.slug %}?tab={{ tab }}"
+           {% if provider_tab == tab %}aria-current="page"{% endif %}
+           class="shrink-0 border-b-2 py-3 text-sm font-medium {% if provider_tab == tab %}border-current text-[var(--color-link)]{% else %}border-transparent text-[var(--color-text-muted)]{% endif %}">{% translate tab|capfirst %}</a>
+      {% endfor %}
+    </nav>
+    {% if request.GET.onboarding %}
+      <a href="{% if request.GET.setup_flow == 'import' %}{% url 'onboarding_service_setup' %}{% else %}{% url 'onboarding_integration_setup' %}{% endif %}" class="text-sm text-[var(--color-link)]">{% translate "Continue Guided Setup" %}</a>
+    {% endif %}
+    {% if provider_tab == 'overview' %}
+      <section class="rounded-lg bg-[var(--color-surface)] p-6 space-y-4">
+        <h3 class="font-semibold">{% translate "Available capabilities" %}</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">{% translate provider.state.connection %}</p>
+        {% for capability in capability_rows %}
+          <div class="flex flex-wrap justify-between gap-2"><a class="text-[var(--color-link)] underline" href="{% url 'provider_detail' provider.slug %}?tab={{ capability.key }}">{% translate capability.label %}</a>{% include "users/components/provider_status_badge.html" with label=capability.state tone="neutral" %}</div>
+        {% endfor %}
+        {% if provider.connection %}<p><a class="text-[var(--color-link)] underline" href="{% url 'provider_detail' provider.slug %}?tab=connection">{% translate "Review connection and setup" %}</a></p>{% endif %}
+        <p class="text-sm text-[var(--color-text-muted)]">{% translate "Each capability has its own controls. Review its settings before starting an import or enabling outgoing sync." %}</p>
+      </section>
+    {% elif provider_tab == 'connection' %}
+      {% include "users/components/provider_connection.html" %}
+      {% if provider_slug == 'mal' %}{% include "users/providers/mal_connection.html" %}{% endif %}
+      {% if provider.integration %}{% include "users/providers/integration_content.html" %}{% endif %}
+      {% if import_slug %}{% include "users/components/provider_import.html" %}{% endif %}
+      {% if provider_slug == 'tmdb' or provider_slug == 'wetrakr' %}{% include "users/providers/outbound_sync.html" %}{% endif %}
+    {% elif provider_tab == 'metadata' %}
+      {% include "users/components/provider_metadata.html" %}
+    {% elif provider_tab == 'import' %}
+      {% if import_slug %}{% include "users/components/provider_import.html" %}{% endif %}
+      {% if provider.integration %}{% include "users/providers/integration_content.html" %}{% endif %}
+      {% include "users/components/import_activity_loader.html" %}
+    {% elif provider_tab == 'tracking' %}
+      {% include "users/providers/integration_content.html" %}
+      {% if provider_slug == 'plex' or provider_slug == 'jellyfin' or provider_slug == 'emby' or provider_slug == 'kodi' or provider_slug == 'stremio' %}{% include "users/components/media_server_scrobbles.html" %}{% endif %}
+    {% elif provider_tab == 'sync' %}
+      {% if provider_slug == 'mal' %}{% include "users/providers/mal_sync.html" %}{% elif provider_slug == 'jellyfin' %}{% include "users/providers/integration_content.html" %}{% else %}{% include "users/providers/outbound_sync.html" %}{% endif %}
+    {% elif provider_tab == 'activity' %}
+      {% if provider_slug == 'plex' %}{% include "users/providers/integration_content.html" %}{% endif %}
+      {% include "users/providers/integration_activity.html" %}
+      {% if provider.import %}{% include "users/components/import_activity_loader.html" %}{% endif %}
+      {% if provider_slug == 'mal' %}{% include "users/providers/mal_sync.html" %}{% endif %}
+      {% if provider_slug == 'tmdb' or provider_slug == 'wetrakr' %}{% include "users/providers/outbound_sync.html" %}{% endif %}
+    {% endif %}
+  </div>
+{% endblock settings_content %}
+{% block js %}
+  <script src="{% static 'js/catalog-preview.js' %}" defer></script>
+{% endblock js %}

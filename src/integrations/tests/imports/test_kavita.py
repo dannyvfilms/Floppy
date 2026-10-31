@@ -901,14 +901,16 @@ class KavitaViewTests(TestCase):
         mock_delay.assert_called_once_with(user_id=self.user.id, mode="overwrite")
 
     def test_import_page_shows_kavita_and_komga(self):
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["kavita"]) + "?tab=import")
 
         self.assertContains(
             response,
             "Sync book, comic and manga reading progress from Kavita.",
         )
         self.assertContains(response, reverse("kavita_connect"))
-        self.assertContains(response, reverse("komga_connect"))
+        self.assertNotContains(response, reverse("komga_connect"))
+        komga_response = self.client.get(reverse("provider_detail", args=["komga"]) + "?tab=import")
+        self.assertContains(komga_response, reverse("komga_connect"))
 
 
 class ProviderItemRaceTests(TestCase):

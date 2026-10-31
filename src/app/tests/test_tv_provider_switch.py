@@ -246,7 +246,10 @@ class TvProviderReviewTests(TestCase):
     def _switch_default(self, source):
         return self.client.post(
             reverse("set_media_type_provider", args=[MediaTypes.TV.value]),
-            {"source": source},
+            {
+                "source": source,
+                "next": reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
+            },
             follow=True,
         )
 
@@ -266,7 +269,9 @@ class TvProviderReviewTests(TestCase):
         self.assertTrue(self.user.tv_auto_move_to_default_provider)
 
         # The review surface is persistent, not a one-time modal.
-        again = self.client.get(reverse("metadata_settings"))
+        again = self.client.get(
+            reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
+        )
         self.assertContains(again, "still tracked on the other TV provider")
 
     def test_no_move_notice_when_nothing_is_on_the_other_provider(self):

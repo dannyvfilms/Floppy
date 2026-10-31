@@ -1,0 +1,41 @@
+{% load i18n %}
+{{ metadata_source_connections|json_script:"metadata-source-connections" }}
+<div class="space-y-6"
+     x-data="{
+       activeModal: null,
+       matchesTag() { return true },
+       openModal(slug) {
+         if (slug.startsWith('media-type-')) {
+           this.activeModal = slug;
+         } else {
+           const destination = JSON.parse(document.getElementById('metadata-source-connections').textContent)[slug];
+           if (destination) { window.location.assign(destination); }
+         }
+       },
+       closeModal() { this.activeModal = null }
+     }"
+     x-init="const deepLink = new URLSearchParams(window.location.search).get('open'); if (deepLink?.startsWith('media-type-')) { openModal(deepLink); }">
+  {% if provider_summary %}
+    <p class="text-sm text-[var(--color-text-muted)]">{% translate "Each library type uses one default source for new titles. This preference is shared across provider pages. Supplemental artwork and critic scores keep their separate provider roles." %}</p>
+    {% include "users/components/metadata_source_card.html" %}
+    {% for entry in provider_summary %}
+      {% include "users/components/media_type_provider_modal.html" %}
+    {% endfor %}
+  {% else %}
+    <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-3">
+      {% if provider.metadata_role == "supplemental" %}
+        <h3 class="text-lg font-semibold">{% translate "Supplemental metadata" %}</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">{{ metadata_provider.description|default:provider.description }}</p>
+        <p class="text-sm text-[var(--color-text-muted)]">{% translate "This provider complements the library's primary metadata source. It does not replace the default source for new titles." %}</p>
+      {% else %}
+        <h3 class="text-lg font-semibold">{% translate "Library metadata" %}</h3>
+        <p class="text-sm text-[var(--color-text-muted)]">{{ provider.description }}</p>
+        <p class="text-sm text-[var(--color-text-muted)]">{% translate "This library uses its supported metadata source directly; it does not have a switchable source preference." %}</p>
+      {% endif %}
+      {% if metadata_provider %}<a href="{% url 'provider_detail' metadata_provider.slug %}?tab=connection" class="text-sm text-[var(--color-link)] hover:underline">{% translate "Configure provider credentials" %}</a>{% endif %}
+    </div>
+  {% endif %}
+  {% if provider.slug == "tmdb" %}
+    {% include "users/components/tmdb_proxy.html" %}
+  {% endif %}
+</div>

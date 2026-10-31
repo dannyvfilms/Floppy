@@ -363,7 +363,7 @@ class KomgaViewTests(TestCase):
         )
 
     def test_import_page_shows_komga(self):
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["komga"]) + "?tab=import")
 
         self.assertContains(response, "Sync book and comic reading progress from Komga.")
         self.assertContains(response, reverse("komga_connect"))

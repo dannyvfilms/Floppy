@@ -406,11 +406,15 @@ class JellyfinViewTests(TestCase):
         )
         hint = "Jellyfin rejected the API key"
 
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
+        )
         self.assertNotContains(response, hint)
         self.assertContains(response, "Read timed out")
 
         account.connection_broken = True
         account.save(update_fields=["connection_broken"])
-        response = self.client.get(reverse("integrations"))
+        response = self.client.get(
+            reverse("provider_detail", args=["jellyfin"]) + "?tab=connection"
+        )
         self.assertContains(response, hint)

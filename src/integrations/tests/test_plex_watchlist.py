@@ -398,7 +398,7 @@ class PlexWatchlistViewTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_delay.assert_called_once_with(user_id=self.user.id, mode="watchlist")
 
         self.user.refresh_from_db()
@@ -434,7 +434,7 @@ class PlexWatchlistViewTests(TestCase):
 
         response = self.client.post(reverse("plex_disable_watchlist"))
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         self.account.refresh_from_db()
         self.assertFalse(self.account.watchlist_sync_enabled)
         self.assertFalse(PeriodicTask.objects.filter(task=WATCHLIST_TASK_NAME).exists())
@@ -459,7 +459,7 @@ class PlexWatchlistViewTests(TestCase):
             update_fields=["watchlist_sync_enabled", "watchlist_last_synced_at"],
         )
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["plex"]) + "?tab=import")
 
         self.assertContains(response, "Import Watchlist Data Only")
         self.assertContains(response, "Disable Watchlist Sync")
@@ -472,7 +472,7 @@ class PlexWatchlistViewTests(TestCase):
     ):
         mock_fetch_account.return_value = {"username": "watchview", "id": "acct-1"}
 
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["plex"]) + "?tab=import")
 
         self.assertContains(response, "Recurring sync:")
         self.assertNotContains(response, "Disable Watchlist Sync")

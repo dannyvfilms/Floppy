@@ -1,0 +1,38 @@
+{% extends "users/base.html" %}
+{% load i18n %}
+{% block title %}{% translate "Providers - Floppy" %}{% endblock title %}
+{% block settings_content %}
+  <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-6">
+    <div>
+      <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div class="flex items-center">
+          {% include "app/icons/database.svg" with classes="w-6 h-6 text-[var(--color-link)] mr-3" %}
+          <h2 class="text-xl font-semibold">{% translate "Providers" %}</h2>
+        </div>
+        <a href="{% url 'onboarding_restart' %}" class="text-xs text-[var(--color-link)] underline">{% translate "Run guided setup" %}</a>
+      </div>
+      <p class="text-sm text-[var(--color-text-muted)]">{% translate "Find services and their available settings." %}</p>
+    </div>
+    <form id="provider-filter-form" method="get"
+          class="flex flex-col md:flex-row gap-4"
+          x-data="{ capability: '{{ capability|escapejs }}', media: '{{ media|escapejs }}' }"
+          hx-get="{% url 'providers' %}" hx-target="#provider-results" hx-select="#provider-results" hx-swap="outerHTML"
+          hx-trigger="submit, input changed delay:300ms from:#provider-search"
+          hx-push-url="true" hx-sync="this:replace">
+      <input type="hidden" name="capability" value="{{ capability }}" x-model="capability">
+      <input type="hidden" name="media" value="{{ media }}" x-model="media">
+      <div class="relative flex-1 min-w-0">
+        <label for="provider-search" class="sr-only">{% translate "Search providers" %}</label>
+        <input id="provider-search" name="q" type="search" value="{{ query }}" autocomplete="off"
+               placeholder="{% translate 'Search providers...' %}"
+               class="w-full py-2 pl-10 pr-4 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none">
+        {% include "app/icons/magnifying-glass.svg" with classes="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] w-5 h-5" %}
+      </div>
+      <div class="flex gap-4 md:gap-2 flex-wrap filter-toolbar lists-filter-toolbar">
+        {% include "users/components/provider_filter_dropdown.html" with field="capability" options=capability_options selected_label=capability_label filter_label="Filter by capability" %}
+        {% include "users/components/provider_filter_dropdown.html" with field="media" options=media_options selected_label=media_label filter_label="Filter by media type" %}
+      </div>
+    </form>
+    {% include "users/components/provider_results.html" %}
+  </div>
+{% endblock settings_content %}

@@ -327,7 +327,7 @@ class MylarViewTests(TestCase):
         self.assertTrue(MylarInstance.objects.filter(pk=other_instance.id).exists())
 
     def test_import_page_shows_mylar(self):
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["mylar"]) + "?tab=import")
 
         self.assertContains(response, "Import owned comics from Mylar3.")
         self.assertContains(response, reverse("mylar_connect"))

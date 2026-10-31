@@ -34,7 +34,7 @@ class CancelImportRunTests(TestCase):
             reverse("cancel_import_run", args=[run.id]),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_revoke.assert_called_once_with("abc-123", terminate=True)
 
         run.refresh_from_db()
@@ -59,7 +59,7 @@ class CancelImportRunTests(TestCase):
             reverse("cancel_import_run", args=[run.id]),
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("import_data"), fetch_redirect_response=False)
         mock_revoke.assert_not_called()
         run.refresh_from_db()
         self.assertEqual(run.status, ImportRun.Status.COMPLETED)

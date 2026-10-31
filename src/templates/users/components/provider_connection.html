@@ -1,0 +1,13 @@
+{% load i18n %}
+{% if metadata_provider %}
+  <div class="space-y-6"
+       x-data="{ activeModal: null, openModal(slug) { this.activeModal = slug }, closeModal() { this.activeModal = null } }"
+       x-init="if (new URLSearchParams(window.location.search).get('open') === '{{ metadata_provider.slug }}') { openModal('{{ metadata_provider.slug }}'); }">
+    {% include "users/components/metadata_admin_notice.html" %}
+    <div class="bg-[var(--color-surface)] rounded-lg p-6">
+      <h3 class="text-lg font-semibold mb-3">{% translate "Provider credentials" %}</h3>
+      {% include "users/components/provider_credential_row.html" with provider=metadata_provider %}
+    </div>
+    {% include "users/components/provider_credential_modal.html" with provider=metadata_provider %}
+  </div>
+{% endif %}

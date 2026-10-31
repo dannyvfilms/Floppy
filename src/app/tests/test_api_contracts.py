@@ -129,12 +129,12 @@ class OfflineAPIDocsTests(SimpleTestCase):
             'curl --request GET --header "X-API-Key: YOUR_API_TOKEN" '
             f'"https://YOUR_FLOPPY_HOST{reverse("api_user_preferences")}/"',
         )
-        settings_link = soup.find("a", string="Settings -> Integrations")
+        settings_link = soup.find("a", string="Settings -> Access & Tokens")
         self.assertIsNotNone(settings_link)
-        self.assertEqual(settings_link.get("href"), reverse("integrations"))
+        self.assertEqual(settings_link.get("href"), reverse("access_tokens"))
         self.assertEqual(
             settings_link.parent.get_text().strip(),
-            "Copy your API Token in Settings -> Integrations.",
+            "Copy your API Token in Settings -> Access & Tokens.",
         )
 
     @override_settings(

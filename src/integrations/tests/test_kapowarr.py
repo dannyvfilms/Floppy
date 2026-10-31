@@ -332,7 +332,7 @@ class KapowarrViewTests(TestCase):
         self.assertTrue(KapowarrInstance.objects.filter(pk=other_instance.id).exists())
 
     def test_import_page_shows_kapowarr(self):
-        response = self.client.get(reverse("import_data"))
+        response = self.client.get(reverse("provider_detail", args=["kapowarr"]) + "?tab=import")
 
         self.assertContains(response, "Import owned comics from Kapowarr.")
         self.assertContains(response, reverse("kapowarr_connect"))

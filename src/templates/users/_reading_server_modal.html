@@ -39,8 +39,10 @@
       </div>
     {% endif %}
     <div class="space-y-3">
+      {% if provider_tab != 'connection' %}
       <form method="post" action="{% url sync_url %}">
         {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
         <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
           {% translate "Sync now" %}
         </button>
@@ -51,13 +53,16 @@
         </p>
         <form method="post" action="{% url "refresh_kavita" %}">
           {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
           <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-indigo-600 text-white hover:bg-indigo-700">
             {% translate "Refresh metadata and progress" %}
           </button>
         </form>
       {% endif %}
+      {% endif %}
       <form method="post" action="{% url disconnect_url %}">
         {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
         <button type="submit" class="w-full px-4 py-2 text-sm rounded-md transition-colors cursor-pointer bg-red-600 text-white hover:bg-red-700">
           {% translate "Disconnect" %}
         </button>
@@ -67,6 +72,7 @@
     <p class="text-sm text-[var(--color-text-muted)] mb-3">{{ help }}</p>
     <form method="post" action="{% url connect_url %}" class="space-y-3">
       {% csrf_token %}
+              {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
       <div>
         <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Server URL" %}</label>
         <input type="url" name="base_url" required

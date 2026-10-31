@@ -132,7 +132,7 @@ class CacheClearButtonsTests(TestCase):
 
     def test_advanced_page_renders_media_type_delete_confirmation(self):
         """The Danger Zone should expose a typed confirmation for media deletion."""
-        response = self.client.get(reverse("advanced"))
+        response = self.client.get(reverse("data_management"))
 
         self.assertContains(response, "Danger Zone")
         self.assertContains(response, "Delete Selected Type")

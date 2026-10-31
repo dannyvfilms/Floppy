@@ -189,7 +189,7 @@ class SidebarViewTests(TestCase):
     @override_settings(TVDB_API_KEY="")
     def test_metadata_settings_flags_tvdb_as_not_configured(self):
         """TVDB should still be listed for TV, just flagged as not configured."""
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(reverse("provider_detail", args=["tmdb"]) + "?tab=metadata")
 
         self.assertEqual(response.status_code, 200)
         tv_entry = next(
@@ -211,7 +211,7 @@ class SidebarViewTests(TestCase):
         self.user.movie_enabled = True
         self.user.save(update_fields=["movie_enabled"])
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(reverse("provider_detail", args=["tmdb"]) + "?tab=metadata")
 
         media_types = [
             entry["media_type"] for entry in response.context["provider_summary"]
@@ -232,7 +232,7 @@ class SidebarViewTests(TestCase):
             reverse("set_media_type_provider", args=[MediaTypes.TV.value]),
             {"source": MetadataSourceDefaultChoices.TVDB},
         )
-        self.assertRedirects(response, reverse("metadata_settings"))
+        self.assertRedirects(response, reverse("metadata_settings"), fetch_redirect_response=False)
 
         response = self.client.post(
             reverse("set_media_type_provider", args=[MediaTypes.ANIME.value]),
@@ -241,7 +241,7 @@ class SidebarViewTests(TestCase):
                 "anime_library_mode": AnimeLibraryModeChoices.BOTH,
             },
         )
-        self.assertRedirects(response, reverse("metadata_settings"))
+        self.assertRedirects(response, reverse("metadata_settings"), fetch_redirect_response=False)
 
         self.user.refresh_from_db()
         self.assertEqual(

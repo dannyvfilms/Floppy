@@ -397,7 +397,7 @@ class MALOAuthConnectView(TestCase):
         mock_secret.return_value = ""
         response = self.client.post(reverse("mal_oauth"), follow=True)
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("providers") + "?capability=import", fetch_redirect_response=False)
         self.assertContains(response, "isn&#x27;t configured")
 
     def test_connect_redirects_to_mal_with_pkce(self, *_mocks):
@@ -421,7 +421,7 @@ class MALOAuthConnectView(TestCase):
         """No device-code fallback exists for MAL, so HTTP-only instances are blocked."""
         response = self.client.post(reverse("mal_oauth"), follow=True)
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("providers") + "?capability=import", fetch_redirect_response=False)
         self.assertContains(response, "HTTPS-accessible")
 
 
@@ -448,7 +448,7 @@ class MALOAuthCallbackView(TestCase):
             follow=True,
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("providers") + "?capability=import", fetch_redirect_response=False)
         self.assertFalse(MALAccount.objects.filter(user=self.user).exists())
 
     def test_callback_missing_code_shows_error(self, *_mocks):
@@ -461,7 +461,7 @@ class MALOAuthCallbackView(TestCase):
             follow=True,
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("providers") + "?capability=import", fetch_redirect_response=False)
         self.assertFalse(MALAccount.objects.filter(user=self.user).exists())
 
     @patch("integrations.mal_sync.exchange_code_for_tokens")
@@ -512,7 +512,7 @@ class MALOAuthCallbackView(TestCase):
             follow=True,
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("providers") + "?capability=import", fetch_redirect_response=False)
         account = MALAccount.objects.get(user=self.user)
         self.assertEqual(account.mal_username, "MyMalUser")
         self.assertEqual(decrypt(account.access_token), "new-access-token")
@@ -535,7 +535,7 @@ class MALOAuthCallbackView(TestCase):
             follow=True,
         )
 
-        self.assertRedirects(response, reverse("import_data"))
+        self.assertRedirects(response, reverse("providers") + "?capability=import", fetch_redirect_response=False)
         self.assertFalse(MALAccount.objects.filter(user=self.user).exists())
 
 
@@ -1879,7 +1879,7 @@ class GroupedMALSync(TestCase):
         self.assertEqual(report["mapping_issues"], preview["mapping_issues"])
         self.assertEqual(report["succeeded"], 0)
         self.assertEqual(report["failed"], 0)
-        page = self.client.get(reverse("mal_export"))
+        page = self.client.get(reverse("provider_detail", args=["mal"]), {"tab": "sync"})
         self.assertEqual(page.context["mal_sync_initial"]["mapping_issues"], report["mapping_issues"])
 
     @override_settings(ANIBRIDGE_MAPPING_DATA_OVERRIDE={})
@@ -3734,7 +3734,7 @@ class MALSyncReportBrowser(StaticLiveServerTestCase):
             page.route("**/sync/mal/full/status", lambda route: route.abort())
             for width, height in ((1366, 900), (390, 844)):
                 page.set_viewport_size({"width": width, "height": height})
-                page.goto(self.live_server_url + reverse("mal_export"))
+                page.goto(self.live_server_url + reverse("provider_detail", args=["mal"]) + "?tab=sync")
                 for _ in range(2):
                     expect(page.get_by_text("65 results", exact=True)).to_be_visible()
                     expect(page.get_by_text("Synced Anime 64", exact=True)).to_be_visible()
@@ -4146,7 +4146,7 @@ class MALFullSyncView(TestCase):
         account.save(update_fields=["full_sync_status", "full_sync_results"])
 
         for _ in range(2):
-            response = self.client.get(reverse("mal_export"))
+            response = self.client.get(reverse("provider_detail", args=["mal"]), {"tab": "sync"})
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.context["mal_sync_initial"]["results"], account.full_sync_results)
             self.assertContains(response, "Synced Anime 64")
@@ -4155,13 +4155,13 @@ class MALFullSyncView(TestCase):
 
         account.connection_broken = True
         account.save(update_fields=["connection_broken"])
-        page = self.client.get(reverse("mal_export"))
+        page = self.client.get(reverse("provider_detail", args=["mal"]), {"tab": "sync"})
         self.assertContains(page, "Full sync status")
         self.assertContains(page, 'x-for="(entry, index) in syncResults()"')
 
     def test_mapping_issues_are_in_page_tab_not_review_modal(self):
         make_mal_account(self.user)
-        response = self.client.get(reverse("mal_export"))
+        response = self.client.get(reverse("provider_detail", args=["mal"]), {"tab": "sync"})
         self.assertContains(response, 'id="mal-mapping-tab"')
         self.assertContains(response, 'aria-labelledby="mal-mapping-tab"')
         self.assertContains(response, '@click="previewMalSync(false)"')

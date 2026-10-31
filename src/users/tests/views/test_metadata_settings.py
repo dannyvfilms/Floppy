@@ -4,11 +4,13 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.template.loader import render_to_string
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from app.models import InstanceProviderCredential
 from app.providers import credentials
+from users.metadata_views import metadata_context
 
 
 @patch("app.providers.credentials._probe", return_value=None)
@@ -32,17 +34,133 @@ class MetadataSettingsPageTests(TestCase):
     def test_page_lists_every_registered_provider(self, _probe):
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("metadata_settings"))
-
-        self.assertEqual(response.status_code, 200)
         for spec in credentials.REGISTRY.values():
-            self.assertContains(response, spec.label)
+            with self.subTest(provider=spec.slug):
+                response = self.client.get(
+                    reverse("provider_detail", args=[spec.slug]) + "?tab=connection",
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, spec.label)
+
+    def test_provider_context_scopes_credentials_and_shares_source_settings(
+        self, _probe
+    ):
+        """A provider page exposes its own keys and the real global preference."""
+        context = metadata_context(self.user, "tmdb")
+
+        self.assertEqual(
+            [
+                provider["slug"]
+                for group in context["credential_groups"]
+                for provider in group["providers"]
+            ],
+            ["tmdb"],
+        )
+        tv = next(
+            entry
+            for entry in context["provider_summary"]
+            if entry["media_type"] == "tv"
+        )
+        tvdb = metadata_context(self.user, "tvdb")
+        other_tv = next(
+            entry for entry in tvdb["provider_summary"] if entry["media_type"] == "tv"
+        )
+        self.assertEqual(tv, other_tv)
+        self.assertEqual(
+            {choice["value"] for choice in tv["choices"]}, {"tmdb", "tvdb"}
+        )
+
+    def test_passive_metadata_provider_has_source_card_without_credentials(
+        self, _probe
+    ):
+        """A source without API keys does not need a fictional connection."""
+        context = metadata_context(self.user, "openlibrary")
+
+        self.assertIsNone(context["metadata_provider"])
+        self.assertFalse(context["credential_groups"])
+        self.assertTrue(context["provider_summary"])
+        self.assertTrue(
+            all(
+                any(choice["value"] == "openlibrary" for choice in entry["choices"])
+                for entry in context["provider_summary"]
+            )
+        )
+
+    def test_provider_metadata_renders_shared_source_controls_and_tmdb_proxy(
+        self, _probe
+    ):
+        request = RequestFactory().get(
+            reverse("provider_detail", args=["tmdb"]) + "?tab=metadata",
+        )
+        request.user = self.user
+        context = metadata_context(self.user, "tmdb")
+        context.update(
+            user=self.user, provider={"slug": "tmdb", "metadata_role": "primary"}
+        )
+
+        html = render_to_string(
+            "users/components/provider_metadata.html",
+            context,
+            request=request,
+        )
+
+        self.assertIn(reverse("set_media_type_provider", args=["tv"]), html)
+        self.assertIn(reverse("set_media_type_provider", args=["anime"]), html)
+        self.assertIn(reverse("update_tmdb_proxy"), html)
+        self.assertIn("?tab=metadata", html)
+
+    @override_settings(HARDCOVER_API="")
+    def test_provider_connection_keeps_personal_credentials_private(self, _probe):
+        credentials.set_user(
+            "hardcover", self.user, {"api_key": "private-provider-key"}
+        )
+        request = RequestFactory().get(
+            reverse("provider_detail", args=["hardcover"]) + "?tab=connection",
+        )
+        request.user = self.user
+        context = metadata_context(self.user, "hardcover")
+        context["user"] = self.user
+
+        html = render_to_string(
+            "users/components/provider_connection.html",
+            context,
+            request=request,
+        )
+
+        self.assertIn(reverse("save_personal_credential", args=["hardcover"]), html)
+        self.assertNotIn("private-provider-key", html)
+        self.assertNotIn(reverse("save_personal_credential", args=["tmdb"]), html)
+
+    def test_personal_credential_save_returns_to_local_provider_tab(self, _probe):
+        self.client.force_login(self.user)
+        destination = reverse("provider_detail", args=["hardcover"]) + "?tab=connection"
+
+        response = self.client.post(
+            reverse("save_personal_credential", args=["hardcover"]),
+            {"api_key": "my-token", "next": destination},
+        )
+
+        self.assertRedirects(response, destination, fetch_redirect_response=False)
+
+    def test_personal_credential_save_rejects_external_return_url(self, _probe):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("save_personal_credential", args=["hardcover"]),
+            {"api_key": "my-token", "next": "https://example.invalid/"},
+        )
+
+        self.assertRedirects(
+            response, reverse("metadata_settings"), fetch_redirect_response=False
+        )
 
     @override_settings(HARDCOVER_API="env-token")
     def test_an_env_backed_field_renders_locked(self, _probe):
         self.client.force_login(self.admin)
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(
+            reverse("provider_detail", args=["hardcover"]) + "?tab=connection"
+        )
 
         self.assertContains(response, "HARDCOVER_API")
         self.assertContains(response, "Environment")
@@ -66,7 +184,9 @@ class MetadataSettingsPageTests(TestCase):
         credentials.set_instance("hardcover", {"api_key": "stored-token"})
         self.client.force_login(self.admin)
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(
+            reverse("provider_detail", args=["hardcover"]) + "?tab=connection"
+        )
 
         self.assertContains(response, "••••••••oken")
         self.assertNotContains(response, "stored-token")
@@ -76,7 +196,9 @@ class MetadataSettingsPageTests(TestCase):
         credentials.set_user("hardcover", self.user, {"api_key": "personal-token"})
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(
+            reverse("provider_detail", args=["hardcover"]) + "?tab=connection"
+        )
 
         self.assertNotContains(response, 'value="personal-token"')
 
@@ -129,16 +251,16 @@ class MetadataSettingsPageTests(TestCase):
         )
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(
+            reverse("provider_detail", args=["igdb"]) + "?tab=metadata"
+        )
 
         game = next(
             entry
             for entry in response.context["provider_summary"]
             if entry["media_type"] == "game"
         )
-        igdb = next(
-            choice for choice in game["choices"] if choice["value"] == "igdb"
-        )
+        igdb = next(choice for choice in game["choices"] if choice["value"] == "igdb")
         self.assertTrue(igdb["configured"])
 
     def test_an_unknown_provider_slug_is_a_404(self, _probe):
@@ -183,7 +305,9 @@ class MetadataSettingsPageTests(TestCase):
         """A silent read-only form is what made this page look broken."""
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(
+            reverse("provider_detail", args=["hardcover"]) + "?tab=connection"
+        )
 
         self.assertContains(response, "You are not a superuser")
         self.assertContains(response, "promote_superuser member")
@@ -192,10 +316,10 @@ class MetadataSettingsPageTests(TestCase):
         """A 'Shared default' pill reads as an invitation, so it must hold everywhere."""
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("metadata_settings"))
+        context = metadata_context(self.user)
         providers = [
             provider
-            for group in response.context["credential_groups"]
+            for group in context["credential_groups"]
             for provider in group["providers"]
         ]
 
@@ -205,10 +329,10 @@ class MetadataSettingsPageTests(TestCase):
     def test_groups_split_metadata_from_account_credentials(self, _probe):
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("metadata_settings"))
+        context = metadata_context(self.user)
         sections = {
             group["key"]: {p["slug"] for p in group["providers"]}
-            for group in response.context["credential_groups"]
+            for group in context["credential_groups"]
         }
 
         self.assertIn("tmdb", sections["metadata"])
@@ -219,7 +343,9 @@ class MetadataSettingsPageTests(TestCase):
     def test_a_superuser_sees_no_promotion_banner(self, _probe):
         self.client.force_login(self.admin)
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(
+            reverse("provider_detail", args=["hardcover"]) + "?tab=connection"
+        )
 
         self.assertNotContains(response, "You are not a superuser")
         self.assertNotContains(response, "promote_superuser")
@@ -228,18 +354,24 @@ class MetadataSettingsPageTests(TestCase):
     def test_a_source_install_is_told_to_run_manage_py(self, _in_container, _probe):
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(
+            reverse("provider_detail", args=["hardcover"]) + "?tab=connection"
+        )
 
         self.assertContains(response, "python src/manage.py promote_superuser member")
         self.assertNotContains(response, "docker exec")
 
     @patch.dict("os.environ", {"HOST_CONTAINERNAME": "yamtrack"})
     @patch("users.metadata_views.preflight.in_container", return_value=True)
-    def test_a_container_install_is_told_to_use_docker_exec(self, _in_container, _probe):
+    def test_a_container_install_is_told_to_use_docker_exec(
+        self, _in_container, _probe
+    ):
         """Podman counts too: preflight.in_container checks both markers."""
         self.client.force_login(self.user)
 
-        response = self.client.get(reverse("metadata_settings"))
+        response = self.client.get(
+            reverse("provider_detail", args=["hardcover"]) + "?tab=connection"
+        )
 
         self.assertContains(
             response,
@@ -251,7 +383,9 @@ class MetadataSettingsPageTests(TestCase):
         """Django's {# #} is single-line only; a multi-line one renders verbatim."""
         self.client.force_login(self.admin)
 
-        page = self.client.get(reverse("metadata_settings")).content.decode()
+        page = self.client.get(
+            reverse("provider_detail", args=["hardcover"]) + "?tab=connection"
+        ).content.decode()
 
         self.assertNotIn("{#", page)
         self.assertNotIn("{%", page)

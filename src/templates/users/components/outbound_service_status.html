@@ -1,10 +1,14 @@
 {% load i18n %}
 {% if service.state == "connected" %}
-  <span class="px-2 py-1 text-xs rounded bg-emerald-500/10 text-[var(--color-success-text)] border border-emerald-500/30">{% translate "Connected" %}</span>
+  {% translate "Connected" as status_label %}
+  {% include "users/components/provider_status_badge.html" with label=status_label tone="success" %}
 {% elif service.state == "attention" %}
-  <span class="px-2 py-1 text-xs rounded bg-amber-500/10 text-[var(--color-warning-text)] border border-amber-500/30">{% translate "Needs attention" %}</span>
+  {% translate "Needs attention" as status_label %}
+  {% include "users/components/provider_status_badge.html" with label=status_label tone="warning" %}
 {% elif service.state == "waiting" %}
-  <span class="px-2 py-1 text-xs rounded bg-amber-500/10 text-[var(--color-warning-text)] border border-amber-500/30">{% translate "Waiting for approval" %}</span>
+  {% translate "Waiting for approval" as status_label %}
+  {% include "users/components/provider_status_badge.html" with label=status_label tone="warning" %}
 {% else %}
-  <span class="px-2 py-1 text-xs rounded bg-gray-500/20 text-[var(--color-text-secondary)] border border-gray-600/50">{% translate "Not connected" %}</span>
+  {% translate "Not connected" as status_label %}
+  {% include "users/components/provider_status_badge.html" with label=status_label tone="neutral" %}
 {% endif %}

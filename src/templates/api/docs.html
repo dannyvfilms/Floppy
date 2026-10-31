@@ -260,7 +260,7 @@
         <pre><code id="connection-command">curl --request GET "{{ info_url }}"</code></pre>
         <h3>Authenticated request</h3>
         <p>
-          Copy your API Token in <a href="{% url 'integrations' %}">Settings -&gt; Integrations</a>.
+          Copy your API Token in <a href="{% url 'access_tokens' %}">Settings -&gt; Access &amp; Tokens</a>.
         </p>
         <p>This read-only request returns your preferences.</p>
         <pre><code id="authenticated-command">curl --request GET --header "X-API-Key: YOUR_API_TOKEN" "{{ preferences_url }}"</code></pre>
