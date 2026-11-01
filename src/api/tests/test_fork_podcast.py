@@ -70,6 +70,39 @@ class ShowTrackerTests(PodcastApiTestCase):
         self.assertEqual(payload["language"], "en")
         self.assertEqual(payload["website_url"], "https://example.com/show")
 
+    def test_show_payloads_never_expose_a_feed_url(self):
+        """A private feed one user imported is unreachable for another."""
+        secret_url = "https://feeds.example.com/private/secret-token-abc123.xml"
+        self.show.rss_feed_url = secret_url
+        self.show.save(update_fields=["rss_feed_url"])
+        PodcastShowTracker.objects.create(user=self.user1, show=self.show)
+
+        responses = [
+            self.call_api(
+                "get",
+                "api_podcast_show_detail",
+                args=(self.show.id,),
+                headers=self.auth_headers2,
+            ),
+            self.call_api(
+                "patch",
+                "api_podcast_show_detail",
+                args=(self.show.id,),
+                payload={"status": Status.PLANNING.value},
+                headers=self.auth_headers2,
+            ),
+            self.call_api(
+                "get",
+                "api_podcast_shows",
+                headers=self.auth_headers2,
+            ),
+        ]
+
+        for response in responses:
+            self.assertEqual(response.status_code, HTTP.OK)
+            self.assertNotIn(secret_url, response.content.decode())
+            self.assertNotIn("secret-token-abc123", response.content.decode())
+
     def test_track_list_patch_delete(self):
         """Full tracker lifecycle."""
         created = self.call_api(
