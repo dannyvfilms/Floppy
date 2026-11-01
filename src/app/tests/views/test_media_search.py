@@ -160,6 +160,48 @@ class MediaSearchViewTests(TestCase):
         self.assertEqual(local_results[0]["item"].source, Sources.GPODDER.value)
 
     @patch("app.providers.services.search")
+    def test_podcast_online_results_name_the_source_that_answered(self, mock_search):
+        """The heading names the source the results came from, with an info tip."""
+        result = {
+            "media_id": "https://example.com/feed.xml",
+            "source": Sources.GPODDER.value,
+            "media_type": MediaTypes.PODCAST.value,
+            "title": "Das Portal",
+            "image": "https://example.com/portal.jpg",
+        }
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 1,
+            "total_pages": 1,
+            "results": [dict(result)],
+            "fallback_source": Sources.PODCASTINDEX.value,
+        }
+
+        response = self.client.get(
+            reverse("search")
+            + f"?media_type=podcast&q=portal&source={Sources.POCKETCASTS.value}",
+        )
+
+        content = response.content.decode()
+        self.assertContains(response, "Online Results (Podcast Index)")
+        self.assertContains(response, "Pocket Casts had no match for this search")
+        self.assertNotIn("Online Results (Pocket Casts)", content)
+
+        # The view rewrites result dicts in place, so give the second search its own.
+        mock_search.return_value = {
+            "page": 1,
+            "total_results": 1,
+            "total_pages": 1,
+            "results": [dict(result)],
+        }
+        response = self.client.get(
+            reverse("search")
+            + f"?media_type=podcast&q=portal&source={Sources.POCKETCASTS.value}",
+        )
+        self.assertContains(response, "Online Results (Pocket Casts)")
+        self.assertContains(response, "These results come from Pocket Casts")
+
+    @patch("app.providers.services.search")
     def test_music_search_view_uses_shared_template(
         self,
         mock_search,
