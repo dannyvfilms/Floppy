@@ -153,7 +153,7 @@
       <div>
         <label class="mb-1 block text-sm font-medium text-[var(--color-text-secondary)]"
                for="{{ episode_plays_form.end_date.id_for_label }}">{% translate "End date" %}</label>
-        {% include "app/components/date_time_picker.html" with field_name=episode_plays_form.end_date.html_name field_value=episode_plays_form.end_date.value|default_if_none:"" field_id=episode_plays_form.end_date.id_for_label field_label=_("End date") track_time=TRACK_TIME suggestion_label=episode_plays_domain.dateShortcutLabel|default:"Release Date" suggestion_date_expr="selectedEpisodeAirDate('last')" runtime_minutes_expr="selectedEpisodeRuntime('last')" week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format quick_action_mode="end" only %}
+        {% include "app/components/date_time_picker.html" with field_name=episode_plays_form.end_date.html_name field_value=episode_plays_form.end_date.value|default_if_none:"" field_id=episode_plays_form.end_date.id_for_label field_label=_("End date") track_time=TRACK_TIME suggestion_label=episode_plays_domain.dateShortcutLabel|default:"Release Date" suggestion_date_expr="selectedEpisodeAirDate('last')" runtime_minutes_expr="selectedEpisodeRuntime('last')" week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format quick_action_mode="end" end_release_shortcut=True only %}
         {% for error in episode_plays_form.end_date.errors %}
           <p class="mt-1 text-sm text-red-300">{{ error }}</p>
         {% endfor %}

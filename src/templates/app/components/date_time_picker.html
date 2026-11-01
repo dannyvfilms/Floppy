@@ -76,7 +76,7 @@
             <span class="hidden sm:inline">{% translate "Just Finished" %}</span>
           </button>
         {% endif %}
-        {% if quick_action_mode != "end" %}
+        {% if quick_action_mode != "end" or end_release_shortcut %}
           <button type="button"
                   @click="applyQuickAction('release-date')"
                   x-show="resolvedSuggestionDate()"

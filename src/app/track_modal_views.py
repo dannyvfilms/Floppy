@@ -843,14 +843,16 @@ def _render_standard_track_modal(
         or (media_type == MediaTypes.TV.value and media is not None)
     )
 
+    is_season_modal = media_type == MediaTypes.SEASON.value
     episode_plays_domain = bulk_episode_tracking.build_episode_play_domain(
         request.user,
-        media_type,
+        MediaTypes.TV.value if is_season_modal else media_type,
         source,
         media_id,
-        metadata_item=metadata_item,
-        base_metadata=base_metadata,
+        metadata_item=None if is_season_modal else metadata_item,
+        base_metadata=None if is_season_modal else base_metadata,
         metadata_resolution_result=metadata_resolution_result,
+        season_number=int(season_number) if is_season_modal else None,
     )
     episode_plays_tab_available = bool(episode_plays_domain)
     if return_url is None:
