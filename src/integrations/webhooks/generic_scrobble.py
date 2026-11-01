@@ -10,7 +10,6 @@ import logging
 
 import app.providers.mal
 from app.live_playback import (
-    PLAYBACK_SCROBBLE_BUFFER_SECONDS,
     PLAYBACK_SCROBBLE_FALLBACK_SECONDS,
     PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO,
 )
@@ -52,7 +51,7 @@ def is_played(payload):
 
     duration = payload.get("duration_seconds")
     if duration:
-        return position >= duration - PLAYBACK_SCROBBLE_BUFFER_SECONDS
+        return position >= duration * PLAYBACK_SCROBBLE_MIN_PROGRESS_RATIO
     return position >= PLAYBACK_SCROBBLE_FALLBACK_SECONDS
 
 

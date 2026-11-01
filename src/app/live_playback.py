@@ -351,12 +351,15 @@ def _store_playback_progress(
             if provider_completed is not None
             else event_type == "media.scrobble"
         )
-        preserve_completion = (
+        in_tail = (
             provider_completed is None
             and event_type != "media.scrobble"
             and duration is not None
             and position >= duration * (1 - PLAYBACK_COMPLETION_TAIL_RATIO)
         )
+        # A stop in the last 10% finishes the title, as a scrobble would.
+        completion = completion or in_tail
+        preserve_completion = False
         upsert_playback_progress(
             user,
             item,

@@ -169,6 +169,26 @@ def _resolve_podcast(user, ids):
     )
 
 
+def complete_playback_progress(user_id, item_id):
+    """Close the resume point of an item that has just become watched."""
+    open_rows = PlaybackProgress.objects.filter(
+        user_id=user_id,
+        item_id=item_id,
+        completed=False,
+    ).select_related("user", "item")
+    for progress in open_rows:
+        with transaction.atomic():
+            progress.completed = True
+            progress.save(update_fields=["completed", "updated_at"])
+            record_progress_change(
+                progress.user,
+                progress.item,
+                position_seconds=progress.position_seconds,
+                duration_seconds=progress.duration_seconds,
+                completed=True,
+            )
+
+
 def upsert_playback_progress(
     user,
     item,
