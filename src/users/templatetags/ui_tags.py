@@ -37,7 +37,7 @@ class SettingsCardNode(template.Node):
             return self.body.render(context)
         props = {name: str(value.resolve(context)) for name, value in self.options.items()}
         props.pop("enabled", None)
-        if props.get("tone") not in {"neutral", "info", "warning"}:
+        if props.get("tone") not in {"neutral", "info", "warning", "success"}:
             props["tone"] = "neutral"
         # The body remains Django HTML, outside the React root. Never serialize it.
         return render_to_string("users/components/settings_card.html", {
@@ -45,3 +45,13 @@ class SettingsCardNode(template.Node):
             "props_id": f"settings-card-{uuid4().hex}",
             "body": self.body.render(context),
         })
+
+
+@register.simple_tag
+def settings_link_chip(label, url):
+    """Render a shared link chip with a usable server fallback."""
+    return render_to_string("users/components/settings_link_chip.html", {
+        "chip": {"label": label, "href": url, "tone": "info",
+                 "hrefAttrs": {"target": "_blank", "rel": "noopener"}},
+        "props_id": f"settings-chip-{uuid4().hex}",
+    })

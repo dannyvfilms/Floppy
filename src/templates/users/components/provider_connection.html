@@ -13,10 +13,8 @@
             {% blocktranslate with name=provider.label %}Get a key from {{ name }}{% endblocktranslate %}
           </button>
         {% else %}
-          <a href="{{ provider.docs_url }}" target="_blank" rel="noopener"
-             class="inline-flex items-center px-2.5 py-1 text-xs rounded border border-indigo-500/30 bg-indigo-500/10 text-[var(--color-info-text)] hover:bg-indigo-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]">
-            {% blocktranslate with name=provider.label %}Get a key from {{ name }}{% endblocktranslate %}
-          </a>
+          {% blocktranslate with name=provider.label asvar key_label %}Get a key from {{ name }}{% endblocktranslate %}
+          {% settings_link_chip key_label provider.docs_url %}
         {% endif %}
       </div>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -29,6 +27,10 @@
           {% translate "Read-only" as credential_badge %}
           {% translate "Read-only: explain instance credential access" as credential_info_label %}
           {% translate "Why are these credentials read-only?" as credential_info_title %}
+        {% endif %}
+        {% if public_access %}
+          {% firstof "success" as credential_tone %}
+          {% translate "Public API" as credential_badge %}
         {% endif %}
         {% settings_card title=instance_title tone=credential_tone badge=credential_badge info_label=credential_info_label info_title=credential_info_title %}
           <p class="text-sm text-[var(--color-text-muted)]">{% translate "These credentials are shared across the instance." %}</p>

@@ -12,8 +12,8 @@ export function Connection({ draft }) {
         hrefAttrs={{ target: '_blank', rel: 'noopener' }} />
     </div>
     <CardGrid>
-      <Card title={t('Instance credentials')} tone={credentials.editable ? 'info' : 'warning'}
-        badge={t(credentials.editable ? 'Editable' : 'Read-only')}
+      <Card title={t('Instance credentials')} tone={credentials.publicAccess ? 'success' : credentials.editable ? 'info' : 'warning'}
+        badge={t(credentials.publicAccess ? 'Public API' : credentials.editable ? 'Editable' : 'Read-only')}
         infoLabel={t('Read-only: explain instance credential access')}
         onInfo={credentials.editable ? undefined : () => setInfoOpen(true)}>
         <p>{t('These credentials are shared across the instance.')}</p>
@@ -29,7 +29,7 @@ export function Connection({ draft }) {
         {credentials.editable && <p className="provider-small">{t('Leave a field blank to keep the current fallback.')}</p>}
       </Card>
       <Card title={t('Personal credentials')}>
-        <p>{t('Your personal key is used for your own requests instead of the instance key. Background jobs keep using the instance key.')}</p>
+        <p>{t('Your key may avoid shared instance or bundled rate limits.')}</p>
         <Form action={credentials.personalUrl}>
           {credentials.fields.map(field => <Field key={field.name} id={`anilist-personal-${field.name}`} name={field.name}
             label={`${t('Your')} ${field.label}`} type={field.secret ? 'password' : 'text'} autoComplete="off"

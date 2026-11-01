@@ -14,7 +14,7 @@ from django_celery_results.models import TaskResult
 
 from app.providers import credentials
 from integrations.models import ImportRun
-from users.provider_catalog import catalog
+from users.provider_catalog import PUBLIC_ACCESS, catalog
 from users.provider_ui import ACTIVITY_PAGE_SIZE, anilist_overview
 
 
@@ -275,10 +275,15 @@ class SharedProviderPageTests(TestCase):
 
         igdb = {row["key"]: row for row in metadata("igdb")["contributions"]}
         self.assertEqual(igdb["search"]["status"], "Active")
+        self.assertEqual(igdb["details"]["status"], "Active")
         self.assertEqual(igdb["logos"]["status"], "Not provided")
         self.assertEqual(igdb["backgrounds"]["status"], "Active")
         steam = metadata("steam")
         self.assertTrue(steam["status"]["active"])
+        self.assertEqual(steam["status"]["summary"], "Supplemental metadata active")
+        self.assertEqual({row["key"] for row in steam["contributions"] if row["status"] == "Not provided"},
+                         {"search", "details", "covers"})
+        self.assertEqual(metadata("libretro")["status"]["summary"], "Supplemental metadata active")
         self.assertEqual({row["key"] for row in steam["contributions"] if row["status"] == "Active"}, {"logos", "backgrounds"})
         grid = metadata("steamgriddb")
         self.assertFalse(grid["status"]["active"])
@@ -287,6 +292,36 @@ class SharedProviderPageTests(TestCase):
         grid = metadata("steamgriddb")
         self.assertEqual({row["key"] for row in grid["contributions"] if row["status"] == "Active"}, {"logos", "backgrounds", "gallery"})
         self.assertNotIn("personal-grid-key", json.dumps(grid))
+
+    @override_settings(STEAM_API_KEY="", SHARED_DEFAULT_CREDENTIALS={})
+    def test_public_connection_is_distinct_from_instance_and_personal_keys(self):
+        url = reverse("provider_detail", args=["steam"])
+        def connection_card():
+            page = self.client.get(url).context["provider_page"]
+            return next(card for card in page["overviewCards"] if card["key"] == "connection")
+
+        self.assertEqual(connection_card()["subtitle"], "Public API active")
+        self.assertEqual(connection_card()["badge"], "Active")
+        response = self.client.get(url, {"tab": "connection"})
+        self.assertContains(response, "Public API")
+        self.assertNotContains(response, "Game artwork uses a public API and does not require an API key.")
+        credentials.set_instance("steam", {"api_key": "instance-private-key"})
+        self.assertEqual(connection_card()["subtitle"], "Instance credentials active")
+        credentials.set_user("steam", self.user, {"api_key": "personal-private-key"})
+        self.assertEqual(connection_card()["subtitle"], "Personal credentials active")
+        page = self.client.get(url, {"tab": "connection"}).context["provider_page"]
+        self.assertNotIn("private-key", json.dumps(page))
+
+    @override_settings(BGG_API_TOKEN="", SHARED_DEFAULT_CREDENTIALS={})
+    def test_another_provider_can_declare_public_access_without_ui_changes(self):
+        public = {"description": "Public board game data needs no key.", "capabilities": ("metadata",)}
+        with patch.dict(PUBLIC_ACCESS, {"bgg": public}):
+            url = reverse("provider_detail", args=["bgg"])
+            page = self.client.get(url).context["provider_page"]
+            cards = {card["key"]: card for card in page["overviewCards"]}
+            self.assertEqual(cards["connection"]["subtitle"], "Public API active")
+            self.assertEqual(cards["metadata"]["badge"], "Active")
+            self.assertContains(self.client.get(url, {"tab": "connection"}), "Public API")
 
     @override_settings(SCREENSCRAPER_DEV_ID="", SCREENSCRAPER_DEV_PASSWORD="", SCREENSCRAPER_SSID="member", SCREENSCRAPER_SSPASSWORD="password")
     def test_screenscraper_member_credentials_do_not_replace_instance_access(self):

@@ -96,6 +96,14 @@ TAB_ORDER = (
     "activity",
 )
 CAPABILITIES = ("metadata", "import", "tracking", "sync")
+# Public access is independent of optional account credentials. Keep its scope
+# explicit so a public feature never implies every provider API is public.
+PUBLIC_ACCESS = {
+    "steam": {
+        "description": "Game artwork uses a public API and does not require an API key.",
+        "capabilities": ("metadata",),
+    },
+}
 MEDIA_CHOICES = (
     ("movie", "Movies"),
     ("tv", "TV Shows"),
@@ -351,6 +359,7 @@ def catalog():
     )
     for item in result.values():
         slug = item["slug"]
+        item["public_access"] = PUBLIC_ACCESS.get(slug)
         item.setdefault(
             "description",
             DESCRIPTIONS.get(
@@ -459,6 +468,8 @@ def provider_state(provider, user):
         spec = credentials.REGISTRY.get(slug)
         sources = {credentials.source_of(slug, field.name, user) for field in spec.fields if field.required} if spec else set()
         connection = "Bundled credentials available" if sources == {credentials.SOURCE_DEFAULT} else "Credentials available"
+    elif provider.get("public_access"):
+        connection = "Public API active"
     elif provider.get("connection"):
         connection = "Needs setup"
     else:
@@ -507,7 +518,7 @@ def provider_state(provider, user):
         "attention": attention,
         "connection": connection,
         "connection_tone": "warning" if connection in {"Needs attention", "Awaiting authorization"} else
-            "success" if connection in {"Account saved", "Credentials available", "Bundled credentials available", "Webhook events received"} else "neutral",
+            "success" if connection in {"Account saved", "Credentials available", "Bundled credentials available", "Webhook events received", "Public API active"} else "neutral",
         "summary": connection if provider.get("connection") else "Available",
         "capabilities": capabilities,
     }

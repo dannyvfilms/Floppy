@@ -8,13 +8,15 @@ values and owns requests, validation, permissions and state.
 
 | Component | Contract |
 | --- | --- |
-| `Card`, `CardGrid` | Shared settings frame/header, optional header action, two-column or automatically fitting layout; stack on narrow screens |
+| `Card`, `CardGrid` | Shared settings frame/header, optional header action, two-column or automatically fitting layout; all card badges stay at the top right while titles wrap |
 | `CatalogCard`, `CatalogGrid` | Linked service/resource cards with optional logo and attention state; container-width columns with a maximum of four, retaining two columns at intermediate widths |
 | `FilterToolbar` | Search/filter form layout; uses `Field` and `SelectField` with optional visually hidden labels, retaining accessible names |
 | `Chip` | Passive, button or link badge with consistent highlight and no underline |
 | `ToggleChip` | Controlled two-state chip; `value`, `onChange`, `offLabel`, `onLabel`; stable accessible label and `aria-pressed` |
 | `Field`, `SelectField` | Labeled input and preference dropdown; semantic panel/border/focus styling, inset arrow and custom option menu matching Preferences; caller supplies IDs, values/options and handlers |
 | `FilterDropdown` | Same dropdown interaction with Lists hub styling: funnel icon, filled trigger/menu, purple selected option; visually hidden accessible label; use in filter toolbars rather than preference forms |
+| `Tooltip` | Accessible help trigger with a viewport-clamped portal; usable from a legacy island with a title fallback |
+| `ActivityList` | Keyboard-scrollable bounded activity list for long histories |
 | `StatusIcon` | Accessible success/warning/neutral icon with a descriptive tooltip; feature code supplies the actual meaning |
 | `FeatureList` | Shared feature rows with `key`, `label`, optional `note`, `status` and semantic `tone`; leading accessible status icons replace repeated Active text, with other states labeled and no dividers |
 | `Button` | Purple primary action with secondary, danger and disabled variants |
@@ -66,3 +68,5 @@ uses container width, with two columns from 24rem, three from 38rem and four fro
 56rem. Navigation columns therefore cannot force four compressed cards merely
 because the viewport crosses a desktop breakpoint. A native GET form and server
 cards remain available if the lazy module fails.
+
+Import preferences use `frontend/providers/ImportPreferences.jsx` in both React provider pages and a bounded legacy island. The provider retains its action and authentication logic; the shared controls save existing import mode values and user watchlist preferences.

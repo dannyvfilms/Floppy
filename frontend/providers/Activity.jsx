@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Card } from '../ui/controls';
+import { ActivityList, Button, Card } from '../ui/controls';
 import { Form, usePage } from './web';
 
 export function Activity() {
@@ -57,18 +57,18 @@ export function Activity() {
     {!data && !error && <p role="status">{t('Loading import activity…')}</p>}
     {data && <>
       <Card title={t('Active Periodic Imports')}>
-        {data.schedules.length ? data.schedules.map(schedule => <div className="provider-activity-row" key={schedule.id}>
+        {data.schedules.length ? <ActivityList>{data.schedules.map(schedule => <div className="provider-activity-row" key={schedule.id}>
           <div className="ui-heading"><strong>{schedule.schedule}</strong>
             <Form action={schedule.action}><input type="hidden" name="task_name" value={schedule.name} />
               <Button type="submit" danger>{t('Remove schedule')}</Button></Form></div>
           {schedule.username && <p>{t('Username')}: {schedule.username}</p>}
           <p>{t('Mode')}: {schedule.mode}</p>
           <p>{t('Last Import')}: {schedule.lastRun || '—'}</p><p>{t('Next Import')}: {schedule.nextRun || '—'}</p>
-        </div>) : <p>{t('No periodic imports configured')}</p>}
+        </div>)}</ActivityList> : <p>{t('No periodic imports configured')}</p>}
       </Card>
       <Card title={t('Import History')}>
         <p>{t('Showing import activity from the last 7 days.')}</p>
-        {data.results.length ? data.results.map(result => <div className="provider-activity-row" key={result.id}>
+        {data.results.length ? <ActivityList>{data.results.map(result => <div className="provider-activity-row" key={result.id}>
           <div className="ui-heading"><strong>{result.statusLabel}</strong><span>{result.date}</span></div>
           {result.summary && <p>{result.summary}</p>}
           {result.status === 'STARTED' && result.current !== null && <div>
@@ -84,7 +84,7 @@ export function Activity() {
               <pre>{result.errors}</pre>
             </div>
           </details>}
-        </div>) : <p>{t('No imports in the last 7 days')}</p>}
+        </div>)}</ActivityList> : <p>{t('No imports in the last 7 days')}</p>}
         {copied === 'error' && <p role="status">{t('Could not copy details.')}</p>}
         {(page > 1 || data.hasMore) && <nav className="ui-heading" aria-label={t('Import History')}>
           <Button type="button" secondary disabled={page === 1 || openDetails.size > 0} onClick={() => changePage(page - 1)}>{t('Previous')}</Button>
@@ -92,14 +92,14 @@ export function Activity() {
           <Button type="button" secondary disabled={!data.hasMore || openDetails.size > 0} onClick={() => changePage(page + 1)}>{t('Next')}</Button>
         </nav>}
       </Card>
-      {!!data.runs.length && <Card title={t('Recent Import Runs')}>{data.runs.map(run => <div className="provider-activity-row" key={run.id}>
+      {!!data.runs.length && <Card title={t('Recent Import Runs')}><p>{t('Counts and undo options for supported imports.')}</p><ActivityList>{data.runs.map(run => <div className="provider-activity-row" key={run.id}>
         <div className="ui-heading"><strong>{run.statusLabel}</strong><span>{run.date}</span></div>
         <p>{t('Created')}: {run.created} · {t('Updated')}: {run.updated} · {t('Skipped')}: {run.skipped} · {t('Failed')}: {run.failed}
           {run.remaining !== null && <> · {t('Remaining')}: {run.remaining}</>}</p>
         <Form action={run.action} confirm={t(run.status === 'running' ? 'Cancel this import?' : 'Remove the items this import created? This cannot be undone.')}>
           <Button type="submit" danger>{t(run.status === 'running' ? 'Cancel import' : 'Undo this import')}</Button>
         </Form>
-      </div>)}</Card>}
+      </div>)}</ActivityList></Card>}
       {!!data.cleanup.length && <Card title={t('Imported Media by Source')}>
         <p>{t('Permanently delete everything of a media type imported from this source.')}</p>
         {data.cleanup.map(row => <div className="ui-heading provider-activity-row" key={row.mediaType}>

@@ -1,10 +1,14 @@
 """Provider settings navigation using the existing forms and action handlers."""
 
-from django.http import Http404, JsonResponse
+from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
+from django.db import transaction
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import urlencode
-from django.views.decorators.http import require_GET
+from django.utils.translation import gettext as _
+from django.views.decorators.http import require_GET, require_POST
 
 from users import metadata_views, provider_ui, views
 from users.provider_catalog import (
@@ -43,6 +47,8 @@ def providers(request):
         items = [item for item in items if media in item["media_types"]]
     for item in items:
         item["state"] = provider_state(item, request.user)
+        item["pinned"] = item["slug"] in (request.user.pinned_settings_providers or [])
+    items.sort(key=lambda item: not item["pinned"])
     context = {
         "providers": items,
         "query": query,
@@ -55,7 +61,7 @@ def providers(request):
         "capability_label": capability.title() if capability else "All Capabilities",
         "media_label": dict(MEDIA_CHOICES).get(media, "All Types"),
     }
-    context["provider_directory"] = provider_ui.directory_page(context)
+    context["provider_directory"] = provider_ui.directory_page(context, request)
     if request.GET.get("format") == "json":
         response = JsonResponse(context["provider_directory"])
         response["Cache-Control"] = "private, no-store"
@@ -66,6 +72,32 @@ def providers(request):
         else "users/providers.html"
     )
     return render(request, template, context)
+
+
+@login_required
+@require_POST
+def pin_provider(request):
+    """Set one user's provider pin, independently of watch-service favorites."""
+    slug = request.POST.get("provider", "")
+    desired = request.POST.get("pinned", "")
+    if slug not in {item["slug"] for item in catalog()} or desired not in {"0", "1"}:
+        return HttpResponse(status=400)
+    if request.user.is_demo:
+        return HttpResponse(status=403)
+    with transaction.atomic():
+        user = get_user_model().objects.select_for_update().get(pk=request.user.pk)
+        pinned = list(user.pinned_settings_providers or [])
+        if desired == "1" and slug not in pinned:
+            pinned.append(slug)
+        elif desired == "0" and slug in pinned:
+            pinned.remove(slug)
+        user.pinned_settings_providers = pinned
+        user.save(update_fields=["pinned_settings_providers"])
+    if "application/json" in request.headers.get("Accept", ""):
+        return JsonResponse({"pinned": desired == "1"})
+    from app.helpers import safe_return_url
+
+    return redirect(safe_return_url(request, request.POST.get("next", ""), reverse("providers")))
 
 
 @require_GET
@@ -97,6 +129,7 @@ def provider_detail(request, slug):
         "inline_import": tab == "import",
         "activity_source": slug,
         "provider_navigation": True,
+        "public_access": {"description": _(provider["public_access"]["description"])} if provider.get("public_access") else None,
         "capability_rows": [
             {"key": key, "label": key.title(), "state": state}
             for key, state in provider["state"]["capabilities"].items()
@@ -122,6 +155,8 @@ def provider_detail(request, slug):
                 request, slug, refresh_plex=tab not in {"import", "activity"}
             )
         )
+    if tab == "import" and slug != "anilist":
+        context["import_preferences"] = provider_ui.import_preferences(request, slug, context)
     if slug in {"mal", "tmdb", "wetrakr"} and tab in {"connection", "sync", "activity"}:
         context.update(views.mal_export_context(request, slug))
     context["provider_page"] = provider_ui.provider_page(request, provider, tab, credential_context=context)

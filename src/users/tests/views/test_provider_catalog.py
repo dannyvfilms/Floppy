@@ -125,9 +125,40 @@ class ProviderSettingsTests(TestCase):
         model = response.json()
         self.assertEqual({item["slug"] for item in model["items"]}, {"steam", "steamgriddb"})
         for item in model["items"]:
-            self.assertEqual(set(item), {"slug", "title", "description", "logo", "url", "attention", "status", "openLabel"})
+            self.assertEqual(set(item), {"slug", "title", "description", "logo", "url", "attention", "status", "openLabel", "pinned", "pinLabel", "unpinLabel"})
             self.assertTrue(item["url"].endswith("?tab=metadata"))
             self.assertIsNone(item["status"])
+
+    def test_provider_pins_are_user_scoped_and_sorted_with_filters(self):
+        other = get_user_model().objects.create_user(username="other-pin-user")
+        url = reverse("pin_settings_provider")
+        response = self.client.post(url, {"provider": "steam", "pinned": "1"}, HTTP_ACCEPT="application/json")
+        self.assertEqual(response.json(), {"pinned": True})
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.pinned_settings_providers, ["steam"])
+        self.assertEqual(other.pinned_settings_providers, [])
+        items = self.client.get(reverse("providers"), {"format": "json"}).json()["items"]
+        self.assertEqual(items[0]["slug"], "steam")
+        self.assertTrue(items[0]["pinned"])
+        filtered = self.client.get(reverse("providers"), {"format": "json", "q": "steam"}).json()["items"]
+        self.assertEqual(filtered[0]["slug"], "steam")
+        self.assertEqual(self.client.post(url, {"provider": "steam", "pinned": "1"}, HTTP_ACCEPT="application/json").status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.pinned_settings_providers, ["steam"])
+        self.assertEqual(self.client.post(url, {"provider": "missing", "pinned": "1"}).status_code, 400)
+        self.assertEqual(self.client.post(url, {"provider": "steam", "pinned": "wrong"}).status_code, 400)
+        self.assertRedirects(self.client.post(url, {"provider": "steam", "pinned": "0", "next": "/settings/providers?q=steam"}),
+                             "/settings/providers?q=steam")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.pinned_settings_providers, [])
+
+    def test_demo_user_cannot_pin_providers(self):
+        self.user.is_demo = True
+        self.user.save(update_fields=["is_demo"])
+        response = self.client.post(reverse("pin_settings_provider"), {"provider": "steam", "pinned": "1"})
+        self.assertEqual(response.status_code, 403)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.pinned_settings_providers, [])
 
     @patch("app.providers.credentials.is_configured", side_effect=lambda slug, user: slug == "anilist")
     def test_connection_filter_exposes_setup_status_without_claiming_live_health(self, _configured):

@@ -15,6 +15,7 @@ from django_celery_results.models import TaskResult
 
 from app import config
 from app.log_safety import redact_secrets
+from app.models import Status
 from app.providers import credentials
 from app.services import metadata_resolution
 from app.templatetags.app_tags import media_type_readable, media_type_readable_plural
@@ -31,10 +32,59 @@ ACTIVITY_PAGE_SIZE = 50
 MAX_ACTIVITY_PAGES = 1000
 
 
-def directory_page(context):
+def import_preferences(request, slug, context=None):
+    """Shared import controls and saved preferences, with no provider secrets."""
+    context = context or {}
+    fixed = {"radarr", "sonarr", "mylar", "kapowarr", "stremio", "audiobookshelf", "kavita", "komga",
+             "storyteller", "pocketcasts", "gpodder", "lastfm", "koito", "psn"}
+    once = {"mangabaka", "clz", "yamtrack_native", "hltb", "playnite", "grouvee", "imdb", "goodreads",
+            "hardcover", "storygraph", "youtube", "wetrakr", "tvtime"}
+    fixed_values = None
+    if slug in fixed:
+        if slug in {"kavita", "komga"}:
+            account = context.get(f"{slug}_account")
+            frequency = _("Every %(minutes)s minutes") % {"minutes": account.sync_interval_minutes} if account else _("Choose when connecting")
+        elif slug in {"audiobookshelf", "lastfm"}:
+            frequency = _("Every %(minutes)s minutes") % {"minutes": context.get(f"{slug}_poll_interval", 15)}
+        elif slug == "koito":
+            frequency = _("Every 15 minutes")
+        elif slug == "psn":
+            frequency = _("Every 3 hours")
+        else:
+            frequency = _("Every 2 hours")
+        mode = _("Sync reading progress") if slug in {"kavita", "komga", "audiobookshelf"} else (
+            _("Sync owned collection") if slug in {"radarr", "sonarr", "mylar", "kapowarr"} else _("Only sync new items")
+        )
+        explanation = _("Pocket Casts uses a fixed schedule to estimate podcast completion time and imports new items automatically.") if slug == "pocketcasts" else (
+            _("The interval is chosen in Connection. This integration manages its own reading progress sync.") if slug in {"kavita", "komga"} else
+            _("This integration manages its own schedule and import behavior.")
+        )
+        fixed_values = {"mode": mode, "frequency": frequency, "explanation": explanation}
+    user = request.user
+    labels = {text: _(text) for text in (
+        "Import preferences", "Editable", "Read-only", "Import Mode", "History", "Watchlist", "Collection",
+        "Override mode", "New Items Only", "Overwrite Existing", "Import Frequency", "One Time Import", "Every Day", "Every 2 Days",
+        "Import Time", "Watchlist status", "Watchlist tag", "No tag", "Saving…", "Saved", "Could not save preferences. Try again.",
+        "Retry", "One-time import", "Files are imported once when uploaded.", "Override mode help",
+        "New items leaves existing entries unchanged. Overwrite replaces matching imported entries.",
+    )}
+    tags = list(user.tags.order_by("name").values("id", "name"))
+    tag_ids = {tag["id"] for tag in tags}
+    return {
+        "values": {"frequency": user.import_frequency, "time": str(user.import_time)[:5], "mode": user.import_mode,
+                   "watchlistStatus": user.watchlist_import_status, "watchlistTag": str(user.watchlist_import_tag_id) if user.watchlist_import_tag_id in tag_ids else ""},
+        "statuses": [{"value": value, "label": str(label)} for value, label in Status.choices],
+        "tags": [{"value": "", "label": _("No tag")}] + [{"value": str(tag["id"]), "label": tag["name"]} for tag in tags],
+        "fixed": fixed_values, "fixedFrequency": slug in once,
+        "editable": not user.is_demo, "saveUrl": reverse("save_import_settings"), "csrf": get_token(request), "labels": labels,
+    }
+
+
+def directory_page(context, request):
     """Expose only directory presentation and filter state, never account data."""
     return {
         "url": reverse("providers"), "setupUrl": reverse("onboarding_restart"),
+        "pinUrl": reverse("pin_settings_provider"), "csrf": get_token(request), "canPin": not request.user.is_demo,
         "filters": {"q": context["query"], "capability": context["capability"], "media": context["media"]},
         "capabilities": [{"value": row["key"], "label": _(row["label"])} for row in context["capability_options"]],
         "media": [{"value": row["key"], "label": _(row["label"])} for row in context["media_options"]],
@@ -44,6 +94,9 @@ def directory_page(context):
             "url": reverse("provider_detail", args=[item["slug"]]) +
                 ("?" + urlencode({"tab": context["capability"]}) if context["capability"] else ""),
             "attention": _(item["state"]["summary"]) if item["state"]["attention"] else "",
+            "pinned": item["pinned"],
+            "pinLabel": _("Pin %(name)s") % {"name": item["label"]},
+            "unpinLabel": _("Unpin %(name)s") % {"name": item["label"]},
             "status": {
                 "label": _(item["state"]["connection"]),
                 "tone": item["state"]["connection_tone"],
@@ -54,6 +107,7 @@ def directory_page(context):
             "Providers", "Run guided setup", "Find services and their available settings.",
             "Search providers", "Search providers...", "Filter by capability", "Filter by media type",
             "No providers match these filters.", "Could not load providers. Try again.", "Retry",
+            "Could not update the pinned provider. Try again.",
         )},
     }
 
@@ -132,9 +186,10 @@ def overview_cards(user, provider, overview=None):
             if credentials.SOURCE_USER in sources and sources - {credentials.SOURCE_USER}:
                 tooltip = _("Uses instance fallback for fields without a personal value.")
         if overview is not None:
-            active = overview["connection"] != "none"
+            active = overview["connection"] != "none" or state["connection"] == "Public API active"
             subtitle = _("Personal credentials active") if overview["connection"] == "personal" else (
-                _("Instance credentials active") if active else _("No credentials active")
+                _("Instance credentials active") if overview["connection"] == "instance" else
+                _("Public API active") if active else _("No credentials active")
             )
             if not active:
                 tooltip = _("Public username imports do not require provider credentials.")
@@ -185,8 +240,8 @@ def overview_cards(user, provider, overview=None):
 def metadata_status(user, provider):
     """Distinguish selected primary sources from supplemental and unused sources."""
     enabled = metadata_resolution.provider_is_enabled(provider["slug"], user)
-    if provider["slug"] == "steam":
-        enabled = True  # Library artwork comes from the public CDN, not the account API.
+    if "metadata" in (provider.get("public_access") or {}).get("capabilities", ()):
+        enabled = True
     elif provider["slug"] == "screenscraper":
         from app.game_artwork.screenscraper import developer_credentials
 
@@ -206,7 +261,7 @@ def metadata_status(user, provider):
 def metadata_contributions(provider, status):
     """Describe the outputs Floppy actually consumes, not a provider's full API."""
     outputs = {
-        "igdb": {"search", "covers", "backgrounds", "gallery", "scores", "trailers"},
+        "igdb": {"search", "details", "covers", "backgrounds", "gallery", "scores", "trailers"},
         "steamgriddb": {"logos", "backgrounds", "gallery"},
         "thegamesdb": {"logos", "backgrounds", "gallery"},
         "screenscraper": {"logos", "backgrounds", "gallery"},
@@ -215,9 +270,9 @@ def metadata_contributions(provider, status):
         "opencritic": {"scores"},
         "trakt": {"ratings", "popularity"},
         "lastfm": {"biographies"},
-    }.get(provider["slug"], {"search", "covers"} if provider.get("metadata_role") == "primary" else {"additional"})
+    }.get(provider["slug"], {"search", "details", "covers"} if provider.get("metadata_role") == "primary" else {"additional"})
     labels = {
-        "search": _("Search results and title details"), "covers": _("Cover images"),
+        "search": _("Search results"), "details": _("Title details"), "covers": _("Cover images"),
         "logos": _("Title logos"), "backgrounds": _("Background images"),
         "gallery": _("Extra gallery images"), "scores": _("Critic scores"),
         "trailers": _("Trailers"), "additional": _("Additional metadata"),
@@ -230,7 +285,7 @@ def metadata_contributions(provider, status):
         notes = {key: _("For retro games") for key in outputs}
     elif provider["slug"] == "libretro":
         notes = {"logos": _("For retro games, when a logo is available"), "backgrounds": _("Title screens or screenshots for retro games")}
-    shown = outputs | ({"search", "covers", "logos", "backgrounds"} if "game" in provider["media_types"] else set())
+    shown = outputs | ({"search", "details", "covers", "logos", "backgrounds"} if "game" in provider["media_types"] else set())
     return [{
         "key": key, "label": label, "note": notes.get(key, ""),
         "status": _("Not provided") if key not in outputs else _("Active") if status["active"] else
@@ -362,6 +417,7 @@ def provider_page(request, provider, tab, credential_context=None):
             "editable": context["can_edit_instance"] and not provider["locked"],
             "canClear": context["can_edit_instance"] and provider["has_instance_value"],
             "getKeyUrl": provider["docs_url"],
+            "publicAccess": context.get("public_access"),
             "fields": [{
                 "name": field["name"], "label": _(field["label"]), "secret": field["secret"],
                 "disabled": field["locked"] or not context["can_edit_instance"],
@@ -377,10 +433,10 @@ def provider_page(request, provider, tab, credential_context=None):
         }
     elif tab == "import":
         configured = credentials.is_configured("anilist", user)
+        preferences = import_preferences(request, "anilist")
+        page["labels"].update(preferences["labels"])
         page["imports"] = {
-            "frequency": user.import_frequency, "time": str(user.import_time)[:5],
-            "mode": user.import_mode, "configured": configured,
-            "saveUrl": reverse("save_import_settings"),
+            **preferences, "configured": configured,
             "publicUrl": reverse("import_anilist_public"), "privateUrl": reverse("import_anilist_oauth") if configured else "",
         }
     return page
@@ -408,6 +464,7 @@ def _labels():
         "Personal credentials": _("Personal credentials"),
         "Editable": _("Editable"),
         "Read-only": _("Read-only"),
+        "Public API": _("Public API"),
         "Read-only: explain instance credential access": _("Read-only: explain instance credential access"),
         "Instance credential access": _("Instance credential access"),
         "Close": _("Close"),
@@ -419,7 +476,7 @@ def _labels():
         "Remove stored credentials": _("Remove stored credentials"),
         "Your": _("Your"),
         "Save personal key": _("Save personal key"),
-        "Your personal key is used for your own requests instead of the instance key. Background jobs keep using the instance key.": _("Your personal key is used for your own requests instead of the instance key. Background jobs keep using the instance key."),
+        "Your key may avoid shared instance or bundled rate limits.": _("Your key may avoid shared instance or bundled rate limits."),
         "Leave a field blank to keep the current fallback.": _("Leave a field blank to keep the current fallback."),
         "Saved — enter a new value to replace": _("Saved — enter a new value to replace"),
         "Only superusers can change instance-wide credentials. Values set in the environment are read-only here and take precedence over stored credentials.": _("Only superusers can change instance-wide credentials. Values set in the environment are read-only here and take precedence over stored credentials."),
@@ -462,6 +519,7 @@ def _labels():
         "Active Periodic Imports": _("Active Periodic Imports"),
         "Import History": _("Import History"),
         "Recent Import Runs": _("Recent Import Runs"),
+        "Counts and undo options for supported imports.": _("Counts and undo options for supported imports."),
         "Imported Media by Source": _("Imported Media by Source"),
         "Loading import activity…": _("Loading import activity…"),
         "Could not load import activity.": _("Could not load import activity."),

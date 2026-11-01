@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import tag
+from django.test import override_settings, tag
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from django_celery_results.models import TaskResult
 from playwright.sync_api import expect, sync_playwright
@@ -173,7 +173,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.open_cards()
         self.page.locator('[name="user"]').fill("public-person")
         with self.page.expect_response(lambda response: "/settings/import/save-settings" in response.url) as result:
-            self.choose_option("Import Mode", "Sync New Items and Overwrite Existing")
+            self.choose_option("Override mode", "Overwrite Existing")
         self.assertEqual(result.value.status, 204)
         self.user.refresh_from_db()
         self.assertEqual(self.user.import_mode, "overwrite")
@@ -189,6 +189,27 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(toggle).to_have_text("Public")
         expect(toggle).to_have_attribute("aria-pressed", "false")
         expect(self.page.locator('[name="user"]')).to_have_value("public-person")
+        self.assertEqual(self.errors, [])
+
+    def test_shared_import_preferences_and_steam_tooltip(self):
+        """The retained provider uses the same controls and clamps help to the viewport."""
+        self.page.set_viewport_size({"width": 390, "height": 850})
+        self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab=import")
+        expect(self.page.locator("[data-import-preferences-root] .settings-card")).to_be_visible()
+        mode = self.page.get_by_role("combobox", name="Import Mode", exact=True)
+        frequency = self.page.get_by_role("combobox", name="Import Frequency", exact=True)
+        self.assertLess(mode.bounding_box()["y"], frequency.bounding_box()["y"])
+        self.choose_option("Import Mode", "Watchlist")
+        expect(self.page.get_by_text("This import mode is not supported by this provider.")).to_be_visible()
+        expect(self.page.get_by_role("combobox", name="Watchlist status")).to_contain_text("Planning")
+        expect(self.page.get_by_role("combobox", name="Watchlist tag")).to_contain_text("No tag")
+        self.choose_option("Import Mode", "History")
+        expect(self.page.get_by_role("combobox", name="Override mode")).to_be_visible()
+        tooltip = self.page.locator("[data-tooltip-root] button")
+        tooltip.click()
+        box = self.page.get_by_role("tooltip").bounding_box()
+        self.assertGreaterEqual(box["x"], 0)
+        self.assertLessEqual(box["x"] + box["width"], 390)
         self.assertEqual(self.errors, [])
 
     def test_import_controls_use_surface_borders_inset_arrows_and_purple_action(self):
@@ -240,6 +261,37 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             self.assertLessEqual(abs(gaps[0] - gaps[1]), 2)
         self.assertEqual(self.errors, [])
 
+    def test_retained_import_uses_shared_spacing_and_grid(self):
+        """Steam's retained forms use the same section spacing as Connection."""
+        for width in (390, 768, 1440):
+            self.page.set_viewport_size({"width": width, "height": 1000})
+            gaps = []
+            for tab, title in (("connection", "Provider credentials"), ("import", "Import settings")):
+                self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab={tab}")
+                heading = self.page.get_by_role("heading", name=title, exact=True)
+                expect(heading).to_be_visible()
+                gaps.append(heading.evaluate("heading => heading.getBoundingClientRect().top - document.querySelector('.ui-tabs').getBoundingClientRect().bottom"))
+            self.assertLessEqual(abs(gaps[0] - gaps[1]), 2, (width, gaps))
+            self.assertEqual(self.page.locator(".ui-card-grid").count(), 1)
+            heading = self.page.get_by_role("heading", name="Import settings", exact=True)
+            card = self.page.locator(".ui-card-grid .settings-card").first
+            self.assertGreaterEqual(card.bounding_box()["y"] - heading.bounding_box()["y"] - heading.bounding_box()["height"], 18)
+        self.assertEqual(self.errors, [])
+
+    def test_provider_activity_uses_shared_cards(self):
+        """Activity fragments use the shared card headings, including undoable runs."""
+        ImportRun.objects.create(user=self.user, source="pocketcasts", status="completed")
+        self.page.goto(f"{self.live_server_url}/settings/providers/pocketcasts?tab=activity")
+        panel = self.page.locator("#import-activity-panel")
+        for title in ("Active Periodic Imports", "Import History", "Recent Import Runs"):
+            card = panel.locator(".settings-card").filter(has=self.page.get_by_role("heading", name=title, exact=True))
+            expect(card).to_be_visible()
+            expect(card.locator('[data-settings-card-root][data-react-mounted="true"]')).to_have_count(1)
+            gap = card.locator(".ui-activity-content").evaluate("element => element.querySelector('.ui-activity-list').getBoundingClientRect().top - element.querySelector('p').getBoundingClientRect().bottom")
+            self.assertGreaterEqual(gap, 11, title)
+        expect(panel.get_by_role("button", name="Undo this import")).to_be_visible()
+        self.assertEqual(self.errors, [])
+
     def test_directory_uses_available_width_and_preserves_live_filters_and_back(self):
         """Catalog columns follow actual content width; filters retain server semantics."""
         for width, columns in ((1920, 3), (1440, 3), (1280, 3), (1135, 2), (390, 1)):
@@ -269,6 +321,19 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.go_back()
         expect(search).to_have_value("steam")
         expect(self.page.locator("#provider-results a")).to_have_count(2)
+        self.assertEqual(self.errors, [])
+
+    def test_directory_pin_persists_and_sorts_first(self):
+        """Pins remain personal and survive a directory reload."""
+        self.page.goto(f"{self.live_server_url}/settings/providers")
+        pin = self.page.get_by_role("button", name="Pin Steam", exact=True)
+        expect(pin).to_be_visible()
+        with self.page.expect_response(lambda response: "/settings/providers/pin" in response.url):
+            pin.click()
+        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_have_attribute("aria-pressed", "true")
+        expect(self.page.locator("#provider-results .ui-catalog-item").first.get_by_role("link", name="Open Steam")).to_be_visible()
+        self.page.reload()
+        expect(self.page.get_by_role("button", name="Unpin Steam", exact=True)).to_be_visible()
         self.assertEqual(self.errors, [])
 
     def test_directory_bundle_failure_preserves_native_filter_fallback(self):
@@ -463,6 +528,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.locator("[data-settings-card-root][data-react-mounted=true]")).to_have_count(2)
         expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
         expect(self.page.get_by_role("navigation", name="Provider sections")).to_be_visible()
+        expect(self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True)).to_be_visible()
+        self.open_cards("connection")
+        expect(self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True)).to_be_visible()
         self.assertEqual(self.errors, [])
 
     def test_all_provider_overviews_share_the_react_page_and_card_components(self):
@@ -537,7 +605,63 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                 self.page.set_viewport_size({"width": width, "height": 1000})
                 self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
         expect(self.page.get_by_role("img", name="Title logos: Active", exact=True)).to_be_visible()
-        expect(self.page.get_by_role("img", name="Search results and title details: Not provided", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("img", name="Search results: Not provided", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("img", name="Title details: Not provided", exact=True)).to_be_visible()
+        self.assertEqual(self.errors, [])
+
+    @override_settings(STEAM_API_KEY="")
+    def test_steam_explains_public_artwork_without_a_connection(self):
+        self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab=overview")
+        expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
+        connection = self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True)
+        expect(connection).to_contain_text("Active")
+        expect(connection).to_contain_text("Public API active")
+        metadata = self.page.locator(".provider-overview").get_by_role("link", name="Metadata", exact=True)
+        expect(metadata).to_contain_text("Supplemental metadata active")
+        connection.click()
+        card = self.page.locator(".settings-card").filter(has=self.page.get_by_role("heading", name="Instance credentials"))
+        expect(card.get_by_text("Public API", exact=True)).to_be_visible()
+        expect(self.page.get_by_text("Game artwork uses a public API and does not require an API key.")).to_have_count(0)
+        link = self.page.get_by_role("link", name="Get a key from Steam", exact=True)
+        link.hover()
+        self.assertEqual(link.evaluate("element => getComputedStyle(element).textDecorationLine"), "none")
+        expect(self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True)).to_be_visible()
+        gap = self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True).evaluate("""element => {
+          const field = element.parentElement.querySelector('form label');
+          return field.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
+        }""")
+        self.assertGreaterEqual(gap, 10)
+        self.page.get_by_role("navigation", name="Provider sections").get_by_role("link", name="Metadata", exact=True).click()
+        expect(self.page.get_by_text("Public artwork needs no API key", exact=True)).to_have_count(0)
+        expect(self.page.get_by_role("img", name="Title logos: Active", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("img", name="Background images: Active", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("img", name="Search results: Not provided", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("img", name="Title details: Not provided", exact=True)).to_be_visible()
+        self.assertEqual(self.errors, [])
+
+    @override_settings(STEAM_API_KEY="")
+    def test_public_access_disclosure_survives_a_blocked_react_bundle(self):
+        self.block_renderer = True
+        self.page.goto(f"{self.live_server_url}/settings/providers/steam?tab=connection")
+        expect(self.page.get_by_text("Public API", exact=True)).to_be_visible()
+        expect(self.page.get_by_text("Game artwork uses a public API and does not require an API key.", exact=True)).to_have_count(0)
+        self.assertEqual(self.errors, [])
+
+    def test_status_chips_stay_at_the_top_right_on_all_shared_cards(self):
+        for width in (320, 390, 768, 1280):
+            self.page.set_viewport_size({"width": width, "height": 1000})
+            for path in ("/settings/providers/anilist?tab=connection", "/settings/providers/anilist?tab=import",
+                         "/settings/providers/steam?tab=connection", "/settings/providers/steam?tab=metadata"):
+                self.page.goto(self.live_server_url + path)
+                expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
+                self.page.wait_for_load_state("networkidle")
+                bad = self.page.locator('.settings-card [data-testid="settings-card-heading"]').evaluate_all("""headers => headers.flatMap(header => {
+                  const badge = header.querySelector('[data-testid=settings-card-badge], .settings-chip');
+                  if (!badge) return [];
+                  const row = header.getBoundingClientRect(), chip = badge.getBoundingClientRect();
+                  return chip.top > row.top + 1 || chip.right < row.right - 1 || chip.right > row.right + 1 ? [badge.textContent] : [];
+                })""")
+                self.assertEqual(bad, [], (width, path, bad))
         self.assertEqual(self.errors, [])
 
     @patch("integrations.views.tasks.import_anilist.delay")
@@ -546,7 +670,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.open_cards()
         self.page.get_by_label("Public username", exact=True).fill("react-public-profile")
         with self.page.expect_response(lambda response: "/save-settings" in response.url):
-            self.choose_option("Import Mode", "Sync New Items and Overwrite Existing")
+            self.choose_option("Override mode", "Overwrite Existing")
         self.page.get_by_role("button", name="Import", exact=True).click()
         self.page.wait_for_url("**/settings/providers/anilist?tab=import")
         expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
@@ -558,7 +682,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.open_cards()
         pattern = "**/settings/import/save-settings"
         self.page.route(pattern, lambda route: route.abort())
-        self.choose_option("Import Mode", "Sync New Items and Overwrite Existing")
+        self.choose_option("Override mode", "Overwrite Existing")
         expect(self.page.get_by_text("Could not save preferences. Try again.", exact=True)).to_be_visible()
         self.page.unroute(pattern)
         self.page.get_by_role("button", name="Retry", exact=True).click()
@@ -577,7 +701,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
                   const bounds = card.getBoundingClientRect();
                   return [...card.querySelectorAll('[data-testid=settings-card-badge]')].filter(badge => {
                     const box = badge.getBoundingClientRect();
-                    return box.left < bounds.left || box.right > bounds.right + 1;
+                    const heading = badge.closest('[data-testid=settings-card-heading]').getBoundingClientRect();
+                    return box.left < bounds.left || box.right > bounds.right + 1 ||
+                      box.top > heading.top + 1 || box.right < heading.right - 1;
                   }).map(badge => badge.textContent);
                 })""")
                 self.assertEqual(spills, [])

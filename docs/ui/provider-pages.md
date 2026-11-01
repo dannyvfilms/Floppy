@@ -183,11 +183,17 @@ The Sources header leads with activity, not edit permissions. A shared `FeatureL
 describes the outputs Floppy consumes and their Active, Needs setup, Not selected
 or Not provided states. Game profiles distinguish search/details, covers, title
 logos, backgrounds and any additional gallery/score/trailer outputs; unsupported
-core artwork/search outputs remain visible for comparison. These are local setup
+core artwork/search outputs remain visible for comparison. Search results and title
+details are separate outputs. These are local setup
 states, not guarantees that every title has every image. Artwork providers retain
 their game/platform and fallback restrictions.
 
-Steam artwork uses the public CDN even without an account API key. ScreenScraper
+Connection and Overview represent public access independently of API credentials.
+`provider_catalog.PUBLIC_ACCESS` declares each public capability and its explanation;
+the shared settings card marks Instance credentials with a Public API badge. A public
+feature can be active while another capability still requires a key. Metadata uses
+the capability state and does not repeat the Connection disclosure. Steam artwork
+uses the public CDN even without an account API key. ScreenScraper
 artwork requires instance developer access; its optional member credentials do not
 replace that requirement. Source activity and Overview use those same requirements.
 Provider settings without controls use one plain sentence, without a duplicate
@@ -198,3 +204,7 @@ credential availability and demo restrictions. Anime library format remains part
 of the source form. Existing-library migration counts, warnings and explicit
 conversion actions remain separate from changing the default; no automatic move
 or conversion is introduced.
+
+Provider directory pins are private per-user preferences and sort ahead of unpinned results, including filtered results.
+
+Import preferences share a React card across provider pages, with a server fallback. History maps its override to the existing new/overwrite import modes; Watchlist and Collection keep their existing modes. Watchlist status and an optional user-owned tag are applied to Plex watchlist imports, without changing existing items' statuses. Providers that do not support a mode retain their existing import guard. Fixed schedules remain read-only. Long activity lists scroll within their cards.

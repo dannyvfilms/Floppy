@@ -1,5 +1,5 @@
 {% load ui_tags i18n app_tags user_tags %}
-  <div class="space-y-6"
+  <div class="{% if provider_tab == 'import' %}ui-section-stack{% else %}space-y-6{% endif %}"
        x-data="{
          hasStoredPlexAccount: {% if plex_account %}true{% else %}false{% endif %},
          importFrequency: '{{ user.import_frequency }}',
@@ -224,13 +224,18 @@
            }
          }
        }"
+       @import-preferences-changed="importFrequency = $event.detail.frequency; importTime = $event.detail.time; importMode = $event.detail.mode"
        x-init="{% if import_slug == 'plex' %}initPlexStatus();{% endif %} const deepLinkSlug = new URLSearchParams(window.location.search).get('open'); if (deepLinkSlug) { openModal(deepLinkSlug); }">
 
     {% if provider_tab == 'import' %}
       <h3 class="text-lg font-semibold">{% translate "Import settings" %}</h3>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      <div class="ui-card-grid ui-card-grid-start">
     {% endif %}
     {% if provider_tab != 'connection' %}
+    {% if provider_tab == 'import' and import_preferences %}
+      {{ import_preferences|json_script:"import-preferences-props" }}
+      <div data-import-preferences-root data-props-id="import-preferences-props">
+    {% endif %}
     {# Import settings #}
     {% if provider_tab == 'import' and import_slug in 'radarr,sonarr,mylar,kapowarr,stremio,audiobookshelf,kavita,komga,storyteller,pocketcasts,gpodder,lastfm,koito,psn' %}
     {% translate "Import preferences" as preferences_title %}
@@ -316,10 +321,14 @@
     {% endsettings_card %}
     </form>
     {% endif %}
+    {% if provider_tab == 'import' and import_preferences %}</div>{% endif %}
     {% endif %}
 
     {% translate "Import options" as options_title %}
     {% settings_card title=options_title enabled=inline_import %}
+    {% if provider_tab == 'import' and import_slug != 'plex' and not import_preferences.fixed %}
+      <p x-cloak x-show="standardImportsDisabled()" class="text-sm text-[var(--color-text-muted)]">{% translate "This import mode is not supported by this provider." %}</p>
+    {% endif %}
     {% if provider_slug %}
       {% if provider_tab == 'connection' %}
         <p class="text-sm text-[var(--color-text-muted)]">
@@ -2914,20 +2923,15 @@
             <input type="hidden" name="frequency" x-model="importFrequency">
             <input type="hidden" name="time" x-model="importTime">
             <input type="hidden" name="mode" x-model="importMode">
-            <div class="relative flex-1">
+            <div class="relative flex-1 min-w-0">
               <input placeholder="{% translate "Steam 64-bit ID" %}"
                      name="user"
-                     class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-l-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                     class="ui-tooltip-input w-full py-2 px-3 bg-[var(--color-surface)] rounded-l-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
                      type="text">
-              <div class="group absolute right-2 top-1/2 -translate-y-1/2">
-                {% include "app/icons/info.svg" with classes="w-4 h-4 text-[var(--color-text-muted)]" %}
-                <div class="absolute bottom-full mb-2 w-60 p-2 bg-[var(--color-surface)] rounded-md text-xs text-[var(--color-text-secondary)] shadow-lg border border-gray-600  invisible group-hover:visible">
-                  {% translate "Find it on your Steam account details page under your username." %}
-                  <br>
-                  <br>
-                  {% translate "Your profile must be public if the API key you are using is not linked to the steamid you are requesting." %}
-                </div>
-              </div>
+              {{ steam_import_tooltip|json_script:"steam-import-tooltip-props" }}
+              <span class="absolute right-2 top-1/2 -translate-y-1/2" data-tooltip-root data-props-id="steam-import-tooltip-props" x-ignore>
+                <span class="ui-tooltip-trigger"><button type="button" aria-label="{{ steam_import_tooltip.label }}" title="{{ steam_import_tooltip.text }}">{% include "app/icons/info.svg" with classes="w-4 h-4" %}</button></span>
+              </span>
             </div>
             <button type="submit"
                     class="px-3 py-2 rounded-r-md transition-colors text-sm border cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"

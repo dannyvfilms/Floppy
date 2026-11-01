@@ -67,7 +67,7 @@ can inform a focused completion pass.
 
 - Purpose/usage: provider Connection instance/personal credentials and Import preferences/options.
 - Implementation: `frontend/settings/SettingsCard.jsx`, shared `Chip.jsx`, `mount.jsx`, `index.js`, `settings-card.css`; `src/users/templatetags/ui_tags.py` and `src/templates/users/components/settings_card.html`. See [usage and ownership](settings-cards.md).
-- Contract: one title/badge/help/frame pattern with editable/read-only/neutral tones. `Chip` shares passive/action/link styling across status badges, media pills and the provider-key link, with consistent hover/focus highlights and no text underline. AniList supplies React-owned children; retained partial consumers keep their server body outside the header root. Existing backend permissions and CSRF remain authoritative.
+- Contract: one title/badge/help/frame pattern with editable/read-only/neutral and public API tones. `Chip` shares passive/action/link styling across status badges, media pills and the provider-key link, with consistent hover/focus highlights and no text underline. AniList supplies React-owned children; retained partial consumers keep their server body outside the header root. Existing backend permissions and CSRF remain authoritative.
 - Data: presentation-only `json_script`; no credentials, server body HTML or transport in the shared React API. Shared source uses React Native primitives; the web adapter supplies DOM events and browser theme values.
 - Status: `Web Migrated` shared card presentation. AniList uses full React composition; other providers retain Django body slots and setup/restore dialogs until their controls are ported. This does not migrate `FORM-CONTROLS` as a whole.
 - Verification: production assets build and collect through Django; targeted Django/theme tests passed. Chromium 151/macOS browser checks cover initial/HTMX/back-forward lifecycle, focus, real CSRF submissions, fallback, responsive widths and six theme states. iOS/Android not tested; no native compatibility claim.
@@ -506,15 +506,15 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: import context/settings in `src/users/views.py`, `src/integrations/views.py`, account/task records.
 - Reuse/blockers: field/status/schedule primitives; keep distinct provider flows/server-required jobs.
 - Validation targets: `src/users/tests/views/test_import_data.py`, `src/integrations/tests/test_plex_import_views.py`.
-- Status: `Web Migrated` for AniList preferences, serialized auto-save, public username import and credential-gated private OAuth form. Uses app-wide fields/selects/buttons/card grid and a reusable Public/Private `ToggleChip`; provider code retains authentication semantics. Other providers retain Django body controls within the shared `SETTINGS-CARD` shell; data management retains its restore dialog.
+- Status: `Web Migrated` for AniList preferences, serialized auto-save, public username import and credential-gated private OAuth form. Uses app-wide fields/selects/buttons/card grid and a reusable Public/Private `ToggleChip`; provider code retains authentication semantics. Other providers share the React import-preferences island while their provider-specific forms remain Django-owned; data management retains its restore dialog. Activity lists use bounded scrolling and provider pins are persisted per user. Native verification remains pending.
 - Verification: targeted provider catalog and import tests cover scheduling, credentials, uploads and scoped activity; Chromium on macOS checked AniList, Pocket Casts and Playnite at desktop and phone widths in dark mode. Native not tested.
 - Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: native upload, scheduling and server-job adapters await the foundation proof and separately authorized client work.
 
 ### SET-ACTIVITY — Import and operational activity
 
 - Purpose/usage: activity/run details/cancel/rollback/cleanup/outbound status.
-- Implementation: `src/templates/users/provider_activity.html`, import loader/activity/cleanup and integration/outbound activity components.
-- Contract: five-second polling pauses swaps while `[data-keep-open=true]` details are expanded; preserve pending/running/result/error, copying and action permissions.
+- Implementation: `frontend/providers/Activity.jsx` and shared settings cards, alongside `src/templates/users/provider_activity.html`, import loader/activity/cleanup and integration/outbound activity components. Provider activity uses React card headers with Django-owned body slots until those controls are migrated.
+- Contract: five-second polling pauses swaps while `[data-keep-open=true]` details are expanded and preserves bounded list scroll positions; preserve pending/running/result/error, copying and action permissions. Task history and import runs are separate records; runs expose counts and undo where supported.
 - Data: provider activity handler, ImportRun/tasks and cancel/rollback/cleanup handlers.
 - Reuse/blockers: status/activity presentation shared; transport/job control adapters must not erase user work on refresh.
 - Validation targets: `src/users/tests/views/test_cancel_import_run.py`, `test_cancel_pending_import.py`, `test_rollback_import_run.py`.

@@ -81,6 +81,7 @@ PY
 - `src/static/ui/*.js`
 - `src/static/ui/*.css`
 - `src/templates/users/components/settings_card.html`
+- `src/templates/users/components/settings_link_chip.html`
 
 The generated UI subtree belongs to this island runtime; globs cover content-hashed
 chunks without renaming ownership records on every build. License notices are
@@ -542,6 +543,7 @@ build artifacts. The Python composition tag is documented in the register.
 - `frontend/providers/Connection.jsx`
 - `frontend/providers/Directory.jsx`
 - `frontend/providers/Import.jsx`
+- `frontend/providers/ImportPreferences.jsx`
 - `frontend/providers/Metadata.jsx`
 - `frontend/providers/ProviderPage.jsx`
 - `frontend/providers/mount.jsx`

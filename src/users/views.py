@@ -49,6 +49,7 @@ from app.models import (
     Music,
     MusicReleasePreference,
     Status,
+    Tag,
 )
 from app.providers import credentials, tmdb
 from app.templatetags import app_tags
@@ -2191,6 +2192,10 @@ def import_data_context(request):
         "plex_account": plex_account,
         "plex_sections": plex_sections,
         "plex_sections_json": json.dumps(plex_sections),
+        "steam_import_tooltip": {
+            "label": gettext("Steam ID help"),
+            "text": gettext("Find your Steam ID on your account details page. Your profile must be public if the API key is not linked to that Steam ID."),
+        },
         "audiobookshelf_account": audiobookshelf_account,
         "komga_account": komga_account,
         "kavita_account": kavita_account,
@@ -2255,6 +2260,12 @@ def save_import_settings(request):
     frequency = request.POST.get("import_frequency", "")
     time_val = request.POST.get("import_time", "")
     mode = request.POST.get("import_mode", "")
+    watchlist_status = request.POST.get("watchlist_status")
+    watchlist_tag = request.POST.get("watchlist_tag")
+    if watchlist_status is not None and watchlist_status not in Status.values:
+        return HttpResponse(status=400)
+    if watchlist_tag and (not watchlist_tag.isdecimal() or not Tag.objects.filter(user=request.user, pk=watchlist_tag).exists()):
+        return HttpResponse(status=400)
 
     fields = []
     if frequency in ImportFrequencyChoices.values:
@@ -2266,6 +2277,12 @@ def save_import_settings(request):
     if mode in ImportModeChoices.values:
         request.user.import_mode = mode
         fields.append("import_mode")
+    if watchlist_status is not None:
+        request.user.watchlist_import_status = watchlist_status
+        fields.append("watchlist_import_status")
+    if watchlist_tag is not None:
+        request.user.watchlist_import_tag_id = int(watchlist_tag) if watchlist_tag else None
+        fields.append("watchlist_import_tag")
 
     if fields:
         request.user.save(update_fields=fields)

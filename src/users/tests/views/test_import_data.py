@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from django_celery_results.models import TaskResult
 
+from app.models import Status, Tag
 from integrations.models import LastFMAccount, LastFMHistoryImportStatus, PlexAccount
 from integrations.plex import PlexAuthError
 
@@ -20,6 +21,24 @@ class ImportDataViewTests(TestCase):
         self.plex_token = get_random_string(16)
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
+
+    def test_watchlist_preferences_validate_ownership_and_clear(self):
+        tag = Tag.objects.create(user=self.user, name="Watch later")
+        other = get_user_model().objects.create_user(username="other")
+        foreign_tag = Tag.objects.create(user=other, name="Private")
+        url = reverse("save_import_settings")
+        response = self.client.post(url, {"watchlist_status": Status.COMPLETED.value, "watchlist_tag": tag.pk})
+        self.assertEqual(response.status_code, 204)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.watchlist_import_status, Status.COMPLETED.value)
+        self.assertEqual(self.user.watchlist_import_tag_id, tag.pk)
+        self.assertEqual(self.client.post(url, {"watchlist_status": "invalid"}).status_code, 400)
+        self.assertEqual(self.client.post(url, {"watchlist_tag": foreign_tag.pk}).status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.watchlist_import_tag_id, tag.pk)
+        self.assertEqual(self.client.post(url, {"watchlist_tag": ""}).status_code, 204)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.watchlist_import_tag_id)
 
     def test_import_data_ignores_structured_recurring_wrapper_results(self):
         """Recurring wrapper payloads should not break the import page."""

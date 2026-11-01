@@ -1300,6 +1300,8 @@ class User(AbstractUser):
         default=ImportModeChoices.NEW,
         choices=ImportModeChoices.choices,
     )
+    watchlist_import_status = models.CharField(max_length=20, choices=Status.choices, default=Status.PLANNING)
+    watchlist_import_tag = models.ForeignKey("app.Tag", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
 
     onboarding_status = models.CharField(
         max_length=20,
@@ -1456,6 +1458,11 @@ class User(AbstractUser):
         default=list,
         blank=True,
         help_text="Watch-provider names pinned/favorited by the user, promoted out of 'More'",
+    )
+    pinned_settings_providers = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Provider settings pinned by the user",
     )
     book_comic_manga_progress_percentage = models.BooleanField(
         default=False,

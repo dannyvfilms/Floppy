@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 
-from app.models import TV, Item, MediaTypes, Movie, Sources, Status
+from app.models import TV, Item, ItemTag, MediaTypes, Movie, Sources, Status, Tag
 from integrations import plex as plex_api
 from integrations.models import PlexAccount, PlexWatchlistSyncItem
 from integrations.plex_watchlist import (
@@ -158,6 +158,26 @@ class PlexWatchlistSyncServiceTests(TestCase):
             "image": "https://example.com/show.jpg",
             "max_progress": 1,
         }
+
+    @patch("integrations.plex_watchlist.services.get_media_metadata")
+    @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")
+    def test_watchlist_uses_selected_status_and_tag(self, mock_fetch, mock_metadata):
+        tag = Tag.objects.create(user=self.user, name="Watch later")
+        self.user.watchlist_import_status = Status.COMPLETED.value
+        self.user.watchlist_import_tag = tag
+        self.user.save(update_fields=["watchlist_import_status", "watchlist_import_tag"])
+        mock_fetch.return_value = ([self._movie_entry()], 1)
+        mock_metadata.side_effect = self._metadata_side_effect
+        PlexWatchlistSyncService(self.user, self.account).sync()
+        movie = Movie.objects.get(user=self.user)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+        self.assertTrue(ItemTag.objects.filter(tag=tag, item=movie.item).exists())
+        movie.status = Status.PLANNING.value
+        movie.save(update_fields=["status"])
+        PlexWatchlistSyncService(self.user, self.account).sync()
+        movie.refresh_from_db()
+        self.assertEqual(movie.status, Status.PLANNING.value)
+        self.assertEqual(ItemTag.objects.filter(tag=tag, item=movie.item).count(), 1)
 
     @patch("integrations.plex_watchlist.services.get_media_metadata")
     @patch("integrations.plex_watchlist.plex_api.fetch_watchlist")

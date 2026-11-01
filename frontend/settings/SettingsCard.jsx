@@ -27,6 +27,6 @@ export function SettingsCard({ title, badge, info_label, info_title, onInfo, pal
 const styles = StyleSheet.create({
   content: { gap: 12, minWidth: 0 },
   card: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12 },
-  heading: { flexDirection: 'row', flexWrap: 'wrap', minWidth: 0, alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  title: { fontSize: 16, fontWeight: '500', lineHeight: 24, flexShrink: 1, minWidth: 0 },
+  heading: { flexDirection: 'row', flexWrap: 'nowrap', minWidth: 0, alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  title: { fontSize: 16, fontWeight: '500', lineHeight: 24, flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 },
 });

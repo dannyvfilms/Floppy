@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Chip as NativeChip } from '../settings/Chip';
 import { SettingsCard } from '../settings/SettingsCard';
 import { webPalette } from '../settings/webPalette';
@@ -19,6 +20,40 @@ export function Card({ title, tone = 'neutral', badge, infoLabel, onInfo, href, 
     <SettingsCard title={title} badge={badge} info_label={infoLabel} onInfo={onInfo}
       headerAction={headerAction} palette={webPalette} framed={false}>{children}</SettingsCard>
   </Container>;
+}
+
+export function Tooltip({ label, text }) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ left: 8, top: 8 });
+  const button = useRef(null), popup = useRef(null);
+  const tooltipId = React.useId();
+  useLayoutEffect(() => {
+    if (!open) return;
+    function place() {
+      const anchor = button.current?.getBoundingClientRect(), box = popup.current?.getBoundingClientRect();
+      if (!anchor || !box) return;
+      const left = Math.max(8, Math.min(window.innerWidth - box.width - 8, anchor.left + anchor.width / 2 - box.width / 2));
+      const preferred = anchor.top - box.height - 8;
+      const top = Math.max(8, Math.min(window.innerHeight - box.height - 8, preferred < 8 ? anchor.bottom + 8 : preferred));
+      setPosition({ left, top });
+    }
+    place(); window.addEventListener('resize', place); window.addEventListener('scroll', place, true);
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
+  }, [open]);
+  return <span className="ui-tooltip-trigger">
+    <button type="button" ref={button} aria-label={label} aria-describedby={open ? tooltipId : undefined}
+      onMouseEnter={() => setOpen(true)} onMouseLeave={() => { if (document.activeElement !== button.current) setOpen(false); }}
+      onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} onClick={() => setOpen(true)}
+      onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); } }}>
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8h.01" /></svg>
+    </button>
+    {open && createPortal(<span role="tooltip" id={tooltipId} ref={popup} className="ui-tooltip-popup"
+      style={{ left: position.left, top: position.top }}>{text}</span>, document.body)}
+  </span>;
+}
+
+export function ActivityList({ children }) {
+  return <div className="ui-activity-list" tabIndex={0}>{children}</div>;
 }
 
 export function CardGrid({ children, auto = false, alignStart = false, className = '' }) {
@@ -165,11 +200,16 @@ export function FeatureList({ items }) {
   </li>)}</ul>;
 }
 
-export function CatalogCard({ title, description, logo, href, label, attention, status }) {
-  return <a className="ui-catalog-card" href={href} aria-label={label || title}>
+export function CatalogCard({ title, description, logo, href, label, attention, status, pinned, pinLabel, onPin, pinDisabled }) {
+  return <div className="ui-catalog-item"><a className="ui-catalog-card" href={href} aria-label={label || title}>
     <div className="ui-catalog-card-heading"><div>{logo && <img src={logo} alt="" />}<h3>{title}</h3></div>
       {status ? <StatusIcon {...status} /> : attention && <span className="ui-catalog-attention" role="img" aria-label={attention} title={attention}>⚠</span>}
     </div>
     <p>{description}</p>
-  </a>;
+  </a>{onPin && <button className="ui-catalog-pin" type="button" aria-label={pinLabel} aria-pressed={pinned}
+    disabled={pinDisabled} onClick={onPin} title={pinLabel}>
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill={pinned ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m12 3 2.8 5.7L21 9.6l-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3z" />
+    </svg>
+  </button>}</div>;
 }
