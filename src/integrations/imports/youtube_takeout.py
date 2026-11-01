@@ -100,6 +100,30 @@ def clean_title(title):
     return text.removeprefix(WATCHED_PREFIX).strip()[:MAX_TITLE_LENGTH]
 
 
+AD_DETAIL = "From Google Ads"
+
+
+def _is_ad(details):
+    """Whether Takeout's ``details`` say the entry is "From Google Ads"."""
+    if isinstance(details, str):
+        details = [details]
+    for detail in details if isinstance(details, list) else []:
+        name = detail.get("name") if isinstance(detail, dict) else detail
+        if AD_DETAIL in " ".join(str(name or "").split()):
+            return True
+    return False
+
+
+def _html_details(card):
+    """Return the ``Details:`` value in this card's caption, or ``[]`` when absent."""
+    caption = card.select_one(".content-cell.mdl-typography--caption")
+    if not caption:
+        return []
+    text = " ".join(caption.get_text(" ").split())
+    match = re.search(r"Details:(.*?)(?:Why is this here\?|$)", text)
+    return [match.group(1).strip()] if match and match.group(1).strip() else []
+
+
 def entry_from_record(record):
     """Turn one Takeout record into a watch, or ``None`` when it is not one.
 
@@ -108,8 +132,7 @@ def entry_from_record(record):
     """
     if not isinstance(record, dict) or record.get("header") != YOUTUBE_HEADER:
         return None
-    if record.get("details"):
-        # `details` marks entries such as "From Google Ads".
+    if _is_ad(record.get("details")):
         return None
     video_id = video_id_from_url(record.get("titleUrl"))
     when = parse_time(record.get("time"))
@@ -183,9 +206,7 @@ def _records_from_html(content):
                 if len(links) > 1
                 else [],
                 "time": when,
-                "details": ["From Google Ads"]
-                if "From Google Ads" in cell.get_text()
-                else [],
+                "details": _html_details(card),
             }
         )
     return records
