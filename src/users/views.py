@@ -2302,15 +2302,26 @@ def import_data_activity(request):
     sources = activity_sources(source) if source else None
     import_tasks = user.get_import_tasks()
     runs = ImportRun.objects.filter(user=user)
-    source_media = _import_source_media_summary(user)
     if sources:
         import_tasks = {
             key: [entry for entry in entries if entry["source"] in sources]
             for key, entries in import_tasks.items()
         }
         runs = runs.filter(source__in=sources)
-        source_media = [entry for entry in source_media if entry["source"] in sources]
     import_runs = list(runs.order_by("-started_at")[:10])
+    is_active = any(
+        result["status"] in {states.PENDING, states.STARTED}
+        for result in import_tasks["results"]
+    ) or any(run.status == "running" for run in import_runs)
+    # The per-media-type counts scan the tables an active import is writing to,
+    # so while one runs the poll reuses the last summary instead of recounting.
+    cache_key = f"import_source_media:{user.pk}"
+    source_media = cache.get(cache_key) if is_active else None
+    if source_media is None:
+        source_media = _import_source_media_summary(user)
+        cache.set(cache_key, source_media, timeout=3600)
+    if sources:
+        source_media = [entry for entry in source_media if entry["source"] in sources]
     context = {
         "user": user,
         "import_tasks": import_tasks,
@@ -2319,10 +2330,6 @@ def import_data_activity(request):
         "provider_navigation": bool(sources),
     }
     response = render(request, "users/components/import_activity.html", context)
-    is_active = any(
-        result["status"] in {states.PENDING, states.STARTED}
-        for result in import_tasks["results"]
-    ) or any(run.status == "running" for run in import_runs)
     if not is_active:
         # htmx stops polling on 286 (still swaps); starting an import reloads the page.
         response.status_code = 286

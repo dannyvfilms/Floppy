@@ -2,7 +2,7 @@
     <div id="import-activity-panel"
          class="space-y-6"
          hx-get="{% url 'import_data_activity' %}{% if activity_source %}?source={{ activity_source|urlencode }}{% endif %}"
-         hx-trigger="load, every 5s [!document.querySelector('#import-activity-panel [data-keep-open=true]')]"
+         hx-trigger="load, every 3s [!document.querySelector('#import-activity-panel [data-keep-open=true]')]"
          hx-sync="this:replace"
          hx-on::before-swap="if (document.querySelector('#import-activity-panel [data-keep-open=true]')) { event.detail.shouldSwap = false; } else { this.activityScroll = Array.from(this.querySelectorAll('.ui-activity-list'), list => list.scrollTop); }"
          hx-on::after-swap="this.querySelectorAll('.ui-activity-list').forEach((list, index) => { list.scrollTop = this.activityScroll?.[index] || 0; });"

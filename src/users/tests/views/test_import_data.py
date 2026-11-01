@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -21,6 +22,7 @@ class ImportDataViewTests(TestCase):
         self.plex_token = get_random_string(16)
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
+        cache.delete(f"import_source_media:{self.user.pk}")
 
     def test_watchlist_preferences_validate_ownership_and_clear(self):
         tag = Tag.objects.create(user=self.user, name="Watch later")
@@ -113,6 +115,26 @@ class ImportDataViewTests(TestCase):
             HTTP_HX_REQUEST="true",
         )
         self.assertContains(response, ':data-keep-open="showDetails"', status_code=286)
+
+    @patch("users.views._import_source_media_summary", return_value=[])
+    def test_import_data_activity_reuses_media_summary_while_active(self, summary):
+        """Polls during a live import must not recount every media table."""
+        TaskResult.objects.create(
+            task_id="task-live",
+            task_name="Import from Trakt",
+            task_kwargs=(f'{{"user_id": {self.user.id}}}'),
+            status="STARTED",
+        )
+        url = reverse("import_data_activity")
+        with patch("users.models.AsyncResult") as async_result:
+            async_result.return_value.status = "STARTED"
+            for _ in range(3):
+                self.client.get(url, HTTP_HX_REQUEST="true")
+        self.assertEqual(summary.call_count, 1)
+
+        TaskResult.objects.filter(task_id="task-live").update(status="SUCCESS")
+        self.client.get(url, HTTP_HX_REQUEST="true")
+        self.assertEqual(summary.call_count, 2)
 
     def test_import_data_activity_keeps_polling_while_import_active(self):
         """A pending/started task or running ImportRun keeps the poll alive."""
@@ -250,6 +272,7 @@ class ImportDataViewTests(TestCase):
             import_run=extra_run,
         )
 
+        cache.delete(f"import_source_media:{self.user.pk}")
         with CaptureQueriesContext(connection) as more_sources:
             self.client.get(reverse("import_data_activity"), HTTP_HX_REQUEST="true")
 

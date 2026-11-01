@@ -171,6 +171,9 @@ def import_media(
             helpers.record_bulk_rows() as bulk_rows,
             importing_watch_state(),
         ):
+            # Every import shows a stage from its first second, even before
+            # (or without) the importer's own per-item reports.
+            import_progress.report(0, None, "Starting import")
             if oauth_username is None:
                 imported_counts, warnings = importer_func(
                     identifier,
