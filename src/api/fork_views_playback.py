@@ -9,7 +9,6 @@ import logging
 from datetime import UTC, datetime
 from http import HTTPStatus as HTTP  # noqa: N814
 
-from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
@@ -27,10 +26,7 @@ from app.models import (
     Status,
 )
 from app.models.episode_runtimes import usable_runtime_minutes
-from app.services.progress_changes import (
-    record_progress_change,
-    record_progress_deletion,
-)
+from app.services.sync_lock import state_transaction
 from app.services.tracking_hydration import ensure_item_metadata
 from app.templatetags.app_tags import media_url
 from integrations.delivery import get_or_record_receipt
@@ -193,7 +189,7 @@ def upsert_playback_progress(
     the newer row, so the stale write is dropped.
     """
     position = 0 if position_seconds is None else position_seconds
-    with transaction.atomic():
+    with state_transaction(user.pk):
         progress, created = PlaybackProgress.objects.select_for_update().get_or_create(
             user=user,
             item=item,
@@ -204,13 +200,6 @@ def upsert_playback_progress(
             },
         )
         if created:
-            record_progress_change(
-                user,
-                item,
-                position_seconds=progress.position_seconds,
-                duration_seconds=progress.duration_seconds,
-                completed=progress.completed,
-            )
             return progress
 
         if event_at is not None and progress.updated_at > datetime.fromtimestamp(
@@ -243,17 +232,10 @@ def upsert_playback_progress(
 
         if update_fields:
             progress.save(update_fields=[*update_fields, "updated_at"])
-            record_progress_change(
-                user,
-                item,
-                position_seconds=progress.position_seconds,
-                duration_seconds=progress.duration_seconds,
-                completed=progress.completed,
-            )
     return progress
 
 
-def show_item_map(items):
+def show_item_map(items, *, minimal=False):
     """Return {(source, media_id): Item} of the shows backing episode items."""
     episode_media_ids = {
         (item.source, item.media_id)
@@ -267,6 +249,8 @@ def show_item_map(items):
         media_type__in=(MediaTypes.TV.value, MediaTypes.ANIME.value),
         media_id__in=[media_id for _, media_id in episode_media_ids],
     ).order_by("id")
+    if minimal:
+        shows = shows.only("source", "media_id", "provider_external_ids")
     return {(show.source, show.media_id): show for show in shows}
 
 
@@ -797,15 +781,11 @@ class PlaybackProgressView(drf_views.APIView):
                 status=HTTP.NOT_FOUND,
             )
 
-        with transaction.atomic():
-            removed, _detail = PlaybackProgress.objects.filter(
+        with state_transaction(request.user.pk):
+            PlaybackProgress.objects.filter(
                 user=request.user,
                 item=item,
             ).delete()
-            if removed:
-                # Explicit tombstone: a cleared row is simply absent from a
-                # timestamp query, and absence is never a delete.
-                record_progress_deletion(request.user, item)
         return Response(status=HTTP.NO_CONTENT)
 
 

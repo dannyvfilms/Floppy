@@ -63,7 +63,7 @@ class EpisodeFeedTests(TestCase):
         return (label, int(link.group(1)), int(link.group(2)))
 
     def _chips(self, response):
-        soup = BeautifulSoup(response.content, "html.parser")
+        soup = BeautifulSoup(response.content.decode(response.charset), "html.parser")
         return [
             self._queue(card)
             for card in soup.select(f"#media-grid-row-{self.row.pk} .home-row-card")
@@ -92,6 +92,27 @@ class EpisodeFeedTests(TestCase):
                 {"items": [], "total": 0},
             )
         return response.context["media_list"]
+
+    def _hydrated_home(self):
+        """Follow Home's deferred row requests as the browser does."""
+        response = self.client.get(reverse("home"))
+        if response.context is None:
+            return response
+        soup = BeautifulSoup(response.content.decode(response.charset), "html.parser")
+        for group in response.context.get("deferred_groups", []):
+            rows = []
+            for row_id in group["row_ids"]:
+                url = reverse("home_row_fragment", args=[row_id])
+                fragment = self.client.get(url)
+                slot = soup.find(attrs={"data-home-row-slot": True, "hx-get": url})
+                slot.replace_with(BeautifulSoup(fragment.content.decode(fragment.charset), "html.parser"))
+                row = (fragment.context or {}).get("row")
+                if row is not None:
+                    rows.append(row)
+            if rows:
+                response.context["home_groups"].append({**group, "rows": rows})
+        response.content = str(soup)
+        return response
 
     def _show(
         self,
@@ -176,7 +197,7 @@ class EpisodeFeedTests(TestCase):
                 self.assertEqual(self.row.sort_by, "episode_feed")
                 self.assertEqual(self.row.direction, "asc")
                 settings = self.client.get(reverse("home_screen"))
-                response = self.client.get(reverse("home"))
+                response = self._hydrated_home()
                 soup = BeautifulSoup(response.content, "html.parser")
                 self.assertIsNotNone(
                     soup.select_one(
@@ -201,7 +222,7 @@ class EpisodeFeedTests(TestCase):
         }
         self.user.quick_season_update_mobile = "next_episode"
         self.user.save(update_fields=["card_metadata", "quick_season_update_mobile"])
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         soup = BeautifulSoup(response.content, "html.parser")
         queue = soup.select_one(f"#media-grid-row-{self.row.pk}")
         cards = queue.select(".home-row-card")
@@ -311,7 +332,7 @@ class EpisodeFeedTests(TestCase):
             with self.subTest(language=language):
                 self.user.ui_language = language
                 self.user.save(update_fields=["ui_language"])
-                response = self.client.get(reverse("home"))
+                response = self._hydrated_home()
                 self.assertContains(response, title)
                 self.assertContains(response, behind)
                 self.assertContains(response, day)
@@ -335,7 +356,7 @@ class EpisodeFeedTests(TestCase):
             release_datetime=today,
         )
         Event.objects.create(item=season.item, content_number=4, datetime=today)
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         self.assertEqual(self._chips(response), [("Today", 1, 4)])
 
     def test_feed_uses_released_next_targets_and_backlog_order(self):
@@ -411,7 +432,7 @@ class EpisodeFeedTests(TestCase):
     def test_watching_an_episode_invalidates_cached_feed_order(self):
         self._show("A two left", watched=1)
         tv, _ = self._show("Z two left", watched=1)
-        self.assertContains(self.client.get(reverse("home")), "A two left")
+        self.assertContains(self._hydrated_home(), "A two left")
         with self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(
                 reverse("episode_save"),
@@ -425,7 +446,7 @@ class EpisodeFeedTests(TestCase):
                 },
             )
         self.assertEqual(response.status_code, 302)
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         cards = BeautifulSoup(response.content, "html.parser").select(
             f"#media-grid-row-{self.row.pk} .home-row-card"
         )
@@ -453,7 +474,7 @@ class EpisodeFeedTests(TestCase):
                 content_number=4,
                 datetime=timezone.now() + timedelta(days=7),
             )
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         self.assertEqual(self._response_row(response)["total"], 0)
         self.assertEqual(self._response_row(response)["items"], [])
         self.assertNotContains(response, f'id="episode-feed-{self.row.pk}"')
@@ -461,7 +482,7 @@ class EpisodeFeedTests(TestCase):
     def test_ended_show_disappears_immediately_after_last_episode_is_watched(self):
         tv, _ = self._show("Ended backlog", watched=2)
         Item.objects.filter(pk=tv.item_id).update(status="Ended")
-        self.assertContains(self.client.get(reverse("home")), "Ended backlog")
+        self.assertContains(self._hydrated_home(), "Ended backlog")
         with self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(
                 reverse("episode_save"),
@@ -477,7 +498,7 @@ class EpisodeFeedTests(TestCase):
                 HTTP_HX_REQUEST="true",
             )
         self.assertEqual(response.status_code, 200)
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         self.assertNotContains(response, f'id="media-grid-row-{self.row.pk}"')
         self.assertEqual(self._response_row(response)["total"], 0)
 
@@ -485,7 +506,7 @@ class EpisodeFeedTests(TestCase):
         self._show("My queued show")
         other = get_user_model().objects.create_user(username="other-feed")
         self._show("Other private show", user=other)
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         self.assertContains(response, "My queued show")
         self.assertNotContains(response, "Other private show")
         self.assertEqual(self._chips(response), [("3 Behind", 1, 1)])
@@ -496,7 +517,7 @@ class EpisodeFeedTests(TestCase):
             HomeScreenRow.objects.filter(user=self.user, row_type="up_next").exists()
         )
         self.client.logout()
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         self.assertEqual(response.status_code, 302)
         self.assertIn("next=", response.url)
 
@@ -516,7 +537,7 @@ class EpisodeFeedTests(TestCase):
             content_number=4,
             datetime=timezone.now() + timedelta(days=30),
         )
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         card = BeautifulSoup(response.content, "html.parser").select_one(
             ".home-row-card"
         )
@@ -556,7 +577,7 @@ class EpisodeFeedTests(TestCase):
                 if not calendar_synced:
                     Event.objects.filter(item=season_item).delete()
                     cache.clear()
-                response = self.client.get(reverse("home"))
+                response = self._hydrated_home()
                 cards = BeautifulSoup(response.content, "html.parser").select(
                     f"#media-grid-row-{self.row.pk} .home-row-card"
                 )
@@ -579,7 +600,7 @@ class EpisodeFeedTests(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             response = self.client.post(reverse("episode_save"), payload)
         self.assertEqual(response.status_code, 302)
-        chips = self._chips(self.client.get(reverse("home")))
+        chips = self._chips(self._hydrated_home())
         self.assertIn((2, 2), [chip[1:] for chip in chips])
         self.assertTrue(
             Season.objects.filter(related_tv=tv, item__season_number=2).exists()
@@ -595,12 +616,12 @@ class EpisodeFeedTests(TestCase):
             "end_date": timezone.localtime().strftime("%Y-%m-%dT%H:%M:%S"),
             "watch_operation_id": uuid4(),
         }
-        self.client.get(reverse("home"))
+        self._hydrated_home()
         with self.captureOnCommitCallbacks(execute=True):
             self.assertEqual(
                 self.client.post(reverse("episode_save"), payload).status_code, 302
             )
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         self.assertEqual(self._chips(response), [("1 Behind", 1, 3)])
         with self.captureOnCommitCallbacks(execute=True):
             self.client.post(reverse("episode_save"), payload)
@@ -614,7 +635,7 @@ class EpisodeFeedTests(TestCase):
         payload["watch_operation_id"] = uuid4()
         with self.captureOnCommitCallbacks(execute=True):
             self.client.post(reverse("episode_save"), payload)
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         self.assertContains(response, "Upcoming")
         self.assertContains(response, tv.item.title)
         self.assertEqual(Episode.objects.filter(related_season=season).count(), 3)
@@ -633,7 +654,7 @@ class EpisodeFeedTests(TestCase):
             content_number=1,
             datetime=timezone.now() + timedelta(days=7),
         )
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         card = BeautifulSoup(response.content, "html.parser").select_one(
             f"#media-grid-row-{self.row.pk} .home-row-card"
         )
@@ -660,7 +681,7 @@ class EpisodeFeedTests(TestCase):
         tv, _ = self._show("Unknown dates", watched=0)
         Event.objects.filter(item__media_id=tv.item.media_id).delete()
         Item.objects.filter(media_id=tv.item.media_id).update(release_datetime=None)
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         self.assertContains(response, "Upcoming")
         self.assertNotContains(response, "Mark watched")
         self.assertFalse(
@@ -688,7 +709,7 @@ class EpisodeFeedTests(TestCase):
             episode_number=4,
             release_datetime=timezone.now() + timedelta(days=2),
         )
-        response = self.client.get(reverse("home"))
+        response = self._hydrated_home()
         target = self._response_row(response)["items"][0].next_episode
         self.assertEqual(target["days_until"], 2)
         self.assertEqual(target["title"], "Coming next")
@@ -704,14 +725,14 @@ class EpisodeFeedTests(TestCase):
             datetime=now + timedelta(hours=2),
         )
         with patch("users.home_screen.timezone.now", return_value=now):
-            response = self.client.get(reverse("home"))
+            response = self._hydrated_home()
         self.assertContains(response, "Today")
         self.assertNotContains(response, "Mark watched")
 
     def test_home_row_load_more_has_no_duplicates(self):
         for index in range(31):
             self._show(f"Queue {index:02}", days_ago=40 - index)
-        first = self.client.get(reverse("home"))
+        first = self._hydrated_home()
         second = self.client.get(
             reverse("home"),
             {"load_row": self.row.pk, "offset": 14},

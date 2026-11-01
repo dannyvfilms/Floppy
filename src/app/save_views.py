@@ -1064,6 +1064,17 @@ def _write_episode_save_oob(
         )
     response.write(
         render_to_string(
+            "app/components/detail_episode_collection_button.html",
+            {
+                "episode": episode,
+                "collection_button_oob": True,
+                "detail_return_url": parsed_next,
+            },
+            request=request,
+        ),
+    )
+    response.write(
+        render_to_string(
             "app/components/detail_episode_history_line.html",
             {
                 "episode": episode,
@@ -1412,6 +1423,17 @@ def episode_history_poll(request, season_id):
                     request=request,
                 ),
             )
+        response.write(
+            render_to_string(
+                "app/components/detail_episode_collection_button.html",
+                {
+                    "episode": episode,
+                    "collection_button_oob": True,
+                    "detail_return_url": request.GET.get("return_url", ""),
+                },
+                request=request,
+            ),
+        )
         response.write(
             render_to_string(
                 "app/components/detail_episode_history_line.html",

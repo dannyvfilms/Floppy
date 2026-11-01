@@ -68,66 +68,24 @@ def fence_overwrite_tracking_writes(sender, instance, **kwargs):
     """Cooperate with a durable replacement before mutating its original scope."""
     from integrations.import_scope import TRACKING_MODELS, guard_instances
 
-    if (not kwargs.get("raw") and instance._meta.apps is apps
-            and instance._meta.app_label == "app" and instance._meta.model_name in TRACKING_MODELS):
+    if (
+        not kwargs.get("raw")
+        and instance._meta.apps is apps
+        and instance._meta.app_label == "app"
+        and instance._meta.model_name in TRACKING_MODELS
+    ):
         guard_instances([instance])
+
 
 RUNTIME_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl")
 GENRE_BACKFILL_SOURCES = ("tmdb", "tvdb", "mal", "simkl", "igdb", "bgg")
+# Non-import tasks with user-facing results. Import tasks are tracked by their
+# Celery name so a new importer does not need a second registration here.
 TRACKED_TASK_NAMES = frozenset(
     {
-        "Import from Trakt",
-        "Import Trakt data export",
-        "Import Trakt collection CSV",
-        "Import from SIMKL",
-        "Import from MyAnimeList",
-        "Import from AniList",
-        "Import from Kitsu",
-        "Import from MangaBaka",
-        "Import from Yamtrack",
-        "Import from HowLongToBeat",
-        "Import from Grouvee",
-        "Import from Steam",
-        "Import from Xbox",
-        "Import from Xbox (Recurring)",
-        "Import from PSN",
-        "Import from PSN (Recurring)",
-        "Import from IMDB",
-        "Import from Goodreads",
-        "Import from GoodReads",
         "integrations.tasks.import_goodreads",
-        "Import from MDBList",
-        "Import MDBList Lists",
-        "Import from Plex",
         "Sync Plex Watchlist",
         "Sync Plex Watched Marks",
-        "Import from Radarr",
-        "Import from Radarr (Recurring)",
-        "Import from Sonarr",
-        "Import from Sonarr (Recurring)",
-        "Import from Mylar3",
-        "Import from Mylar3 (Recurring)",
-        "Import from Kapowarr",
-        "Import from Kapowarr (Recurring)",
-        "Import from Audiobookshelf",
-        "Import from Audiobookshelf (Recurring)",
-        "Import from Kavita",
-        "Import from Kavita (Recurring)",
-        "Import from Komga",
-        "Import from Komga (Recurring)",
-        "Import from Storyteller",
-        "Import from Storyteller (Recurring)",
-        "Import from Pocket Casts",
-        "Import from Pocket Casts (Recurring)",
-        "Import from GPodder",
-        "Import from GPodder (Recurring)",
-        "Import from Stremio",
-        "Import from Stremio (Recurring)",
-        "Import from Last.fm History",
-        "Import from Hardcover",
-        "Import from Hardcover Account",
-        "Import from StoryGraph",
-        "Import from Koito History",
         "Scheduled backup export",
         "Bulk Episode Plays",
         "Bulk Music Plays",
@@ -145,6 +103,10 @@ _SUPPRESS_MEDIA_CHANGE_SIDE_EFFECTS: ContextVar[bool] = ContextVar(
 )
 _IMPORTER_REPLACING_ROWS: ContextVar[bool] = ContextVar(
     "importer_replacing_rows",
+    default=False,
+)
+_ACCOUNT_BEING_DELETED: ContextVar[bool] = ContextVar(
+    "account_being_deleted",
     default=False,
 )
 
@@ -189,6 +151,24 @@ def importer_replacing_rows():
         _IMPORTER_REPLACING_ROWS.reset(token)
 
 
+@contextmanager
+def deleting_account():
+    """Mark deletes inside the block as a whole account being removed.
+
+    The cascade removes every tracked row with the user. A deletion tombstone
+    or statistics marker written for each one would point at the user
+    mid-delete and break the delete on its foreign key.
+    """
+    token = _ACCOUNT_BEING_DELETED.set(True)
+    try:
+        # Statistics, history and cache refresh signals would also write rows
+        # for the user that is being removed.
+        with suppress_media_cache_change_signals(), suppress_media_change_side_effects():
+            yield
+    finally:
+        _ACCOUNT_BEING_DELETED.reset(token)
+
+
 def media_change_side_effects_suppressed() -> bool:
     """Return whether media-row side effects are suppressed for the current context."""
     return bool(_SUPPRESS_MEDIA_CHANGE_SIDE_EFFECTS.get())
@@ -196,7 +176,10 @@ def media_change_side_effects_suppressed() -> bool:
 
 def _is_tracked_task(task_name):
     """Return whether a task needs durable status for a user-facing consumer."""
-    return task_name in TRACKED_TASK_NAMES
+    return bool(
+        task_name
+        and (task_name.startswith("Import ") or task_name in TRACKED_TASK_NAMES)
+    )
 
 
 def _sender_task_name(sender):
@@ -708,7 +691,11 @@ def clear_discover_feedback_on_media_save(sender, instance, **kwargs):
 @receiver(post_delete, sender=Podcast)
 def record_deleted_media_tombstone(sender, instance, **kwargs):
     """Remember that the user deleted this item so imports don't recreate it."""
-    if kwargs.get("raw") or _IMPORTER_REPLACING_ROWS.get():
+    if (
+        kwargs.get("raw")
+        or _IMPORTER_REPLACING_ROWS.get()
+        or _ACCOUNT_BEING_DELETED.get()
+    ):
         return
     user = getattr(instance, "user", None)
     item = getattr(instance, "item", None)
@@ -1009,10 +996,15 @@ def capture_statistics_previous_dates(sender, instance, **kwargs):
     if not instance.pk:
         instance._history_had_dates = False
         return
-    if media_cache_change_signals_suppressed() or media_change_side_effects_suppressed():
+    if (
+        media_cache_change_signals_suppressed()
+        or media_change_side_effects_suppressed()
+    ):
         return
     previous = (
-        sender.objects.filter(pk=instance.pk).values_list("start_date", "end_date").first()
+        sender.objects.filter(pk=instance.pk)
+        .values_list("start_date", "end_date")
+        .first()
     )
     instance._statistics_previous_dates = previous
     # History places podcasts and music by end date alone, so a start date
@@ -1644,8 +1636,9 @@ def schedule_runtime_backfill_on_item_save(
             from app.tasks import enqueue_episode_runtime_backfill
 
             transaction.on_commit(
-                lambda coordinate=(instance.media_id, instance.source, instance.season_number):
-                    enqueue_episode_runtime_backfill([coordinate]),
+                lambda coordinate=(instance.media_id, instance.source, instance.season_number): (
+                    enqueue_episode_runtime_backfill([coordinate])
+                ),
                 robust=True,
             )
 

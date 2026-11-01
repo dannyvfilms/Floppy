@@ -30,10 +30,10 @@
   {% if day.lazy %}
     <div class="h-40" aria-hidden="true"></div>
   {% else %}
-  {# Split entries by aspect ratio: 2:3 for video/games, 1:1 for music/podcasts #}
-  {% with square_types="music,podcast" %}
+  {# Group cards by aspect ratio without changing the day's entries. #}
+  {% with square_types="music,podcast" non_poster_types="music,podcast,video" %}
     {# Standard 2:3 aspect ratio entries (TV, Movies, Games, Anime, etc.) #}
-    {% with standard_entries=day.entries|exclude_media_types:square_types %}
+    {% with standard_entries=day.entries|exclude_media_types:non_poster_types %}
       {% if standard_entries %}
         <div class="media-grid">
           {% for entry in standard_entries %}
@@ -49,6 +49,15 @@
         <div class="media-grid mt-4">
           {% for entry in square_entries %}
             {% include "app/components/history_card.html" with entry=entry card_class="search-result-card-square" history_mode=history_mode user=user %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% with video_entries=day.entries|filter_media_types:"video" %}
+      {% if video_entries %}
+        <div class="media-grid media-grid-video mt-4">
+          {% for entry in video_entries %}
+            {% include "app/components/history_card.html" with entry=entry card_class="search-result-card video-card-landscape" history_mode=history_mode user=user %}
           {% endfor %}
         </div>
       {% endif %}

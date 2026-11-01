@@ -1,6 +1,6 @@
 """Importer for YouTube watch history from Google Takeout.
 
-Takeout writes ``watch-history.json`` (pick JSON, not HTML, when exporting).
+Takeout writes watch history in JSON or HTML format.
 Each entry is one view with a title, a watch URL, the channel and a UTC time.
 It carries no video length, so completion cannot be inferred: every video in
 the history counts as watched, which is what the history means.
@@ -67,7 +67,28 @@ def parse_time(value):
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError:
-        return None
+        date_text, separator, zone = text.rpartition(" ")
+        offsets = {
+            "UTC": "+0000",
+            "GMT": "+0000",
+            "EST": "-0500",
+            "EDT": "-0400",
+            "CST": "-0600",
+            "CDT": "-0500",
+            "MST": "-0700",
+            "MDT": "-0600",
+            "PST": "-0800",
+            "PDT": "-0700",
+        }
+        if not separator or zone not in offsets:
+            return None
+        try:
+            return datetime.strptime(
+                f"{date_text.replace(chr(0x202F), ' ')} {offsets[zone]}",
+                "%b %d, %Y, %I:%M:%S %p %z",
+            )
+        except ValueError:
+            return None
     if timezone.is_naive(parsed):
         parsed = timezone.make_aware(parsed, UTC)
     return parsed
@@ -103,47 +124,92 @@ def entry_from_record(record):
 
 
 def load_records(file):
-    """Read the history list from the uploaded JSON or Takeout zip."""
+    """Read the history list from uploaded JSON, HTML, or a Takeout zip."""
     try:
         magic = file.read(2)
         file.seek(0)
     except (AttributeError, OSError) as error:
-        msg = "Invalid file. Upload watch-history.json from Google Takeout."
+        msg = "Invalid file. Upload watch-history.json or watch-history.html from Google Takeout."
         raise MediaImportError(msg) from error
 
     # A zip is opened from the file itself, so a large export is not held in memory.
     raw = _history_from_zip(file) if magic == b"PK" else file.read()
     try:
-        records = json.loads(raw.decode("utf-8-sig"))
+        content = raw.decode("utf-8-sig")
+        if content.lstrip().lower().startswith(("<html", "<!doctype html")):
+            return _records_from_html(content)
+        records = json.loads(content)
     except (UnicodeDecodeError, ValueError) as error:
-        msg = (
-            "Couldn't read this file. In Google Takeout choose YouTube history "
-            "in JSON format and upload watch-history.json."
-        )
+        msg = "Couldn't read this file. Upload YouTube watch history in JSON or HTML format."
         raise MediaImportError(msg) from error
     if not isinstance(records, list):
-        msg = "This isn't a YouTube watch history. Upload watch-history.json."
+        msg = "This isn't a YouTube watch history. Upload watch-history.json or watch-history.html."
         raise MediaImportError(msg)
     return records
 
 
+def _records_from_html(content):
+    """Convert Google My Activity cards to the JSON record shape."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(content, "html.parser")
+    cards = soup.select(".outer-cell")
+    if not cards:
+        msg = "This isn't a YouTube watch history HTML file."
+        raise MediaImportError(msg)
+    records = []
+    for index, card in enumerate(cards, start=1):
+        if index % 5000 == 0:
+            logger.info("YouTube Takeout: reading HTML card %s of %s", index, len(cards))
+            import_progress.report(index, len(cards), "Reading YouTube history")
+        header = card.select_one(".header-cell")
+        cell = card.select_one(
+            ".content-cell.mdl-typography--body-1:not(.mdl-typography--text-right)"
+        )
+        if not header or not cell:
+            continue
+        links = cell.find_all("a")
+        lines = cell.get_text("|", strip=True).split("|")
+        when = next((line for line in reversed(lines) if parse_time(line)), "")
+        if links and video_id_from_url(links[0].get("href")) and not when:
+            msg = "Could not read a YouTube watch timestamp in the HTML file."
+            raise MediaImportError(msg)
+        records.append(
+            {
+                "header": header.get_text(strip=True),
+                "title": links[0].get_text(strip=True) if links else "",
+                "titleUrl": links[0].get("href") if links else "",
+                "subtitles": [{"name": links[1].get_text(strip=True)}]
+                if len(links) > 1
+                else [],
+                "time": when,
+                "details": ["From Google Ads"]
+                if "From Google Ads" in cell.get_text()
+                else [],
+            }
+        )
+    return records
+
+
 def _history_from_zip(file):
-    """Return the bytes of watch-history.json inside a Takeout zip."""
+    """Return the history bytes inside a Takeout zip."""
     try:
         with zipfile.ZipFile(file) as archive:
             names = [
                 name
                 for name in archive.namelist()
                 if PurePosixPath(name).name.startswith(HISTORY_FILE_PREFIX)
-                and name.lower().endswith(".json")
+                and name.lower().endswith((".json", ".html"))
             ]
             if not names:
-                msg = (
-                    "No watch-history.json in this zip. Export YouTube history "
-                    "in JSON format from Google Takeout."
-                )
+                msg = "No watch-history.json or watch-history.html in this zip."
                 raise MediaImportError(msg)
-            return archive.read(min(names, key=len))
+            return archive.read(
+                min(
+                    names,
+                    key=lambda name: (not name.lower().endswith(".json"), len(name)),
+                )
+            )
     except zipfile.BadZipFile as error:
         msg = "This zip can't be opened."
         raise MediaImportError(msg) from error
@@ -165,10 +231,17 @@ class YouTubeTakeoutImporter:
 
     def import_data(self):
         """Import every watch and return the counts."""
+        logger.info("YouTube Takeout import for user %s: reading history", self.user.id)
+        import_progress.report(0, None, "Reading YouTube history")
         records = load_records(self.file)
+        logger.info("YouTube Takeout: read %s history records; preparing videos", len(records))
+        import_progress.report(0, len(records), "Preparing YouTube history")
         watches = defaultdict(list)
         titles = {}
-        for record in records:
+        for index, record in enumerate(records, start=1):
+            if index % 5000 == 0:
+                logger.info("YouTube Takeout: prepared %s of %s records", index, len(records))
+                import_progress.report(index, len(records), "Preparing YouTube history")
             entry = entry_from_record(record)
             if entry is None:
                 self.skipped += 1
@@ -178,6 +251,7 @@ class YouTubeTakeoutImporter:
             titles.setdefault(entry["id"], entry)
 
         total = len(watches)
+        logger.info("YouTube Takeout: importing %s videos", total)
         created_videos = 0
         updated_videos = 0
         created_plays = 0

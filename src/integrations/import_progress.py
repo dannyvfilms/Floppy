@@ -21,7 +21,7 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 PROGRESS_CACHE_PREFIX = "import_progress"
-PROGRESS_CACHE_TIMEOUT_SECONDS = 5 * 60
+PROGRESS_CACHE_TIMEOUT_SECONDS = 24 * 60 * 60
 PROGRESS_WRITE_INTERVAL_SECONDS = 1.0
 PROGRESS_WRITE_ROW_INTERVAL = 250
 

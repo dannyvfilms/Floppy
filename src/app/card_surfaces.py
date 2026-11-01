@@ -87,6 +87,7 @@ CARD_VALUES = frozenset(
     {
         "item",
         "media",
+        "video_landscape",
         "credit",
         "title",
         "card_media_type",
@@ -152,6 +153,8 @@ def card_context(page_context, surface, values):
         "card_uid": uuid4().hex[:8],
         **values,
     }
+    if surface == "library" and rendered_context.get("card_media_type") == "video":
+        rendered_context["video_landscape"] = True
     rendered_context.update(_card_render_context(rendered_context))
     return rendered_context
 

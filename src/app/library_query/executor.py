@@ -31,7 +31,7 @@ from django.utils import timezone
 from app.library_query import filters as filter_registry
 from app.library_query import sorts as sort_registry
 from app.library_query.spec import ROUTING_MODEL, STATUS_MATCH_LATEST
-from app.library_query.trackers import tracker_sources
+from app.library_query.trackers import episode_media_for_items, tracker_sources
 from app.models.choices import MediaTypes, Sources
 from app.models.item import Item
 
@@ -367,6 +367,14 @@ class LibraryQueryExecutor:
             return list(self._ordered(self.filtered).values_list("pk", flat=True))
         return [row[-1] for row in self._scan_ranked]
 
+    def rank_rows(self) -> list[tuple]:
+        """Return compact sort values and item identities for a composed shelf.
+
+        Uses the same SQL values or batched scan as page(), without decorating
+        cards or retaining hydrated candidates.
+        """
+        return self._scan(self.filtered, with_sort=True)
+
     def matches(self):
         """Return the matches as a scope for another query's ``within``.
 
@@ -543,12 +551,15 @@ def _attach_media(user, batch: list[Candidate], needs: set[str]) -> None:
 
     by_type: dict[str, list[Candidate]] = {}
     for candidate in batch:
-        if candidate.item.media_type == MediaTypes.EPISODE.value:
-            continue
         by_type.setdefault(candidate.item.media_type, []).append(candidate)
 
     for media_type, candidates in by_type.items():
         model = apps.get_model("app", media_type)
+        if media_type == MediaTypes.EPISODE.value:
+            latest = episode_media_for_items(user, [candidate.item.pk for candidate in candidates])
+            for candidate in candidates:
+                candidate.media = latest.get(candidate.item.pk)
+            continue
         rows = model.objects.filter(
             user=user,
             item_id__in=[candidate.item.pk for candidate in candidates],

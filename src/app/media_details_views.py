@@ -12,6 +12,7 @@ from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.translation import gettext
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.http import require_GET
 
 from app import (
@@ -73,7 +74,7 @@ from app.models import (
 )
 from app.models.episode_runtimes import build_season_runtime_index
 from app.providers import services, tmdb
-from app.services import metadata_resolution, opencritic_scores
+from app.services import metadata_resolution, opencritic_scores, youtube_game_watch
 from app.services.metadata_fallback import stored_metadata_fallback
 from app.tag_views import (
     _build_detail_tag_sections,
@@ -263,6 +264,28 @@ def _get_tv_runtime_display_fallback(detail_item, media_metadata):
 
 @login_not_required
 @require_GET
+@xframe_options_sameorigin
+def youtube_player(request):
+    """Embed YouTube in a same-origin document with an origin-only referrer."""
+    from app.youtube_channel_art import VIDEO_ID
+
+    video_id = request.GET.get("v", "")
+    if not VIDEO_ID.fullmatch(video_id):
+        return HttpResponse(status=400)
+    response = render(
+        request,
+        "app/components/youtube_player.html",
+        {
+            "video_id": video_id,
+            "autoplay": request.GET.get("autoplay") == "1",
+        },
+    )
+    response["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
+@login_not_required
+@require_GET
 def media_details(
     request,
     source,
@@ -271,6 +294,33 @@ def media_details(
     title,
 ):
     """Return the details page for a media item."""
+    if request.GET.get("fragment") == "video-metadata":
+        if source != Sources.YOUTUBE.value or media_type != MediaTypes.VIDEO.value:
+            return HttpResponse(status=404)
+        item = Item.objects.filter(
+            source=source,
+            media_type=media_type,
+            media_id=media_id,
+        ).first()
+        if not item:
+            return HttpResponse(status=404)
+        from app.youtube_channel_art import video_details
+
+        extra = video_details(media_id)
+        # A client may have supplied a description while the request was in flight.
+        item.refresh_from_db(fields=["synopsis"])
+        return HttpResponse(
+            render_to_string(
+                "app/components/video_details_extra.html",
+                {
+                    "avatar": extra["avatar"],
+                    "description": extra["description"] if not item.synopsis else "",
+                    "description_media": {"synopsis": extra["description"]},
+                },
+                request=request,
+            )
+        )
+
     if request.GET.get("fragment") == DETAIL_CAROUSEL_FRAGMENT:
         # .strip() matters: an empty carousel must render as a truly empty
         # string, not whitespace, so input.css's #detail-carousel-wrap:not(:empty)
@@ -928,7 +978,8 @@ def media_details(
                 getattr(request.user, "metadata_language", "")
                 or metadata_resolution.metadata_language_default(
                     request.user, detail_item
-                ) != settings.TMDB_LANG
+                )
+                != settings.TMDB_LANG
                 or BackfillReconcileState.objects.filter(
                     key=f"metadata_language:{request.user.pk}:{settings.TMDB_LANG}",
                     completed_at__isnull=True,
@@ -1085,7 +1136,10 @@ def media_details(
             if desired_value and getattr(detail_item, field_name) != desired_value:
                 setattr(detail_item, field_name, desired_value)
                 update_fields.append(field_name)
-        if media_metadata.get("synopsis") and detail_item.synopsis != media_metadata["synopsis"]:
+        if (
+            media_metadata.get("synopsis")
+            and detail_item.synopsis != media_metadata["synopsis"]
+        ):
             detail_item.synopsis = media_metadata["synopsis"]
             update_fields.append("synopsis")
         if update_fields:
@@ -2011,6 +2065,33 @@ def media_details(
             media_metadata["episodes"],
         )
 
+    if media_type == MediaTypes.VIDEO.value and not render_secondary_only:
+        from app.image_cache import rewrite_image_url
+        from app.templatetags.app_tags import youtube_landscape_thumbnail
+        from app.youtube_channel_art import VIDEO_ID
+
+        is_youtube_video = source == Sources.YOUTUBE.value and VIDEO_ID.fullmatch(
+            str(media_id)
+        )
+        image = media_metadata.get("image")
+        if not helpers.has_real_image(image) and is_youtube_video:
+            image = f"https://i.ytimg.com/vi/{media_id}/hqdefault.jpg"
+        if helpers.has_real_image(image):
+            thumbnail = rewrite_image_url(youtube_landscape_thumbnail(image))
+            initial_carousel = {
+                "overview": {
+                    "url": thumbnail,
+                    "thumb_url": thumbnail,
+                    "fallback_url": rewrite_image_url(image),
+                },
+                "video": {"key": media_id, "show_player_initially": True}
+                if is_youtube_video
+                else None,
+                "photos": [],
+                "hero": None,
+            }
+            carousel_supported = True
+
     context = {
         "user": request.user,
         "media": media_metadata,
@@ -2039,6 +2120,15 @@ def media_details(
         "mal_score": mal_score,
         "opencritic_score": opencritic_score,
         "game_lengths": game_lengths,
+        "youtube_watch": (
+            youtube_game_watch.watched_for_game(request.user, detail_item)
+            if render_secondary_only
+            and media_type == MediaTypes.GAME.value
+            and detail_item
+            and request.user.is_authenticated
+            and not public_view
+            else None
+        ),
         "game_lengths_pending": game_lengths_refresh_pending
         and not (game_lengths and game_lengths.get("available")),
         "notes_entry": notes_entry,

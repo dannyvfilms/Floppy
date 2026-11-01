@@ -268,10 +268,9 @@ class PlexWebhookTests(TestCase):
                     "title": "The Goldbergs",
                     "parentIndex": 1,
                     "index": 1,
-                    "Guid": [
-                        {"id": "tvdb://360289"},
-                        {"id": "imdb://tt6485512"},
-                    ],
+                    # The legacy TheTVDB agent names the series; a modern
+                    # tvdb:// episode id must not match a show link.
+                    "guid": "com.plexapp.agents.thetvdb://360289/1/1?lang=en",
                 },
             },
         )
@@ -2238,6 +2237,88 @@ class PlexWebhookTests(TestCase):
             ).exists(),
         )
 
+    @patch("app.providers.tvdb.tv", return_value={})
+    @patch("app.providers.tmdb.search")
+    @patch("app.providers.tmdb.set_tvdb_id_override")
+    @patch("app.providers.tmdb.tv")
+    @patch("app.providers.tvdb.series_tmdb_id", return_value="11235")
+    @patch(
+        "app.providers.tvdb.episode_by_id",
+        return_value={"series_id": 76906, "season_number": 2, "episode_number": 25},
+    )
+    @patch("app.providers.tvdb.enabled", return_value=True)
+    @patch(
+        "app.providers.tmdb.find",
+        return_value={"tv_episode_results": [], "tv_results": [{"id": 37119}]},
+    )
+    @patch("app.providers.tmdb.tv_with_seasons")
+    def test_tv_episode_tvdb_id_never_resolves_as_a_series_id(
+        self,
+        mock_tv_with_seasons,
+        _mock_find,
+        _mock_tvdb_enabled,
+        _mock_episode_by_id,
+        _mock_series_tmdb_id,
+        mock_tv,
+        mock_set_tvdb_override,
+        mock_tmdb_search,
+        _mock_tvdb_tv,
+    ):
+        """A modern-agent episode tvdb:// id is an episode, even when TMDB's
+        find returns the series that shares the number. TVDB episode 220181 is
+        Medabots S3E25 in TVDB order and also the series id of Norwegian Cozy;
+        the fixture keeps TMDB's S2E25 so the TVDB-order remap stays out of it.
+        """
+        mock_tv_with_seasons.return_value = {
+            "title": "Medabots",
+            "image": "",
+            "tvdb_id": "76906",
+            "season/2": {
+                "image": "",
+                "episodes": [{"episode_number": 25, "runtime": 24}],
+            },
+            "related": {"seasons": [{"season_number": 1}, {"season_number": 2}]},
+        }
+        mock_tv.return_value = mock_tv_with_seasons.return_value
+        payload = {
+            "event": "media.scrobble",
+            "Account": {"title": "testuser"},
+            "Metadata": {
+                "librarySectionType": "show",
+                "type": "episode",
+                "ratingKey": "159953",
+                "grandparentRatingKey": "159900",
+                "grandparentTitle": "Medabots",
+                "title": "I, Kilobot",
+                "parentIndex": 2,
+                "index": 25,
+                "Guid": [{"id": "tvdb://220181"}],
+            },
+        }
+
+        response = self._post_payload(payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Item.objects.filter(media_id="37119").exists())
+        self.assertTrue(
+            Episode.objects.filter(
+                item__media_id="11235",
+                item__season_number=2,
+                item__episode_number=25,
+            ).exists(),
+        )
+        mock_set_tvdb_override.assert_not_called()
+        mock_tmdb_search.assert_not_called()
+
+        # Ratings, live playback and the importer resolve through the same
+        # extracted ids, so the shared lookup must refuse the series hit too.
+        ids = PlexWebhookProcessor()._extract_external_ids(payload)
+        self.assertTrue(ids["tvdb_is_episode"])
+        self.assertEqual(
+            PlexWebhookProcessor()._find_tv_media_id(ids)[0],
+            "11235",
+        )
+
     @patch("app.providers.tmdb.tv")
     @patch("app.providers.tvdb.enabled", return_value=False)
     @patch("app.providers.tmdb.search")
@@ -4122,6 +4203,7 @@ class PlexWebhookTests(TestCase):
             "tvdb_id": "98765",
             "plex_guid": None,
             "anidb_id": None,
+            "tvdb_is_episode": False,
         }
 
         self.assertEqual(result, expected)
@@ -4147,6 +4229,7 @@ class PlexWebhookTests(TestCase):
             "tvdb_id": "11969114",
             "plex_guid": None,
             "anidb_id": None,
+            "tvdb_is_episode": False,
         }
         self.assertEqual(result, expected)
 
@@ -4169,6 +4252,7 @@ class PlexWebhookTests(TestCase):
             "tvdb_id": None,
             "plex_guid": None,
             "anidb_id": "12345",
+            "tvdb_is_episode": False,
         }
 
         self.assertEqual(result, expected)
@@ -4185,6 +4269,7 @@ class PlexWebhookTests(TestCase):
             "tvdb_id": None,
             "plex_guid": None,
             "anidb_id": None,
+            "tvdb_is_episode": False,
         }
         self.assertEqual(result, expected)
 
@@ -4208,6 +4293,7 @@ class PlexWebhookTests(TestCase):
             "tvdb_id": "98765",
             "plex_guid": None,
             "anidb_id": None,
+            "tvdb_is_episode": False,
         }
         self.assertEqual(result, expected)
 

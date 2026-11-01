@@ -90,7 +90,7 @@
                   <article class="home-settings-row relative border-t border-[var(--color-surface-strong)] first:rounded-t-md first:border-t-0 last:rounded-b-md"
                            x-data="{ openMenu: null, filterView: 'root', filterSearch: '' }"
                            :class="{ 'z-50': openMenu !== null || row.editorOpen }"
-                           @keydown.escape="if (openMenu !== null) { $event.stopPropagation(); $event.preventDefault(); $event.target.closest('.filter-control')?.querySelector('button')?.focus(); openMenu = null; filterView = 'root'; filterSearch = ''; }"
+                           @keydown.escape="if (openMenu !== null) { $event.stopPropagation(); $event.preventDefault(); if (openMenu === 'filter' && filterView !== 'root') { const previousView = filterView; filterView = filterView.startsWith('media_subview:') ? 'media_types' : 'root'; filterSearch = ''; $nextTick(() => { const selector = previousView.startsWith('media_subview:') ? `[data-display-level-family='${previousView.split(':')[1]}']` : `[data-filter-field='${previousView}']`; $el.querySelector(selector)?.focus(); }); } else { $event.target.closest('.filter-control')?.querySelector('button')?.focus(); openMenu = null; filterView = 'root'; filterSearch = ''; } }"
                            :data-row-client-id="row.client_id">
                     <div class="home-settings-row-body rounded-[inherit] bg-[var(--color-hover-dim)] px-3 transition-colors hover:bg-[var(--color-surface)]">
                       <div class="flex h-full min-w-0 items-center gap-2">
@@ -151,8 +151,9 @@
                                     </button>
 
                                     <div class="border-t border-gray-700 my-1"></div>
-                                    <template x-for="field in filterMenuFields(section)" :key="field.key">
+                                    <template x-for="field in filterMenuFields(section, row).filter(field => !field.parent)" :key="field.key">
                                       <button type="button"
+                                              :data-filter-field="field.key"
                                               class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                                               @click.stop="filterView = field.key; filterSearch = ''">
                                         <span class="flex-shrink-0 mr-3" x-text="field.label"></span>
@@ -163,12 +164,13 @@
                                     </template>
                                   </div>
 
-                                  <template x-for="field in filterMenuFields(section)" :key="`${field.key}-menu`">
-                                    <div x-show="filterView === field.key">
+                                  <template x-for="field in filterMenuFields(section, row).filter(field => field.key === filterView)" :key="`${field.key}-menu`">
+                                    <div>
                                       <div class="flex items-center w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] border-b border-gray-700">
                                         <button type="button"
                                                 class="mr-3 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
-                                                @click.stop="filterView = 'root'; filterSearch = ''">
+                                                aria-label="{% translate "Back" %}"
+                                                @click.stop="const article = $el.closest('article'); filterView = field.parent || 'root'; filterSearch = ''; $nextTick(() => { const selector = field.parent ? `[data-display-level-family='${field.key.split(':')[1]}']` : `[data-filter-field='${field.key}']`; article.querySelector(selector)?.focus(); });">
                                           {% include "app/icons/chevron-left.svg" with classes="w-3.5 h-3.5" %}
                                         </button>
                                         <span x-text="field.label"></span>
@@ -189,11 +191,29 @@
 
                                       <div class="max-h-72 overflow-y-auto py-1">
                                         <template x-for="option in filteredMenuOptions(field, filterSearch)" :key="`${field.key}-${option.value}`">
-                                          <button type="button"
-                                                  class="block w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer"
-                                                  :class="isRowFilterOptionSelected(row, field.key, option.value) ? 'bg-indigo-600 text-white font-medium' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]'"
-                                                  @click.stop="selectRowFilter(row, field.key, option.value)"
-                                                  x-text="option.label"></button>
+                                          <div class="flex items-center">
+                                            <button type="button"
+                                                  class="flex min-w-0 flex-1 items-center px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
+                                                  :aria-pressed="isRowFilterOptionSelected(row, field.key, option.value)"
+                                                  @click.stop="selectRowFilter(row, field.key, option.value)">
+                                              <span class="block min-w-0 truncate" x-text="option.label"></span>
+                                              <span x-show="option.subviews?.length"
+                                                    class="ml-auto pl-2 text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
+                                                    x-text="mediaSubviewLabel(row, option)"></span>
+                                              <span x-show="isRowFilterOptionSelected(row, field.key, option.value)"
+                                                    :class="option.subviews?.length ? 'ml-2' : 'ml-auto'">
+                                                {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
+                                              </span>
+                                            </button>
+                                            <button type="button"
+                                                    x-show="option.subviews?.length"
+                                                    :data-display-level-family="option.value"
+                                                    class="shrink-0 p-2 mr-2 rounded text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
+                                                    :aria-label="interpolate(gettext('Display level for %s'), [option.label])"
+                                                    @click.stop="filterView = `media_subview:${option.value}`; filterSearch = ''">
+                                              {% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}
+                                            </button>
+                                          </div>
                                         </template>
                                       </div>
                                     </div>
@@ -382,6 +402,13 @@
                       {% translate "Library Row" %}
                     </button>
                     <button type="button"
+                            x-show="section.media_type === 'all' && (section.available_media_types.includes('movie') || section.available_media_types.includes('tv'))"
+                            class="flex w-full items-center border-t border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] cursor-pointer"
+                            @click="addRow(section, 'last_watched'); section.addRowMenuOpen = false">
+                      {% include "app/icons/history.svg" with classes="mr-2 h-4 w-4" %}
+                      {% translate "Last Watched" %}
+                    </button>
+                    <button type="button"
                             x-show="section.media_type === 'tv' || (section.media_type === 'all' && section.available_media_types.includes('tv'))"
                             class="flex w-full items-center border-t border-[var(--color-surface-alt)] px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-strong)] cursor-pointer"
                             @click="addRow(section, 'up_next'); section.addRowMenuOpen = false">
@@ -568,7 +595,7 @@
         },
         activeLibraryFilterCount(row) {
           return Object.entries(row.filters || {}).filter(([key, value]) => {
-            if (key === 'status' || key === 'tag_mode') return false;
+            if (key === 'status' || key === 'tag_mode' || key === 'media_subviews') return false;
             if (value === null || typeof value === 'undefined') return false;
             return Array.isArray(value) ? value.length > 0 : value !== '' && value !== 'all';
           }).length;
@@ -617,6 +644,10 @@
           row.filters.tag_mode = mode === 'and' ? 'or' : (mode === 'or' ? 'not' : 'and');
         },
         isRowFilterOptionSelected(row, key, value) {
+          if (key.startsWith('media_subview:')) {
+            const family = key.split(':')[1];
+            return (row.filters?.media_subviews?.[family] || { tv: 'shows', music: 'tracks', podcast: 'episodes' }[family]) === value;
+          }
           if (key === 'tag') return this.rowTagValues(row).includes(value);
           if (key === 'media_types') return this.rowMediaTypeValues(row).includes(value);
           if (key === 'status') return this.isRowStatusSelected(row, value);
@@ -644,6 +675,11 @@
             } else if (selectedMediaTypes.length !== (mediaTypeField?.options?.length || 0)) {
               addPill('media_types', selectedMediaTypes);
             }
+            (mediaTypeField?.options || []).forEach(option => {
+              if (selectedMediaTypes.includes(option.value) && option.subviews?.length) {
+                pills.push({ key: `media_subview:${option.value}`, label: option.label, value: this.mediaSubviewLabel(row, option) });
+              }
+            });
           }
           addPill('status', this.rowStatusValues(row));
           if (section.media_type === 'music') addPill('subview', [row.filters?.subview || 'tracks']);
@@ -663,7 +699,7 @@
           return pills;
         },
         hasLibraryFilters(section, row) {
-          return this.rowFilterPills(section, row).some(pill => pill.key !== 'subview');
+          return this.rowFilterPills(section, row).some(pill => pill.key !== 'subview' && !pill.key.startsWith('media_subview:'));
         },
         humanizeFilterValue(value) {
           const text = String(value).replace(/_/g, ' ');
@@ -719,8 +755,16 @@
 
           return parts.slice(0, 4).join(' • ');
         },
-        filterMenuFields(section) {
-          return (section.filter_fields || []).filter(field => field.key !== 'status');
+        mediaSubviewLabel(row, option) {
+          const value = row.filters?.media_subviews?.[option.value] || option.default_subview;
+          return (option.subviews || []).find(choice => choice.value === value)?.label || '';
+        },
+        filterMenuFields(section, row) {
+          const fields = (section.filter_fields || []).filter(field => field.key !== 'status');
+          const mediaTypes = fields.find(field => field.key === 'media_types');
+          return [...fields, ...(mediaTypes?.options || []).filter(option => option.subviews?.length).map(option => ({
+            key: `media_subview:${option.value}`, label: option.label, parent: 'media_types', options: option.subviews
+          }))];
         },
         statusFilterOptions(section) {
           const statusField = (section.filter_fields || []).find(field => field.key === 'status');
@@ -790,6 +834,12 @@
           row.filters[key] = value;
         },
         selectRowFilter(row, key, value) {
+          if (key.startsWith('media_subview:')) {
+            const family = key.split(':')[1];
+            row.filters.media_subviews = { ...(row.filters.media_subviews || {}), [family]: value };
+            if (!this.rowMediaTypeValues(row).includes(family)) this.toggleRowMediaType(row, family);
+            return;
+          }
           if (key === 'media_types') {
             this.toggleRowMediaType(row, value);
             return;
@@ -821,7 +871,9 @@
           if (rowType === 'recently_unrated' && section.rows.some(row => row.row_type === 'recently_unrated')) {
             return;
           }
-          const defaultSort = this.defaultSortValue(section, rowType);
+          const lastWatched = rowType === 'last_watched';
+          if (lastWatched) rowType = 'library_query';
+          const defaultSort = lastWatched ? 'end_date' : this.defaultSortValue(section, rowType);
           const newRow = {
             id: null,
             client_id: `new-row-${this.nextRowId++}`,
@@ -838,6 +890,12 @@
             listQuery: '',
             listResults: []
           };
+          if (lastWatched) {
+            newRow.custom_title = gettext('Last Watched');
+            newRow.filters.media_types = section.available_media_types.filter(type => ['movie', 'tv'].includes(type));
+            newRow.filters.status = ['In progress', 'Completed', 'Paused', 'Dropped'];
+            newRow.filters.progress = 'all';
+          }
           section.rows.push(newRow);
           this.$nextTick(async () => {
             if (await this.ensureSortable()) {
@@ -955,7 +1013,7 @@
                 draggable: 'article',
                 handle: '.home-settings-row',
                 filter: 'input, textarea, select, a, .home-settings-row-controls',
-                preventOnFilter: true,
+                preventOnFilter: false,
                 onEnd: event => {
                   const orderedIds = Array.from(container.querySelectorAll('[data-row-client-id]')).map(node => node.dataset.rowClientId);
                   restoreDraggedNode(event);

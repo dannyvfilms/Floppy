@@ -492,6 +492,107 @@ class ListenBrainzListensSerializer(serializers.Serializer):
     payload = ListenBrainzListensPayloadSerializer()
 
 
+class ListenBrainzStatsPayloadSerializer(serializers.Serializer):
+    """Fields every ListenBrainz user statistics page carries."""
+
+    count = serializers.IntegerField()
+    offset = serializers.IntegerField()
+    range = serializers.CharField()
+    from_ts = serializers.IntegerField()
+    to_ts = serializers.IntegerField()
+    last_updated = serializers.IntegerField()
+    user_id = serializers.CharField()
+
+
+class ListenBrainzUserArtistSerializer(serializers.Serializer):
+    """One artist in a user's ranking."""
+
+    artist_mbid = serializers.CharField(allow_null=True)
+    artist_name = serializers.CharField()
+    listen_count = serializers.IntegerField()
+
+
+class ListenBrainzUserArtistsPayloadSerializer(ListenBrainzStatsPayloadSerializer):
+    """Page of a user's top artists."""
+
+    artists = ListenBrainzUserArtistSerializer(many=True)
+    total_artist_count = serializers.IntegerField()
+
+
+class ListenBrainzUserArtistsSerializer(serializers.Serializer):
+    """ListenBrainz `stats/user/artists` response wrapper."""
+
+    payload = ListenBrainzUserArtistsPayloadSerializer()
+
+
+class ListenBrainzUserReleaseGroupSerializer(serializers.Serializer):
+    """One release group in a user's ranking."""
+
+    artist_mbids = serializers.ListField(child=serializers.CharField())
+    artist_name = serializers.CharField()
+    release_group_mbid = serializers.CharField(allow_null=True)
+    release_group_name = serializers.CharField()
+    caa_id = serializers.IntegerField(allow_null=True)
+    caa_release_mbid = serializers.CharField(allow_null=True)
+    listen_count = serializers.IntegerField()
+
+
+class ListenBrainzUserReleaseGroupsPayloadSerializer(
+    ListenBrainzStatsPayloadSerializer,
+):
+    """Page of a user's top release groups."""
+
+    release_groups = ListenBrainzUserReleaseGroupSerializer(many=True)
+    total_release_group_count = serializers.IntegerField()
+
+
+class ListenBrainzUserReleaseGroupsSerializer(serializers.Serializer):
+    """ListenBrainz `stats/user/release-groups` response wrapper."""
+
+    payload = ListenBrainzUserReleaseGroupsPayloadSerializer()
+
+
+class ListenBrainzUserRecordingSerializer(serializers.Serializer):
+    """One recording in a user's ranking."""
+
+    artist_mbids = serializers.ListField(child=serializers.CharField())
+    artist_name = serializers.CharField()
+    recording_mbid = serializers.CharField(allow_null=True)
+    release_mbid = serializers.CharField(allow_null=True)
+    release_name = serializers.CharField(allow_null=True)
+    track_name = serializers.CharField()
+    listen_count = serializers.IntegerField()
+
+
+class ListenBrainzUserRecordingsPayloadSerializer(
+    ListenBrainzStatsPayloadSerializer,
+):
+    """Page of a user's top recordings."""
+
+    recordings = ListenBrainzUserRecordingSerializer(many=True)
+    total_recording_count = serializers.IntegerField()
+
+
+class ListenBrainzUserRecordingsSerializer(serializers.Serializer):
+    """ListenBrainz `stats/user/recordings` response wrapper."""
+
+    payload = ListenBrainzUserRecordingsPayloadSerializer()
+
+
+class ListenBrainzGenreActivityEntrySerializer(serializers.Serializer):
+    """Plays of one genre in one hour of the day."""
+
+    genre = serializers.CharField()
+    hour = serializers.IntegerField(min_value=0, max_value=23)
+    listen_count = serializers.IntegerField()
+
+
+class ListenBrainzGenreActivitySerializer(serializers.Serializer):
+    """ListenBrainz `stats/user/genre-activity` response."""
+
+    result = ListenBrainzGenreActivityEntrySerializer(many=True)
+
+
 class RecommendationSerializer(serializers.Serializer):
     """One recommended title for an external client."""
 

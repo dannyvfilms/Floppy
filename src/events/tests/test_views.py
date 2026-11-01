@@ -361,6 +361,46 @@ class CalendarViewTests(TestCase):
 
     @patch("events.models.Event.objects.get_user_events")
     @patch.object(get_user_model(), "update_preference")
+    def test_calendar_untracked_season_event_has_empty_status(
+        self,
+        mock_update_preference,
+        mock_get_user_events,
+    ):
+        """An event on a season the user has no row for must not render "None".
+
+        The client-side status filter hides any non-empty status that is not
+        selected, so the literal "None" made a newly announced season vanish
+        (#1531).
+        """
+        mock_update_preference.return_value = "grid"
+
+        season_item = Item.objects.create(
+            media_id="253391",
+            source=Sources.TMDB.value,
+            media_type=MediaTypes.SEASON.value,
+            title="Sheriff Country",
+            image="https://example.com/season.jpg",
+            season_number=2,
+        )
+        today = timezone.localdate()
+        mock_get_user_events.return_value = [
+            Event(
+                item=season_item,
+                content_number=1,
+                datetime=timezone.make_aware(
+                    timezone.datetime(today.year, today.month, 15, 12, 0),
+                ),
+            ),
+        ]
+
+        response = self.client.get(reverse("calendar"))
+
+        content = response.content.decode()
+        self.assertIn('data-release-status=""', content)
+        self.assertNotIn('data-release-status="None"', content)
+
+    @patch("events.models.Event.objects.get_user_events")
+    @patch.object(get_user_model(), "update_preference")
     def test_calendar_scopes_available_statuses_per_media_type(
         self,
         mock_update_preference,

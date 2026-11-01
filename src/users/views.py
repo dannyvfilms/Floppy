@@ -16,12 +16,12 @@ from celery import states
 from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth import logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_not_required, login_required
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -36,7 +36,7 @@ from django_celery_beat.models import PeriodicTask
 from django_celery_results.models import TaskResult
 
 from api import scopes as api_scopes
-from app import cache_utils, history_cache, image_cache, statistics_cache
+from app import cache_utils, history_cache, image_cache, signals, statistics_cache
 from app import helpers as app_helpers
 from app.discover.feeds import get_external_row_definitions
 from app.discover.registry import DISCOVER_MEDIA_TYPES
@@ -336,6 +336,61 @@ def _build_qr_data_uri(provisioning_uri: str) -> str:
     return f"data:image/png;base64,{encoded_png}"
 
 
+def _last_active_superuser(user):
+    """Return True when ``user`` is the only active superuser left."""
+    return (
+        user.is_superuser
+        and not User.objects.filter(is_superuser=True, is_active=True)
+        .exclude(pk=user.pk)
+        .exists()
+    )
+
+
+def _delete_own_account(request):
+    """Permanently delete the signed-in user after re-checking their identity."""
+    user = request.user
+    if user.is_demo:
+        messages.error(request, "This section is view-only for demo accounts.")
+        return redirect("account")
+    limited = ratelimit.consume_or_429(request, action="reauthenticate")
+    if limited is not None:
+        return limited
+    if _last_active_superuser(user):
+        messages.error(
+            request,
+            "You are the only superuser. Promote another account before deleting this one.",
+        )
+        return redirect("account")
+    if request.POST.get("confirm_delete") != "on":
+        messages.error(request, "Tick the box to confirm.")
+        return redirect("account")
+
+    # Accounts without a usable password (third-party sign-in) confirm by
+    # typing their username instead.
+    if user.has_usable_password():
+        confirmed = user.check_password(request.POST.get("current_password", ""))
+        error = "That password is not correct."
+    else:
+        confirmed = request.POST.get("confirm_username", "") == user.username
+        error = "Type your username exactly to confirm."
+    if not confirmed:
+        logger.warning("Failed account deletion confirmation for user: %s", user.pk)
+        messages.error(request, error)
+        return redirect("account")
+
+    user_id = user.pk
+    username = user.username
+    # Scheduled syncs and imports hold only the user's id, so the cascade
+    # delete would leave them behind to fail on every run.
+    with transaction.atomic(), signals.deleting_account():
+        PeriodicTask.objects.filter(**periodic_task_user_kwargs(user_id)).delete()
+        user.delete()
+    logout(request)
+    logger.info("Account deleted by its owner: %s (id %s)", username, user_id)
+    messages.success(request, "Your account and all its data have been deleted.")
+    return redirect("account_login")
+
+
 @require_http_methods(["GET", "POST"])
 def account(request):
     """Update the user's account and account security settings."""
@@ -373,6 +428,9 @@ def account(request):
                         "Enter your current password to change authenticator recovery.",
                     )
                     return redirect("account")
+
+        if action == "delete_account":
+            return _delete_own_account(request)
 
         if "username" in request.POST:
             user_form = UserUpdateForm(request.POST, instance=request.user)
@@ -494,6 +552,7 @@ def account(request):
             used_at__isnull=True
         ).count(),
         "fresh_recovery_codes": fresh_recovery_codes,
+        "is_last_superuser": _last_active_superuser(request.user),
     }
 
     return render(request, "users/account.html", context)

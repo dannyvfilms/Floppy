@@ -3,9 +3,11 @@
 {% load app_tags %}
 
 {# djlint:off #}
-<div id="episode-track-button-{{ episode.item.id }}{{ target_suffix }}"{% if track_button_oob %} hx-swap-oob="true"{% endif %}>
+<div id="episode-track-button-{{ episode.item.id }}{{ target_suffix }}" data-episode-has-data="{% if episode.history or episode.collection_entry or episode.watched_by_progress %}true{% else %}false{% endif %}"{% if track_button_oob %} hx-swap-oob="true"{% endif %}>
 {# djlint:on #}
-{% with watched=episode.history|watched_count %}
+{% with watched=episode.history|watched_count item_release_date=episode.item.release_datetime %}
+  {% with air_date=episode.air_date|default:item_release_date %}
+  {% with unreleased=air_date|is_future_date %}
   <button hx-get="{% media_view_url 'track_modal' episode %}"
     {# With a watch on record the modal edits it (instance_id) so the fields prefill and Delete works; "Save as new entry" records a rewatch directly. #}
     hx-vals='{"return_url": "{{ detail_return_url|default:request.path|urlencode }}", "episode_number": "{{ episode.episode_number }}", {% if episode.history %}"instance_id": "{{ episode.history.0.id }}"{% else %}"is_create": "1"{% endif %}}'
@@ -13,12 +15,16 @@
     hx-trigger="click"
     @click="trackOpen = true"
     title="{% translate "Track Episode" %}"
-    class="p-2 {% if watched > 0 or episode.watched_by_progress and not episode.history %}bg-indigo-600 hover:bg-indigo-700{% elif episode.history %}bg-amber-600 hover:bg-amber-700{% else %}bg-gray-600 hover:bg-gray-500{% endif %} text-white rounded-full transition duration-300 cursor-pointer">
-    {% if episode.history or episode.watched_by_progress %}
+    class="{% if not episode.history and not episode.collection_entry and not episode.watched_by_progress %}rounded-full bg-[var(--color-surface-muted)] hover:bg-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-text)]{% else %}p-2 {% if watched > 0 or episode.watched_by_progress and not episode.history %}bg-indigo-600 hover:bg-indigo-700{% elif episode.history %}bg-amber-600 hover:bg-amber-700{% else %}bg-gray-600 hover:bg-gray-500{% endif %} text-white rounded-full{% endif %} transition duration-300 cursor-pointer">
+    {% if not episode.history and not episode.collection_entry and not episode.watched_by_progress %}
+      {% if unreleased %}{% translate "Unreleased" %}{% else %}{% translate "Unwatched" %}{% endif %}
+    {% elif episode.history or episode.watched_by_progress %}
       {% include "app/icons/eye.svg" with classes="w-4 h-4" %}
     {% else %}
       {% include "app/icons/eye-closed.svg" with classes="w-4 h-4" %}
     {% endif %}
   </button>
+  {% endwith %}
+  {% endwith %}
 {% endwith %}
 </div>

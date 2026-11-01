@@ -736,7 +736,7 @@ class UserGetImportTasksTests(TestCase):
 
     @patch("users.helpers.process_task_result")
     def test_get_import_tasks_unknown_source(self, mock_process_task_result):
-        """Test get_import_tasks with an unknown task source."""
+        """A newly named import appears without a source-specific mapping."""
         # Create mock processed task
         mock_task = MagicMock()
         mock_task.summary = "Imported 10 items"
@@ -757,8 +757,8 @@ class UserGetImportTasksTests(TestCase):
         # Get import tasks
         import_tasks = self.user.get_import_tasks()
 
-        # Check results
-        self.assertEqual(len(import_tasks["results"]), 0)
+        self.assertEqual(len(import_tasks["results"]), 1)
+        self.assertEqual(import_tasks["results"][0]["source"], "Unknown")
 
     @patch("users.helpers.process_task_result")
     def test_get_import_tasks_includes_recurring_audiobookshelf_results(

@@ -17,6 +17,12 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from app.models import Item, MediaTypes, PodcastEpisode, Status
 from events import tasks
+from events.history_feed import (
+    DEFAULT_MEDIA_TYPES,
+    HISTORY_MEDIA_TYPES,
+    get_history_plays,
+    selected_history_media_types,
+)
 from events.models import INACTIVE_TRACKING_STATUSES, Event, ReleaseTypes
 from users.models import User, WeekStartDayChoices
 
@@ -55,6 +61,18 @@ def _fold_ics_line(line):
             current += char
     folded.append(current)
     return "\r\n ".join(folded)
+
+
+def _user_for_token(token):
+    """Return the user a calendar link belongs to, or None for an unknown one."""
+    try:
+        return User.objects.get(token=token)
+    except ObjectDoesNotExist:
+        logger.warning(
+            "Could not process Calendar request: Invalid token: %s",
+            token,
+        )
+        return None
 
 
 @require_GET
@@ -226,6 +244,8 @@ def calendar(request):
             if media_type != MediaTypes.EPISODE
         ],
         "event_statuses": event_status_values,
+        "history_media_types": HISTORY_MEDIA_TYPES,
+        "history_default_media_types": DEFAULT_MEDIA_TYPES,
         "calendar": calendar_format,
         "month": month,
         "month_name": month_name,
@@ -264,13 +284,8 @@ def reload_calendar(request):
 @require_http_methods(["GET", "HEAD", "PROPFIND"])
 def download_calendar(request, token: str):
     """Download the calendar as a iCalendar file."""
-    try:
-        user = User.objects.get(token=token)
-    except ObjectDoesNotExist:
-        logger.warning(
-            "Could not process Calendar request: Invalid token: %s",
-            token,
-        )
+    user = _user_for_token(token)
+    if user is None:
         return HttpResponse(status=401)
 
     now = timezone.now()
@@ -375,8 +390,64 @@ def download_calendar(request, token: str):
     return _calendar_feed_response(feed)
 
 
-def _calendar_feed_response(feed):
+@login_not_required
+@csrf_exempt
+@require_http_methods(["GET", "HEAD", "PROPFIND"])
+def download_history_calendar(request, token: str):
+    """Download finished plays (what the user watched, read, played) as iCal."""
+    user = _user_for_token(token)
+    if user is None:
+        return HttpResponse(status=401)
+
+    now = timezone.now()
+    media_types = selected_history_media_types(request.GET.getlist("media_types"))
+
+    # Calendar apps poll this link on their own schedule, so a built feed is
+    # reused briefly. The key holds the resolved types, so a link with no
+    # selection shares an entry with one that lists the defaults.
+    feed_cache_key = (
+        f"calendar_history_feed:{user.id}:{now.date().isoformat()}:"
+        f"{','.join(sorted(media_types))}"
+    )
+    cached_feed = cache.get(feed_cache_key)
+    if cached_feed is not None:
+        return _calendar_feed_response(cached_feed, "history.ics")
+
+    dtstamp = now.astimezone(UTC).strftime(ICS_DATETIME_FORMAT)
+    lines = [
+        "BEGIN:VCALENDAR",
+        "PRODID:-//Floppy//EN",
+        "VERSION:2.0",
+        "X-WR-CALNAME:Floppy history",
+    ]
+    for play in get_history_plays(user, media_types, now):
+        if play.is_date_only:
+            dtstart = f"DTSTART;VALUE=DATE:{play.local_date:%Y%m%d}"
+            dtend = (
+                f"DTEND;VALUE=DATE:{play.local_date + timedelta(days=1):%Y%m%d}"
+            )
+        else:
+            played_at = play.played_at.astimezone(UTC).strftime(ICS_DATETIME_FORMAT)
+            dtstart = f"DTSTART:{played_at}"
+            dtend = f"DTEND:{played_at}"
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:{play.uid}@floppy-history",
+            _fold_ics_line(f"SUMMARY:{_escape_ics_text(play.summary)}"),
+            dtstart,
+            dtend,
+            f"DTSTAMP:{dtstamp}",
+            "END:VEVENT",
+        ]
+    lines.append("END:VCALENDAR")
+
+    feed = ("\r\n".join(lines) + "\r\n").encode()
+    cache.set(feed_cache_key, feed, CALENDAR_FEED_CACHE_SECONDS)
+    return _calendar_feed_response(feed, "history.ics")
+
+
+def _calendar_feed_response(feed, filename="calendar.ics"):
     """Return the iCal file."""
     response = HttpResponse(feed, content_type="text/calendar")
-    response["Content-Disposition"] = 'attachment; filename="calendar.ics"'
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response

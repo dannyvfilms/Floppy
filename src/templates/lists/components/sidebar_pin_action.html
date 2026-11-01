@@ -1,0 +1,10 @@
+{% load i18n %}
+{% url 'list_detail' custom_list.public_reference as pin_list_url %}
+<button type="button"
+        x-data="sidebarListPin('{{ request.user.pk|escapejs }}', '{{ custom_list.pk|escapejs }}', '{{ custom_list.name|escapejs }}', '{{ pin_list_url|escapejs }}')"
+        @sidebar-lists-changed.window="refresh()"
+        @click="toggle(); open = false"
+        class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer">
+  <span x-show="!pinned">{% translate "Pin to sidebar" %}</span>
+  <span x-show="pinned" x-cloak>{% translate "Unpin from sidebar" %}</span>
+</button>

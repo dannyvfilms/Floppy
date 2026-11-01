@@ -1,0 +1,14 @@
+{% load i18n %}
+
+<section class="mb-8">
+  <h2 class="text-xl font-bold mb-3">{% translate "Watched on YouTube" %}</h2>
+  <div class="rounded-lg bg-[#2a2f35] p-4">
+    <p class="text-lg font-semibold">
+      {% if youtube_watch.seconds %}~{{ youtube_watch.hours_label }}{% else %}{% translate "Started" %}{% endif %}
+    </p>
+    <p class="text-sm text-gray-400">
+      {% blocktranslate count count=youtube_watch.videos %}{{ count }} video YouTube tags with this game{% plural %}{{ count }} videos YouTube tags with this game{% endblocktranslate %}
+      · {% translate "Estimated from how far you got in each video. Your playtime is not affected." %}
+    </p>
+  </div>
+</section>

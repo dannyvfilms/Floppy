@@ -5,6 +5,7 @@ import logging
 from http import HTTPStatus as HTTP  # noqa: N814
 
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema
 from rest_framework import views as drf_views
 from rest_framework.response import Response
 
@@ -33,6 +34,13 @@ from integrations.state.checkpoints import (
 )
 
 from .fork_views_playback import item_reference, show_item_map
+from .fork_views_sync import (
+    FEED_ERROR_SCHEMA,
+    FEED_SCHEMA,
+    SYNC_PARAMETERS,
+    availability,
+    strict_feed,
+)
 from .helpers import check_source_type, check_valid_type, resolve_item_queryset
 
 logger = logging.getLogger(__name__)
@@ -217,12 +225,16 @@ class WatchedStateView(drf_views.APIView):
 class WatchedStateChangeFeedView(drf_views.APIView):
     """Serve the ordered change feed for a synchronizing client."""
 
+    @extend_schema(parameters=SYNC_PARAMETERS, responses={200: FEED_SCHEMA, 400: FEED_ERROR_SCHEMA, 409: FEED_ERROR_SCHEMA})
     def get(self, request):
         """Return changes after a cursor, in server order.
 
         The cursor is a server sequence, which is allocated at commit time, so
         paginating by it cannot skip a change that committed late.
         """
+        if "contract" in request.query_params:
+            return strict_feed(request, "watched")
+
         raw_cursor = request.query_params.get("cursor", "0")
         try:
             cursor = int(raw_cursor)
@@ -241,7 +253,8 @@ class WatchedStateChangeFeedView(drf_views.APIView):
             )
 
         oldest, newest = retained_change_range(request.user)
-        if oldest is not None and 0 < cursor < oldest - 1:
+        feed_status = availability(request.user, "watched")
+        if 0 < cursor < feed_status["minimum_valid_cursor"]:
             # The client's position was compacted away. Serving the remaining
             # tail would look like a successful catch-up while silently
             # dropping everything between its cursor and what is left.
@@ -293,6 +306,7 @@ class WatchedStateChangeFeedView(drf_views.APIView):
                 "has_more": len(results) == limit,
                 "oldest_sequence": oldest,
                 "newest_sequence": newest,
+                **feed_status,
             },
             status=HTTP.OK,
         )
