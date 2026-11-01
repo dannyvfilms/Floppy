@@ -29,6 +29,8 @@ from integrations.imports.helpers import MediaImportError, decrypt_or_raise
 
 logger = logging.getLogger(__name__)
 
+ENTRY_SOURCE = "gpodder"
+
 MIN_SIGNIFICANT_PROGRESS_SECONDS = 60
 DUPLICATE_COMPLETION_WINDOW_SECONDS = 300
 FULL_RESYNC_INTERVAL = timedelta(hours=24)
@@ -422,6 +424,7 @@ class GPodderImporter:
             return False
 
         Podcast.objects.create(
+            entry_source=ENTRY_SOURCE,
             user=self.user,
             item=item,
             show=show,
