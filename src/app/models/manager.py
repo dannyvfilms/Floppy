@@ -1195,7 +1195,9 @@ class MediaManager(models.Manager.from_queryset(ImportScopedQuerySet)):
             return queryset.prefetch_related(
                 Prefetch(
                     "seasons",
-                    queryset=Season.objects.select_related("item"),
+                    queryset=Season.objects.select_related("item").defer(
+                        *(("item__watch_providers",) if list_mode else ()),
+                    ),
                 ),
                 Prefetch(
                     "seasons__item__event_set",

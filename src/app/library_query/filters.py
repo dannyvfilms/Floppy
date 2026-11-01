@@ -374,9 +374,13 @@ def shows_with_collected_episodes(user):
     the collected episodes' ids before the exact (media id, source) pair is
     checked, so no other user's items are visited.
     """
-    collected_episodes = CollectionEntry.objects.filter(
-        user=user,
-        item__media_type=MediaTypes.EPISODE.value,
+    # Keep SQLite on the owner's collection index. A bare item media_type
+    # predicate picks the catalogue type index and probes the collection once
+    # per episode in the entire database (even for a small collection).
+    collected_episodes = (
+        CollectionEntry.objects.filter(user=user)
+        .alias(_collection_media_type=Concat("item__media_type", Value("")))
+        .filter(_collection_media_type=MediaTypes.EPISODE.value)
     )
     # One non-correlated pair set: SQLite evaluates it once. A correlated
     # Exists here re-walks the collected episodes per candidate (143 s on a

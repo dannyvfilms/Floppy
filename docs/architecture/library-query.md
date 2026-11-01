@@ -34,6 +34,12 @@ Surfaces whose unit is not one item keep their own pipeline:
 - **Membership is an uncorrelated `pk IN (…)`.** A correlated `EXISTS` makes
   SQLite walk every user's items; on the real library that took 35 s instead
   of 0.05 s.
+  - Search supplies an owner-scoped set of tracked and collected item ids,
+    including shows with collected episodes, before matching titles. Typeahead
+    reads those items without hydrating tracker, season or episode graphs.
+  - Collected-episode lookup starts at the owner's collection index. Its
+    media-type expression prevents SQLite from scanning the entire episode
+    catalogue and probing ownership once per episode.
 - **Per-item subqueries go through the item's own rows.** Examples are latest
   status, score and "newest row" sorts. `TrackerSource.item_rows` compares the
   owner as `owner + 0`. Without that, SQLite (which has no statistics here)

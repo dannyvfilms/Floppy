@@ -952,6 +952,7 @@ def media_list_entries_for_items(user, items) -> list[MediaListEntry]:
             owner = {"user": user}
             related = ("item",)
         rows = model.objects.filter(item_id__in=item_ids, **owner).select_related(*related)
+        rows = rows.defer(*(f"{relation}__watch_providers" for relation in related if relation.endswith("item")))
         rows = list(BasicMedia.objects._apply_prefetch_related(rows, media_type, list_mode=True, compact_episodes=True, light_rows=True))
         if media_type != MediaTypes.EPISODE.value:
             BasicMedia.objects._aggregate_duplicate_data(rows, user, media_type)
