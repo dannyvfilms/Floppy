@@ -1744,3 +1744,7 @@ msgstr "di titoli"
 
 #~ msgid "On hover"
 #~ msgstr ""
+
+#: templates/users/home_screen.html
+msgid "Up Next"
+msgstr "Da guardare"

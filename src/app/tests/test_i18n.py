@@ -192,3 +192,18 @@ class SpanishPresentationTests(SimpleTestCase):
             self.assertEqual(month_abbreviation(""), "")
             self.assertEqual(translate_activity_text("Up 9.8%"), "Sube un 9.8%")
             self.assertEqual(translate_activity_text("Down 2%"), "Baja un 2%")
+
+
+class EpisodeFeedPluralTests(SimpleTestCase):
+    """Countdowns use the selected language's real catalog."""
+
+    def test_day_plurals(self):
+        for language, singular, plural in (
+            ("de", "Tag", "Tage"),
+            ("es", "día", "días"),
+            ("fr", "jour", "jours"),
+            ("it", "giorno", "giorni"),
+        ):
+            with self.subTest(language=language), translation.override(language):
+                self.assertEqual(translation.ngettext("day", "days", 1), singular)
+                self.assertEqual(translation.ngettext("day", "days", 2), plural)

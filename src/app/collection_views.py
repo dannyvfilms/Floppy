@@ -330,6 +330,9 @@ def _decorate_collection_entries(user, entries):
             list({entry.item_id: entry.item for entry in entries}.values()),
         )
     }
+    from app.media_list_filters import attach_card_collection_platforms
+
+    attach_card_collection_platforms(user, [entry.item for entry in entries])
     copy_labels = _copy_labels(user, entries)
     for entry in entries:
         entry.media = media_by_item_id.get(entry.item_id)

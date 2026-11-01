@@ -27,6 +27,7 @@ from app import (
     history_cache,
     metadata_utils,
 )
+from app.cover_views import user_has_item
 from app.db_retry import is_retryable_error, run_retryable_db_operation
 from app.log_safety import exception_summary, safe_url
 from app.models import (
@@ -557,13 +558,12 @@ def set_hardcover_edition(request, item_id):
 @login_required
 @require_POST
 def update_item_image(request, item_id):
-    """Persist an image URL override for an item the user already tracks."""
+    """Persist an image URL override for an item the user tracks or has collected."""
     return_url = helpers.normalize_navigation_url(request.POST.get("return_url"))
     image_url = (request.POST.get("image_url") or "").strip()
 
     item = get_object_or_404(Item, id=item_id)
-    media_model = apps.get_model("app", item.media_type)
-    if not media_model.objects.filter(user=request.user, item=item).exists():
+    if not user_has_item(request.user, item):
         messages.error(
             request, gettext("You can only update images for items in your library.")
         )
@@ -603,7 +603,7 @@ def update_manual_item_metadata(request, item_id):
         owned = media_model.objects.filter(related_season__user=request.user, item=item)
     else:
         owned = media_model.objects.filter(user=request.user, item=item)
-    if not owned.exists():
+    if not owned.exists() and not user_has_item(request.user, item):
         messages.error(
             request, gettext("You can only update metadata for items in your library.")
         )

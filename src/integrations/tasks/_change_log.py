@@ -14,9 +14,13 @@ import logging
 from celery import shared_task
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import Max
 from django.utils import timezone
 
+from app.models import ProgressChange, WatchStateSequence
 from app.models.watch_state import WatchStateChange
+from app.services.sync_lock import state_transaction
+from integrations.models import SyncBinding
 from integrations.state.checkpoints import compaction_watermark
 
 logger = logging.getLogger(__name__)
@@ -41,20 +45,40 @@ def compact_watch_state_changes(retention_days=None, batch_size=None):
     cutoff = timezone.now() - timezone.timedelta(days=retention_days)
     deleted_total = 0
 
-    user_ids = (
-        WatchStateChange.objects.values_list("user_id", flat=True).distinct().iterator()
-    )
-    for user_id in list(user_ids):
+    user_ids = WatchStateSequence.objects.values_list("user_id", flat=True)
+    # Include old manually recorded logs that predate an allocator row.
+    user_ids = set(user_ids) | set(WatchStateChange.objects.values_list("user_id", flat=True)) | set(ProgressChange.objects.values_list("user_id", flat=True))
+    for user_id in sorted(user_ids):
         user = get_user_model().objects.filter(pk=user_id).first()
         if user is None:
             continue
-
-        watermark = compaction_watermark(user, stale_before=cutoff)
-        if watermark is None:
-            # A live binding is still owed changes, or has applied nothing.
-            continue
-
-        deleted_total += _compact_for_user(user, watermark, cutoff, batch_size)
+        with state_transaction(user_id) as row:
+            watermark = compaction_watermark(user, stale_before=cutoff)
+            # Recent native connections without proof retain legacy events.
+            native_waiting = SyncBinding.objects.filter(
+                user=user, status="active", kill_switch=False,
+                disabled_at__isnull=True, updated_at__gte=cutoff,
+            ).exists()
+            for model, field in ((WatchStateChange, "watched_cursor_floor"), (ProgressChange, "progress_cursor_floor")):
+                aged = model.objects.filter(user=user, created_at__lt=cutoff)
+                floor = aged.aggregate(value=Max("sequence"))["value"]
+                if floor is not None and floor > getattr(row, field):
+                    setattr(row, field, floor)
+                    row.save(update_fields=[field])
+                if model is WatchStateChange:
+                    if watermark is None and native_waiting:
+                        continue
+                    if watermark is not None:
+                        aged = aged.filter(sequence__lte=watermark)
+                    aged = aged.exclude(deliveries__status__in=["pending", "in_flight", "failed"])
+                for _ in range(MAX_BATCHES_PER_USER):
+                    ids = list(aged.order_by("sequence").values_list("pk", flat=True)[:batch_size])
+                    if not ids:
+                        break
+                    removed, _ = model.objects.filter(pk__in=ids).delete()
+                    deleted_total += removed
+                    if len(ids) < batch_size:
+                        break
 
     logger.info(
         "change_log_compaction deleted=%s retention_days=%s",
@@ -62,24 +86,3 @@ def compact_watch_state_changes(retention_days=None, batch_size=None):
         retention_days,
     )
     return deleted_total
-
-
-def _compact_for_user(user, watermark, cutoff, batch_size):
-    """Delete one user's applied, aged-out changes in bounded batches."""
-    deleted = 0
-    for _ in range(MAX_BATCHES_PER_USER):
-        ids = list(
-            WatchStateChange.objects.filter(
-                user=user,
-                sequence__lte=watermark,
-                created_at__lt=cutoff,
-            )
-            .values_list("pk", flat=True)[:batch_size],
-        )
-        if not ids:
-            break
-        removed, _detail = WatchStateChange.objects.filter(pk__in=ids).delete()
-        deleted += removed
-        if len(ids) < batch_size:
-            break
-    return deleted

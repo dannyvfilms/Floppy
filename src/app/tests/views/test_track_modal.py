@@ -19,6 +19,7 @@ from app.models import (
     ArtistTracker,
     Book,
     CollectionEntry,
+    ComicIssue,
     DiscoverFeedback,
     DiscoverFeedbackType,
     Episode,
@@ -1308,6 +1309,42 @@ class TrackModalViewTests(TestCase):
         self.assertContains(response, "Save Metadata")
         self.assertNotContains(response, "Save Image")
 
+    def test_track_modal_renders_custom_metadata_form_for_manual_comic_issue(self):
+        """A hand-made comic issue gets the same metadata editor as its series."""
+        manual_item = Item.objects.create(
+            media_id="manual-issue-1",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Manual Issue #1",
+        )
+        ComicIssue.objects.create(
+            item=manual_item,
+            user=self.user,
+            status=Status.PLANNING.value,
+        )
+
+        response = self.client.get(
+            reverse(
+                "track_modal",
+                kwargs={
+                    "source": Sources.MANUAL.value,
+                    "media_type": MediaTypes.COMIC_ISSUE.value,
+                    "media_id": "manual-issue-1",
+                },
+            )
+            + "?return_url=/home",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["metadata_tab_available"])
+        self.assertTrue(response.context["can_edit_custom_metadata"])
+        form = response.context["manual_metadata_form"]
+        self.assertIsNotNone(form)
+        self.assertIn("publishers", form.fields)
+        self.assertNotIn("creators", form.fields)
+        self.assertContains(response, "Custom Metadata")
+        self.assertContains(response, "Metadata Provider")
+
     def test_track_modal_renders_custom_metadata_form_for_movie_using_custom_provider(
         self,
     ):
@@ -1414,6 +1451,70 @@ class TrackModalViewTests(TestCase):
             manual_item.manual_metadata["details"]["release_date"],
             "2024-01-15",
         )
+
+    def test_update_manual_item_metadata_for_collected_only_comic_issue(self):
+        """An issue that is only in the collection can still get its metadata."""
+        manual_item = Item.objects.create(
+            media_id="manual-issue-2",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Collected Issue",
+        )
+        CollectionEntry.objects.create(user=self.user, item=manual_item)
+
+        response = self.client.post(
+            reverse("update_manual_item_metadata", args=[manual_item.id]),
+            {
+                "return_url": "/home",
+                "metadata-title": "Collected Issue #2",
+                "metadata-synopsis": "Found in a long box.",
+                "metadata-publishers": "Nova Press",
+                "metadata-release_date": "2024-03-06",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        manual_item.refresh_from_db()
+        self.assertEqual(manual_item.title, "Collected Issue #2")
+        self.assertEqual(
+            manual_item.manual_metadata["synopsis"], "Found in a long box."
+        )
+        self.assertEqual(manual_item.publishers, "Nova Press")
+
+    def test_update_manual_item_metadata_rejects_item_not_in_library(self):
+        """Neither tracking nor collecting means no edits."""
+        manual_item = Item.objects.create(
+            media_id="manual-issue-3",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Someone Else's Issue",
+        )
+
+        self.client.post(
+            reverse("update_manual_item_metadata", args=[manual_item.id]),
+            {"return_url": "/home", "metadata-title": "Hijacked"},
+        )
+
+        manual_item.refresh_from_db()
+        self.assertEqual(manual_item.title, "Someone Else's Issue")
+
+    def test_update_item_image_for_collected_only_item(self):
+        """The image URL box also works for a collected-only item."""
+        manual_item = Item.objects.create(
+            media_id="manual-issue-4",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Collected Cover",
+        )
+        CollectionEntry.objects.create(user=self.user, item=manual_item)
+
+        self.client.post(
+            reverse("update_item_image", args=[manual_item.id]),
+            {"return_url": "/home", "image_url": "https://images.example.com/c.jpg"},
+        )
+
+        manual_item.refresh_from_db()
+        self.assertEqual(manual_item.image, "https://images.example.com/c.jpg")
 
     def test_update_manual_item_metadata_redirects_to_normalized_return_url(self):
         """Custom metadata saves should restore encoded list query separators."""

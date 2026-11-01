@@ -8,7 +8,6 @@ from __future__ import annotations
 import hashlib
 import json
 
-from django.db import transaction
 from django.db.models import Q
 
 from app.models import (
@@ -609,7 +608,10 @@ def apply_match_correction(
     note="",
 ):
     """Atomically rehome one user's data and save its future-import decision."""
-    with transaction.atomic():
+    from app.services.sync_lock import invalidate_contexts, state_transaction
+
+    with state_transaction(user.pk) as sequence:
+        invalidate_contexts(sequence)
         source_item, destination_item = (
             Item.objects.select_for_update().get(pk=source_item_id),
             Item.objects.select_for_update().get(pk=destination_item_id),

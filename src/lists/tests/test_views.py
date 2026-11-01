@@ -491,11 +491,11 @@ class ListsViewTests(TestCase):
         self.assertEqual(len(response.context["custom_lists"]), 7)  # 7 remaining items
 
     @patch.object(get_user_model(), "update_preference")
-    def test_lists_view_keeps_card_actions_as_edit_buttons(
+    def test_lists_view_keeps_card_actions_in_options_menu(
         self,
         mock_update_preference,
     ):
-        """The list overview should keep card controls as edit buttons only."""
+        """List cards expose Settings and pinning through an options menu."""
         mock_update_preference.return_value = "name"
         self.client.login(**self.credentials)
 
@@ -508,13 +508,15 @@ class ListsViewTests(TestCase):
 
         response = self.client.get(reverse("lists"))
 
-        self.assertContains(response, 'title="Edit list"')
+        self.assertContains(response, 'aria-label="Options for ')
+        self.assertContains(response, "Settings")
+        self.assertNotContains(response, 'title="Edit list"')
         self.assertNotContains(response, reverse("list_add_item", args=[self.list1.id]))
         self.assertNotContains(
             response,
             f"{reverse('list_detail', args=[smart_list.id])}?edit_smart_rules=1",
         )
-        self.assertContains(response, "More list actions")
+        self.assertContains(response, "Pin to sidebar")
 
     @patch.object(get_user_model(), "update_preference")
     def test_lists_view_marks_only_smart_lists_with_badge(

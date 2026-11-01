@@ -29,3 +29,23 @@ def approved_thumbnail_url(raw, media_id):
     if len(parts) < 2 or parts[0] not in ("vi", "vi_webp") or parts[1] != media_id:  # noqa: PLR2004
         return ""
     return url
+
+
+def set_channel_as_author(item, channel):
+    """Store the channel as the item's author, once.
+
+    The media list, smart lists and the API already filter, sort and show
+    ``authors``, so a video's channel rides on that field instead of a second
+    filter. The item is shared between users, so the first channel wins, like
+    the poster and the description.
+
+    @param item - The shared video Item.
+    @param channel - Channel name reported by the client or the import.
+    @returns True when the item was changed.
+    """
+    name = str(channel or "").strip()
+    if not name or item.authors:
+        return False
+    item.authors = [name]
+    item.save(update_fields=["authors"])
+    return True

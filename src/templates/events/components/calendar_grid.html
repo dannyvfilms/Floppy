@@ -54,7 +54,7 @@
         <div class="p-3 space-y-2 {% if day != selected_day %}hidden{% endif %}" data-day-panel="{{ day }}">
           {% for release in releases %}
             <a data-release-media-type="{{ release.item.media_type }}" data-release-type="{{ release.release_type }}"
-               data-release-status="{{ release.status }}"
+               data-release-status="{{ release.status|default_if_none:"" }}"
                href="{{ release.item|media_url }}"
                class="block">
               <div class="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
@@ -105,7 +105,7 @@
             </div>
             <div class="mt-1 space-y-1 max-h-20 overflow-y-auto">
               {% for release in release_dict|get_item:day %}
-                <a data-release-media-type="{{ release.item.media_type }}" data-release-type="{{ release.release_type }}" data-release-status="{{ release.status }}" href="{{ release.item|media_url }}" class="block">
+                <a data-release-media-type="{{ release.item.media_type }}" data-release-type="{{ release.release_type }}" data-release-status="{{ release.status|default_if_none:"" }}" href="{{ release.item|media_url }}" class="block">
                   <div class="flex items-center gap-1 px-1 py-0.5 text-xs rounded hover:bg-[var(--color-surface-muted)] transition-colors">
                     {% with color=release.item.media_type|media_color %}
                       {% icon release.item.media_type is_active=False extra_classes=color|add:" w-4 h-4 shrink-0" %}

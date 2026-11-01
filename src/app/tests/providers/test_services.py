@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -174,14 +175,16 @@ class ServicesTests(TestCase):
         self.assertIsNone(cm.exception.status_code)
         self.assertIn("Could not reach", str(cm.exception))
 
-    @patch("app.providers.services.time.sleep")
     @patch("app.providers.services.session.get")
-    def test_api_request_retries_transient_http_errors(
-        self,
-        mock_get,
-        mock_sleep,
-    ):
+    def test_api_request_retries_transient_http_errors(self, mock_get):
         """Transient upstream 5xx responses should be retried before failing."""
+        # Swap the module's own `time` name, not the process-wide time.sleep,
+        # so sleeps from background threads are not counted.
+        fake_time = MagicMock(wraps=time)
+        mock_sleep = fake_time.sleep
+        patcher = patch("app.providers.services.time", fake_time)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         failed_response = MagicMock()
         failed_response.status_code = 502
         failed_response.headers = {}
@@ -574,7 +577,9 @@ class ServicesTests(TestCase):
 
         self.assert_metadata_title_payload(result, "Test Season")
 
-        mock_tv_with_seasons.assert_called_once_with("1", [1], None, missing_seasons=set())
+        mock_tv_with_seasons.assert_called_once_with(
+            "1", [1], None, missing_seasons=set()
+        )
 
     @patch("app.providers.tmdb.episode")
     def test_get_media_metadata_episode(self, mock_episode):
@@ -1181,7 +1186,9 @@ class ServicesTests(TestCase):
         )
 
         self.assertEqual(result, [{"title": "Google result"}])
-        mock_google_search.assert_called_once_with("9780123456789", 1, language=None, user=None)
+        mock_google_search.assert_called_once_with(
+            "9780123456789", 1, language=None, user=None
+        )
         mock_hardcover_search.assert_not_called()
         mock_isbn_search.assert_not_called()
 

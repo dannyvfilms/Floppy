@@ -12541,3 +12541,27 @@ msgstr "Rien dans votre bibliothèque ne correspond à &ldquo;%(value_1)s&rdquo;
 #, python-format
 msgid "See all library results for &ldquo;%(value_1)s&rdquo;"
 msgstr "Afficher tous les résultats de la bibliothèque pour &ldquo;%(value_1)s&rdquo;"
+
+
+#: templates/users/home_screen.html users/models.py
+msgid "Up Next"
+msgstr "À suivre"
+
+#: app/templatetags/app_tags.py
+msgid "Behind"
+msgstr "Non vus"
+
+#: app/templatetags/app_tags.py
+msgid "day"
+msgid_plural "days"
+msgstr[0] "jour"
+msgstr[1] "jours"
+
+#: users/home_screen.py
+msgid "Up Next requires the TV library."
+msgstr "« À suivre » nécessite la bibliothèque de séries."
+
+
+#: users/home_screen.py
+msgid "All media supports library and Up Next rows."
+msgstr "Tous les médias prend en charge les lignes de bibliothèque et « À suivre »."

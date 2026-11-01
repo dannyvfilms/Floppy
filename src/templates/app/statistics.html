@@ -11,6 +11,10 @@
 
 {% block content %}
   <style>
+    .hm { aspect-ratio: 1; width: 100%; border-radius: 0.125rem; transition: background-color 0.2s; }
+    :where(.hm) { background: var(--color-surface-muted); }
+    .hm:not(.hm-f):hover { box-shadow: 0 0 0 2px #fff; }
+    .hm-f { cursor: default; }
     /* Custom scrollbar styling for statistics cards */
     .statistics-card-scroll::-webkit-scrollbar {
       width: 6px;
@@ -1442,17 +1446,10 @@
               </div>
 
               <!-- Weeks grid: columns grow to fill width, capped at 20px -->
-              <div class="grid gap-1 flex-1 min-w-0"
+              <div class="grid gap-1 flex-1 min-w-0" data-heatmap-grid data-heatmap-start="{{ activity_data.calendar_weeks.0.0.date }}"
                    style="grid-template-columns: repeat({{ activity_data.calendar_weeks|length }}, minmax(1rem, 20px))">
-                {% for week in activity_data.calendar_weeks %}
-                  <div class="flex flex-col gap-1 min-w-4">
-                    {% for day in week %}
-                      <div {% if not day.future and day.by_type %}data-heatmap-date="{{ day.date }}" data-heatmap-counts="{% for media_type, n in day.by_type.items %}{{ media_type }}:{{ n }}{% if not forloop.last %},{% endif %}{% endfor %}"{% endif %}
-                           class="aspect-square w-full rounded-sm transition-colors duration-200 {% if day.future %}bg-[var(--color-surface-muted)] cursor-default{% else %}hover:ring-2 hover:ring-white {% if day.level == 0 %}bg-[var(--color-surface-muted)]{% elif day.level == 1 %}bg-indigo-700{% elif day.level == 2 %}bg-indigo-600{% elif day.level == 3 %}bg-indigo-500{% elif day.level == 4 %}bg-indigo-400{% endif %}{% endif %}"
-                           title="{% if day.future %}{{ day.date }}{% else %}{% blocktranslate with date=day.date count count=day.count %}{{ date }}: {{ count }} activity{% plural %}{{ date }}: {{ count }} activities{% endblocktranslate %}{% endif %}"></div>
-                    {% endfor %}
-                  </div>
-                {% endfor %}
+                {% comment %}Compact on purpose: all-time history can be thousands of weeks. Dates and titles are derived from the cell's position on hover (statistics-charts.js).{% endcomment %}
+                {% for week in activity_data.calendar_weeks %}<div class="flex flex-col gap-1 min-w-4">{% for day in week %}<div class="hm{% if day.future %} hm-f{% elif day.level == 1 %} bg-indigo-700{% elif day.level == 2 %} bg-indigo-600{% elif day.level == 3 %} bg-indigo-500{% elif day.level == 4 %} bg-indigo-400{% endif %}"{% if not day.future and day.by_type %} data-heatmap-counts="{% for media_type, n in day.by_type.items %}{{ media_type }}:{{ n }}{% if not forloop.last %},{% endif %}{% endfor %}"{% endif %}></div>{% endfor %}</div>{% endfor %}
               </div>
             </div>
           </div>

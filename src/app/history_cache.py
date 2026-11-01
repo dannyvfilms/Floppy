@@ -323,6 +323,9 @@ def _fetch_episode_data(
                 related_season__item__season_number=season_number_filter,
             )
 
+    if filters.get("episode_number") is not None:
+        episodes = episodes.filter(item__episode_number=filters["episode_number"])
+
     return list(episodes)
 
 

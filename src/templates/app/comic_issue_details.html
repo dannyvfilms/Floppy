@@ -41,9 +41,10 @@
               {% if media.details.issue_number %}
                 <span>{% blocktranslate trimmed with value_1=media.details.issue_number %}Issue #{{ value_1 }}{% endblocktranslate %}</span>
               {% endif %}
-              {% if media.details.cover_date %}
-                <span class="mx-2 text-gray-600">•</span>
-                <span>{{ media.details.cover_date }}</span>
+              {% firstof media.details.cover_date media.details.release_date as issue_date %}
+              {% if issue_date %}
+                {% if media.details.issue_number %}<span class="mx-2 text-gray-600">•</span>{% endif %}
+                <span>{{ issue_date }}</span>
               {% endif %}
               {% if not public_view|default:False and user_medias %}
                 <span class="mx-2 text-gray-600">•</span>
@@ -53,7 +54,8 @@
             {# Mobile #}
             <div class="md:hidden text-sm font-medium text-[var(--color-text-muted)] text-center">
               {% if media.details.issue_number %}{% blocktranslate trimmed with value_1=media.details.issue_number %}Issue #{{ value_1 }}{% endblocktranslate %}{% endif %}
-              {% if media.details.cover_date %}<span class="mx-1 text-gray-600">•</span>{{ media.details.cover_date }}{% endif %}
+              {% firstof media.details.cover_date media.details.release_date as issue_date %}
+              {% if issue_date %}{% if media.details.issue_number %}<span class="mx-1 text-gray-600">•</span>{% endif %}{{ issue_date }}{% endif %}
             </div>
           </div>
         </div>
@@ -238,6 +240,12 @@
         <p class="text-sm text-[var(--color-text-secondary)]">{{ media.details.cover_date }}</p>
       </div>
     {% endif %}
+    {% for label, text in issue_extra_details %}
+      <div class="mb-4">
+        <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide uppercase">{{ label }}</h3>
+        <p class="text-sm text-[var(--color-text-secondary)]">{{ text }}</p>
+      </div>
+    {% endfor %}
     </div>
     {% if authors_linked %}
       <div class="mb-4" {% detail_section_attrs user "comic_issue" "sidebar" "authors" %}>

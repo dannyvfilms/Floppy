@@ -525,7 +525,13 @@ def _genres(item, media, user):
 
 
 def _platforms(item, media, user):
-    values = _from_obj(item, "platforms") or _from_obj(media, "platforms") or []
+    values = (
+        _from_obj(media, "card_collection_platforms")
+        or _from_obj(item, "card_collection_platforms")
+        or _from_obj(item, "platforms")
+        or _from_obj(media, "platforms")
+        or []
+    )
     if isinstance(values, str):
         return _text(values)
     names = [str(value).strip() for value in values if str(value).strip()]

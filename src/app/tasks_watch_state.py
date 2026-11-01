@@ -20,6 +20,7 @@ from django.contrib.auth import get_user_model
 
 from app import reconcile_state
 from app.models import BackfillReconcileState, Item, MediaTypes, WatchState
+from app.services.sync_lock import state_transaction
 from app.services.watch_state import PROJECTED_MEDIA_TYPES, project_watch_state
 
 logger = logging.getLogger(__name__)
@@ -72,14 +73,18 @@ def backfill_user_watch_state(user, *, after_item_id=0, limit=BACKFILL_BATCH_SIZ
     if not items:
         return None
 
-    for item in items:
-        project_watch_state(user, item, record_changes=False)
+    from app.signals import suppress_media_change_side_effects
+
+    # The baseline is not a new decision for legacy provider save signals.
+    with suppress_media_change_side_effects():
+        for item in items:
+            project_watch_state(user, item, record_changes=False)
 
     return items[-1].id
 
 
 @shared_task(name="Backfill canonical watch state")
-def backfill_watch_state(user_id=None):
+def backfill_watch_state(user_id=None, *, only_if_pending=False):
     """Project canonical state for one user, or for everyone."""
     user_model = get_user_model()
     users = (
@@ -90,12 +95,27 @@ def backfill_watch_state(user_id=None):
 
     projected = 0
     for user in users:
-        cursor = 0
-        while True:
-            cursor = backfill_user_watch_state(user, after_item_id=cursor)
-            if cursor is None:
-                break
-            projected += 1
+        key = f"{REPAIR_KEY}_user_{user.pk}"
+        if only_if_pending:
+            state = reconcile_state.get_state(key, REPAIR_VERSION)
+            if state.completed_at is not None or not reconcile_state.acquire(key, state):
+                continue
+        try:
+            with state_transaction(user.pk) as sequence:
+                generation = sequence.sync_generation
+            cursor = 0
+            while True:
+                cursor = backfill_user_watch_state(user, after_item_id=cursor)
+                if cursor is None:
+                    break
+                projected += 1
+            with state_transaction(user.pk) as sequence:
+                if sequence.sync_generation == generation:
+                    reconcile_state.get_state(f"{REPAIR_KEY}_user_{user.pk}", REPAIR_VERSION)
+                    reconcile_state.mark_complete(f"{REPAIR_KEY}_user_{user.pk}", REPAIR_VERSION)
+        finally:
+            if only_if_pending:
+                reconcile_state.release(key)
 
     logger.info(
         "Watch state backfill complete (users=%s, batches=%s, rows=%s)",
@@ -115,20 +135,25 @@ def repair_watch_state(time_budget=REPAIR_TIME_BUDGET_SECONDS):
     deadline = time.monotonic() + time_budget
     for user in get_user_model().objects.order_by("id").iterator():
         key = f"{REPAIR_KEY}_user_{user.pk}"
-        state = reconcile_state.get_state(key, REPAIR_VERSION)
-        if state.completed_at is not None:
-            continue
-        cursor = state.last_cursor_item_id
+        with state_transaction(user.pk) as sequence:
+            state = reconcile_state.get_state(key, REPAIR_VERSION)
+            if state.completed_at is not None:
+                continue
+            generation = sequence.sync_generation
+            cursor = state.last_cursor_item_id
         while True:
             if time.monotonic() > deadline:
                 return False
             cursor = backfill_user_watch_state(user, after_item_id=cursor)
-            if cursor is None:
-                reconcile_state.mark_complete(key, REPAIR_VERSION)
-                break
-            BackfillReconcileState.objects.filter(key=key).update(
-                last_cursor_item_id=cursor,
-            )
+            with state_transaction(user.pk) as sequence:
+                if sequence.sync_generation != generation:
+                    return False
+                if cursor is None:
+                    reconcile_state.mark_complete(key, REPAIR_VERSION)
+                    break
+                BackfillReconcileState.objects.filter(key=key).update(
+                    last_cursor_item_id=cursor,
+                )
     return True
 
 

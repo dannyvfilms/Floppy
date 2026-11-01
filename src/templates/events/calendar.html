@@ -147,8 +147,24 @@
            {% endfor %}
          ],
          releaseTypeCount: {{ release_type_choices|length }},
+         feed: 'releases',
+         historyMediaTypes: [
+           {% for media_type in history_default_media_types %}'{{ media_type }}',{% endfor %}
+         ],
          calendarBaseUrl: '{{ request.scheme }}://{{ request.get_host }}{% url 'download_calendar' token=user.token %}',
+         historyBaseUrl: '{{ request.scheme }}://{{ request.get_host }}{% url 'download_history_calendar' token=user.token %}',
          get calendarExportUrl() {
+           if (this.feed === 'history') {
+             const historyParams = new URLSearchParams();
+             this.historyMediaTypes.forEach((mediaType) => {
+               historyParams.append('media_types', mediaType);
+             });
+             // Sent when every switch is off, so the link stays empty instead of using the defaults.
+             if (!this.historyMediaTypes.length) {
+               historyParams.append('media_types', 'none');
+             }
+             return `${this.historyBaseUrl}?${historyParams.toString()}`;
+           }
            const params = new URLSearchParams();
            this.selectedMediaTypes.forEach((mediaType) => {
              params.append('media_types', mediaType);
@@ -171,11 +187,65 @@
        }">
     <div class="flex items-center mb-3">
       {% include "app/icons/link.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
-      <h3 class="text-base font-medium">{% translate "Export link" %}</h3>
+      <h3 class="text-base font-medium">{% translate "Calendar links" %}</h3>
     </div>
-    <p class="text-[var(--color-text-muted)] mb-4 text-sm">
-      {% translate "This link can be used to integrate your calendar into any of your calendar applications." %}
+    <p class="text-[var(--color-text-muted)] mb-3 text-sm" x-show="feed === 'releases'">
+      {% translate "Add this link to any calendar app to see upcoming releases there." %}
     </p>
+    <p class="text-[var(--color-text-muted)] mb-3 text-sm" x-cloak x-show="feed === 'history'">
+      {% translate "Add this link to any calendar app to see what you watched, read and played, on the day you logged it." %}
+    </p>
+
+    <div class="inline-flex bg-[var(--color-surface-strong)] rounded-md p-1 mb-4 text-sm" role="tablist">
+      <button type="button"
+              role="tab"
+              :aria-selected="feed === 'releases'"
+              class="px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+              :class="feed === 'releases' ? 'bg-indigo-600 text-white' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'"
+              @click="feed = 'releases'">
+        {% translate "Upcoming releases" %}
+      </button>
+      <button type="button"
+              role="tab"
+              :aria-selected="feed === 'history'"
+              class="px-3 py-1.5 rounded-md transition-colors cursor-pointer"
+              :class="feed === 'history' ? 'bg-indigo-600 text-white' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'"
+              @click="feed = 'history'">
+        {% translate "Watch history" %}
+      </button>
+    </div>
+
+    <div x-cloak x-show="feed === 'history'">
+      <div class="mb-4">
+        <div class="flex items-center mb-3">
+          {% include "app/icons/four-square.svg" with classes="w-5 h-5 text-[var(--color-link)] mr-2" %}
+          <h4 class="text-sm font-semibold">{% translate "Media Types" %}</h4>
+        </div>
+        <p class="text-[var(--color-text-muted)] mb-3 text-xs">
+          {% translate "Music, podcasts and videos start off because they add many entries." %}
+        </p>
+        <div class="grid gap-3 md:grid-cols-3">
+          {% for media_type in history_media_types %}
+            <div class="flex items-center justify-between p-3 bg-[var(--color-surface-strong)] rounded-md">
+              <div class="flex items-center text-[var(--color-text-muted)]">
+                {% icon media_type is_active=False %}
+                <span class="text-[var(--color-text-secondary)] text-sm ml-2">{{ media_type|media_type_readable_plural }}</span>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input class="sr-only peer"
+                       type="checkbox"
+                       value="{{ media_type }}"
+                       x-model="historyMediaTypes">
+                <div class="w-9 h-5 bg-gray-600 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-px after:left-0.5 after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600">
+                </div>
+              </label>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div x-show="feed === 'releases'">
 
     <div class="mb-4">
       <div class="flex items-center mb-3">
@@ -258,6 +328,8 @@
           </div>
         {% endfor %}
       </div>
+    </div>
+
     </div>
 
     <div class="bg-[var(--color-surface-dim)] p-3 rounded-md mb-4">

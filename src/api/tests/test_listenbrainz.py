@@ -3,20 +3,29 @@
 import json
 import posixpath
 import re
+from datetime import UTC, datetime
 from http import HTTPStatus as HTTP  # noqa: N814
 from unittest.mock import patch
 from urllib.parse import urlencode, urlsplit
 
 from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase
 from django.urls import resolve, reverse
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
+from api.listenbrainz_views import _stats_window
 from app.models import Music
 from integrations.models import IntegrationToken
 
 SUBMIT_URL = "/apis/listenbrainz/1/submit-listens"
 VALIDATE_URL = "/apis/listenbrainz/1/validate-token"
 USER_LISTENS_URL = "/apis/listenbrainz/1/user/{username}/listens"
+USER_STATS_URL = "/apis/listenbrainz/1/stats/user/{username}/{entity}"
+
+BOC_MBID = "69158f97-4c07-4c4e-baf8-4e4ab1ed666e"
+MHTRTC_GROUP_MBID = "a7e0d9a8-5c8f-3d0a-9e0e-4a1c5e7e1f00"
+ROYGBIV_MBID = "2c4d8e6f-1a3b-4c5d-8e7f-9a0b1c2d3e4f"
 
 
 def _listen(listened_at=1700000000, **metadata):
@@ -367,6 +376,205 @@ class UserListensTests(ListenBrainzTestCase):
         response = self.client.get(self.listens_url() + "/", **self.auth)
 
         self.assertEqual(response.status_code, HTTP.OK)
+
+
+class UserStatsTests(ListenBrainzTestCase):
+    """GET stats/user ranks the token owner's plays like ListenBrainz does."""
+
+    def stats(self, entity, username=None, **params):
+        """GET one statistics endpoint for this user."""
+        url = USER_STATS_URL.format(
+            username=username or self.user.username,
+            entity=entity,
+        )
+        if params:
+            url = f"{url}?{urlencode(params)}"
+        return self.client.get(url, **self.auth)
+
+    def play(self, *listens):
+        """Record listens through the ingest endpoint."""
+        self.submit({"listen_type": "import", "payload": list(listens)})
+
+    def test_artists_are_ranked_by_plays(self):
+        """Each play counts once towards its artist, most played first."""
+        self.play(
+            _listen(1700000000, track_name="Roygbiv"),
+            _listen(1700000300, track_name="Olson"),
+            _listen(1700000600, track_name="Roygbiv"),
+            _listen(1700000900, artist_name="Aphex Twin", track_name="Xtal"),
+        )
+
+        response = self.stats("artists")
+
+        self.assertEqual(response.status_code, HTTP.OK)
+        payload = response.json()["payload"]
+        self.assertEqual(
+            [(a["artist_name"], a["listen_count"]) for a in payload["artists"]],
+            [("Boards of Canada", 3), ("Aphex Twin", 1)],
+        )
+        self.assertEqual(payload["total_artist_count"], 2)
+        self.assertEqual(payload["range"], "all_time")
+        self.assertEqual(payload["user_id"], self.user.username)
+        self.assertEqual(payload["from_ts"], 1700000000)
+
+    def test_release_groups_and_recordings_carry_musicbrainz_ids(self):
+        """Stored MBIDs come back on the album and recording rankings."""
+        self.play(_listen(1700000000), _listen(1700000300))
+        music = Music.objects.filter(user=self.user).select_related(
+            "artist", "album", "track"
+        )[0]
+        music.artist.musicbrainz_id = BOC_MBID
+        music.artist.save()
+        music.album.musicbrainz_release_group_id = MHTRTC_GROUP_MBID
+        music.album.save()
+        music.track.musicbrainz_recording_id = ROYGBIV_MBID
+        music.track.save()
+
+        group = self.stats("release-groups").json()["payload"]["release_groups"][0]
+        recording = self.stats("recordings").json()["payload"]["recordings"][0]
+
+        self.assertEqual(group["release_group_mbid"], MHTRTC_GROUP_MBID)
+        self.assertEqual(group["release_group_name"], music.album.title)
+        self.assertEqual(group["artist_mbids"], [BOC_MBID])
+        self.assertEqual(group["listen_count"], 2)
+        self.assertEqual(recording["recording_mbid"], ROYGBIV_MBID)
+        self.assertEqual(recording["track_name"], "Roygbiv")
+        self.assertEqual(recording["listen_count"], 2)
+
+    def test_identifiers_that_are_not_mbids_are_withheld(self):
+        """A slug stored as an identifier is not sent to MusicBrainz clients."""
+        self.play(_listen())
+        music = Music.objects.select_related("artist").get(user=self.user)
+        music.artist.musicbrainz_id = "boards-of-canada"
+        music.artist.save()
+
+        artist = self.stats("artists").json()["payload"]["artists"][0]
+
+        self.assertIsNone(artist["artist_mbid"])
+
+    def test_range_bounds_the_plays(self):
+        """this_year leaves out older plays that all_time counts."""
+        recent = int(timezone.now().timestamp()) - 60
+        self.play(_listen(1700000000), _listen(recent, track_name="Olson"))
+
+        this_year = self.stats("recordings", range="this_year").json()["payload"]
+        all_time = self.stats("recordings", range="all_time").json()["payload"]
+
+        self.assertEqual(
+            [r["track_name"] for r in this_year["recordings"]],
+            ["Olson"],
+        )
+        self.assertEqual(all_time["total_recording_count"], 2)
+
+    def test_count_and_offset_page_the_ranking(self):
+        """The count and offset parameters select a window of the ranking."""
+        self.play(
+            _listen(1700000000, track_name="One"),
+            _listen(1700000300, track_name="One"),
+            _listen(1700000600, track_name="Two"),
+        )
+
+        payload = self.stats("recordings", count=1, offset=1).json()["payload"]
+
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["offset"], 1)
+        self.assertEqual(payload["total_recording_count"], 2)
+        self.assertEqual(payload["recordings"][0]["track_name"], "Two")
+
+    def test_no_plays_is_an_empty_ranking(self):
+        """A range without plays answers 200 with nothing ranked."""
+        for entity, key in (
+            ("artists", "artists"),
+            ("release-groups", "release_groups"),
+            ("recordings", "recordings"),
+        ):
+            with self.subTest(entity=entity):
+                response = self.stats(entity)
+                self.assertEqual(response.status_code, HTTP.OK)
+                self.assertEqual(response.json()["payload"][key], [])
+        response = self.stats("genre-activity")
+        self.assertEqual(response.status_code, HTTP.OK)
+        self.assertEqual(response.json()["result"], [])
+
+    def test_genre_activity_counts_plays_per_genre_and_hour(self):
+        """A play counts once per genre, in its local hour of the day."""
+        self.play(_listen(1700000000), _listen(1700000300, track_name="Olson"))
+        album = Music.objects.select_related("album").filter(user=self.user)[0].album
+        album.genres = ["Electronic", "IDM"]
+        album.save()
+        hour = timezone.localtime(datetime.fromtimestamp(1700000000, tz=UTC)).hour
+
+        result = self.stats("genre-activity").json()["result"]
+
+        self.assertEqual(
+            sorted((e["genre"], e["hour"], e["listen_count"]) for e in result),
+            [("electronic", hour, 2), ("idm", hour, 2)],
+        )
+
+    def test_invalid_requests_are_rejected(self):
+        """A bad range or page is a 400, another user a 404, no token a 401."""
+        self.play(_listen())
+
+        self.assertEqual(
+            self.stats("artists", range="forever").status_code,
+            HTTP.BAD_REQUEST,
+        )
+        self.assertEqual(
+            self.stats("artists", count="many").status_code,
+            HTTP.BAD_REQUEST,
+        )
+        self.assertEqual(
+            self.stats("artists", offset=-1).status_code,
+            HTTP.BAD_REQUEST,
+        )
+        self.assertEqual(
+            self.stats("artists", username="someone-else").status_code,
+            HTTP.NOT_FOUND,
+        )
+        self.assertEqual(
+            self.client.get(
+                USER_STATS_URL.format(username=self.user.username, entity="artists")
+            ).status_code,
+            HTTP.UNAUTHORIZED,
+        )
+
+    def test_stats_are_scoped_to_the_token_owner(self):
+        """Another account's plays never enter this user's ranking."""
+        other = get_user_model().objects.create_user(username="lbz-other")
+        other.music_enabled = True
+        other.save()
+        self.submit(
+            {"listen_type": "single", "payload": [_listen()]},
+            headers={"HTTP_AUTHORIZATION": f"Token {other.token}"},
+        )
+
+        self.assertEqual(self.stats("artists").json()["payload"]["artists"], [])
+
+
+class StatsWindowTests(SimpleTestCase):
+    """The ranges match ListenBrainz: this_* run to now, the rest are complete."""
+
+    def test_windows_for_a_thursday_in_may(self):
+        """Each range starts and ends where ListenBrainz's would."""
+        now = datetime(2026, 5, 14, 15, 30, tzinfo=UTC)
+
+        def day(month, day_of_month, year=2026):
+            return datetime(year, month, day_of_month, tzinfo=UTC)
+
+        expected = {
+            "all_time": (None, None),
+            "this_week": (day(5, 11), now),
+            "this_month": (day(5, 1), now),
+            "this_year": (day(1, 1), now),
+            "week": (day(5, 4), day(5, 11)),
+            "month": (day(4, 1), day(5, 1)),
+            "quarter": (day(1, 1), day(4, 1)),
+            "half_yearly": (day(7, 1, 2025), day(1, 1)),
+            "year": (day(1, 1, 2025), day(1, 1)),
+        }
+        for range_, bounds in expected.items():
+            with self.subTest(range=range_):
+                self.assertEqual(_stats_window(range_, now), bounds)
 
 
 class ListenBrainzMetadataTests(ListenBrainzTestCase):

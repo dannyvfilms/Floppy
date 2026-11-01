@@ -19,6 +19,7 @@ class CardSurface:
     show_next_event_chip: bool = False
     show_next_event_subtitle: bool = False
     show_episode_identity: bool = False
+    show_episode_queue: bool = False
     hover_action_mode: str = "standard"
     is_recommend_mode: bool = False
     rating_read_only: bool = False
@@ -33,6 +34,12 @@ SURFACES = {
     "list_recommendations": CardSurface(),
     # Upcoming shelves lead with the next release instead of the status.
     "home": CardSurface(show_next_event_chip=True, show_next_event_subtitle=True),
+    # Home card with the Behind or countdown chip in the next-episode slot.
+    "up_next": CardSurface(
+        show_next_event_chip=True,
+        show_next_event_subtitle=True,
+        show_episode_queue=True,
+    ),
     # A list can hold single episodes; S01E02 says which one.
     "list": CardSurface(show_episode_identity=True),
     # A tile on a tier board: the board owns clicks and drags, so no hover
@@ -80,6 +87,7 @@ CARD_VALUES = frozenset(
     {
         "item",
         "media",
+        "video_landscape",
         "credit",
         "title",
         "card_media_type",
@@ -145,6 +153,8 @@ def card_context(page_context, surface, values):
         "card_uid": uuid4().hex[:8],
         **values,
     }
+    if surface == "library" and rendered_context.get("card_media_type") == "video":
+        rendered_context["video_landscape"] = True
     rendered_context.update(_card_render_context(rendered_context))
     return rendered_context
 

@@ -27,12 +27,12 @@ class FloppyTask(Task):
         """Skip the task when its tracked row was cancelled, else run it."""
         from django_celery_results.models import TaskResult
 
-        from app.signals import TRACKED_TASK_NAMES
+        from app.signals import _is_tracked_task
 
         task_id = self.request.id
         if (
             task_id
-            and self.name in TRACKED_TASK_NAMES
+            and _is_tracked_task(self.name)
             and TaskResult.objects.filter(
                 task_id=task_id,
                 status=states.REVOKED,

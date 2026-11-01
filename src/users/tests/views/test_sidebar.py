@@ -19,6 +19,12 @@ class SidebarViewTests(TestCase):
         self.user = get_user_model().objects.create_user(**self.credentials)
         self.client.login(**self.credentials)
 
+    def test_sidebar_no_longer_contains_feed_settings(self):
+        response = self.client.get(reverse("sidebar"))
+        self.assertNotContains(response, 'name="show_up_next"')
+        self.assertNotContains(response, 'name="episode_feed_columns"')
+        self.assertNotContains(response, 'href="/up-next"')
+
     def test_preferences_get(self):
         """Test GET request to preferences view."""
         response = self.client.get(reverse("preferences"))

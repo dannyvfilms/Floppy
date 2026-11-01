@@ -23,6 +23,7 @@ from app.models.choices import USER_HELD_STATUSES, MediaTypes, Sources, Status
 from app.models.item import Item
 from app.models.manager import MediaManager
 from app.models.media import Media, ScoreMonitorField
+from app.services.sync_lock import serialized_state_write
 from integrations.import_scope import ImportScopedManager
 
 logger = logging.getLogger(__name__)
@@ -175,6 +176,7 @@ class TV(Media):
         ]
 
     @tracker  # postpone field reset until after the save
+    @serialized_state_write
     def save(self, *args, **kwargs):
         """Save the media instance."""
         is_create = self._state.adding
@@ -503,7 +505,7 @@ class TV(Media):
 
         return None
 
-    def next_episode_target(self):
+    def next_episode_target(self, *, episode_numbers_by_season=None):
         """Return the first tracked season and episode that can be watched next."""
         seasons = sorted(
             (season for season in self.seasons.all() if season.item.season_number != 0),
@@ -517,7 +519,12 @@ class TV(Media):
             if season.status == Status.DROPPED.value:
                 continue
 
-            next_episode_number = season.next_episode_number()
+            next_episode_number = season.next_episode_number(
+                episode_numbers=(
+                    episode_numbers_by_season.get(season.item.season_number, [])
+                    if episode_numbers_by_season is not None else None
+                ),
+            )
             if next_episode_number is None:
                 has_caught_up_season = (
                     season.status == Status.COMPLETED.value or season.progress > 0
@@ -1230,6 +1237,7 @@ class Season(Media):
         )
 
     @tracker  # postpone field reset until after the save
+    @serialized_state_write
     def save(self, *args, **kwargs):
         """Save the media instance."""
         # if related_tv is not set
@@ -2476,6 +2484,7 @@ class Episode(models.Model):
         """Return the season and episode number."""
         return self.item.__str__()
 
+    @serialized_state_write
     def save(self, *args, **kwargs):
         """Save the episode instance."""
         from app.services.completion import (

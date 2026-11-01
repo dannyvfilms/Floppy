@@ -828,6 +828,9 @@ def _attach_media_with_aggregation(item_list, media_user):
 
     for item in item_list:
         item.media = media_by_item_id.get(item.id)
+    from app.media_list_filters import attach_card_collection_platforms
+
+    attach_card_collection_platforms(media_user, item_list)
     _attach_list_card_overrides(item_list)
 
 

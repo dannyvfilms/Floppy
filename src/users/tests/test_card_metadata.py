@@ -86,6 +86,20 @@ class CardMetadataTests(SimpleTestCase):
             "PC, PlayStation 5, Switch",
         )
 
+    def test_platform_line_prefers_collection_platforms(self):
+        from users.card_metadata import card_lines
+
+        user = SimpleNamespace(
+            card_metadata=parse_card_metadata(
+                {"version": 1, "types": {"game": {"fields": ["platforms"]}}}
+            )
+        )
+        item = SimpleNamespace(platforms=["PC", "Switch"])
+        media = SimpleNamespace(card_collection_platforms=["PlayStation 5", "Switch"])
+        self.assertEqual(card_lines(user, "game", item, media)[0]["text"], "PlayStation 5, Switch")
+        media.card_collection_platforms = []
+        self.assertEqual(card_lines(user, "game", item, media)[0]["text"], "PC, Switch")
+
     def test_legacy_seed_removes_progress_when_the_bar_is_off(self):
         """progress_bar false drops the progress field on every type."""
         seeded = profiles_from_legacy("always", False, True)

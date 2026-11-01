@@ -12220,3 +12220,27 @@ msgstr "In deiner Bibliothek passt nichts zu &ldquo;%(value_1)s&rdquo;. Wähle e
 #, python-format
 msgid "See all library results for &ldquo;%(value_1)s&rdquo;"
 msgstr "Alle Bibliotheksergebnisse für &ldquo;%(value_1)s&rdquo; anzeigen"
+
+
+#: templates/users/home_screen.html users/models.py
+msgid "Up Next"
+msgstr "Als Nächstes"
+
+#: app/templatetags/app_tags.py
+msgid "Behind"
+msgstr "Ungesehen"
+
+#: app/templatetags/app_tags.py
+msgid "day"
+msgid_plural "days"
+msgstr[0] "Tag"
+msgstr[1] "Tage"
+
+#: users/home_screen.py
+msgid "Up Next requires the TV library."
+msgstr "Für „Als Nächstes“ muss die Serienbibliothek aktiviert sein."
+
+
+#: users/home_screen.py
+msgid "All media supports library and Up Next rows."
+msgstr "Alle Medien unterstützt Bibliothekszeilen und „Als Nächstes“."

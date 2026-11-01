@@ -716,7 +716,11 @@ class GeneratedNginxTests(SimpleTestCase):
         for conf in (generated, (ROOT / "nginx.conf").read_text()):
             with self.subTest(configuration=conf[:60]):
                 self.assertIn("$request_method $server_protocol", conf)
-                self.assertIn('add_header Referrer-Policy "same-origin" always;', conf)
+                self.assertIn('"" "same-origin";', conf)
+                self.assertIn(
+                    "add_header Referrer-Policy $floppy_referrer_policy always;", conf
+                )
+                self.assertIn("proxy_hide_header Referrer-Policy;", conf)
                 for variable in (
                     "$uri",
                     "$request_uri",
