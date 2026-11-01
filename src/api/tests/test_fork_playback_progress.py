@@ -10,6 +10,7 @@ import requests
 from django.test import override_settings
 from django.utils import timezone
 
+from api.fork_views_playback import upsert_playback_progress
 from app import live_playback
 from app.models import (
     Item,
@@ -599,6 +600,65 @@ class PlaybackProgressScrobbleTests(FloppyApiTestCase):
             )
 
         self.assertEqual(response.status_code, HTTP.OK)
+
+
+class PlaybackProgressEventOrderTests(FloppyApiTestCase):
+    """Webhook writes are ordered by receipt time, not by when they ran."""
+
+    def setUp(self):
+        """Use one movie item and a whole-second receipt clock."""
+        super().setUp()
+        self.item = self.items_by_type[MediaTypes.MOVIE.value][0]
+        self.now_ts = int(timezone.now().timestamp())
+
+    def _write(self, position, *, completed=False, event_at=None):
+        return upsert_playback_progress(
+            self.user1,
+            self.item,
+            position,
+            3000,
+            completed=completed,
+            event_at=event_at,
+        )
+
+    def _stored(self):
+        return PlaybackProgress.objects.get(user=self.user1, item=self.item)
+
+    def test_backlogged_events_apply_in_receipt_order(self):
+        """A queue backlog processes both events after they were received."""
+        self._write(1200, event_at=self.now_ts - 10)
+        self._write(2990, completed=True, event_at=self.now_ts - 5)
+
+        progress = self._stored()
+        self.assertEqual(progress.position_seconds, 2990)
+        self.assertTrue(progress.completed)
+
+    def test_next_event_in_the_same_second_applies(self):
+        """Receipt time is whole seconds, so a tie is not out of order."""
+        self._write(1200, event_at=self.now_ts)
+        self._write(1300, event_at=self.now_ts)
+
+        self.assertEqual(self._stored().position_seconds, 1300)
+
+    def test_older_event_processed_later_is_dropped(self):
+        """A late play must not reset a completed scrobble (#1708)."""
+        self._write(2990, completed=True, event_at=self.now_ts)
+        self._write(0, event_at=self.now_ts - 1)
+
+        progress = self._stored()
+        self.assertEqual(progress.position_seconds, 2990)
+        self.assertTrue(progress.completed)
+
+    def test_write_without_event_time_keeps_the_event_clock(self):
+        """An API write applies but does not reorder webhook events."""
+        self._write(1200, event_at=self.now_ts)
+        self._write(1500)
+        self.assertEqual(self._stored().position_seconds, 1500)
+
+        self._write(0, event_at=self.now_ts - 1)
+        self.assertEqual(self._stored().position_seconds, 1500)
+        self._write(1600, event_at=self.now_ts + 1)
+        self.assertEqual(self._stored().position_seconds, 1600)
 
 
 class PlaybackWebhookTests(FloppyApiTestCase):

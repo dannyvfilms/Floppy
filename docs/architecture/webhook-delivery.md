@@ -82,8 +82,14 @@ receipt timestamp is carried into the worker and used in two places:
   time is older than the card's last update, so a delayed `media.play` cannot
   replace the card left by a later `media.scrobble`.
 - `api.fork_views_playback.upsert_playback_progress` drops a progress write
-  whose receipt time is older than the stored row, so the delayed play cannot
-  reset a completed scrobble to 0% / not completed.
+  whose receipt time is older than the row's `last_event_at` (the receipt time
+  of the newest event it applied), so the delayed play cannot reset a
+  completed scrobble to 0% / not completed. It never compares against
+  `updated_at`, which is processing time: a backlog would make every queued
+  event look older than the one processed just before it. Receipt times are
+  whole seconds, so events received in the same second apply in processing
+  order. Writes without a receipt time (API, UI) always apply and leave
+  `last_event_at` unchanged.
 
 Final events still write their history rows regardless of order: Plex plays do
 not write tracking rows at all (`STOP_ONLY` policy, see

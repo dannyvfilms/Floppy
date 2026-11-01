@@ -184,11 +184,16 @@ def upsert_playback_progress(
     intentionally omits one field.  The row lock keeps those field-specific
     updates from becoming a stale read-modify-write race.
 
-    ``event_at`` is when the source event happened. An older event processed
-    after a newer one (a queued play overtaking a scrobble) must not overwrite
-    the newer row, so the stale write is dropped.
+    ``event_at`` is when the source event was received. An older event
+    processed after a newer one (a queued play overtaking a scrobble) must not
+    overwrite the newer row, so a write older than the last applied event is
+    dropped. Writes without ``event_at`` (API, UI) always apply and leave the
+    event clock alone: they have no receipt time comparable to a webhook's.
     """
     position = 0 if position_seconds is None else position_seconds
+    event_time = (
+        None if event_at is None else datetime.fromtimestamp(event_at, tz=UTC)
+    )
     with state_transaction(user.pk):
         progress, created = PlaybackProgress.objects.select_for_update().get_or_create(
             user=user,
@@ -197,23 +202,25 @@ def upsert_playback_progress(
                 "position_seconds": position,
                 "duration_seconds": duration_seconds,
                 "completed": completed,
+                "last_event_at": event_time,
             },
         )
         if created:
             return progress
 
-        if event_at is not None and progress.updated_at > datetime.fromtimestamp(
-            event_at,
-            tz=UTC,
-        ):
-            logger.info(
-                "Dropping out-of-order playback progress: event_at=%s row_updated_at=%s",
-                event_at,
-                progress.updated_at,
-            )
-            return progress
-
         update_fields = []
+        if event_time is not None:
+            if progress.last_event_at and event_time < progress.last_event_at:
+                logger.info(
+                    "Dropping out-of-order playback progress: event_at=%s "
+                    "last_event_at=%s",
+                    event_at,
+                    progress.last_event_at,
+                )
+                return progress
+            progress.last_event_at = event_time
+            update_fields.append("last_event_at")
+
         if not preserve_position:
             progress.position_seconds = position
             update_fields.append("position_seconds")
