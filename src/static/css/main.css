@@ -953,6 +953,9 @@
   .min-h-\[12rem\] {
     min-height: 12rem;
   }
+  .min-h-\[46px\] {
+    min-height: 46px;
+  }
   .min-h-\[130px\] {
     min-height: 130px;
   }

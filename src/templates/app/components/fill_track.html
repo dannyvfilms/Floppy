@@ -112,7 +112,7 @@
           {% if general_fields|length > 1 %}<div class="grid grid-cols-2 gap-x-4">{% endif %}
             {% for field in general_fields %}
               {% translate field.label as translated_field_label %}
-              <div class="mb-4 sm:mb-5 {% if field.name == 'progress' or field.name == 'reading_time' or field.name == 'start_date' or field.name == 'end_date' %}col-span-2 sm:col-span-1{% endif %}">
+              <div class="mb-4 sm:mb-5 {% if field.name == 'progress' or field.name == 'reading_time' or field.name == 'start_date' or field.name == 'end_date' or field.name == 'entry_source' %}col-span-2 sm:col-span-1{% endif %}">
                 {% if field.name == "start_date" %}
                   <label class="block text-xs font-medium mb-1 text-[var(--color-text-secondary)] sm:hidden">{% translate "Dates" %}</label>
                   <label class="hidden sm:block text-sm font-medium mb-1 text-[var(--color-text-secondary)]"
@@ -126,12 +126,12 @@
                 {% endif %}
                 <div class="relative flex items-stretch">
                   {% if field.name == "status" %}
-                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
+                    {{ field|add_class:"w-full min-h-[46px] p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] appearance-none" }}
                     <div class="absolute inset-y-0 right-2 flex items-center pointer-events-none">
                       {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
                     </div>
                   {% elif field.field.widget.input_type == 'number' %}
-                    {{ field|add_class:"w-full p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
+                    {{ field|add_class:"w-full min-h-[46px] p-2 pr-12 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" }}
                     <div class="absolute inset-y-0 right-0 flex flex-col border-l border-gray-600">
                       <button type="button"
                               class="flex-1 px-2 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors rounded-tr-md border-t border-r border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"
@@ -162,7 +162,7 @@
                          x-init="query = $refs.source.value"
                          @click.outside="open = false"
                          @keydown.escape="open = false">
-                      {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"|attr:"x-ref:source"|attr:"autocomplete:off"|attr:"@focus:open = true"|attr:"@input:query = $el.value; open = true" }}
+                      {{ field|add_class:"w-full min-h-[46px] p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"|attr:"x-ref:source"|attr:"autocomplete:off"|attr:"@focus:open = true"|attr:"@input:query = $el.value; open = true" }}
                       <div class="absolute left-0 right-0 top-full z-40 mt-1 max-h-48 overflow-y-auto bg-[var(--color-surface-strong)] rounded-md shadow-lg border border-gray-700"
                            x-show="open && shown.length"
                            x-cloak>
@@ -175,7 +175,7 @@
                       </div>
                     </div>
                   {% else %}
-                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
+                    {{ field|add_class:"w-full min-h-[46px] p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
                   {% endif %}
                 </div>
               </div>
