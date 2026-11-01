@@ -257,7 +257,9 @@
       probe.innerHTML = '<div data-active-playback-card data-active-playback-probe></div>';
       container.after(probe);
     }
-    const width = Math.round(probe.firstElementChild.getBoundingClientRect().width);
+    const item = probe.firstElementChild;
+    if (!item) return;
+    const width = Math.round(item.getBoundingClientRect().width);
     if (width > 0 && container.dataset.cardWidth !== String(width)) {
       container.dataset.cardWidth = String(width);
       container.style.setProperty('--playback-card-w', `${width}px`);
