@@ -71,7 +71,7 @@
                data-release-status="{{ release.status|default_if_none:"" }}"
                data-release-title="{{ release.calendar_title }}" data-release-time="{{ release.datetime|date:'U' }}"
                data-release-unknown="{% if release.is_sentinel_time %}true{% else %}false{% endif %}"
-               href="{{ release.item|media_url }}"
+               href="{{ release|calendar_event_url }}"
                class="block">
               <div class="flex items-center gap-3 p-2 rounded-md hover:bg-[var(--color-surface-hover)] transition-colors">
                 <img data-media-artwork loading="lazy" decoding="sync" alt="{{ release }}"
