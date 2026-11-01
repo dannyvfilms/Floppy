@@ -73,6 +73,25 @@
     }
   </style>
   <div class="space-y-4 sm:space-y-8">
+    <style>
+      /* Several check-ins sit in one row that scrolls sideways. */
+      #active-playback-container {
+        grid-template-columns: none !important;
+        grid-auto-flow: column;
+        grid-auto-columns: var(--playback-card-w, 100%);
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+        margin-top: -0.5rem;
+        padding-top: 0.5rem;
+      }
+      #active-playback-container::-webkit-scrollbar { display: none; }
+      #active-playback-container > [data-active-playback-card] {
+        grid-column: auto !important;
+        scroll-snap-align: start;
+      }
+    </style>
     <div id="active-playback-container"
          class="media-grid"
          {% if not active_playback_cards %}style="display:none"{% endif %}

@@ -241,6 +241,29 @@
     }
   }
 
+  // Several cards scroll sideways. Each keeps the width a lone card always had,
+  // which the page's own grid decides, so read it off a hidden probe grid that
+  // sits beside the row and obeys the same rules.
+  function syncActivePlaybackColumns() {
+    const container = document.getElementById('active-playback-container');
+    if (!container) return;
+    let probe = document.getElementById('active-playback-probe');
+    if (!probe) {
+      probe = document.createElement('div');
+      probe.id = 'active-playback-probe';
+      probe.className = 'media-grid';
+      probe.setAttribute('aria-hidden', 'true');
+      probe.style.cssText = 'height:0;overflow:hidden;visibility:hidden;pointer-events:none;margin:0 !important';
+      probe.innerHTML = '<div data-active-playback-card data-active-playback-probe></div>';
+      container.after(probe);
+    }
+    const width = Math.round(probe.firstElementChild.getBoundingClientRect().width);
+    if (width > 0 && container.dataset.cardWidth !== String(width)) {
+      container.dataset.cardWidth = String(width);
+      container.style.setProperty('--playback-card-w', `${width}px`);
+    }
+  }
+
   function initActivePlaybackTicker() {
     // Timer id lives on window so a re-executed copy of this script can
     // still clear the interval started by a previous page.
@@ -250,7 +273,8 @@
     }
 
     const tick = () => {
-      const cards = document.querySelectorAll('[data-active-playback-card]');
+      syncActivePlaybackColumns();
+      const cards = document.querySelectorAll('[data-active-playback-card]:not([data-active-playback-probe])');
       cards.forEach(updateActivePlaybackCard);
     };
 
