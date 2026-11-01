@@ -86,7 +86,9 @@ class HomeScreenMenuTests(SerialStaticLiveServerTestCase):
         section.get_by_role("button", name="Last Watched", exact=True).click()
         row = section.locator("article").last
         expect(row.get_by_label("Row name")).to_have_value("Last Watched")
-        self.page.get_by_role("button", name="Save Home Screen").click()
+        # Saving is a form post; reloading mid-navigation can crash the page.
+        with self.page.expect_navigation():
+            self.page.get_by_role("button", name="Save Home Screen").click()
         self.page.reload()
         saved = self.page.evaluate("""() => window.homeScreenSettingsInstance.sections
             .find(section => section.media_type === 'all').rows
@@ -144,7 +146,9 @@ class HomeScreenMenuTests(SerialStaticLiveServerTestCase):
         expect(trigger).to_have_attribute("aria-expanded", "false")
         expect(trigger).to_be_focused()
         self.assertEqual(errors, [])
-        self.page.get_by_role("button", name="Save Home Screen").click()
+        # Saving is a form post; reloading mid-navigation can crash the page.
+        with self.page.expect_navigation():
+            self.page.get_by_role("button", name="Save Home Screen").click()
         self.page.reload()
         saved = self.page.evaluate("""() => window.homeScreenSettingsInstance.sections
             .find(section => section.media_type === 'all').rows.at(-1)""")
