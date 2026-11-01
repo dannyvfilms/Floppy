@@ -105,6 +105,7 @@ from app.models.tv import (
     Season,
 )
 from app.models.video import Video, VideoPlay
+from app.models.video_game_link import VideoGameLink
 from app.models.video_game_tag import VideoGameTag
 from app.models.watch_state import (
     WatchState,
@@ -197,6 +198,7 @@ __all__ = [
     "Track",
     "UserProviderCredential",
     "Video",
+    "VideoGameLink",
     "VideoGameTag",
     "VideoPlay",
     "WatchState",

@@ -354,6 +354,9 @@
       {% if show_notes|default:False or media.related or media.cast or media.crew or media_type == MediaTypes.GAME.value or media.episodes %}
         <div class="w-full md:w-3/4"
              style="display: flex; flex-direction: column;">
+        {% if video_game %}
+          {% include "app/components/video_game_panel.html" %}
+        {% endif %}
          {# Rendered even with no notes yet: the empty section is the anchor the #}
          {# post-save OOB swap replaces, so it must pre-exist in the DOM. #}
         {% if show_notes|default:False %}

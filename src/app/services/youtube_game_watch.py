@@ -8,7 +8,9 @@ progress is the furthest position reached, not seconds actually watched.
 import re
 import unicodedata
 
-from app.models import MediaTypes, Video, VideoGameTag
+from django.db.models import Q
+
+from app.models import Item, MediaTypes, Video, VideoGameLink, VideoGameTag
 
 
 def normalize_title(title):
@@ -32,40 +34,110 @@ def tag_matches_game(tag_title, tag_year, game_item):
     )
 
 
-def watched_for_game(user, game_item):
-    """Estimate how long `user` watched videos YouTube tags with this game.
+def _seconds_watched(progress, length):
+    """Furthest position, capped at the runtime. A rewatch can pass the runtime."""
+    return min(progress, length) if length else progress
 
-    @returns `{"videos", "seconds", "hours_label", "estimated"}`, or None when nothing matches.
+
+def _hours_label(seconds):
+    hours, minutes = divmod(seconds // 60, 60)
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
+
+def watched_for_game(user, game_item):
+    """Estimate how long `user` watched videos about this game.
+
+    A video counts when the user linked it to the game, or when YouTube's tag
+    names it and the user has not linked it elsewhere or said it is not about a
+    game. Takeout imports carry no position, so those videos add to the count
+    but not to the time.
+
+    @returns `{"videos", "seconds", "hours_label", "estimated", "items"}`, or
+    None when nothing matches. `items` lists each video, newest first.
     """
     if game_item.media_type != MediaTypes.GAME.value:
         return None
-    rows = (
-        Video.objects.filter(
-            user=user,
-            item__video_game_tag__status=VideoGameTag.Status.FOUND,
-        )
-        .values_list(
-            "progress",
-            "length_seconds",
-            "item__video_game_tag__game_title",
-            "item__video_game_tag__release_year",
-        )
-    )
-    videos = 0
-    seconds = 0
-    for progress, length, title, year in rows:
-        if not tag_matches_game(title, year, game_item):
-            continue
-        videos += 1
-        # Position can pass the runtime after a rewatch or a seek past the end.
-        seconds += min(progress, length) if length else progress
-    if not videos:
-        return None
-    hours, minutes = divmod(seconds // 60, 60)
-    label = f"{hours}h {minutes}m" if hours else f"{minutes}m"
-    return {
-        "videos": videos,
-        "seconds": seconds,
-        "hours_label": label,
-        "estimated": True,
+    overrides = {
+        link.video_item_id: link.game_item_id
+        for link in VideoGameLink.objects.filter(user=user)
     }
+    rows = (
+        Video.objects.filter(user=user)
+        .filter(
+            Q(item__video_game_tag__status=VideoGameTag.Status.FOUND)
+            | Q(item__video_game_links__user=user, item__video_game_links__game_item=game_item)
+        )
+        .select_related("item", "item__video_game_tag")
+        .distinct()
+    )
+    items = []
+    seconds = 0
+    for video in rows:
+        override = overrides.get(video.item_id, "none")
+        if override != "none":
+            matched = override == game_item.pk
+            how = "linked"
+        else:
+            tag = getattr(video.item, "video_game_tag", None)
+            matched = bool(
+                tag
+                and tag.status == VideoGameTag.Status.FOUND
+                and tag_matches_game(tag.game_title, tag.release_year, game_item)
+            )
+            how = "tagged"
+        if not matched:
+            continue
+        watched = _seconds_watched(video.progress, video.length_seconds)
+        seconds += watched
+        items.append(
+            {
+                "video": video,
+                "item": video.item,
+                "seconds": watched,
+                "label": _hours_label(watched) if watched else "",
+                "how": how,
+                "when": video.end_date,
+            }
+        )
+    if not items:
+        return None
+    items.sort(
+        key=lambda row: (row["when"] is not None, row["when"] or row["video"].pk),
+        reverse=True,
+    )
+    return {
+        "videos": len(items),
+        "seconds": seconds,
+        "hours_label": _hours_label(seconds),
+        "estimated": True,
+        "items": items,
+    }
+
+
+def game_for_video(user, video_item):
+    """Return what a video is about for `user`.
+
+    @returns `{"game", "how", "tag"}`. `game` is the Floppy game Item or None.
+    `how` is "linked" (user's choice), "none" (user said no game), "tagged"
+    (matched from YouTube's tag), or "" (nothing known).
+    """
+    tag = VideoGameTag.objects.filter(
+        item=video_item, status=VideoGameTag.Status.FOUND
+    ).first()
+    link = VideoGameLink.objects.filter(user=user, video_item=video_item).select_related(
+        "game_item"
+    ).first()
+    if link:
+        return {
+            "game": link.game_item,
+            "how": "linked" if link.game_item else "none",
+            "tag": tag,
+        }
+    if tag:
+        candidates = Item.objects.filter(
+            media_type=MediaTypes.GAME.value, title__icontains=tag.game_title
+        )[:20]
+        for game in candidates:
+            if tag_matches_game(tag.game_title, tag.release_year, game):
+                return {"game": game, "how": "tagged", "tag": tag}
+    return {"game": None, "how": "", "tag": tag}
