@@ -111,8 +111,8 @@ class ServicesTests(TestCase):
 
     @patch("app.providers.services.session.get")
     def test_api_request_uses_configured_tmdb_proxy(self, mock_get):
-        """TMDB requests should route through a configured user's proxy URL."""
-        User.objects.create_user(
+        """TMDB requests should route through a superuser's proxy URL."""
+        User.objects.create_superuser(
             username="proxy-user",
             password="testpass123",
             tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),
@@ -128,6 +128,38 @@ class ServicesTests(TestCase):
             kwargs["proxies"],
             {"http": "socks5://127.0.0.1:1080", "https": "socks5://127.0.0.1:1080"},
         )
+
+    @patch("app.providers.services.session.get")
+    def test_api_request_ignores_non_superuser_tmdb_proxy(self, mock_get):
+        """A regular user's stored proxy must not route instance-wide traffic."""
+        User.objects.create_user(
+            username="member",
+            password="testpass123",
+            tmdb_proxy_url=encrypt("socks5://attacker:1080"),
+        )
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_get.return_value = mock_response
+
+        services.api_request(Sources.TMDB.value, "GET", "https://example.com/api")
+
+        _, kwargs = mock_get.call_args
+        self.assertNotIn("proxies", kwargs)
+
+    def test_tmdb_proxy_prefers_lowest_pk_superuser(self):
+        """The selection is deterministic when several superusers set one."""
+        User.objects.create_superuser(
+            username="first-admin",
+            password="testpass123",
+            tmdb_proxy_url=encrypt("socks5://first:1080"),
+        )
+        User.objects.create_superuser(
+            username="second-admin",
+            password="testpass123",
+            tmdb_proxy_url=encrypt("socks5://second:1080"),
+        )
+
+        self.assertEqual(services._get_tmdb_proxy_url(), "socks5://first:1080")
 
     @patch("app.providers.services.session.get")
     def test_api_request_omits_proxies_when_not_configured(self, mock_get):

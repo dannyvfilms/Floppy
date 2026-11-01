@@ -39,15 +39,46 @@ class TmdbProxyUpdateTests(TestCase):
     """Tests for the Advanced settings TMDB proxy field."""
 
     def setUp(self):
-        """Create user for the tests."""
+        """Create a superuser for the tests; the proxy is instance-wide."""
         self.credentials = {"username": "test", "password": "12345"}
-        self.user = get_user_model().objects.create_user(**self.credentials)
+        self.user = get_user_model().objects.create_superuser(**self.credentials)
         self.client.login(**self.credentials)
 
     def tearDown(self):
         """Avoid leaking the tmdb proxy cache key between tests."""
         cache.delete("tmdb_proxy_url")
         super().tearDown()
+
+    def test_update_tmdb_proxy_rejects_non_superuser(self):
+        """A regular user must not be able to set the instance-wide proxy."""
+        from app.providers import services
+
+        member = {"username": "member", "password": "12345"}
+        get_user_model().objects.create_user(**member)
+        self.client.login(**member)
+
+        response = self.client.post(
+            reverse("update_tmdb_proxy"),
+            {"tmdb_proxy_url": "socks5://attacker:1080"},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(
+            get_user_model().objects.exclude(tmdb_proxy_url="").exists(),
+        )
+        self.assertIsNone(services._get_tmdb_proxy_url())
+
+    def test_advanced_page_hides_proxy_form_from_non_superuser(self):
+        """Only superusers see the TMDB proxy form."""
+        response = self.client.get(reverse("advanced"))
+        self.assertContains(response, reverse("update_tmdb_proxy"))
+
+        member = {"username": "member", "password": "12345"}
+        get_user_model().objects.create_user(**member)
+        self.client.login(**member)
+
+        response = self.client.get(reverse("advanced"))
+        self.assertNotContains(response, reverse("update_tmdb_proxy"))
 
     def test_update_tmdb_proxy_saves_encrypted_value(self):
         """Posting a proxy URL should save it encrypted and invalidate the cache."""

@@ -490,6 +490,7 @@
         </template>
       </div>
 
+      {% if user.is_superuser %}
       <div class="bg-[var(--color-surface-strong)] p-5 rounded-lg">
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center">
@@ -521,6 +522,7 @@
           </button>
         </form>
       </div>
+      {% endif %}
     </div>
   </div>
 

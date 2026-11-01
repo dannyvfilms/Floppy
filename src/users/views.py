@@ -3975,7 +3975,9 @@ def clear_all_caches(request):
 
 @require_POST
 def update_tmdb_proxy(request):
-    """Update or clear the user's TMDB outbound proxy URL."""
+    """Update or clear the instance-wide TMDB outbound proxy URL for superusers."""
+    if not request.user.is_superuser:
+        return HttpResponse(status=403)
     from integrations.imports.helpers import encrypt
 
     proxy_url = request.POST.get("tmdb_proxy_url", "").strip()
