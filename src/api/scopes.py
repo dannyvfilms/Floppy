@@ -174,6 +174,8 @@ VIEW_SCOPES: dict[str, dict[str, str]] = {
     "api.fork_views_watched_state.WatchedStateView": {"GET": _R, "PUT": _W},
     "api.fork_views_watched_state.WatchedStateChangeFeedView": {"GET": "sync:read"},
     "api.fork_views_progress_changes.ProgressChangeFeedView": {"GET": "sync:read"},
+    "api.fork_views_sync.SyncBootstrapView": {"POST": "sync:read"},
+    "api.fork_views_sync.SyncSnapshotView": {"GET": "sync:read"},
     "api.fork_views_watched_state.SyncConnectionsView": {"GET": "sync:read"},
     "api.fork_views_watched_state.SyncConflictsView": {"GET": "sync:read"},
     "api.fork_views_watched_state.SyncConflictResolveView": {"POST": "sync:write"},

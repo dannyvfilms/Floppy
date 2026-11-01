@@ -130,8 +130,11 @@ jobs:
           version: "0.12.3"
       - name: Install dependencies
         run: uv sync --locked --no-default-groups --group test
-      - name: Run OAuth tests on PostgreSQL
-        run: scripts/test_postgres.sh integrations.tests.test_oauth_device_flow
+      - name: Run OAuth and reliable sync tests on PostgreSQL
+        run: >-
+          scripts/test_postgres.sh integrations.tests.test_oauth_device_flow
+          api.tests.test_reliable_sync api.tests.test_reliable_sync_postgres
+          app.tests.test_reliable_sync_migration
 
   # Preserve the existing required-check name while requiring both shards and OAuth.
   test:

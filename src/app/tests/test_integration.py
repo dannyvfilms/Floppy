@@ -1031,6 +1031,17 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         """
         overlay = self.page.locator("div.fixed.inset-0:visible").first
         expect(overlay).to_be_visible()
+        # The page entrance animation temporarily makes its container a fixed
+        # containing block. Visibility alone can sample its final moving frame.
+        self.page.wait_for_function(
+            """overlay => {
+                const box = overlay.getBoundingClientRect();
+                return overlay.isConnected && Math.abs(box.x) < 2 && Math.abs(box.y) < 2
+                    && Math.abs(box.width - window.innerWidth) < 2
+                    && Math.abs(box.height - window.innerHeight) < 2;
+            }""",
+            arg=overlay.element_handle(),
+        )
         box = overlay.bounding_box()
         viewport = self.page.viewport_size
         self.assertIsNotNone(box)

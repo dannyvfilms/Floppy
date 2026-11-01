@@ -2604,6 +2604,558 @@ paths:
                     type: object
                     additionalProperties: true
           description: ''
+  /api/v1/sync/bootstrap/:
+    post:
+      operationId: api_v1_sync_bootstrap_create
+      description: Capture a committed baseline and enable durable recording.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - contract
+                - context
+                - generation
+                - cursors
+                - feeds
+                - snapshots
+                properties:
+                  contract:
+                    type: integer
+                    enum:
+                    - 2
+                  context:
+                    type: string
+                  generation:
+                    type: string
+                    format: uuid
+                  cursors:
+                    type: object
+                    properties:
+                      watched:
+                        type: integer
+                        minimum: 0
+                      progress:
+                        type: integer
+                        minimum: 0
+                  feeds:
+                    type: object
+                    properties:
+                      watched:
+                        type: string
+                      progress:
+                        type: string
+                  snapshots:
+                    type: object
+                    properties:
+                      watched:
+                        type: string
+                      progress:
+                        type: string
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - code
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+          description: ''
+      x-required-scope: sync:read
+  /api/v1/sync/changes/:
+    get:
+      operationId: api_v1_sync_changes_retrieve
+      description: |-
+        Return changes after a cursor, in server order.
+
+        The cursor is a server sequence, which is allocated at commit time, so
+        paginating by it cannot skip a change that committed late.
+      parameters:
+      - in: query
+        name: context
+        schema:
+          type: string
+        description: Required with contract=2; use the opaque value returned by bootstrap.
+      - in: query
+        name: contract
+        schema:
+          type: string
+          enum:
+          - '2'
+      - in: query
+        name: cursor
+        schema:
+          type: integer
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - results
+                - next_cursor
+                - has_more
+                - oldest_sequence
+                - newest_sequence
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        item_id:
+                          type: integer
+                          nullable: true
+                        sequence:
+                          type: integer
+                          nullable: true
+                        revision:
+                          type: integer
+                          nullable: true
+                        previous_revision:
+                          type: integer
+                          nullable: true
+                        play_count:
+                          type: integer
+                          nullable: true
+                        position_seconds:
+                          type: integer
+                          nullable: true
+                        duration_seconds:
+                          type: integer
+                          nullable: true
+                        season_number:
+                          type: integer
+                          nullable: true
+                        episode_number:
+                          type: integer
+                          nullable: true
+                        media_id:
+                          type: string
+                          nullable: true
+                        source:
+                          type: string
+                          nullable: true
+                        media_type:
+                          type: string
+                          nullable: true
+                        kind:
+                          type: string
+                          nullable: true
+                        origin_key:
+                          type: string
+                          nullable: true
+                        origin_kind:
+                          type: string
+                          nullable: true
+                        correlation_id:
+                          type: string
+                          nullable: true
+                        watched:
+                          type: boolean
+                        completed:
+                          type: boolean
+                        watched_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        ids:
+                          type: object
+                          additionalProperties:
+                            type: string
+                  has_more:
+                    type: boolean
+                  next_cursor:
+                    type: integer
+                    nullable: true
+                  oldest_sequence:
+                    type: integer
+                    nullable: true
+                  newest_sequence:
+                    type: integer
+                    nullable: true
+                  high_water:
+                    type: integer
+                    nullable: true
+                  minimum_valid_cursor:
+                    type: integer
+                    nullable: true
+                  generation:
+                    type: string
+                    format: uuid
+                  recording_enabled:
+                    type: boolean
+                  complete:
+                    type: boolean
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+                description: Legacy errors may contain detail only. contract=2 errors
+                  also include a recovery code.
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+                description: Legacy errors may contain detail only. contract=2 errors
+                  also include a recovery code.
+          description: ''
+      x-required-scope: sync:read
+  /api/v1/sync/progress-changes/:
+    get:
+      operationId: api_v1_sync_progress_changes_retrieve
+      description: Return progress changes after a cursor, in server order.
+      parameters:
+      - in: query
+        name: context
+        schema:
+          type: string
+        description: Required with contract=2; use the opaque value returned by bootstrap.
+      - in: query
+        name: contract
+        schema:
+          type: string
+          enum:
+          - '2'
+      - in: query
+        name: cursor
+        schema:
+          type: integer
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - results
+                - next_cursor
+                - has_more
+                - oldest_sequence
+                - newest_sequence
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        item_id:
+                          type: integer
+                          nullable: true
+                        sequence:
+                          type: integer
+                          nullable: true
+                        revision:
+                          type: integer
+                          nullable: true
+                        previous_revision:
+                          type: integer
+                          nullable: true
+                        play_count:
+                          type: integer
+                          nullable: true
+                        position_seconds:
+                          type: integer
+                          nullable: true
+                        duration_seconds:
+                          type: integer
+                          nullable: true
+                        season_number:
+                          type: integer
+                          nullable: true
+                        episode_number:
+                          type: integer
+                          nullable: true
+                        media_id:
+                          type: string
+                          nullable: true
+                        source:
+                          type: string
+                          nullable: true
+                        media_type:
+                          type: string
+                          nullable: true
+                        kind:
+                          type: string
+                          nullable: true
+                        origin_key:
+                          type: string
+                          nullable: true
+                        origin_kind:
+                          type: string
+                          nullable: true
+                        correlation_id:
+                          type: string
+                          nullable: true
+                        watched:
+                          type: boolean
+                        completed:
+                          type: boolean
+                        watched_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        ids:
+                          type: object
+                          additionalProperties:
+                            type: string
+                  has_more:
+                    type: boolean
+                  next_cursor:
+                    type: integer
+                    nullable: true
+                  oldest_sequence:
+                    type: integer
+                    nullable: true
+                  newest_sequence:
+                    type: integer
+                    nullable: true
+                  high_water:
+                    type: integer
+                    nullable: true
+                  minimum_valid_cursor:
+                    type: integer
+                    nullable: true
+                  generation:
+                    type: string
+                    format: uuid
+                  recording_enabled:
+                    type: boolean
+                  complete:
+                    type: boolean
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+                description: Legacy errors may contain detail only. contract=2 errors
+                  also include a recovery code.
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+                description: Legacy errors may contain detail only. contract=2 errors
+                  also include a recovery code.
+          description: ''
+      x-required-scope: sync:read
+  /api/v1/sync/snapshot/:
+    get:
+      operationId: api_v1_sync_snapshot_retrieve
+      description: Return one resumable page of current state.
+      parameters:
+      - in: query
+        name: after
+        schema:
+          type: string
+      - in: query
+        name: context
+        schema:
+          type: string
+        required: true
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      - in: query
+        name: resource
+        schema:
+          type: string
+          enum:
+          - progress
+          - watched
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - results
+                - has_more
+                - after
+                - cursor
+                - resource
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        item_id:
+                          type: integer
+                          nullable: true
+                        sequence:
+                          type: integer
+                          nullable: true
+                        revision:
+                          type: integer
+                          nullable: true
+                        previous_revision:
+                          type: integer
+                          nullable: true
+                        play_count:
+                          type: integer
+                          nullable: true
+                        position_seconds:
+                          type: integer
+                          nullable: true
+                        duration_seconds:
+                          type: integer
+                          nullable: true
+                        season_number:
+                          type: integer
+                          nullable: true
+                        episode_number:
+                          type: integer
+                          nullable: true
+                        media_id:
+                          type: string
+                          nullable: true
+                        source:
+                          type: string
+                          nullable: true
+                        media_type:
+                          type: string
+                          nullable: true
+                        kind:
+                          type: string
+                          nullable: true
+                        origin_key:
+                          type: string
+                          nullable: true
+                        origin_kind:
+                          type: string
+                          nullable: true
+                        correlation_id:
+                          type: string
+                          nullable: true
+                        watched:
+                          type: boolean
+                        completed:
+                          type: boolean
+                        watched_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        ids:
+                          type: object
+                          additionalProperties:
+                            type: string
+                  has_more:
+                    type: boolean
+                  after:
+                    type: string
+                    nullable: true
+                  cursor:
+                    type: integer
+                  resource:
+                    type: string
+                    enum:
+                    - watched
+                    - progress
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - code
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - code
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+          description: ''
+      x-required-scope: sync:read
   /api/v1/tags/:
     get:
       operationId: api_v1_tags_retrieve

@@ -5,7 +5,7 @@ import uuid
 from collections import defaultdict
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 from django.db.models import CheckConstraint, Q, UniqueConstraint
 from django.utils import translation
 from unidecode import unidecode
@@ -16,6 +16,40 @@ from app.mixins import CalendarTriggerMixin
 from app.models.choices import MediaTypes, Sources
 
 logger = logging.getLogger(__name__)
+
+
+SYNC_IDENTITY_FIELDS = frozenset({
+    "source", "media_id", "media_type", "library_media_type", "season_number",
+    "episode_number", "episode_order", "episode_order_id", "provider_external_ids",
+})
+
+
+class ItemQuerySet(models.QuerySet):
+    """Invalidate strict snapshots when an item's actionable identity changes."""
+
+    def update(self, **kwargs):
+        """Cover identity rewrites that bypass model-save signals."""
+        if not SYNC_IDENTITY_FIELDS.intersection(kwargs):
+            return super().update(**kwargs)
+        from app.services.sync_lock import invalidate_item_contexts
+
+        with transaction.atomic():
+            ids = list(self.values_list("pk", flat=True))
+            invalidate_item_contexts(ids)
+            return super().update(**kwargs)
+
+    def delete(self):
+        """Acquire affected users' barriers in order before cascading deletes."""
+        from app.services.sync_lock import invalidate_item_contexts
+
+        with transaction.atomic():
+            item_ids = list(self.values_list("pk", flat=True))
+            invalidate_item_contexts(item_ids)
+            self._sync_deleting_item_ids = frozenset(item_ids)
+            try:
+                return super().delete()
+            finally:
+                del self._sync_deleting_item_ids
 
 
 class Item(CalendarTriggerMixin, models.Model):
@@ -338,6 +372,8 @@ class Item(CalendarTriggerMixin, models.Model):
         ),
     )
 
+    objects = models.Manager.from_queryset(ItemQuerySet)()
+
     class Meta:
         """Meta options for the model."""
 
@@ -472,10 +508,20 @@ class Item(CalendarTriggerMixin, models.Model):
                 name += f"E{self.episode_number}"
         return name
 
+    @transaction.atomic
     def save(self, *args, **kwargs):
         """Save the item, ensuring JSONField arrays are never None."""
         if not self.library_media_type:
             self.library_media_type = self.media_type
+
+        update_fields = kwargs.get("update_fields")
+        if self.pk and (update_fields is None or SYNC_IDENTITY_FIELDS.intersection(update_fields)):
+            fields = sorted(SYNC_IDENTITY_FIELDS - {"episode_order"})
+            previous = Item.objects.filter(pk=self.pk).values(*fields).first()
+            if previous and any(previous[field] != getattr(self, field) for field in fields):
+                from app.services.sync_lock import invalidate_item_contexts
+
+                invalidate_item_contexts([self.pk])
 
         # Ensure all JSONField arrays are lists, never None
         json_array_fields = [
@@ -513,6 +559,14 @@ class Item(CalendarTriggerMixin, models.Model):
                 setattr(self, field_name, {})
 
         super().save(*args, **kwargs)
+
+    @transaction.atomic
+    def delete(self, *args, **kwargs):
+        """Serialize catalog deletion before its collector touches tracking rows."""
+        from app.services.sync_lock import invalidate_item_contexts
+
+        invalidate_item_contexts([self.pk])
+        return super().delete(*args, **kwargs)
 
     @classmethod
     def _normalize_title_value(cls, value):

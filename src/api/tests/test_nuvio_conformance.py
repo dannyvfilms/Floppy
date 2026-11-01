@@ -340,20 +340,16 @@ class NuvioConformanceTests(FloppyApiTestCase):
         """Step 6: a long-offline client is told to re-snapshot."""
         from app.models import ProgressChange
 
-        self.call_api(
-            "put",
-            "api_playback_progress",
-            payload={
-                "media_type": "movie",
-                "ids": {"tmdb": "701"},
-                "position_seconds": 15,
-            },
-            headers=self.headers,
-        )
-        changes = list(ProgressChange.objects.filter(user=self.user1))
-        self.assertTrue(changes)
-        oldest = min(c.sequence for c in changes)
-        ProgressChange.objects.filter(user=self.user1).update(sequence=oldest + 500)
+        for position in (15, 30, 45):
+            self.call_api(
+                "put", "api_playback_progress",
+                payload={"media_type": "movie", "ids": {"tmdb": "701"}, "position_seconds": position},
+                headers=self.headers,
+            )
+        changes = list(ProgressChange.objects.filter(user=self.user1).order_by("sequence"))
+        self.assertGreaterEqual(len(changes), 3)
+        oldest = changes[0].sequence
+        ProgressChange.objects.filter(user=self.user1, sequence__lte=changes[-2].sequence).delete()
 
         response = self.client.get(
             f"{PROGRESS_CHANGES}?cursor={oldest}",
