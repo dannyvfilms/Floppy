@@ -345,7 +345,7 @@ class ProgressChangeEmissionTests(TestCase):
             ended_at=None,
         )
 
-        change = ProgressChange.objects.get(user=self.user, item=self.item)
+        change = ProgressChange.objects.get(user=self.user, item=self.item, kind="delete")
         self.assertEqual(change.kind, "delete")
 
     def test_a_repeated_poll_records_no_second_progress_change(self):

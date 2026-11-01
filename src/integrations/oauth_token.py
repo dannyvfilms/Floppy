@@ -137,7 +137,7 @@ def _exchange_device_code(
     now = timezone.now()
     with transaction.atomic():
         authorization = (
-            OAuthDeviceAuthorization.objects.select_for_update()
+            OAuthDeviceAuthorization.objects.select_for_update(of=("self",))
             .select_related("user")
             .filter(
                 client=client,

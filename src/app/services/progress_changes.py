@@ -14,7 +14,7 @@ from django.db import transaction
 from django.db.models import Max, Min
 
 from app.models.progress_change import ProgressChange, ProgressChangeKind
-from app.models.watch_state import WatchStateSequence
+from app.services.sync_lock import lock_sequence
 from app.services.watch_state import allocate_sequence
 
 logger = logging.getLogger(__name__)
@@ -24,10 +24,11 @@ PROGRESS_RESOURCE = "progress"
 
 def changes_enabled(user) -> bool:
     """Return whether this user's state movements are being recorded."""
-    row = WatchStateSequence.objects.filter(user=user).first()
-    return bool(row and row.emit_changes)
+    row = lock_sequence(user.pk)
+    return row.emit_changes or row.api_feed_enabled
 
 
+@transaction.atomic
 def record_progress_change(
     user,
     item,

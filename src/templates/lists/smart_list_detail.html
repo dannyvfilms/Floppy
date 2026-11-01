@@ -224,6 +224,9 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="transform opacity-100 scale-100"
                  x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
               {% if custom_list.can_recommend %}
                 {% if recommendation_count > 0 %}
                   <a href="{% url 'list_recommendations' custom_list.id %}"
@@ -290,6 +293,9 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="transform opacity-100 scale-100"
                  x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
               {% if recommendation_count > 0 %}
                 <a href="{% url 'recommend_item' custom_list.id %}"
                    class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">
@@ -359,6 +365,9 @@
                x-transition:leave="transition ease-in duration-75"
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
             {% if custom_list.can_recommend %}
               {% if recommendation_count > 0 %}
                 <a href="{% url 'list_recommendations' custom_list.id %}"
@@ -425,6 +434,9 @@
                x-transition:leave="transition ease-in duration-75"
                x-transition:leave-start="transform opacity-100 scale-100"
                x-transition:leave-end="transform opacity-0 scale-95">
+              {% if request.user.is_authenticated %}
+                {% include "lists/components/sidebar_pin_action.html" %}
+              {% endif %}
             {% if recommendation_count > 0 %}
               <a href="{% url 'recommend_item' custom_list.id %}"
                  class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors">

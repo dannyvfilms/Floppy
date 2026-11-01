@@ -154,7 +154,9 @@ class StatisticsLayoutTests(SerialStaticLiveServerTestCase):
 
         # A full page load would drop this marker; a boosted swap keeps it.
         page.evaluate("window.__floppyBoostMarker = 'home'")
-        page.locator("#sidebar-nav a[href$='/statistics']").click()
+        # Statistics moved to Explore; this lower nav remains hx-boosted.
+        page.get_by_role("button", name="Explore").click()
+        page.get_by_role("link", name="Statistics", exact=True).click()
 
         expect(page.locator(".stats-hero-title").nth(1)).to_contain_text(
             "4 titles",

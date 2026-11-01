@@ -20,7 +20,7 @@ from contextvars import ContextVar
 from uuid import uuid4
 
 from django.apps import apps
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Max, Min
 
 from app.models.choices import MediaTypes, Status
@@ -30,6 +30,7 @@ from app.models.watch_state import (
     WatchStateSequence,
     calculate_state_digest,
 )
+from app.services.sync_lock import lock_sequence
 
 logger = logging.getLogger(__name__)
 
@@ -116,10 +117,7 @@ def allocate_sequence(user) -> int:
     that user. Callers must already be inside the transaction that writes the
     change, otherwise the ordering guarantee is lost.
     """
-    sequence_row, _ = WatchStateSequence.objects.get_or_create(user=user)
-    sequence_row = WatchStateSequence.objects.select_for_update().get(
-        pk=sequence_row.pk,
-    )
+    sequence_row = lock_sequence(user.pk)
     sequence_row.last_sequence += 1
     sequence_row.save(update_fields=["last_sequence"])
     return sequence_row.last_sequence
@@ -254,7 +252,8 @@ def derive_state(user, item):
 
 def _should_emit_changes(user) -> bool:
     """Return whether this user's local movements are recorded as changes."""
-    return WatchStateSequence.objects.filter(user=user, emit_changes=True).exists()
+    row = lock_sequence(user.pk)
+    return row.emit_changes or row.api_feed_enabled
 
 
 def _project_as_change(user, item, derived):
@@ -286,6 +285,7 @@ def _project_as_change(user, item, derived):
     return state
 
 
+@transaction.atomic
 def project_watch_state(
     user,
     item,
@@ -312,6 +312,7 @@ def project_watch_state(
 
     from app.models.watch_state import WatchStateOrigin
 
+    sequence_row = lock_sequence(user.pk)
     derived = derive_state(user, item)
     digest = calculate_state_digest(
         derived.watched,
@@ -335,8 +336,19 @@ def project_watch_state(
             "origin_key": origin_key,
         },
     )
-    if created or state.state_digest == digest:
+    if created:
+        if sequence_row.api_feed_enabled:
+            from app.services.sync_lock import invalidate_contexts
+
+            invalidate_contexts(sequence_row)
         return state
+    if state.state_digest == digest:
+        return state
+
+    if sequence_row.api_feed_enabled:
+        from app.services.sync_lock import invalidate_contexts
+
+        invalidate_contexts(sequence_row)
 
     state.watched = derived.watched
     state.play_count = derived.play_count
@@ -377,7 +389,9 @@ def project_watch_states_bulk(user, items):
     items = [item for item in items if item.media_type in PROJECTED_MEDIA_TYPES]
     if not items:
         return
-    if _should_emit_changes(user):
+    if WatchStateSequence.objects.filter(user=user).filter(
+        models.Q(emit_changes=True) | models.Q(api_feed_enabled=True),
+    ).exists():
         for item in items:
             project_watch_state(user, item)
         return
@@ -508,6 +522,7 @@ def record_state_change(
         WatchStateChangeKind,
     )
 
+    lock_sequence(user.pk)
     kind = kind or WatchStateChangeKind.UPSERT.value
 
     if origin_event_id:

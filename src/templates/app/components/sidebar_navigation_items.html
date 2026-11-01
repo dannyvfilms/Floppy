@@ -1,0 +1,153 @@
+{% load i18n app_tags %}
+                  {% url 'create_entry' as create_entry_url %}
+                  {% url 'history' as history_url %}
+                  {% url 'calendar' as calendar_url %}
+                  <li x-show="isPinned('calendar') === {% if pinned_section %}true{% else %}false{% endif %}">
+                    <div class="group relative flex items-center">
+                    <a href="{{ calendar_url }}"
+                       class="flex flex-1 min-w-0 items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == calendar_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:calendar_url %}
+                        {% include "app/icons/calendar.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+
+                      {% else %}
+                        {% include "app/icons/calendar.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>{% trans "Calendar" %}</span>
+                    </a>
+                    {% include "app/components/sidebar_pin_menu.html" with pin_key="calendar" %}
+                    </div>
+                  </li>
+
+                  {% url 'collection_list' as collection_list_url %}
+                  <li x-show="isPinned('collection') === {% if pinned_section %}true{% else %}false{% endif %}">
+                    <div class="group relative flex items-center">
+                    <a href="{{ collection_list_url }}"
+                       class="flex flex-1 min-w-0 items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == collection_list_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:collection_list_url %}
+                        {% include "app/icons/cube.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+
+                      {% else %}
+                        {% include "app/icons/cube.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>{% trans "Collection" %}</span>
+                    </a>
+                    {% include "app/components/sidebar_pin_menu.html" with pin_key="collection" %}
+                    </div>
+                  </li>
+
+                  <li x-show="isPinned('custom') === {% if pinned_section %}true{% else %}false{% endif %}">
+                    <div class="group relative flex items-center">
+                    <a href="{{ create_entry_url }}"
+                       class="flex flex-1 min-w-0 items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == create_entry_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:create_entry_url %}
+                        {% include "app/icons/circle-plus.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+
+                      {% else %}
+                        {% include "app/icons/circle-plus.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>{% trans "Custom" context "navigation" %}</span>
+                    </a>
+                    {% include "app/components/sidebar_pin_menu.html" with pin_key="custom" %}
+                    </div>
+                  </li>
+
+                  {% get_history_saved_views user as history_saved_views %}
+                  {% if history_saved_views %}
+                    {% trans "History" as history_label %}
+                    {% include "app/components/sidebar_saved_views.html" with group_key="history" group_url=history_url group_label=history_label group_current=request.path|str_equals:history_url saved_views=history_saved_views sidebar_pin_key="history" sidebar_section_pinned=pinned_section %}
+                  {% else %}
+                    <li x-show="isPinned('history') === {% if pinned_section %}true{% else %}false{% endif %}">
+                    <div class="group relative flex items-center">
+                      <a href="{{ history_url }}"
+                         class="flex flex-1 min-w-0 items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == history_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                        {% icon 'history' is_active=request.path|str_equals:history_url %}
+                        <span>{% trans "History" %}</span>
+                      </a>
+                      {% include "app/components/sidebar_pin_menu.html" with pin_key="history" %}
+                    </div>
+                  </li>
+                  {% endif %}
+
+                  {% url 'lists' as lists_url %}
+                  <li x-show="isPinned('lists') === {% if pinned_section %}true{% else %}false{% endif %}">
+                    <div class="group relative flex items-center">
+                    <a href="{{ lists_url }}"
+                       class="flex flex-1 min-w-0 items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == lists_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:lists_url %}
+                        {% include "app/icons/folder-plus.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+
+                      {% else %}
+                        {% include "app/icons/folder-plus.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>{% trans "Lists" %}</span>
+                    </a>
+                    <button type="button" x-show="pinnedLists.length" x-cloak
+                            class="mr-1 p-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] cursor-pointer{% if request.path != lists_url %} pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus:opacity-100{% endif %}"
+                            :class="pinnedLists.some(item => item.url === window.location.pathname) && 'pointer-fine:opacity-100'"
+                            :aria-expanded="listsOpen.toString()" aria-label="{% translate 'Pinned lists' %}"
+                            @click="toggleLists()">
+                      <span class="block transition-transform duration-200" :class="listsOpen ? '' : '-rotate-90'">
+                        {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
+                      </span>
+                    </button>
+                    {% include "app/components/sidebar_pin_menu.html" with pin_key="lists" %}
+                    </div>
+                    <ul class="mt-1 ml-8 space-y-1" x-show="listsOpen" x-cloak>
+                  <template x-for="item in pinnedLists" :key="item.id">
+                    <li class="group relative flex items-center rounded-md hover:bg-[var(--color-hover-dim)]">
+                      <a :href="item.url" class="flex-1 min-w-0 truncate pl-3 py-1.5 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+                        <span class="truncate" x-text="item.name"></span>
+                      </a>
+                      <div class="relative shrink-0 mr-2" x-data="{ menu: false }" @click.outside="menu = false" @keydown.escape="menu = false">
+                        <button type="button" class="p-1 rounded-md cursor-pointer text-[var(--color-text-muted)] pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus:opacity-100" :aria-expanded="menu.toString()" aria-label="{% translate 'List options' %}" @click="menu = !menu">
+                          {% include "app/icons/ellipsis.svg" with classes="w-4 h-4" %}
+                        </button>
+                        <div x-show="menu" x-cloak class="absolute right-0 bottom-full z-50 mb-1 w-44 bg-[var(--color-surface-strong)] rounded-md shadow-lg border border-gray-700">
+                          <button type="button" class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] cursor-pointer" @click="unpinList(item.id); menu = false">{% translate "Unpin from sidebar" %}</button>
+                        </div>
+                      </div>
+                    </li>
+                  </template>
+                    </ul>
+                  </li>
+
+                  {% url 'statistics' as statistics_url %}
+                  <li x-show="isPinned('statistics') === {% if pinned_section %}true{% else %}false{% endif %}">
+                    <div class="group relative flex items-center">
+                    <a href="{{ statistics_url }}"
+                       class="flex flex-1 min-w-0 items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == statistics_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:statistics_url %}
+                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+
+                      {% else %}
+                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>{% trans "Statistics" %}</span>
+                    </a>
+                    {% include "app/components/sidebar_pin_menu.html" with pin_key="statistics" %}
+                    </div>
+                  </li>
+
+                  {% url 'tag_index' as tag_index_url %}
+                  <li x-show="isPinned('tags') === {% if pinned_section %}true{% else %}false{% endif %}">
+                    <div class="group relative flex items-center">
+                    <a href="{{ tag_index_url }}"
+                       class="flex flex-1 min-w-0 items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == tag_index_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+                      {% if request.path|str_equals:tag_index_url %}
+                        {% include "app/icons/tag.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+
+                      {% else %}
+                        {% include "app/icons/tag.svg" with classes="w-5 h-5" %}
+
+                      {% endif %}
+                      <span>{% trans "Tags" %}</span>
+                    </a>
+                    {% include "app/components/sidebar_pin_menu.html" with pin_key="tags" %}
+                    </div>
+                  </li>
+

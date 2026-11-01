@@ -1,0 +1,22 @@
+{% load i18n %}
+<div class="relative shrink-0 mr-2" x-data="{ menu: false, menuStyle: '' }" @click.outside="menu = false" @keydown.escape.window="menu = false" @scroll.window.capture="menu = false" @resize.window="menu = false">
+  <button type="button"
+          class="p-1 rounded-md text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] cursor-pointer pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:focus:opacity-100"
+          :class="menu && 'pointer-fine:opacity-100'"
+          :aria-expanded="menu.toString()"
+          aria-label="{% translate 'Navigation options' %}"
+          @click="menu = !menu; if (menu) { const rect = $el.getBoundingClientRect(); menuStyle = `left: ${Math.max(8, rect.right - 176)}px; ${rect.top >= 48 ? `bottom: ${window.innerHeight - rect.top + 4}px` : `top: ${rect.bottom + 4}px`}` }">
+    {% include "app/icons/ellipsis.svg" with classes="w-4 h-4" %}
+  </button>
+  <template x-teleport="body">
+  <div class="fixed z-50 w-44 bg-[var(--color-surface-strong)] rounded-md shadow-lg border border-gray-700"
+       :style="menuStyle" x-show="menu" x-cloak>
+    <button type="button"
+            class="w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] cursor-pointer"
+            @click="togglePin('{{ pin_key }}'); menu = false">
+      <span x-show="!isPinned('{{ pin_key }}')">{% translate "Pin to sidebar" %}</span>
+      <span x-show="isPinned('{{ pin_key }}')">{% translate "Unpin from sidebar" %}</span>
+    </button>
+  </div>
+  </template>
+</div>

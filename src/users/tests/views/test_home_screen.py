@@ -1370,6 +1370,21 @@ class HomeScreenViewTests(TestCase):
         )
         self.assertEqual(movie_section["filter_fields"], [])
 
+    def test_all_media_filter_choices_only_query_tags_not_library_facets(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        Tag.objects.create(user=self.user, name="Favorite")
+        with (
+            patch.object(smart_rules, "build_rule_filter_data", side_effect=AssertionError("All Media scanned library facets")),
+            self.assertNumQueries(1),
+        ):
+            fields = home_screen.serialize_settings_filter_fields(self.user, HOME_ALL_MEDIA_TYPE)
+        fields = {field["key"]: field for field in fields}
+        self.assertEqual(set(fields), {"media_types", "status", "progress", "rating", "collection", "release", "tag"})
+        self.assertEqual(fields["tag"]["options"], [{"value": "Favorite", "label": "Favorite"}])
+        tv = next(option for option in fields["media_types"]["options"] if option["value"] == "tv")
+        self.assertEqual([choice["value"] for choice in tv["subviews"]], ["shows", "seasons", "episodes"])
+
     def test_home_filter_fields_include_collected_only_untracked_authors(self):
         self._set_enabled_media_types(MediaTypes.BOOK.value)
         untracked_book = Item.objects.create(
