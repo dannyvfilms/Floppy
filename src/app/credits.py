@@ -169,20 +169,25 @@ def missing_credits_backfill_item_ids(item_ids):
     current_credit_ids = current_credits_backfill_item_ids(candidate_ids)
 
     person_credit_ids = set(
-        ItemPersonCredit.objects.filter(item_id__in=candidate_ids).values_list(
-            "item_id", flat=True
-        ),
+        ItemPersonCredit.objects.filter(item_id__in=candidate_ids)
+        .order_by()
+        .values_list("item_id", flat=True)
+        .distinct(),
     )
     cast_credit_ids = set(
         ItemPersonCredit.objects.filter(
             item_id__in=candidate_ids,
             role_type=CreditRoleType.CAST.value,
-        ).values_list("item_id", flat=True),
+        )
+        .order_by()
+        .values_list("item_id", flat=True)
+        .distinct(),
     )
     studio_credit_ids = set(
-        ItemStudioCredit.objects.filter(item_id__in=candidate_ids).values_list(
-            "item_id", flat=True
-        ),
+        ItemStudioCredit.objects.filter(item_id__in=candidate_ids)
+        .order_by()
+        .values_list("item_id", flat=True)
+        .distinct(),
     )
 
     missing_ids = []
