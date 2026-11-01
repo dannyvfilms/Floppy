@@ -581,6 +581,11 @@ def _handle_media_cache_change(
 
     if clear_runtime_caches:
         _clear_media_runtime_caches(user_id, changed_media_type)
+        # A concurrent reader can re-cache pre-write state before the save
+        # commits, so clear again once it does.
+        transaction.on_commit(
+            lambda: _clear_media_runtime_caches(user_id, changed_media_type),
+        )
 
     active_context = discover_tab_cache.get_active_context(user_id)
     targets = discover_tab_cache.invalidate_for_media_change(
