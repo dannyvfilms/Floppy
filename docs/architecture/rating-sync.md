@@ -1,5 +1,8 @@
 # Rating sync-back
 
+For which services can and cannot be synced to, see
+[Bidirectional sync: which services can do it](bidirectional-sync-services.md).
+
 TMDb is the first rating destination. Rating sync uses the watched-state
 transactional outbox, worker, sweeper and backoff in
 `integrations.state.outbound`; it does not introduce a second delivery queue.
