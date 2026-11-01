@@ -24,6 +24,7 @@ from app.models import (
     Status,
 )
 from app.services.grouped_anime import GroupedAnimeMatch
+from integrations import tasks
 from integrations.models import CollectionSourceState
 from integrations.webhooks.jellyfin import JellyfinWebhookProcessor
 
@@ -491,6 +492,67 @@ class JellyfinWebhookTests(TestCase):
         self.assertEqual(movie.status, Status.COMPLETED.value)
         self.assertEqual(movie.start_date, started)
         self.assertGreater(movie.end_date, movie.start_date)
+
+    @patch("app.providers.tmdb.movie")
+    def test_late_pause_from_the_same_second_does_not_undo_a_completed_stop(
+        self,
+        mock_movie,
+    ):
+        """A Stop's receipt time reaches the durable row, not just the card.
+
+        Pause writes durable progress; Play does not, so Pause is the late
+        event that can reset a completion.
+        """
+        mock_movie.return_value = {
+            "title": "Zombie",
+            "image": "",
+            "max_progress": 1,
+            "provider_external_ids": {},
+        }
+        item = {
+            "Id": "jf-order",
+            "Name": "Zombie",
+            "Type": "Movie",
+            "RunTimeTicks": "54000000000",
+            "ProviderIds": {"Tmdb": "7219"},
+        }
+        second = timezone.now().replace(microsecond=0) - timedelta(seconds=5)
+        stop_received = second + timedelta(milliseconds=900)
+
+        def send(event, ticks, played, received, event_id):
+            tasks.process_webhook(
+                "jellyfin",
+                {
+                    "Event": event,
+                    "PlaybackPositionTicks": ticks,
+                    "Item": {**item, "UserData": {"Played": played}},
+                },
+                self.user.id,
+                received_at=received.isoformat(),
+                event_id=event_id,
+            )
+
+        send("Play", "0", False, second - timedelta(seconds=60), "jf-play")
+        send("Stop", "53000000000", True, stop_received, "jf-stop")
+        movie = Movie.objects.get(item__media_id="7219", user=self.user)
+        self.assertEqual(movie.status, Status.COMPLETED.value)
+
+        # Received before the Stop, processed after it.
+        send(
+            "Pause",
+            "16200000000",
+            False,
+            second + timedelta(milliseconds=100),
+            "jf-pause-late",
+        )
+
+        progress = PlaybackProgress.objects.get(user=self.user, item=movie.item)
+        self.assertTrue(progress.completed)
+        self.assertEqual(progress.position_seconds, 5300)
+        self.assertEqual(progress.last_event_at, stop_received)
+        state = live_playback.get_user_playback_state(self.user.id)
+        self.assertEqual(state["status"], live_playback.PLAYBACK_STATUS_STOPPED)
+        self.assertEqual(state["event_ts"], stop_received.timestamp())
 
     @patch("app.providers.tmdb.find")
     @patch("app.providers.tmdb.movie")

@@ -184,11 +184,15 @@ def upsert_playback_progress(
     intentionally omits one field.  The row lock keeps those field-specific
     updates from becoming a stale read-modify-write race.
 
-    ``event_at`` is when the source event was received. An older event
-    processed after a newer one (a queued play overtaking a scrobble) must not
-    overwrite the newer row, so a write older than the last applied event is
-    dropped. Writes without ``event_at`` (API, UI) always apply and leave the
-    event clock alone: they have no receipt time comparable to a webhook's.
+    ``event_at`` is when the source event was received, in epoch seconds with
+    its fraction. An older event processed after a newer one (a queued play
+    overtaking a scrobble) must not overwrite the newer row, so a write older
+    than ``last_event_at`` is dropped without saving; an equal time applies in
+    processing order. A row with no ``last_event_at`` (created before it
+    existed, or only ever written without ``event_at``) has an unknown clock,
+    so the next event applies and starts it. Writes without ``event_at`` (API,
+    UI) always apply and leave the clock alone: they have no receipt time
+    comparable to a webhook's.
     """
     position = 0 if position_seconds is None else position_seconds
     event_time = (
@@ -219,7 +223,6 @@ def upsert_playback_progress(
                 )
                 return progress
             progress.last_event_at = event_time
-            update_fields.append("last_event_at")
 
         if not preserve_position:
             progress.position_seconds = position
@@ -238,7 +241,13 @@ def upsert_playback_progress(
             update_fields.append("completed")
 
         if update_fields:
-            progress.save(update_fields=[*update_fields, "updated_at"])
+            update_fields.append("updated_at")
+        if event_time is not None:
+            # A clock-only change is not a progress change, so it leaves
+            # ``updated_at`` alone.
+            update_fields.append("last_event_at")
+        if update_fields:
+            progress.save(update_fields=update_fields)
     return progress
 
 

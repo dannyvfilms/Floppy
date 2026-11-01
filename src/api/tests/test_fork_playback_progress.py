@@ -20,6 +20,7 @@ from app.models import (
     Podcast,
     PodcastEpisode,
     PodcastShow,
+    ProgressChange,
     Sources,
     Status,
 )
@@ -633,12 +634,101 @@ class PlaybackProgressEventOrderTests(FloppyApiTestCase):
         self.assertEqual(progress.position_seconds, 2990)
         self.assertTrue(progress.completed)
 
-    def test_next_event_in_the_same_second_applies(self):
-        """Receipt time is whole seconds, so a tie is not out of order."""
-        self._write(1200, event_at=self.now_ts)
-        self._write(1300, event_at=self.now_ts)
+    def test_older_event_in_the_same_second_is_dropped(self):
+        """Receipt time keeps its fraction, so one second can hold two events."""
+        self._write(2990, completed=True, event_at=self.now_ts + 0.9)
+        self._write(0, event_at=self.now_ts + 0.1)
+
+        progress = self._stored()
+        self.assertEqual(progress.position_seconds, 2990)
+        self.assertTrue(progress.completed)
+
+    def test_equal_receipt_time_applies_in_processing_order(self):
+        """An identical time is not evidence of disorder, so it applies."""
+        self._write(1200, event_at=self.now_ts + 0.5)
+        self._write(1300, event_at=self.now_ts + 0.5)
 
         self.assertEqual(self._stored().position_seconds, 1300)
+
+    def test_whole_second_event_times_still_order(self):
+        """Integer epochs from older callers compare against fractional ones."""
+        self._write(1200, event_at=self.now_ts)
+        self._write(0, event_at=self.now_ts - 1)
+        self.assertEqual(self._stored().position_seconds, 1200)
+
+        self._write(1300, event_at=self.now_ts + 0.5)
+        self._write(1250, event_at=self.now_ts)
+        self.assertEqual(self._stored().position_seconds, 1300)
+
+    def test_dropped_event_saves_nothing(self):
+        """A stale write neither touches the row nor publishes a change."""
+        self._write(2990, completed=True, event_at=self.now_ts)
+        before = self._stored()
+        changes = ProgressChange.objects.filter(user=self.user1, item=self.item)
+        change_count = changes.count()
+
+        self._write(0, event_at=self.now_ts - 1)
+
+        after = self._stored()
+        self.assertEqual(after.updated_at, before.updated_at)
+        self.assertEqual(after.last_event_at, before.last_event_at)
+        self.assertEqual(changes.count(), change_count)
+
+    def test_repeated_position_publishes_no_change(self):
+        """A newer event with the same values advances the clock only."""
+        self._write(1200, event_at=self.now_ts)
+        changes = ProgressChange.objects.filter(user=self.user1, item=self.item)
+        change_count = changes.count()
+
+        self._write(1200, event_at=self.now_ts + 1)
+
+        self.assertEqual(changes.count(), change_count)
+        self.assertEqual(self._stored().last_event_at.timestamp(), self.now_ts + 1)
+
+    def test_clock_only_write_keeps_updated_at(self):
+        """With every field preserved, a newer event moves only the clock."""
+        self._write(1200, event_at=self.now_ts)
+        before = self._stored()
+        changes = ProgressChange.objects.filter(user=self.user1, item=self.item)
+        change_count = changes.count()
+
+        upsert_playback_progress(
+            self.user1,
+            self.item,
+            None,
+            None,
+            preserve_position=True,
+            preserve_duration=True,
+            preserve_completed=True,
+            event_at=self.now_ts + 1.25,
+        )
+
+        after = self._stored()
+        self.assertEqual(after.last_event_at.timestamp(), self.now_ts + 1.25)
+        self.assertEqual(after.updated_at, before.updated_at)
+        self.assertEqual(after.position_seconds, 1200)
+        self.assertEqual(changes.count(), change_count)
+
+    def test_row_with_unknown_clock_takes_the_next_event(self):
+        """Rows from before the clock existed are not dated by ``updated_at``.
+
+        ``updated_at`` is processing time, so using it would drop a valid
+        backlogged event; the first event applies and starts the clock.
+        """
+        PlaybackProgress.objects.create(
+            user=self.user1,
+            item=self.item,
+            position_seconds=600,
+            duration_seconds=3000,
+        )
+        self._write(1200, event_at=self.now_ts - 60)
+
+        progress = self._stored()
+        self.assertEqual(progress.position_seconds, 1200)
+        self.assertEqual(progress.last_event_at.timestamp(), self.now_ts - 60)
+
+        self._write(0, event_at=self.now_ts - 61)
+        self.assertEqual(self._stored().position_seconds, 1200)
 
     def test_older_event_processed_later_is_dropped(self):
         """A late play must not reset a completed scrobble (#1708)."""

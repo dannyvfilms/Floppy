@@ -79,6 +79,15 @@ def _coerce_int(value, default=None):
         return default
 
 
+def _coerce_float(value, default=None):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _now_ts(now=None) -> int:
     current = now or timezone.now()
     return int(current.timestamp())
@@ -288,7 +297,7 @@ def _store_playback_progress(
     duration_seconds: int | None,
     item: Item | None = None,
     provider_completed: bool | None = None,
-    event_at: int | None = None,
+    event_at: float | None = None,
 ) -> None:
     """Mirror a webhook position into the durable progress store.
 
@@ -380,7 +389,7 @@ def store_playback_progress(
     duration_seconds: int | None,
     item: Item,
     provider_completed: bool | None = None,
-    event_at: int | None = None,
+    event_at: float | None = None,
 ) -> None:
     """Persist a stop position against an Item resolved by webhook processing."""
     _store_playback_progress(
@@ -424,7 +433,7 @@ def apply_playback_event(
     image: str | None = None,
     checkin_token: str | None = None,
     ends_at_ts: int | None = None,
-    event_ts: int | None = None,
+    event_ts: float | None = None,
 ) -> None:
     """Update live playback cache state from a webhook event.
 
@@ -446,7 +455,9 @@ def apply_playback_event(
 
     ``event_ts`` is when the request arrived, not when it was processed. A
     queued play can otherwise overtake the scrobble that finished after it and
-    leave the card (or progress row) showing an earlier state.
+    leave the card (or progress row) showing an earlier state. It keeps its
+    fraction of a second, stored on the card as ``event_ts``; the card's other
+    timestamps stay whole seconds.
     """
     if playback_media_type not in (
         MediaTypes.MOVIE.value,
@@ -465,8 +476,8 @@ def apply_playback_event(
     key = _cache_key(user_id)
     existing_state = cache.get(key)
     now_ts = _now_ts()
-    event_ts = _coerce_int(event_ts)
-    effective_ts = event_ts if event_ts is not None else now_ts
+    event_ts = _coerce_float(event_ts)
+    effective_ts = int(event_ts) if event_ts is not None else now_ts
     out_of_order = bool(
         event_ts is not None
         and existing_state
@@ -476,7 +487,13 @@ def apply_playback_event(
             media_id=media_id,
             playback_media_type=playback_media_type,
         )
-        and event_ts < _coerce_int(existing_state.get("updated_at_ts"), 0)
+        # Cards written before ``event_ts`` was stored, or by a write with no
+        # receipt time, only have the whole-second ``updated_at_ts``.
+        and event_ts
+        < max(
+            _coerce_float(existing_state.get("event_ts"), 0),
+            _coerce_int(existing_state.get("updated_at_ts"), 0),
+        )
     )
     if out_of_order:
         logger.info(
@@ -517,6 +534,8 @@ def apply_playback_event(
                 progress_percent if stop_offset is None else None
             )
             existing_state["updated_at_ts"] = effective_ts
+            if event_ts is not None:
+                existing_state["event_ts"] = event_ts
             existing_state["pause_expires_at_ts"] = None
             existing_state["scrobble_expires_at_ts"] = None
             existing_state["status"] = PLAYBACK_STATUS_STOPPED
@@ -667,6 +686,7 @@ def apply_playback_event(
         "started_at_ts": started_at_ts,
         "status": status,
         "updated_at_ts": effective_ts,
+        "event_ts": event_ts,
         "expires_at_ts": effective_ts + PLAYBACK_HARD_STALE_SECONDS,
         "pause_expires_at_ts": None,
         "scrobble_expires_at_ts": None,
@@ -760,7 +780,7 @@ def apply_plex_event(
     episode_number: int | None = None,
     store_progress: bool = True,
     provider_completed: bool | None = None,
-    event_ts: int | None = None,
+    event_ts: float | None = None,
 ) -> None:
     """Plex-specific wrapper: extract fields and delegate."""
     event_type = payload.get("event")
