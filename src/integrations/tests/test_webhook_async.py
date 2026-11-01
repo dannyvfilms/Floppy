@@ -6,6 +6,7 @@ never block a web worker.
 """
 
 import json
+from contextlib import suppress
 from datetime import timedelta
 from unittest.mock import ANY, call, patch
 
@@ -465,10 +466,49 @@ class ProcessWebhookTaskTests(TestCase):
     @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
     def test_credential_scope_resets_after_a_failure(self, mock_process):
         """A failing run does not leave its user published for the next task."""
-        mock_process.side_effect = ValueError("boom")
+        seen = {}
+
+        def fail_in_scope(_payload, _user):
+            seen["user"] = credentials.active_user()
+            raise ValueError("boom")
+
+        mock_process.side_effect = fail_in_scope
         with self.assertRaises(ValueError):
             tasks.process_webhook("plex", {"event": "media.scrobble"}, self.user.id)
+
+        self.assertEqual(seen["user"], self.user)
         self.assertIsNone(credentials.active_user())
+
+    @patch("integrations.webhooks.jellyfin.JellyfinWebhookProcessor.process_payload")
+    def test_credential_scope_restores_an_outer_user(self, mock_process):
+        """An eager task inside another user's scope hands that scope back."""
+        outer = get_user_model().objects.create_user(username="outer")
+        for side_effect in (None, ValueError("boom")):
+            with self.subTest(fails=side_effect is not None):
+                mock_process.side_effect = side_effect
+                with credentials.current_user_scope(outer):
+                    with suppress(ValueError):
+                        tasks.process_webhook(
+                            "jellyfin", {"Event": "Stop"}, self.user.id
+                        )
+                    self.assertEqual(credentials.active_user(), outer)
+
+    @override_settings(TMDB_API="")
+    @patch("integrations.webhooks.jellyfin.JellyfinWebhookProcessor.process_payload")
+    def test_sequential_webhooks_resolve_each_users_own_key(self, mock_process):
+        """One user's key does not carry over into the next user's webhook."""
+        other = get_user_model().objects.create_user(username="other")
+        credentials.set_user("tmdb", self.user, {"api_key": "first-tmdb"})
+        credentials.set_user("tmdb", other, {"api_key": "second-tmdb"})
+        seen = []
+        mock_process.side_effect = lambda _payload, _user: seen.append(
+            credentials.get("tmdb", "api_key")
+        )
+
+        tasks.process_webhook("jellyfin", {"Event": "Stop"}, self.user.id)
+        tasks.process_webhook("jellyfin", {"Event": "Stop"}, other.id)
+
+        self.assertEqual(seen, ["first-tmdb", "second-tmdb"])
 
     def test_missing_user_logs_and_returns(self):
         """A deleted user is logged and skipped without raising."""
