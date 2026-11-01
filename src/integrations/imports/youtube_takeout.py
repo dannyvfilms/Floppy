@@ -307,6 +307,7 @@ class YouTubeTakeoutImporter:
                     "status": Status.COMPLETED.value,
                     "channel": entry["channel"],
                     "watch_url": watch_url,
+                    "entry_source": "youtube",
                 },
             )
             if not video_created:

@@ -132,6 +132,7 @@ class KoreaderImporterTests(TestCase):
         media = Book.objects.get(user=self.user, item=self.item)
         self.assertEqual(media.status, Status.IN_PROGRESS.value)
         self.assertEqual(media.progress, 200)
+        self.assertEqual(media.entry_source, "koreader")
 
     @patch("integrations.imports.koreader.KoreaderClient.probe_list_support")
     @patch("integrations.imports.koreader.KoreaderClient.get_progress")
