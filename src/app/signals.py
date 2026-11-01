@@ -681,17 +681,16 @@ def clear_discover_feedback_on_media_save(sender, instance, **kwargs):
 @receiver(post_save, sender=Movie)
 @receiver(post_save, sender=Episode)
 def close_resume_point_on_watched(sender, instance, **kwargs):
-    """A watched movie/episode no longer has an open resume point (#1809)."""
+    """Close the open resume point of a watched movie or episode (#1809)."""
     if kwargs.get("raw") or instance.status != Status.COMPLETED.value:
         return
     item_id = instance.item_id
-    if sender is Episode:
-        user_id = instance.related_season.user_id
-    else:
-        user_id = instance.user_id
+    user_id = (
+        instance.related_season.user_id if sender is Episode else instance.user_id
+    )
     if not user_id or not item_id:
         return
-    from api.fork_views_playback import complete_playback_progress  # noqa: PLC0415
+    from api.fork_views_playback import complete_playback_progress
 
     complete_playback_progress(user_id, item_id)
 
