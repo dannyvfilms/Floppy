@@ -12,11 +12,12 @@ from unittest.mock import ANY, call, patch
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import Client, SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from simple_history.models import HistoricalRecords
 
+from app.providers import credentials
 from integrations import tasks
 from integrations.models import JellyfinAccount, PlexAccount, PlexWebhookShare
 
@@ -411,6 +412,63 @@ class ProcessWebhookTaskTests(TestCase):
         tasks.process_webhook("jellyfin", {"Event": "Stop"}, self.user.id)
         self.assertEqual(seen["user"], self.user)
         self.assertFalse(hasattr(HistoricalRecords.context, "request"))
+
+    @override_settings(TMDB_API="")
+    @patch("integrations.webhooks.jellyfin.JellyfinWebhookProcessor.process_payload")
+    def test_processing_resolves_the_users_personal_tmdb_key(self, mock_process):
+        """Metadata lookups use the user's own key, as imports do (#1488)."""
+        credentials.set_user("tmdb", self.user, {"api_key": "personal-tmdb"})
+        seen = {}
+
+        def capture_key(_payload, _user):
+            seen["api_key"] = credentials.get("tmdb", "api_key")
+
+        mock_process.side_effect = capture_key
+        tasks.process_webhook("jellyfin", {"Event": "Stop"}, self.user.id)
+
+        self.assertEqual(seen["api_key"], "personal-tmdb")
+        self.assertIsNone(credentials.active_user())
+
+    @override_settings(TMDB_API="")
+    @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
+    def test_shared_plex_task_resolves_the_recipients_personal_key(
+        self,
+        mock_process,
+    ):
+        """A shared play is tracked for the recipient, so their key applies."""
+        recipient = get_user_model().objects.create_user(username="recipient")
+        credentials.set_user("tmdb", self.user, {"api_key": "owner-tmdb"})
+        credentials.set_user("tmdb", recipient, {"api_key": "recipient-tmdb"})
+        PlexAccount.objects.create(
+            user=self.user,
+            plex_token="owner-plex-token",
+            plex_username="taskuser",
+        )
+        share = PlexWebhookShare.objects.create(
+            owner=self.user,
+            recipient=recipient,
+            plex_username="plex-friend",
+            recipient_enabled=True,
+        )
+        seen = {}
+
+        def capture_key(_payload, _user, **_kwargs):
+            seen["api_key"] = credentials.get("tmdb", "api_key")
+
+        mock_process.side_effect = capture_key
+        tasks.process_webhook(
+            "plex", {"event": "media.scrobble"}, recipient.id, share_id=share.id
+        )
+
+        self.assertEqual(seen["api_key"], "recipient-tmdb")
+
+    @patch("integrations.webhooks.plex.PlexWebhookProcessor.process_payload")
+    def test_credential_scope_resets_after_a_failure(self, mock_process):
+        """A failing run does not leave its user published for the next task."""
+        mock_process.side_effect = ValueError("boom")
+        with self.assertRaises(ValueError):
+            tasks.process_webhook("plex", {"event": "media.scrobble"}, self.user.id)
+        self.assertIsNone(credentials.active_user())
 
     def test_missing_user_logs_and_returns(self):
         """A deleted user is logged and skipped without raising."""
