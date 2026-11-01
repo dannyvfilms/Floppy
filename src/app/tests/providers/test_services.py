@@ -105,8 +105,9 @@ class ServicesTests(TestCase):
         self.assertIn("timeout", kwargs)
 
     def tearDown(self):
-        """Avoid leaking the tmdb proxy cache key between tests."""
+        """Avoid leaking the tmdb proxy cache keys between tests."""
         cache.delete("tmdb_proxy_url")
+        cache.delete(services.TMDB_PROXY_CACHE_KEY)
         super().tearDown()
 
     @patch("app.providers.services.session.get")
@@ -146,6 +147,25 @@ class ServicesTests(TestCase):
         _, kwargs = mock_get.call_args
         self.assertNotIn("proxies", kwargs)
 
+    @patch("app.providers.services.session.get")
+    def test_api_request_ignores_pre_upgrade_cached_proxy(self, mock_get):
+        """A warm pre-policy cache entry must never become the effective proxy."""
+        User.objects.create_user(
+            username="member",
+            password="testpass123",
+            tmdb_proxy_url=encrypt("socks5://attacker:1080"),
+        )
+        cache.set("tmdb_proxy_url", "socks5://attacker:1080", 60)
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"data": "test"}
+        mock_get.return_value = mock_response
+
+        services.api_request(Sources.TMDB.value, "GET", "https://example.com/api")
+
+        _, kwargs = mock_get.call_args
+        self.assertNotIn("proxies", kwargs)
+        self.assertEqual(cache.get(services.TMDB_PROXY_CACHE_KEY), "")
+
     def test_tmdb_proxy_prefers_lowest_pk_superuser(self):
         """The selection is deterministic when several superusers set one."""
         User.objects.create_superuser(
@@ -176,7 +196,7 @@ class ServicesTests(TestCase):
     @patch("app.providers.services.session.get")
     def test_api_request_only_proxies_tmdb_provider(self, mock_get):
         """Non-TMDB providers should not pick up the TMDB proxy setting."""
-        User.objects.create_user(
+        User.objects.create_superuser(
             username="proxy-user",
             password="testpass123",
             tmdb_proxy_url=encrypt("socks5://127.0.0.1:1080"),

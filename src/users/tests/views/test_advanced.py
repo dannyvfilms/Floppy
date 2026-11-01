@@ -31,6 +31,7 @@ from app.models import (
     Sources,
     Status,
 )
+from app.providers.services import TMDB_PROXY_CACHE_KEY
 from app.statistics_cache import STATISTICS_CACHE_PREFIX, STATISTICS_DAY_PREFIX
 from integrations.imports.helpers import decrypt
 
@@ -45,8 +46,9 @@ class TmdbProxyUpdateTests(TestCase):
         self.client.login(**self.credentials)
 
     def tearDown(self):
-        """Avoid leaking the tmdb proxy cache key between tests."""
+        """Avoid leaking the tmdb proxy cache keys between tests."""
         cache.delete("tmdb_proxy_url")
+        cache.delete(TMDB_PROXY_CACHE_KEY)
         super().tearDown()
 
     def test_update_tmdb_proxy_rejects_non_superuser(self):
@@ -82,7 +84,10 @@ class TmdbProxyUpdateTests(TestCase):
 
     def test_update_tmdb_proxy_saves_encrypted_value(self):
         """Posting a proxy URL should save it encrypted and invalidate the cache."""
-        cache.set("tmdb_proxy_url", "stale-value", 60)
+        from app.providers import services
+
+        self.assertIsNone(services._get_tmdb_proxy_url())  # warms the cache
+        self.assertEqual(cache.get(TMDB_PROXY_CACHE_KEY), "")
 
         response = self.client.post(
             reverse("update_tmdb_proxy"),
@@ -97,7 +102,11 @@ class TmdbProxyUpdateTests(TestCase):
             decrypt(self.user.tmdb_proxy_url),
             "socks5://user:pass@host:1080",
         )
-        self.assertIsNone(cache.get("tmdb_proxy_url"))
+        self.assertIsNone(cache.get(TMDB_PROXY_CACHE_KEY))
+        self.assertEqual(
+            services._get_tmdb_proxy_url(),
+            "socks5://user:pass@host:1080",
+        )
 
         messages = list(get_messages(response.wsgi_request))
         self.assertEqual(len(messages), 1)
