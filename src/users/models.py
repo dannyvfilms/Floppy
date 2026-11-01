@@ -2008,8 +2008,8 @@ class User(AbstractUser):
             | Q(task_kwargs__contains=f'"user_id": {self.id}' + "}")
         )
 
-    def get_import_tasks(self, sources=None, result_limit=None, result_offset=0):
-        """Return owned import activity, optionally scoped/paged for provider UI."""
+    def get_import_tasks(self, sources=None, result_limit=None, result_offset=0, refresh_results=True):
+        """Return scoped/paged activity; Overview disables result refresh writes."""
         result_task_names = {
             "trakt": [
                 "Import from Trakt",
@@ -2151,7 +2151,7 @@ class User(AbstractUser):
         for task in task_results:
             if not helpers.task_kwargs_belong_to_user(task.task_kwargs, self.pk):
                 continue
-            if task.status in {states.PENDING, states.STARTED}:
+            if refresh_results and task.status in {states.PENDING, states.STARTED}:
                 async_result = AsyncResult(task.task_id)
                 if async_result.status != task.status:
                     task.status = async_result.status
@@ -2161,7 +2161,7 @@ class User(AbstractUser):
                     task.save(
                         update_fields=["status", "result", "traceback", "date_done"]
                     )
-            elif task.status == states.FAILURE and not task.traceback:
+            elif refresh_results and task.status == states.FAILURE and not task.traceback:
                 async_result = AsyncResult(task.task_id)
                 if async_result.traceback:
                     task.traceback = async_result.traceback

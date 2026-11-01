@@ -19,11 +19,14 @@ Editable inputs remain empty: previews are hints, never values submitted by a fo
 Saved key previews stay in server-rendered credential fields and are excluded from
 React presentation JSON.
 
-AniList is the first complete provider-region port. Its header, media chips, tabs,
-Overview, Connection, Import and Activity are rendered by React. The application
-shell and settings navigation still come from Django. Other providers retain their
-existing implementations until deliberately ported; do not infer support for their
-metadata, tracking or outgoing-sync controls from AniList.
+Every provider uses the same React `ProviderPage` for its header, media chips,
+tabs and Overview. `users.provider_ui.provider_page` supplies one presentation
+contract; `overviewCards` describes supported capabilities and state. There are no
+provider-specific Overview layouts. AniList additionally has React-owned Connection,
+Import and Activity bodies. All providers' Metadata bodies also use one shared
+React component. The application shell and settings navigation still
+come from Django. Unported tab bodies retain their existing owners; do not infer
+support for their metadata, tracking or outgoing-sync controls from AniList.
 
 ## Component and framework ownership
 
@@ -38,8 +41,13 @@ reusable; the complete page and its browser controls are not a native implementa
 The provider route serializes a narrow view model from `users/provider_ui.py`
 through `json_script`. `provider_detail.html` exposes one `data-provider-root`;
 the common loader lazily mounts it through `frontend/providers/mount.jsx`.
-Nested legacy header roots are excluded from mounting. React owns the entire
-provider region after mount, including all content and interactions.
+For `contentOwner: react`, React owns the entire provider region, including all
+Overview pages and AniList's implemented tab bodies. Nested fallback card-header
+roots are excluded from mounting. For `contentOwner: server`, the root owns only
+the shared header/tabs; `content_legacy.html` is a separate sibling outside that
+root, retaining Alpine/HTMX forms and partial React card headings. Its props script
+lives beside the header root inside the same scoped container. No server HTML is
+passed into React and no active legacy control is nested inside a React root.
 
 Legacy markup is a loading/error fallback, not a second running UI. The root has
 `x-ignore` and `hx-disable` so Alpine/HTMX cannot initialize its descendants before
@@ -58,7 +66,20 @@ parallel framework owner inside either kind of root.
 
 ## Overview is actual state
 
-AniList has three cards, each a native, keyboard-accessible link to its owning tab.
+Overview cards are data-driven and use one card/grid renderer for every provider.
+Overview and the directory use the same `CatalogGrid` container breakpoints.
+Only supported tabs get cards: AniList has Connection, Automatic import and Last
+active import; BoardGameGeek has Connection and Metadata. Bundled credential sources
+are identified explicitly. Existing capability state supplies summaries for tabs
+whose richer Overview content has not yet been designed.
+
+The generic import adapter uses the existing source aliases and owned activity
+query, excludes one-off schedules and combines recent task state with persisted
+import runs. It passes `refresh_results=False`, so opening Overview does not refresh
+Celery results or write task state. AniList retains its established full-history
+read adapter. Both produce the same card contract, without UI branches per provider.
+
+Each card is a native, keyboard-accessible link to its owning tab.
 There are no separate manage/configure/view footers. All three status subtitles
 use the same muted typography and omit terminal periods. Tabs retain the active
 bottom-border indicator without adding text underlines on hover. The grid responds to available
@@ -140,3 +161,40 @@ provider-specific integration tests remain authoritative for importer behavior.
 iOS/Android, native forms/transport/secure storage, real provider OAuth and physical
 mobile assistive technology are not verified by this browser port. Keep those
 limits separate from the accepted React web implementation.
+
+## Inline Metadata settings
+
+`frontend/providers/Metadata.jsx` serves every Metadata tab using shared cards,
+fields, preference dropdowns, forms and chips. `metadata_page` supplies only
+presentation, default-source choices, readiness and action URLs. Credentials and
+stored proxy URLs are never serialized. The server fallback uses inline native
+forms, without requiring a modal or Alpine initialization.
+
+There is one primary source per library, not a user-editable provider priority
+order. TV, anime, books and comics have switchable per-user defaults; other
+libraries explain their fixed source. Supplemental providers keep their separate
+artwork/score roles. Overview distinguishes active primary/supplemental metadata,
+missing credentials and an available provider that is not selected.
+
+The left card shows actionable library source controls above the feature list and all alternatives with readiness
+and Connection links. The right card holds provider-specific settings, currently
+TMDB's existing proxy form, or explains that there are no additional options.
+The Sources header leads with activity, not edit permissions. A shared `FeatureList`
+describes the outputs Floppy consumes and their Active, Needs setup, Not selected
+or Not provided states. Game profiles distinguish search/details, covers, title
+logos, backgrounds and any additional gallery/score/trailer outputs; unsupported
+core artwork/search outputs remain visible for comparison. These are local setup
+states, not guarantees that every title has every image. Artwork providers retain
+their game/platform and fallback restrictions.
+
+Steam artwork uses the public CDN even without an account API key. ScreenScraper
+artwork requires instance developer access; its optional member credentials do not
+replace that requirement. Source activity and Overview use those same requirements.
+Provider settings without controls use one plain sentence, without a duplicate
+heading or Connection action. Source alternatives still link to Connection when
+their credentials are missing.
+All selections post to the existing authenticated handlers, including personal
+credential availability and demo restrictions. Anime library format remains part
+of the source form. Existing-library migration counts, warnings and explicit
+conversion actions remain separate from changing the default; no automatic move
+or conversion is introduced.

@@ -16,6 +16,7 @@ values and owns requests, validation, permissions and state.
 | `Field`, `SelectField` | Labeled input and preference dropdown; semantic panel/border/focus styling, inset arrow and custom option menu matching Preferences; caller supplies IDs, values/options and handlers |
 | `FilterDropdown` | Same dropdown interaction with Lists hub styling: funnel icon, filled trigger/menu, purple selected option; visually hidden accessible label; use in filter toolbars rather than preference forms |
 | `StatusIcon` | Accessible success/warning/neutral icon with a descriptive tooltip; feature code supplies the actual meaning |
+| `FeatureList` | Shared feature rows with `key`, `label`, optional `note`, `status` and semantic `tone`; leading accessible status icons replace repeated Active text, with other states labeled and no dividers |
 | `Button` | Purple primary action with secondary, danger and disabled variants |
 | `Form` | Native POST with explicit action, CSRF and optional local return destination/confirmation |
 | `Dialog` | Native modal dialog, Escape/backdrop dismissal and focus restoration; caller supplies translated title/close label |

@@ -14,6 +14,7 @@ from django_celery_results.models import TaskResult
 
 from app.providers import credentials
 from integrations.models import ImportRun
+from users.provider_catalog import catalog
 from users.provider_ui import ACTIVITY_PAGE_SIZE, anilist_overview
 
 
@@ -179,3 +180,145 @@ class AniListReactTests(TestCase):
         self.assertEqual(activity["schedules"], [])
         self.client.post(reverse("delete_import_schedule"), {"task_name": task.name})
         self.assertTrue(PeriodicTask.objects.filter(pk=task.pk).exists())
+
+
+class SharedProviderPageTests(TestCase):
+    """All providers share shell/card ownership without inventing unsupported tabs."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username="shared-provider-owner")
+        self.client.force_login(self.user)
+        self.addCleanup(cache.clear)
+
+    def test_every_provider_overview_uses_the_same_react_renderer_and_safe_cards(self):
+        for provider in catalog():
+            with self.subTest(slug=provider["slug"]):
+                response = self.client.get(reverse("provider_detail", args=[provider["slug"]]))
+                self.assertEqual(response.status_code, 200)
+                page = response.context["provider_page"]
+                self.assertEqual(page["contentOwner"], "react")
+                self.assertContains(response, "data-provider-root")
+                self.assertEqual(page["provider"]["label"], provider["label"])
+                for card in page["overviewCards"]:
+                    self.assertIn(card["key"], provider["tabs"])
+                    self.assertEqual(card["url"], reverse("provider_detail", args=[provider["slug"]]) + "?tab=" + card["key"])
+                self.assertNotContains(response, "Available capabilities")
+
+    @override_settings(BGG_API_TOKEN="bundled-boardgame-Z123", SHARED_DEFAULT_CREDENTIALS={"BGG_API_TOKEN": "bundled-boardgame-Z123"})
+    def test_metadata_only_provider_uses_connection_and_metadata_cards(self):
+        response = self.client.get(reverse("provider_detail", args=["bgg"]))
+        page = response.context["provider_page"]
+        self.assertEqual([card["key"] for card in page["overviewCards"]], ["connection", "metadata"])
+        self.assertEqual(page["overviewCards"][0]["subtitle"], "Bundled credentials active")
+        self.assertEqual(page["overviewCards"][0]["badge"], "Active")
+        self.assertNotIn("bundled-boardgame-Z123", json.dumps(page))
+        self.assertNotIn("Z123", json.dumps(page))
+
+    def test_retained_tab_has_shared_react_header_and_separate_server_body(self):
+        response = self.client.get(reverse("provider_detail", args=["hardcover"]), {"tab": "connection"})
+        page = response.context["provider_page"]
+        self.assertEqual(page["contentOwner"], "server")
+        self.assertContains(response, "data-provider-root")
+        self.assertTemplateUsed(response, "users/providers/content_legacy.html")
+        self.assertContains(response, reverse("save_personal_credential", args=["hardcover"]))
+        self.assertNotIn("credentials", page)
+
+    def test_every_metadata_tab_uses_the_shared_inline_react_component(self):
+        for provider in catalog():
+            if not provider.get("metadata"):
+                continue
+            with self.subTest(slug=provider["slug"]):
+                response = self.client.get(reverse("provider_detail", args=[provider["slug"]]), {"tab": "metadata"})
+                self.assertEqual(response.status_code, 200)
+                page = response.context["provider_page"]
+                self.assertEqual(page["contentOwner"], "react")
+                self.assertIn("metadata", page)
+                self.assertNotContains(response, "activeModal")
+
+    @override_settings(BGG_API_TOKEN="shared-bgg-token", SHARED_DEFAULT_CREDENTIALS={"BGG_API_TOKEN": "shared-bgg-token"})
+    def test_fixed_primary_metadata_is_active_and_read_only(self):
+        url = reverse("provider_detail", args=["bgg"])
+        page = self.client.get(url).context["provider_page"]
+        card = next(card for card in page["overviewCards"] if card["key"] == "metadata")
+        self.assertEqual(card["badge"], "Active")
+        self.assertEqual(card["subtitle"], "Primary metadata source active")
+        metadata = self.client.get(url, {"tab": "metadata"}).context["provider_page"]["metadata"]
+        self.assertTrue(metadata["status"]["active"])
+        self.assertFalse(metadata["editable"])
+        self.assertFalse(metadata["sources"][0]["editable"])
+
+    @override_settings(HARDCOVER_API="")
+    def test_personal_only_source_can_be_selected_and_seen_on_other_provider_pages(self):
+        credentials.set_user("hardcover", self.user, {"api_key": "personal-metadata-secret"})
+        url = reverse("provider_detail", args=["hardcover"])
+        response = self.client.post(reverse("set_media_type_provider", args=["book"]),
+                                    {"source": "hardcover", "next": url + "?tab=metadata"})
+        self.assertRedirects(response, url + "?tab=metadata")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.book_metadata_source_default, "hardcover")
+        page = self.client.get(reverse("provider_detail", args=["openlibrary"]), {"tab": "metadata"}).context["provider_page"]
+        self.assertEqual(page["metadata"]["sources"][0]["current"], "hardcover")
+        self.assertNotIn("personal-metadata-secret", json.dumps(page))
+
+    def test_proxy_settings_expose_only_configuration_status(self):
+        self.user.tmdb_proxy_url = "private-proxy-value"
+        self.user.save(update_fields=["tmdb_proxy_url"])
+        page = self.client.get(reverse("provider_detail", args=["tmdb"]), {"tab": "metadata"}).context["provider_page"]
+        self.assertTrue(page["metadata"]["proxy"]["configured"])
+        self.assertNotIn("private-proxy-value", json.dumps(page))
+
+    @override_settings(IGDB_ID="client", IGDB_SECRET="secret", STEAMGRIDDB_API_KEY="", STEAM_API_KEY="")
+    def test_game_contributions_distinguish_primary_metadata_and_public_artwork(self):
+        def metadata(slug):
+            return self.client.get(reverse("provider_detail", args=[slug]), {"tab": "metadata"}).context["provider_page"]["metadata"]
+
+        igdb = {row["key"]: row for row in metadata("igdb")["contributions"]}
+        self.assertEqual(igdb["search"]["status"], "Active")
+        self.assertEqual(igdb["logos"]["status"], "Not provided")
+        self.assertEqual(igdb["backgrounds"]["status"], "Active")
+        steam = metadata("steam")
+        self.assertTrue(steam["status"]["active"])
+        self.assertEqual({row["key"] for row in steam["contributions"] if row["status"] == "Active"}, {"logos", "backgrounds"})
+        grid = metadata("steamgriddb")
+        self.assertFalse(grid["status"]["active"])
+        self.assertEqual({row["status"] for row in grid["contributions"]}, {"Needs setup", "Not provided"})
+        credentials.set_user("steamgriddb", self.user, {"api_key": "personal-grid-key"})
+        grid = metadata("steamgriddb")
+        self.assertEqual({row["key"] for row in grid["contributions"] if row["status"] == "Active"}, {"logos", "backgrounds", "gallery"})
+        self.assertNotIn("personal-grid-key", json.dumps(grid))
+
+    @override_settings(SCREENSCRAPER_DEV_ID="", SCREENSCRAPER_DEV_PASSWORD="", SCREENSCRAPER_SSID="member", SCREENSCRAPER_SSPASSWORD="password")
+    def test_screenscraper_member_credentials_do_not_replace_instance_access(self):
+        url = reverse("provider_detail", args=["screenscraper"])
+        metadata = self.client.get(url, {"tab": "metadata"}).context["provider_page"]["metadata"]
+        self.assertFalse(metadata["status"]["active"])
+        self.assertEqual(metadata["status"]["summary"], "Instance artwork access is not configured")
+        with self.settings(SCREENSCRAPER_DEV_ID="developer-id", SCREENSCRAPER_DEV_PASSWORD="developer-password", SCREENSCRAPER_SSID="", SCREENSCRAPER_SSPASSWORD=""):
+            metadata = self.client.get(url, {"tab": "metadata"}).context["provider_page"]["metadata"]
+            self.assertTrue(metadata["status"]["active"])
+            self.assertNotIn("developer-password", json.dumps(metadata))
+
+    def test_generic_import_overview_ignores_foreign_and_one_time_schedules(self):
+        other = get_user_model().objects.create_user(username="other-shared-provider")
+        cron = CrontabSchedule.objects.create(minute="0", hour="4")
+        for name, owner, one_off in (("owned", self.user, False), ("foreign", other, False), ("once", self.user, True)):
+            PeriodicTask.objects.create(name=name, task="Import from Kitsu", crontab=cron,
+                                        kwargs=json.dumps({"user_id": owner.pk, "username": name, "mode": "new"}), one_off=one_off)
+        ImportRun.objects.create(user=other, source="kitsu", status="failed")
+        ImportRun.objects.create(user=self.user, source="kitsu", status="completed")
+        page = self.client.get(reverse("provider_detail", args=["kitsu"])).context["provider_page"]
+        cards = {card["key"]: card for card in page["overviewCards"]}
+        self.assertEqual(cards["import"]["subtitle"], "1 enabled schedule")
+        self.assertEqual(cards["activity"]["subtitle"], "Completed")
+
+    @patch("users.models.AsyncResult")
+    def test_overview_reads_persisted_task_state_without_refreshing_or_writing(self, async_result):
+        task = TaskResult.objects.create(task_id="shared-pending", task_name="Import from Kitsu", status="PENDING",
+                                         task_kwargs=json.dumps({"user_id": self.user.pk}))
+        page = self.client.get(reverse("provider_detail", args=["kitsu"])).context["provider_page"]
+        cards = {card["key"]: card for card in page["overviewCards"]}
+        self.assertEqual(cards["activity"]["subtitle"], "Pending")
+        async_result.assert_not_called()
+        task.refresh_from_db()
+        self.assertEqual(task.status, "PENDING")

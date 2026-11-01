@@ -1,11 +1,10 @@
-"""Safe, scoped view models for the fully React-owned AniList provider region."""
+"""Safe view models for the shared provider shell, Overview and owned React tabs."""
 
 from datetime import timedelta
 
 from celery import states
 from django.db.models import Q
 from django.middleware.csrf import get_token
-from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import urlencode
@@ -14,11 +13,14 @@ from django.utils.translation import ngettext
 from django_celery_beat.models import PeriodicTask
 from django_celery_results.models import TaskResult
 
+from app import config
 from app.log_safety import redact_secrets
 from app.providers import credentials
-from app.templatetags.app_tags import media_type_readable
+from app.services import metadata_resolution
+from app.templatetags.app_tags import media_type_readable, media_type_readable_plural
 from integrations.models import ImportRun
 from users import helpers, views
+from users.provider_catalog import activity_sources
 from users.templatetags.user_tags import (
     SOURCES_CONFIG,
     translate_import_summary,
@@ -111,6 +113,158 @@ def anilist_overview(user):
     }
 
 
+def overview_cards(user, provider, overview=None):
+    """Describe supported tabs once; every provider uses the same card renderer."""
+    slug = provider["slug"]
+    base = reverse("provider_detail", args=[slug])
+    cards = []
+    if provider.get("connection"):
+        state = provider["state"]
+        active = state["connection_tone"] == "success"
+        subtitle = _(state["connection"])
+        tooltip = ""
+        spec = credentials.REGISTRY.get(slug)
+        if state["credentials_available"] and spec:
+            sources = {credentials.source_of(slug, field.name, user) for field in spec.fields if field.required}
+            subtitle = _("Personal credentials active") if credentials.SOURCE_USER in sources else (
+                _("Bundled credentials active") if sources == {credentials.SOURCE_DEFAULT} else _("Instance credentials active")
+            )
+            if credentials.SOURCE_USER in sources and sources - {credentials.SOURCE_USER}:
+                tooltip = _("Uses instance fallback for fields without a personal value.")
+        if overview is not None:
+            active = overview["connection"] != "none"
+            subtitle = _("Personal credentials active") if overview["connection"] == "personal" else (
+                _("Instance credentials active") if active else _("No credentials active")
+            )
+            if not active:
+                tooltip = _("Public username imports do not require provider credentials.")
+        cards.append({"key": "connection", "title": _("Connection"), "url": f"{base}?tab=connection",
+                      "tone": "warning" if state["connection_tone"] == "warning" else "info" if active else "neutral",
+                      "badge": _("Active") if active else _("Inactive"), "subtitle": subtitle, "detail": "", "tooltip": tooltip})
+    latest = None
+    if provider.get("import"):
+        if overview is not None:
+            count, summary, next_run, latest = (overview[key] for key in ("scheduleCount", "scheduleSummary", "nextImport", "latestImport"))
+        else:
+            sources = activity_sources(slug)
+            activity = user.get_import_tasks(sources=sources, result_limit=1, refresh_results=False)
+            schedules = [row for row in activity["schedules"] if not row["task"].one_off]
+            count = len(schedules)
+            summary = ngettext("%(count)s enabled schedule", "%(count)s enabled schedules", count) % {"count": count}
+            next_runs = [row["next_run"] for row in schedules if row["next_run"]]
+            next_run = user_datetime_format(min(next_runs), user) if next_runs else ""
+            run = ImportRun.objects.filter(user=user, source__in=sources).only("status", "started_at").order_by("-started_at", "-pk").first()
+            task = activity["results"][0] if activity["results"] else None
+            if task and (not run or (task["date"] and task["date"] > run.started_at)):
+                latest = {"status": _status(task["status"]), "date": user_datetime_format(task["date"], user)}
+            elif run:
+                latest = {"status": _status(run.status), "date": user_datetime_format(run.started_at, user)}
+            if not count and provider["state"]["capabilities"].get("import") == "Scheduled import enabled":
+                count, summary = 1, _("Scheduled import enabled")
+        cards.append({"key": "import", "title": _("Automatic import"), "url": f"{base}?tab=import",
+                      "tone": "info" if count else "neutral", "badge": _("Active") if count else _("Inactive"),
+                      "subtitle": summary if count else _("No automatic imports configured"),
+                      "detail": _("Next import") + ": " + next_run if next_run else "", "tooltip": ""})
+    if provider.get("activity") and provider.get("import"):
+        cards.append({"key": "activity", "title": _("Last active import"), "url": f"{base}?tab=activity", "tone": "neutral", "badge": "",
+                      "subtitle": latest["status"] if latest else _("No imports yet"), "detail": latest["date"] if latest else "", "tooltip": ""})
+    for tab in provider["tabs"]:
+        if tab in {"overview", "connection", "import"} or (tab == "activity" and provider.get("import")):
+            continue
+        if tab == "metadata":
+            status = metadata_status(user, provider)
+            cards.append({"key": tab, "title": _("Metadata"), "url": f"{base}?tab=metadata",
+                          "tone": "info" if status["active"] else "neutral", "badge": _("Active") if status["active"] else _("Inactive"),
+                          "subtitle": status["summary"], "detail": "", "tooltip": ""})
+        else:
+            cards.append({"key": tab, "title": _(tab.title()), "url": f"{base}?tab={tab}", "tone": "neutral", "badge": "",
+                          "subtitle": _(provider["state"]["capabilities"].get(tab, "Available")), "detail": "", "tooltip": ""})
+    return cards
+
+
+def metadata_status(user, provider):
+    """Distinguish selected primary sources from supplemental and unused sources."""
+    enabled = metadata_resolution.provider_is_enabled(provider["slug"], user)
+    if provider["slug"] == "steam":
+        enabled = True  # Library artwork comes from the public CDN, not the account API.
+    elif provider["slug"] == "screenscraper":
+        from app.game_artwork.screenscraper import developer_credentials
+
+        enabled = bool(developer_credentials())
+    primary = any(provider["slug"] in {str(source.value) for source in config.get_sources(media) or []}
+                  and metadata_resolution.metadata_default_source(user, media) == provider["slug"]
+                  for media in provider["media_types"])
+    if not enabled:
+        return {"active": False, "state": "unconfigured", "summary": _("Instance artwork access is not configured") if provider["slug"] == "screenscraper" else _("Provider credentials required")}
+    if primary:
+        return {"active": True, "state": "active", "summary": _("Primary metadata source active")}
+    if provider.get("metadata_role") == "supplemental":
+        return {"active": True, "state": "active", "summary": _("Supplemental metadata active")}
+    return {"active": False, "state": "not_selected", "summary": _("Another provider is selected")}
+
+
+def metadata_contributions(provider, status):
+    """Describe the outputs Floppy actually consumes, not a provider's full API."""
+    outputs = {
+        "igdb": {"search", "covers", "backgrounds", "gallery", "scores", "trailers"},
+        "steamgriddb": {"logos", "backgrounds", "gallery"},
+        "thegamesdb": {"logos", "backgrounds", "gallery"},
+        "screenscraper": {"logos", "backgrounds", "gallery"},
+        "steam": {"logos", "backgrounds"},
+        "libretro": {"logos", "backgrounds"},
+        "opencritic": {"scores"},
+        "trakt": {"ratings", "popularity"},
+        "lastfm": {"biographies"},
+    }.get(provider["slug"], {"search", "covers"} if provider.get("metadata_role") == "primary" else {"additional"})
+    labels = {
+        "search": _("Search results and title details"), "covers": _("Cover images"),
+        "logos": _("Title logos"), "backgrounds": _("Background images"),
+        "gallery": _("Extra gallery images"), "scores": _("Critic scores"),
+        "trailers": _("Trailers"), "additional": _("Additional metadata"),
+        "ratings": _("Community ratings"), "popularity": _("Popularity scores"), "biographies": _("Artist biographies"),
+    }
+    notes = {}
+    if provider["slug"] == "steam":
+        notes = {key: _("For games linked to Steam") for key in outputs}
+    elif provider["slug"] == "screenscraper":
+        notes = {key: _("For retro games") for key in outputs}
+    elif provider["slug"] == "libretro":
+        notes = {"logos": _("For retro games, when a logo is available"), "backgrounds": _("Title screens or screenshots for retro games")}
+    shown = outputs | ({"search", "covers", "logos", "backgrounds"} if "game" in provider["media_types"] else set())
+    return [{
+        "key": key, "label": label, "note": notes.get(key, ""),
+        "status": _("Not provided") if key not in outputs else _("Active") if status["active"] else
+            _("Not selected") if status["state"] == "not_selected" else _("Needs setup"),
+        "tone": "neutral" if key not in outputs or status["state"] == "not_selected" else "success" if status["active"] else "warning",
+    } for key, label in labels.items() if key in shown]
+
+
+def metadata_page(user, provider, context):
+    """Inline source/default controls; never serialize credentials or proxy values."""
+    entries = []
+    for entry in context["provider_summary"]:
+        media = entry["media_type"]
+        existing = entry["existing_count"]
+        entries.append({
+            "key": media, "title": str(media_type_readable_plural(media)), "current": entry["current_provider"],
+            "currentLabel": str(entry["current_label"]), "editable": entry["configurable"] and not user.is_demo,
+            "action": reverse("set_media_type_provider", args=[media]) if entry["configurable"] else "",
+            "choices": [{"value": row["value"], "label": str(row["label"]), "configured": row["configured"],
+                         "connectionUrl": context["metadata_source_connections"].get(row["value"], "")} for row in entry["choices"]],
+            "animeMode": user.anime_library_mode if media == "anime" else None,
+            "animeModes": [{"value": value, "label": str(label)} for value, label in context["anime_library_mode_choices"]],
+            "existingCount": existing,
+            "moveAction": reverse("convert_tv_library" if media == "tv" else "convert_anime_library") if existing and media in {"tv", "anime"} else "",
+        })
+    status = metadata_status(user, provider)
+    return {
+        "status": status, "sources": entries, "contributions": metadata_contributions(provider, status),
+        "editable": any(entry["editable"] for entry in entries),
+        "supplemental": provider.get("metadata_role") == "supplemental",
+        "proxy": {"configured": context["tmdb_proxy_configured"], "action": reverse("update_tmdb_proxy")} if provider["slug"] == "tmdb" else None,
+    }
+
+
 def anilist_activity(user, page=1):
     """Serialize existing activity controls with owned rows and bounded history pages."""
     activity = user.get_import_tasks(sources={"anilist"}, result_limit=ACTIVITY_PAGE_SIZE + 1,
@@ -158,24 +312,49 @@ def anilist_activity(user, page=1):
     }
 
 
-def anilist_page(request, provider, tab, credential_context=None):
+def provider_page(request, provider, tab, credential_context=None):
     """Build safe browser props. Saved credential values/previews are never serialized."""
     user = request.user
-    base = reverse("provider_detail", args=["anilist"])
+    base = reverse("provider_detail", args=[provider["slug"]])
+    react_content = tab in {"overview", "metadata"} or provider["slug"] == "anilist"
     page = {
         "provider": {"label": provider["label"], "description": provider["description"],
-                     "logo": static("img/anilist-logo.svg"), "media": provider["media_labels"]},
+                     "logo": SOURCES_CONFIG.get(provider.get("logo_slug") or provider["slug"], {}).get("logo"), "media": provider["media_labels"]},
+        "contentOwner": "react" if react_content else "server",
         "tab": tab,
         "tabs": [{"key": key, "label": _(key.title()), "url": f"{base}?tab={key}"} for key in provider["tabs"]],
         "urls": {key: f"{base}?tab={key}" for key in provider["tabs"]},
         "activityUrl": f"{base}?tab=activity&format=json",
         "csrf": get_token(request), "next": request.get_full_path(),
-        "labels": _labels(),
+        "labels": _labels() if provider["slug"] == "anilist" else {
+            "Media types": _("Media types"), "Provider sections": _("Provider sections"),
+            "Continue Guided Setup": _("Continue Guided Setup"),
+        },
     }
     if request.GET.get("onboarding"):
         page["onboardingUrl"] = reverse("onboarding_service_setup" if request.GET.get("setup_flow") == "import" else "onboarding_integration_setup")
     if tab == "overview":
-        page["overview"] = anilist_overview(user)
+        overview = anilist_overview(user) if provider["slug"] == "anilist" else None
+        if overview is not None:
+            page["overview"] = overview
+        page["overviewCards"] = overview_cards(user, provider, overview)
+    elif tab == "metadata":
+        page["metadata"] = metadata_page(user, provider, credential_context)
+        page["labels"].update({text: _(text) for text in (
+            "Metadata settings", "Metadata sources", "Provider settings", "Editable", "Read-only", "Active", "Ready", "Not configured",
+            "Provider for new titles", "Anime Library", "Save", "Configured", "Not configured", "TMDB Proxy", "Proxy URL",
+            "Supplemental metadata", "Library metadata",
+            "Each library uses one primary source. Supplemental providers keep their separate roles.",
+            "Used for new titles. Existing entries keep their provider until you move them.",
+            "This library uses its supported source directly; the default cannot be changed.",
+            "This provider adds metadata alongside the primary source; it does not replace it.",
+            "This provider has no additional settings.", "Inactive",
+            "Existing entries on another provider or format", "Moving preserves history when supported; entries that cannot be moved safely are left unchanged.",
+            "Converting rebuilds entries. Moving to MyAnimeList drops per-episode history; unsafe conversions are left unchanged.",
+            "Move existing shows", "Convert existing anime", "Route TMDB requests through an HTTP or SOCKS5 proxy. Leave blank and save to remove it.",
+        )})
+    elif not react_content:
+        return page
     elif tab == "connection":
         context = credential_context
         provider = context["metadata_provider"]

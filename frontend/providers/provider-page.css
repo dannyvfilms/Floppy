@@ -10,6 +10,7 @@
   line-height: 1.5;
   color: var(--color-text);
 }
+.provider-page-content { display: flex; flex-direction: column; gap: 1.5rem; min-width: 0; }
 .provider-page h2 { font-size: 1.25rem; font-weight: 600; margin: 0; }
 .provider-page h3 { font-size: 1.125rem; font-weight: 600; margin: 0; }
 .provider-page h4 { font-weight: 500; margin: 0; }

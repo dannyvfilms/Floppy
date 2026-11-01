@@ -364,6 +364,16 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
   migrate its content and interactions too; do not stop at a React heading around
   legacy controls. Keep one framework owner per subtree. Other providers' partial
   card shells and Django form slots remain explicit, documented migration consumers.
+- **Provider structure is shared across every provider.** All provider headers,
+  media chips, tabs and Overview cards use `frontend/providers/ProviderPage.jsx`
+  and `users.provider_ui.provider_page`. Add capability/state data to that shared
+  model; do not add provider-specific Overview layouts or parallel page shells.
+  When a shared component changes, update its consumers together. Provider-specific
+  behavior belongs in data/action adapters. Unported tab bodies remain separate
+  server-owned siblings until their components are migrated.
+  Metadata is now a shared React tab for every metadata provider, using
+  `frontend/providers/Metadata.jsx`; extend its data contract for provider settings
+  rather than adding provider-specific layouts or credential/source modals.
 - **The migration unit is a reusable component, not a provider or page.** New or
   redesigned fields, buttons, chips, tabs, dialogs and card layouts must reuse or
   extend `frontend/ui/controls.jsx`; see `docs/ui/react-components.md`. Keep domain

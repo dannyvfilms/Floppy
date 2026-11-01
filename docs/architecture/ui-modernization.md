@@ -8,7 +8,9 @@ is the first authorized React/React Native Web browser pilot. Its implementation
 and coexistence boundary are documented in [settings cards](../ui/settings-cards.md).
 AniList now extends that shared shell into a [fully React-owned provider
 region](../ui/provider-pages.md): Overview, Connection, Import and Activity. The
-global Django shell and other providers remain incrementally migrated.
+global Django shell remains server-owned. Every provider now uses the same React
+header, tabs and data-driven Overview cards; unported tab bodies remain separate
+server-owned siblings under that shared shell.
 Meaningful component redesigns now include incremental React modernization where
 bounded and safe; do not automatically defer the port to a future task. No component
 has been verified on iOS or Android, and native products remain separately scoped.

@@ -334,7 +334,7 @@ def set_media_type_provider(request, media_type):
     source = request.POST.get("source", "")
     valid_sources = {
         choice.value
-        for choice in metadata_resolution.available_metadata_sources(media_type)
+        for choice in metadata_resolution.available_metadata_sources(media_type, request.user)
     }
     if source not in valid_sources:
         messages.error(request, "That provider isn't available for this media type.")

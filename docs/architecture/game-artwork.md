@@ -73,6 +73,13 @@ The developer credentials come only from `SCREENSCRAPER_DEV_ID`,
 They are not in `SHARED_DEFAULT_CREDENTIALS` and must never be committed.
 Until they exist ScreenScraper is inactive.
 
+Provider Metadata pages summarize these consumed outputs through shared feature
+rows. Active means that Floppy can ask the provider for matching games, not that
+the provider has an asset for every title. Steam's public artwork is independent
+of Steam account credentials. ScreenScraper's activity depends on the application
+credentials described above, with the member login optional. The UI does not add
+provider ordering controls or change the runtime fallback order.
+
 ## Adding a provider
 
 Add a module with `PROVIDER` and `find(query, wanted)` returning

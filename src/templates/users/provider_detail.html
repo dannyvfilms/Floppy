@@ -2,13 +2,19 @@
 {% load i18n static user_tags %}
 {% block title %}{{ provider.label }} - Floppy{% endblock title %}
 {% block settings_content %}
-  {% if provider_page %}
+  {% if provider_page.contentOwner == 'react' %}
     {{ provider_page|json_script:"provider-page-props" }}
     <div data-provider-root data-props-id="provider-page-props" x-ignore hx-disable>
       {% include "users/providers/provider_legacy.html" %}
     </div>
   {% else %}
-    {% include "users/providers/provider_legacy.html" %}
+    <div class="provider-page">
+      {{ provider_page|json_script:"provider-page-props" }}
+      <div data-provider-root data-props-id="provider-page-props" x-ignore hx-disable>
+        <div class="provider-page-content">{% include "users/providers/header_fallback.html" %}</div>
+      </div>
+      {% include "users/providers/content_legacy.html" %}
+    </div>
   {% endif %}
 {% endblock settings_content %}
 {% block js %}

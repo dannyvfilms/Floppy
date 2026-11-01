@@ -144,8 +144,8 @@ export function FilterToolbar({ children, ...props }) {
   return <form className="ui-filter-toolbar" {...props}>{children}</form>;
 }
 
-export function CatalogGrid({ children, ...props }) {
-  return <div className="ui-catalog"><div className="ui-catalog-grid" {...props}>{children}</div></div>;
+export function CatalogGrid({ children, className = '', ...props }) {
+  return <div className="ui-catalog"><div className={`ui-catalog-grid ${className}`} {...props}>{children}</div></div>;
 }
 
 export function StatusIcon({ tone = 'neutral', label }) {
@@ -155,6 +155,14 @@ export function StatusIcon({ tone = 'neutral', label }) {
       {tone === 'success' ? <path d="m8 12 3 3 5-6" /> : tone === 'warning' ? <path d="M12 7v6m0 4h.01" /> : <path d="M8 12h8" />}
     </svg>
   </span>;
+}
+
+export function FeatureList({ items }) {
+  return <ul className="ui-feature-list">{items.map(item => <li key={item.key}>
+    <StatusIcon tone={item.tone} label={`${item.label}: ${item.status}`} />
+    <div><span>{item.label}</span>{item.note && <p>{item.note}</p>}</div>
+    {item.tone !== 'success' && <span className="ui-feature-state">{item.status}</span>}
+  </li>)}</ul>;
 }
 
 export function CatalogCard({ title, description, logo, href, label, attention, status }) {

@@ -64,6 +64,15 @@
 .ui-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; min-width: 0; }
 .ui-heading > .ui-button, .ui-heading > .ui-form { width: auto; }
 .ui-heading > .settings-chip { margin-left: auto; }
+.ui-section { min-width: 0; }
+.ui-section > * + * { margin-top: .75rem; }
+.ui-option-list { display: flex; flex-direction: column; gap: .5rem; }
+.ui-option-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+.ui-feature-list { list-style: none; padding: 0; margin: 0; }
+.ui-feature-list > li { display: flex; align-items: start; gap: .5rem; padding: .375rem 0; }
+.ui-feature-list > li > div { flex: 1; min-width: 0; }
+.ui-feature-list p { font-size: .75rem; margin-top: .25rem; color: var(--color-text-muted); }
+.ui-feature-state { display: inline-flex; align-items: center; gap: .375rem; flex-shrink: 0; font-size: .75rem; color: var(--color-text-muted); }
 .ui-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .ui-card-grid-auto { grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); }
 .ui-card-grid-start { align-items: start; }

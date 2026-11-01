@@ -124,8 +124,7 @@ def provider_detail(request, slug):
         )
     if slug in {"mal", "tmdb", "wetrakr"} and tab in {"connection", "sync", "activity"}:
         context.update(views.mal_export_context(request, slug))
-    if slug == "anilist":
-        context["provider_page"] = provider_ui.anilist_page(request, provider, tab, credential_context=context)
+    context["provider_page"] = provider_ui.provider_page(request, provider, tab, credential_context=context)
     return render(request, "users/provider_detail.html", context)
 
 

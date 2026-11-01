@@ -461,7 +461,83 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         """The full-page port does not orphan partial migrations on other providers."""
         self.page.goto(f"{self.live_server_url}/settings/providers/hardcover?tab=connection")
         expect(self.page.locator("[data-settings-card-root][data-react-mounted=true]")).to_have_count(2)
-        expect(self.page.locator("[data-provider-root]")).to_have_count(0)
+        expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
+        expect(self.page.get_by_role("navigation", name="Provider sections")).to_be_visible()
+        self.assertEqual(self.errors, [])
+
+    def test_all_provider_overviews_share_the_react_page_and_card_components(self):
+        """Different capabilities change data, never the provider page renderer."""
+        for slug, titles in (("bgg", ["Connection", "Metadata"]),
+                             ("anilist", ["Connection", "Automatic import", "Last active import"]),
+                             ("goodreads", ["Automatic import", "Last active import"])):
+            self.page.goto(f"{self.live_server_url}/settings/providers/{slug}?tab=overview")
+            expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
+            cards = self.page.locator(".provider-overview > .settings-card")
+            self.assertEqual(cards.locator('[role="heading"]').all_text_contents(), titles)
+            self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
+            self.assertEqual(self.page.locator(".provider-page").count(), 1)
+        self.page.goto(f"{self.live_server_url}/settings/providers/bgg?tab=overview")
+        expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
+        self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True).click()
+        expect(self.page.get_by_role("heading", name="Instance credentials", exact=True)).to_be_visible()
+        expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
+        expect(self.page.locator("[data-settings-card-root][data-react-mounted=true]")).to_have_count(2)
+        self.assertEqual(self.errors, [])
+
+    def test_overview_and_directory_share_column_breakpoints(self):
+        for width in (390, 1135, 1280, 1440):
+            self.page.set_viewport_size({"width": width, "height": 1000})
+            columns = []
+            for path, selector in (("/settings/providers", "#provider-results"),
+                                   ("/settings/providers/anilist?tab=overview", ".provider-overview")):
+                self.page.goto(self.live_server_url + path)
+                expect(self.page.locator('[data-react-mounted="true"]')).to_have_count(1)
+                columns.append(self.page.locator(selector).evaluate("element => getComputedStyle(element).gridTemplateColumns.split(' ').length"))
+            self.assertEqual(columns[0], columns[1])
+        self.assertEqual(self.errors, [])
+
+    def test_metadata_is_inline_and_saves_shared_primary_source(self):
+        credentials.set_user("hardcover", self.user, {"api_key": "browser-metadata-key"})
+        self.page.goto(f"{self.live_server_url}/settings/providers/hardcover?tab=metadata")
+        expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
+        expect(self.page.get_by_role("heading", name="Metadata sources", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Provider settings", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("dialog")).to_have_count(0)
+        self.choose_option("Provider for new titles", "Hardcover")
+        self.page.get_by_role("button", name="Save", exact=True).click()
+        self.page.wait_for_url("**/settings/providers/hardcover?tab=metadata")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.book_metadata_source_default, "hardcover")
+        self.page.goto(f"{self.live_server_url}/settings/providers/openlibrary?tab=metadata")
+        expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
+        expect(self.page.get_by_role("combobox", name="Provider for new titles", exact=True)).to_have_text("Hardcover")
+        for width in (390, 768, 1440):
+            self.page.set_viewport_size({"width": width, "height": 1000})
+            self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
+        self.assertEqual(self.errors, [])
+
+    def test_metadata_feature_list_prioritizes_activity_and_provider_outputs(self):
+        for slug in ("bgg", "igdb", "steamgriddb", "libretro"):
+            self.page.goto(f"{self.live_server_url}/settings/providers/{slug}?tab=metadata")
+            expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
+            expect(self.page.locator(".ui-feature-list > li").first).to_be_visible()
+            feature_list = self.page.locator(".ui-feature-list")
+            expect(feature_list.get_by_text("Active", exact=True)).to_have_count(0)
+            self.assertTrue(feature_list.evaluate("element => element.nextElementSibling === null"))
+            self.assertTrue(feature_list.locator("li").evaluate_all("""rows => rows.every(row => {
+              const icon = row.querySelector('.ui-status-icon'), text = row.querySelector('div');
+              return icon.getBoundingClientRect().right <= text.getBoundingClientRect().left &&
+                getComputedStyle(row).borderTopWidth === '0px';
+            })"""))
+            expect(self.page.get_by_role("heading", name="No additional provider settings", exact=True)).to_have_count(0)
+            expect(self.page.get_by_role("link", name="Configure Connection", exact=True)).to_have_count(0)
+            expect(self.page.get_by_text("This provider has no additional settings.", exact=True)).to_be_visible()
+            expect(self.page.get_by_text("Read-only", exact=True)).to_have_count(0)
+            for width in (390, 768, 1440):
+                self.page.set_viewport_size({"width": width, "height": 1000})
+                self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
+        expect(self.page.get_by_role("img", name="Title logos: Active", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("img", name="Search results and title details: Not provided", exact=True)).to_be_visible()
         self.assertEqual(self.errors, [])
 
     @patch("integrations.views.tasks.import_anilist.delay")
