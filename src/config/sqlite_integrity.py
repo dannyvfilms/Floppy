@@ -20,6 +20,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+# Shared by the startup messages and the recovery page so the command a person
+# is told to run is the one the docs verify. "sqlite_startup" is not an
+# executable; it only runs through manage.py from the image's /floppy.
+PREPARE_COMMAND = "python manage.py sqlite_startup --prepare-migrations"
+RECOVERY_DOC_URL = (
+    "https://github.com/dannyvfilms/Floppy/blob/latest/docs/sqlite-startup-recovery.md"
+)
 _CORRUPTION_HINT = (
     "[entrypoint] The SQLite file may be corrupt (see README: SQLite "
     "network filesystem caveat)"
