@@ -203,6 +203,35 @@ class CollectionCustomFieldListTest(TestCase):
             ["Death Note #2", "Death Note #1", "Death Note #3", "Death Note #4"],
         )
 
+    def test_explicit_null_values_sort_with_blanks(self):
+        """A stored null counts as no value, not as the text "null"."""
+        self._entry(
+            self.user,
+            "Death Note #5",
+            {str(self.box.id): None, str(self.grade.id): None},
+        )
+
+        self.assertEqual(
+            self.titles(sort=f"field_{self.grade.id}", direction="desc"),
+            [
+                "Death Note #2",
+                "Death Note #1",
+                "Death Note #3",
+                "Death Note #5",
+                "Death Note #4",
+            ],
+        )
+        self.assertEqual(
+            self.titles(sort=f"field_{self.box.id}", direction="desc"),
+            [
+                "Death Note #2",
+                "Death Note #3",
+                "Death Note #1",
+                "Death Note #5",
+                "Death Note #4",
+            ],
+        )
+
     def test_sort_by_dropdown_field_orders_by_text(self):
         """Dropdown values sort alphabetically, ties broken by newest first."""
         self.assertEqual(
