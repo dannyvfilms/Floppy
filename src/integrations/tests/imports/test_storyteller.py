@@ -62,6 +62,7 @@ class StorytellerImporterTests(TestCase):
         self.assertEqual(media.status, Status.IN_PROGRESS.value)
         self.assertEqual(media.progress, 50)
         self.assertIsNone(media.end_date)
+        self.assertEqual(media.entry_source, "storyteller")
         self.assertEqual(media.item.source, Sources.STORYTELLER.value)
         self.assertEqual(media.item.media_type, MediaTypes.BOOK.value)
         self.assertEqual(media.item.title, "The Hobbit")
