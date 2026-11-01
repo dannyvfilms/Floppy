@@ -8,6 +8,38 @@ New to Floppy? The [guided installer](install.md) is the shorter path on Linux,
 macOS and Windows. This page is for configuring an installation by hand or
 looking something up.
 
+## Synchronization after database restore
+
+Before reopening a restored instance to applications, invalidate previously
+issued reliable-sync contexts. If the backup is from an older Floppy version,
+apply migrations first with the restored database configuration:
+
+```bash
+docker compose run --rm app python manage.py migrate --noinput
+docker compose run --rm app python manage.py invalidate_sync_contexts --all-users
+```
+
+For a source installation, run
+`uv run --no-sync python src/manage.py invalidate_sync_contexts --all-users`
+with the normal database configuration and `SECRET`. To reset only one user,
+replace `--all-users` with `--user-id ID`. Exactly one selector is required.
+
+The command rotates per-user synchronization generations under the same lock
+used by event writers. It preserves media, sequence numbers, recording
+enablement, credentials, provider approvals, and outbound deliveries. Clients
+using `contract=2` receive `409 sync_reset_required` and must bootstrap again.
+It is also safe to use for an intentional protocol reset.
+
+Generations are persisted in the database: restoring an older backup restores
+its old generations too. Floppy does **not** automatically detect database
+rollback. Running invalidation before allowing client access is therefore a
+required restore step. Ordinary application restarts need no invalidation.
+
+On upgrade, new reliable clients must bootstrap; earlier recording gaps cannot
+be reconstructed. Legacy feed requests and native provider integrations retain
+their supported behavior. Preserve `SECRET` across ordinary restarts so signed
+snapshot contexts remain valid.
+
 ## Docker Compose (recommended)
 
 One stack, app plus Redis. Save it as `docker-compose.yml` and run `docker compose up -d`, or paste it straight into a Portainer stack.

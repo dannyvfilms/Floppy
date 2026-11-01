@@ -115,6 +115,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         expect(self.page.locator("#global-search")).to_be_visible()
         # htmx is a deferred script, so the page can be visible before it runs.
         self.page.wait_for_function("() => window.htmx")
+        # Home loads rows after login. Finish those reads before tests write fixtures.
+        self.page.wait_for_load_state("networkidle")
 
     def search_and_submit(self, query):
         """Run a global search via the submit button.
@@ -351,6 +353,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
         for theme in ("glass", "custom"):
             with self.subTest(theme=theme):
+                # Finish browser reads before writing to the shared SQLite database.
+                self.page.wait_for_load_state("networkidle")
                 self.user.theme = theme
                 self.user.save(update_fields=["theme"])
                 self.page.goto(f"{self.live_server_url}/medialist/movie?layout=grid")
@@ -651,7 +655,8 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
 
     def test_tv_manual(self):
         """Test the manual creation of a TV show."""
-        # Create TV show
+        # Custom now lives under the collapsible Explore section.
+        self.page.get_by_role("button", name="Explore").click()
         self.page.get_by_role("link", name="Custom", exact=True).click()
         self.page.get_by_placeholder("Enter title").click()
         self.page.get_by_placeholder("Enter title").fill("Friends")
@@ -1026,6 +1031,17 @@ class IntegrationTest(SerialStaticLiveServerTestCase):
         """
         overlay = self.page.locator("div.fixed.inset-0:visible").first
         expect(overlay).to_be_visible()
+        # The page entrance animation temporarily makes its container a fixed
+        # containing block. Visibility alone can sample its final moving frame.
+        self.page.wait_for_function(
+            """overlay => {
+                const box = overlay.getBoundingClientRect();
+                return overlay.isConnected && Math.abs(box.x) < 2 && Math.abs(box.y) < 2
+                    && Math.abs(box.width - window.innerWidth) < 2
+                    && Math.abs(box.height - window.innerHeight) < 2;
+            }""",
+            arg=overlay.element_handle(),
+        )
         box = overlay.bounding_box()
         viewport = self.page.viewport_size
         self.assertIsNotNone(box)

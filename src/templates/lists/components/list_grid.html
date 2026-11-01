@@ -31,15 +31,25 @@
                 aria-label="{% translate "Smart List" %}">{% include "app/icons/bolt.svg" with classes="w-3.5 h-3.5" %}</span>
         {% endif %}
 
-        {% if not profile_username and custom_list.can_edit %}
-          <button class="absolute top-2 right-2 z-20 p-2 bg-black/50 hover:bg-black/75 rounded-full opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 transition-all duration-200 text-white hover:text-indigo-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] cursor-pointer"
-                  hx-get="{% url 'list_edit_form' custom_list.id %}"
-                  hx-target="next .list-edit-modal-slot"
-                  hx-swap="innerHTML"
-                  hx-trigger="click once"
-                  @click="showModal = true"
-                  title="{% translate "Edit list" %}"
-                  aria-label="{% blocktranslate trimmed with value_1=custom_list.name %}Edit {{ value_1 }}{% endblocktranslate %}">{% include "app/icons/horizontal-sliders.svg" with classes="w-4 h-4" %}</button>
+        {% if not profile_username %}
+          <div class="absolute top-2 right-2 z-20" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
+            <button type="button" @click="open = !open" :aria-expanded="open.toString()"
+                    class="p-2 bg-black/50 hover:bg-black/75 rounded-full opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 focus-visible:opacity-100 transition-all duration-200 text-white cursor-pointer"
+                    aria-label="{% blocktranslate trimmed with value_1=custom_list.name %}Options for {{ value_1 }}{% endblocktranslate %}">
+              {% include "app/icons/ellipsis.svg" with classes="w-4 h-4" %}
+            </button>
+            <div x-show="open" x-cloak class="absolute right-0 top-full mt-1 w-44 bg-[var(--color-surface-strong)] rounded-md shadow-lg border border-gray-700">
+              {% include "lists/components/sidebar_pin_action.html" %}
+              {% if custom_list.can_edit %}
+              <button type="button"
+                      class="block w-full px-4 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] cursor-pointer"
+                      hx-get="{% url 'list_edit_form' custom_list.id %}"
+                      hx-target="#list-edit-modal-{{ custom_list.id }}"
+                      hx-swap="innerHTML" hx-trigger="click once"
+                      @click="open = false; showModal = true">{% translate "Settings" %}</button>
+              {% endif %}
+            </div>
+          </div>
         {% endif %}
       </div>
 
@@ -58,7 +68,7 @@
       </div>
 
       {% if not profile_username and custom_list.can_edit %}
-        <div class="list-edit-modal-slot"></div>
+        <div id="list-edit-modal-{{ custom_list.id }}" class="list-edit-modal-slot"></div>
       {% endif %}
     </div>
     {% if current_sort == 'last_watched' %}

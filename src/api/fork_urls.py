@@ -14,6 +14,7 @@ from . import (
     fork_views_progress_changes,
     fork_views_scrobble,
     fork_views_statistics,
+    fork_views_sync,
     fork_views_tracking,
     fork_views_users,
     fork_views_video,
@@ -21,6 +22,8 @@ from . import (
 )
 
 urlpatterns = [
+    re_path(r"^sync/bootstrap/?$", fork_views_sync.SyncBootstrapView.as_view(), name="api_sync_bootstrap"),
+    re_path(r"^sync/snapshot/?$", fork_views_sync.SyncSnapshotView.as_view(), name="api_sync_snapshot"),
     re_path(
         r"^media/(?P<media_type>[^/]+)/(?P<source>[^/]+)/(?P<media_id>[^/]+)/(?P<season_number>\d+)/episodes/(?P<episode_number>\d+)/watch/?$",
         fork_views_tracking.MediaEpisodeWatchView.as_view(),

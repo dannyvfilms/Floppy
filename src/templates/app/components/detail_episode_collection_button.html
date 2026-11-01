@@ -1,0 +1,16 @@
+{% load i18n app_tags %}
+<div id="episode-collection-button-{{ episode.item.id }}"{% if collection_button_oob %} hx-swap-oob="true"{% endif %}>
+      <button type="button"
+              class="{% if not episode.history and not episode.watched_by_progress and not episode.collection_entry %}rounded-full bg-[var(--color-surface-muted)] hover:bg-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-text)]{% else %}p-2 {% if episode.collection_entry %}bg-indigo-600 hover:bg-indigo-700{% else %}bg-gray-600 hover:bg-gray-500{% endif %} text-white rounded-full{% endif %} transition-colors cursor-pointer"
+              title="{% if episode.collection_entry %}{% translate "Edit collection data" %}{% else %}{% translate "Add collection data" %}{% endif %}"
+              hx-get="{% media_view_url 'collection_modal' episode %}"
+              hx-vals='{"return_url": "{{ detail_return_url|urlencode }}", "season_number": "{{ episode.season_number }}", "episode_number": "{{ episode.episode_number }}"}'
+              hx-target="#{% component_id 'collection' episode %}"
+              @click="collectionOpen = true">
+        {% if not episode.history and not episode.watched_by_progress and not episode.collection_entry %}
+          {% translate "Uncollected" %}
+        {% else %}
+          {% include "app/icons/cube.svg" with classes="w-4 h-4" %}
+        {% endif %}
+      </button>
+</div>

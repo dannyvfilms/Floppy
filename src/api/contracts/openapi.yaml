@@ -2604,6 +2604,558 @@ paths:
                     type: object
                     additionalProperties: true
           description: ''
+  /api/v1/sync/bootstrap/:
+    post:
+      operationId: api_v1_sync_bootstrap_create
+      description: Capture a committed baseline and enable durable recording.
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - contract
+                - context
+                - generation
+                - cursors
+                - feeds
+                - snapshots
+                properties:
+                  contract:
+                    type: integer
+                    enum:
+                    - 2
+                  context:
+                    type: string
+                  generation:
+                    type: string
+                    format: uuid
+                  cursors:
+                    type: object
+                    properties:
+                      watched:
+                        type: integer
+                        minimum: 0
+                      progress:
+                        type: integer
+                        minimum: 0
+                  feeds:
+                    type: object
+                    properties:
+                      watched:
+                        type: string
+                      progress:
+                        type: string
+                  snapshots:
+                    type: object
+                    properties:
+                      watched:
+                        type: string
+                      progress:
+                        type: string
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - code
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+          description: ''
+      x-required-scope: sync:read
+  /api/v1/sync/changes/:
+    get:
+      operationId: api_v1_sync_changes_retrieve
+      description: |-
+        Return changes after a cursor, in server order.
+
+        The cursor is a server sequence, which is allocated at commit time, so
+        paginating by it cannot skip a change that committed late.
+      parameters:
+      - in: query
+        name: context
+        schema:
+          type: string
+        description: Required with contract=2; use the opaque value returned by bootstrap.
+      - in: query
+        name: contract
+        schema:
+          type: string
+          enum:
+          - '2'
+      - in: query
+        name: cursor
+        schema:
+          type: integer
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - results
+                - next_cursor
+                - has_more
+                - oldest_sequence
+                - newest_sequence
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        item_id:
+                          type: integer
+                          nullable: true
+                        sequence:
+                          type: integer
+                          nullable: true
+                        revision:
+                          type: integer
+                          nullable: true
+                        previous_revision:
+                          type: integer
+                          nullable: true
+                        play_count:
+                          type: integer
+                          nullable: true
+                        position_seconds:
+                          type: integer
+                          nullable: true
+                        duration_seconds:
+                          type: integer
+                          nullable: true
+                        season_number:
+                          type: integer
+                          nullable: true
+                        episode_number:
+                          type: integer
+                          nullable: true
+                        media_id:
+                          type: string
+                          nullable: true
+                        source:
+                          type: string
+                          nullable: true
+                        media_type:
+                          type: string
+                          nullable: true
+                        kind:
+                          type: string
+                          nullable: true
+                        origin_key:
+                          type: string
+                          nullable: true
+                        origin_kind:
+                          type: string
+                          nullable: true
+                        correlation_id:
+                          type: string
+                          nullable: true
+                        watched:
+                          type: boolean
+                        completed:
+                          type: boolean
+                        watched_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        ids:
+                          type: object
+                          additionalProperties:
+                            type: string
+                  has_more:
+                    type: boolean
+                  next_cursor:
+                    type: integer
+                    nullable: true
+                  oldest_sequence:
+                    type: integer
+                    nullable: true
+                  newest_sequence:
+                    type: integer
+                    nullable: true
+                  high_water:
+                    type: integer
+                    nullable: true
+                  minimum_valid_cursor:
+                    type: integer
+                    nullable: true
+                  generation:
+                    type: string
+                    format: uuid
+                  recording_enabled:
+                    type: boolean
+                  complete:
+                    type: boolean
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+                description: Legacy errors may contain detail only. contract=2 errors
+                  also include a recovery code.
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+                description: Legacy errors may contain detail only. contract=2 errors
+                  also include a recovery code.
+          description: ''
+      x-required-scope: sync:read
+  /api/v1/sync/progress-changes/:
+    get:
+      operationId: api_v1_sync_progress_changes_retrieve
+      description: Return progress changes after a cursor, in server order.
+      parameters:
+      - in: query
+        name: context
+        schema:
+          type: string
+        description: Required with contract=2; use the opaque value returned by bootstrap.
+      - in: query
+        name: contract
+        schema:
+          type: string
+          enum:
+          - '2'
+      - in: query
+        name: cursor
+        schema:
+          type: integer
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - results
+                - next_cursor
+                - has_more
+                - oldest_sequence
+                - newest_sequence
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        item_id:
+                          type: integer
+                          nullable: true
+                        sequence:
+                          type: integer
+                          nullable: true
+                        revision:
+                          type: integer
+                          nullable: true
+                        previous_revision:
+                          type: integer
+                          nullable: true
+                        play_count:
+                          type: integer
+                          nullable: true
+                        position_seconds:
+                          type: integer
+                          nullable: true
+                        duration_seconds:
+                          type: integer
+                          nullable: true
+                        season_number:
+                          type: integer
+                          nullable: true
+                        episode_number:
+                          type: integer
+                          nullable: true
+                        media_id:
+                          type: string
+                          nullable: true
+                        source:
+                          type: string
+                          nullable: true
+                        media_type:
+                          type: string
+                          nullable: true
+                        kind:
+                          type: string
+                          nullable: true
+                        origin_key:
+                          type: string
+                          nullable: true
+                        origin_kind:
+                          type: string
+                          nullable: true
+                        correlation_id:
+                          type: string
+                          nullable: true
+                        watched:
+                          type: boolean
+                        completed:
+                          type: boolean
+                        watched_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        ids:
+                          type: object
+                          additionalProperties:
+                            type: string
+                  has_more:
+                    type: boolean
+                  next_cursor:
+                    type: integer
+                    nullable: true
+                  oldest_sequence:
+                    type: integer
+                    nullable: true
+                  newest_sequence:
+                    type: integer
+                    nullable: true
+                  high_water:
+                    type: integer
+                    nullable: true
+                  minimum_valid_cursor:
+                    type: integer
+                    nullable: true
+                  generation:
+                    type: string
+                    format: uuid
+                  recording_enabled:
+                    type: boolean
+                  complete:
+                    type: boolean
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+                description: Legacy errors may contain detail only. contract=2 errors
+                  also include a recovery code.
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+                description: Legacy errors may contain detail only. contract=2 errors
+                  also include a recovery code.
+          description: ''
+      x-required-scope: sync:read
+  /api/v1/sync/snapshot/:
+    get:
+      operationId: api_v1_sync_snapshot_retrieve
+      description: Return one resumable page of current state.
+      parameters:
+      - in: query
+        name: after
+        schema:
+          type: string
+      - in: query
+        name: context
+        schema:
+          type: string
+        required: true
+      - in: query
+        name: limit
+        schema:
+          type: integer
+      - in: query
+        name: resource
+        schema:
+          type: string
+          enum:
+          - progress
+          - watched
+        required: true
+      tags:
+      - api
+      security:
+      - bearerAuth: []
+      - ApiKeyAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - results
+                - has_more
+                - after
+                - cursor
+                - resource
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        item_id:
+                          type: integer
+                          nullable: true
+                        sequence:
+                          type: integer
+                          nullable: true
+                        revision:
+                          type: integer
+                          nullable: true
+                        previous_revision:
+                          type: integer
+                          nullable: true
+                        play_count:
+                          type: integer
+                          nullable: true
+                        position_seconds:
+                          type: integer
+                          nullable: true
+                        duration_seconds:
+                          type: integer
+                          nullable: true
+                        season_number:
+                          type: integer
+                          nullable: true
+                        episode_number:
+                          type: integer
+                          nullable: true
+                        media_id:
+                          type: string
+                          nullable: true
+                        source:
+                          type: string
+                          nullable: true
+                        media_type:
+                          type: string
+                          nullable: true
+                        kind:
+                          type: string
+                          nullable: true
+                        origin_key:
+                          type: string
+                          nullable: true
+                        origin_kind:
+                          type: string
+                          nullable: true
+                        correlation_id:
+                          type: string
+                          nullable: true
+                        watched:
+                          type: boolean
+                        completed:
+                          type: boolean
+                        watched_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        ids:
+                          type: object
+                          additionalProperties:
+                            type: string
+                  has_more:
+                    type: boolean
+                  after:
+                    type: string
+                    nullable: true
+                  cursor:
+                    type: integer
+                  resource:
+                    type: string
+                    enum:
+                    - watched
+                    - progress
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - code
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - code
+                - detail
+                properties:
+                  code:
+                    type: string
+                  detail:
+                    type: string
+          description: ''
+      x-required-scope: sync:read
   /api/v1/tags/:
     get:
       operationId: api_v1_tags_retrieve
@@ -2845,6 +3397,271 @@ paths:
                     items:
                       type: string
           description: ''
+  /apis/listenbrainz/1/stats/user/{username}/artists/:
+    get:
+      operationId: getListenBrainzUserArtists
+      description: Ranks the token owner's artists by recorded plays, in ListenBrainz's
+        response shape, so clients that build recommendations from ListenBrainz statistics
+        can read them from Floppy. A range without plays returns an empty ranking.
+      summary: Get top artists for a user (ListenBrainz-compatible)
+      parameters:
+      - in: query
+        name: count
+        schema:
+          type: integer
+        description: Maximum artists to return (default 25, at most 100).
+      - in: query
+        name: offset
+        schema:
+          type: integer
+        description: Number of top artists to skip.
+      - in: query
+        name: range
+        schema:
+          type: string
+          enum:
+          - all_time
+          - half_yearly
+          - month
+          - quarter
+          - this_month
+          - this_week
+          - this_year
+          - week
+          - year
+        description: Time range of the statistics (default all_time).
+      - in: path
+        name: username
+        schema:
+          type: string
+        description: The token owner's Floppy username.
+        required: true
+      tags:
+      - apis
+      security:
+      - listenBrainzToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzUserArtists'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzError'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzError'
+          description: ''
+      x-required-scope: music:read
+  /apis/listenbrainz/1/stats/user/{username}/genre-activity/:
+    get:
+      operationId: getListenBrainzUserGenreActivity
+      description: Counts the token owner's plays per genre and hour of the day. A
+        play's genres are its track's, else its album's, else its artist's.
+      summary: Get genre activity for a user (ListenBrainz-compatible)
+      parameters:
+      - in: query
+        name: range
+        schema:
+          type: string
+          enum:
+          - all_time
+          - half_yearly
+          - month
+          - quarter
+          - this_month
+          - this_week
+          - this_year
+          - week
+          - year
+        description: Time range of the statistics (default all_time).
+      - in: path
+        name: username
+        schema:
+          type: string
+        description: The token owner's Floppy username.
+        required: true
+      tags:
+      - apis
+      security:
+      - listenBrainzToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzGenreActivity'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzError'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzError'
+          description: ''
+      x-required-scope: music:read
+  /apis/listenbrainz/1/stats/user/{username}/recordings/:
+    get:
+      operationId: getListenBrainzUserRecordings
+      description: Ranks the token owner's recordings by recorded plays, in ListenBrainz's
+        response shape, so clients that build recommendations from ListenBrainz statistics
+        can read them from Floppy. A range without plays returns an empty ranking.
+      summary: Get top recordings for a user (ListenBrainz-compatible)
+      parameters:
+      - in: query
+        name: count
+        schema:
+          type: integer
+        description: Maximum recordings to return (default 25, at most 100).
+      - in: query
+        name: offset
+        schema:
+          type: integer
+        description: Number of top recordings to skip.
+      - in: query
+        name: range
+        schema:
+          type: string
+          enum:
+          - all_time
+          - half_yearly
+          - month
+          - quarter
+          - this_month
+          - this_week
+          - this_year
+          - week
+          - year
+        description: Time range of the statistics (default all_time).
+      - in: path
+        name: username
+        schema:
+          type: string
+        description: The token owner's Floppy username.
+        required: true
+      tags:
+      - apis
+      security:
+      - listenBrainzToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzUserRecordings'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzError'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzError'
+          description: ''
+      x-required-scope: music:read
+  /apis/listenbrainz/1/stats/user/{username}/release-groups/:
+    get:
+      operationId: getListenBrainzUserReleaseGroups
+      description: Ranks the token owner's release groups by recorded plays, in ListenBrainz's
+        response shape, so clients that build recommendations from ListenBrainz statistics
+        can read them from Floppy. A range without plays returns an empty ranking.
+      summary: Get top release groups for a user (ListenBrainz-compatible)
+      parameters:
+      - in: query
+        name: count
+        schema:
+          type: integer
+        description: Maximum release groups to return (default 25, at most 100).
+      - in: query
+        name: offset
+        schema:
+          type: integer
+        description: Number of top release groups to skip.
+      - in: query
+        name: range
+        schema:
+          type: string
+          enum:
+          - all_time
+          - half_yearly
+          - month
+          - quarter
+          - this_month
+          - this_week
+          - this_year
+          - week
+          - year
+        description: Time range of the statistics (default all_time).
+      - in: path
+        name: username
+        schema:
+          type: string
+        description: The token owner's Floppy username.
+        required: true
+      tags:
+      - apis
+      security:
+      - listenBrainzToken: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzUserReleaseGroups'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzError'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetailError'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListenBrainzError'
+          description: ''
+      x-required-scope: music:read
   /apis/listenbrainz/1/submit-listens/:
     post:
       operationId: submitListenBrainzListens
@@ -3600,6 +4417,32 @@ components:
       required:
       - code
       - error
+    ListenBrainzGenreActivity:
+      type: object
+      description: ListenBrainz `stats/user/genre-activity` response.
+      properties:
+        result:
+          type: array
+          items:
+            $ref: '#/components/schemas/ListenBrainzGenreActivityEntry'
+      required:
+      - result
+    ListenBrainzGenreActivityEntry:
+      type: object
+      description: Plays of one genre in one hour of the day.
+      properties:
+        genre:
+          type: string
+        hour:
+          type: integer
+          maximum: 23
+          minimum: 0
+        listen_count:
+          type: integer
+      required:
+      - genre
+      - hour
+      - listen_count
     ListenBrainzListen:
       type: object
       description: One recorded listen in ListenBrainz's response shape.
@@ -3664,6 +4507,209 @@ components:
       - message
       - user_name
       - valid
+    ListenBrainzUserArtist:
+      type: object
+      description: One artist in a user's ranking.
+      properties:
+        artist_mbid:
+          type: string
+          nullable: true
+        artist_name:
+          type: string
+        listen_count:
+          type: integer
+      required:
+      - artist_mbid
+      - artist_name
+      - listen_count
+    ListenBrainzUserArtists:
+      type: object
+      description: ListenBrainz `stats/user/artists` response wrapper.
+      properties:
+        payload:
+          $ref: '#/components/schemas/ListenBrainzUserArtistsPayload'
+      required:
+      - payload
+    ListenBrainzUserArtistsPayload:
+      type: object
+      description: Page of a user's top artists.
+      properties:
+        count:
+          type: integer
+        offset:
+          type: integer
+        range:
+          type: string
+        from_ts:
+          type: integer
+        to_ts:
+          type: integer
+        last_updated:
+          type: integer
+        user_id:
+          type: string
+        artists:
+          type: array
+          items:
+            $ref: '#/components/schemas/ListenBrainzUserArtist'
+        total_artist_count:
+          type: integer
+      required:
+      - artists
+      - count
+      - from_ts
+      - last_updated
+      - offset
+      - range
+      - to_ts
+      - total_artist_count
+      - user_id
+    ListenBrainzUserRecording:
+      type: object
+      description: One recording in a user's ranking.
+      properties:
+        artist_mbids:
+          type: array
+          items:
+            type: string
+        artist_name:
+          type: string
+        recording_mbid:
+          type: string
+          nullable: true
+        release_mbid:
+          type: string
+          nullable: true
+        release_name:
+          type: string
+          nullable: true
+        track_name:
+          type: string
+        listen_count:
+          type: integer
+      required:
+      - artist_mbids
+      - artist_name
+      - listen_count
+      - recording_mbid
+      - release_mbid
+      - release_name
+      - track_name
+    ListenBrainzUserRecordings:
+      type: object
+      description: ListenBrainz `stats/user/recordings` response wrapper.
+      properties:
+        payload:
+          $ref: '#/components/schemas/ListenBrainzUserRecordingsPayload'
+      required:
+      - payload
+    ListenBrainzUserRecordingsPayload:
+      type: object
+      description: Page of a user's top recordings.
+      properties:
+        count:
+          type: integer
+        offset:
+          type: integer
+        range:
+          type: string
+        from_ts:
+          type: integer
+        to_ts:
+          type: integer
+        last_updated:
+          type: integer
+        user_id:
+          type: string
+        recordings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ListenBrainzUserRecording'
+        total_recording_count:
+          type: integer
+      required:
+      - count
+      - from_ts
+      - last_updated
+      - offset
+      - range
+      - recordings
+      - to_ts
+      - total_recording_count
+      - user_id
+    ListenBrainzUserReleaseGroup:
+      type: object
+      description: One release group in a user's ranking.
+      properties:
+        artist_mbids:
+          type: array
+          items:
+            type: string
+        artist_name:
+          type: string
+        release_group_mbid:
+          type: string
+          nullable: true
+        release_group_name:
+          type: string
+        caa_id:
+          type: integer
+          nullable: true
+        caa_release_mbid:
+          type: string
+          nullable: true
+        listen_count:
+          type: integer
+      required:
+      - artist_mbids
+      - artist_name
+      - caa_id
+      - caa_release_mbid
+      - listen_count
+      - release_group_mbid
+      - release_group_name
+    ListenBrainzUserReleaseGroups:
+      type: object
+      description: ListenBrainz `stats/user/release-groups` response wrapper.
+      properties:
+        payload:
+          $ref: '#/components/schemas/ListenBrainzUserReleaseGroupsPayload'
+      required:
+      - payload
+    ListenBrainzUserReleaseGroupsPayload:
+      type: object
+      description: Page of a user's top release groups.
+      properties:
+        count:
+          type: integer
+        offset:
+          type: integer
+        range:
+          type: string
+        from_ts:
+          type: integer
+        to_ts:
+          type: integer
+        last_updated:
+          type: integer
+        user_id:
+          type: string
+        release_groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/ListenBrainzUserReleaseGroup'
+        total_release_group_count:
+          type: integer
+      required:
+      - count
+      - from_ts
+      - last_updated
+      - offset
+      - range
+      - release_groups
+      - to_ts
+      - total_release_group_count
+      - user_id
     MediaTypeStatus:
       type: object
       description: Whether the media type of this item is enabled for the user.

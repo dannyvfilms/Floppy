@@ -534,6 +534,19 @@ def date_format(datetime, user):
 
 
 @register.filter
+def is_future_date(value):
+    """Only known dates after today represent unreleased episodes."""
+    if isinstance(value, str):
+        try:
+            value = parse_date(value)
+        except ValueError:
+            return False
+    if isinstance(value, datetime):
+        value = timezone.localtime(value).date() if timezone.is_aware(value) else value.date()
+    return isinstance(value, date) and value > timezone.localdate()
+
+
+@register.filter
 def iso_date_format(value, user):
     """Format an ISO date string (YYYY-MM-DD) using user's preferred date format.
 

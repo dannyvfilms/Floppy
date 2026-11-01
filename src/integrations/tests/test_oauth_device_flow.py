@@ -1,5 +1,6 @@
 from datetime import timedelta
 from http import HTTPStatus as HTTP  # noqa: N814
+from urllib.parse import urlencode
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -129,17 +130,45 @@ class OAuthDeviceFlowTests(TestCase):
 
     def test_pending_and_fast_polling_return_device_flow_errors(self):
         """Pending authorisation and excessive polling follow RFC 8628 semantics."""
+        for content_type in ("application/x-www-form-urlencoded", "application/json"):
+            with self.subTest(content_type=content_type):
+                payload = self.issue_device_code()
+                data = {
+                    "client_id": self.oauth_client.client_id,
+                    "grant_type": OAUTH_DEVICE_CODE_GRANT,
+                    "device_code": payload["device_code"],
+                }
+                if content_type == "application/x-www-form-urlencoded":
+                    data = urlencode(data)
+
+                first = self.client.post(
+                    reverse("oauth_token"), data, content_type=content_type
+                )
+                second = self.client.post(
+                    reverse("oauth_token"), data, content_type=content_type
+                )
+
+                self.assertEqual(first.status_code, HTTP.BAD_REQUEST)
+                self.assertEqual(first.json()["error"], "authorization_pending")
+                self.assertEqual(second.status_code, HTTP.BAD_REQUEST)
+                self.assertEqual(second.json()["error"], "slow_down")
+                for response in (first, second):
+                    self.assertEqual(response["Cache-Control"], "no-store")
+                    self.assertEqual(response["Pragma"], "no-cache")
+                authorization = OAuthDeviceAuthorization.objects.get(
+                    device_code_digest=oauth_token_digest(payload["device_code"])
+                )
+                self.assertIsNone(authorization.user_id)
+                self.assertEqual(authorization.interval, 10)
+
+    def test_expired_device_code_returns_expired_token(self):
+        """An expired unapproved code returns an OAuth error, not a server error."""
         payload = self.issue_device_code()
+        OAuthDeviceAuthorization.objects.filter(
+            device_code_digest=oauth_token_digest(payload["device_code"])
+        ).update(expires_at=timezone.now() - timedelta(seconds=1))
 
-        first = self.client.post(
-            reverse("oauth_token"),
-            {
-                "client_id": self.oauth_client.client_id,
-                "grant_type": OAUTH_DEVICE_CODE_GRANT,
-                "device_code": payload["device_code"],
-            },
-        )
-        second = self.client.post(
+        response = self.client.post(
             reverse("oauth_token"),
             {
                 "client_id": self.oauth_client.client_id,
@@ -148,14 +177,32 @@ class OAuthDeviceFlowTests(TestCase):
             },
         )
 
-        self.assertEqual(first.status_code, HTTP.BAD_REQUEST)
-        self.assertEqual(first.json()["error"], "authorization_pending")
-        self.assertEqual(second.status_code, HTTP.BAD_REQUEST)
-        self.assertEqual(second.json()["error"], "slow_down")
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(response.json()["error"], "expired_token")
+        self.assertFalse(IntegrationToken.objects.exists())
+        self.assertFalse(OAuthRefreshToken.objects.exists())
+
+    def test_denied_device_code_returns_access_denied(self):
+        """A user-denied device request cannot be exchanged for credentials."""
+        payload = self.issue_device_code()
         authorization = OAuthDeviceAuthorization.objects.get(
             device_code_digest=oauth_token_digest(payload["device_code"])
         )
-        self.assertEqual(authorization.interval, 10)
+        authorization.deny(self.user)
+
+        response = self.client.post(
+            reverse("oauth_token"),
+            {
+                "client_id": self.oauth_client.client_id,
+                "grant_type": OAUTH_DEVICE_CODE_GRANT,
+                "device_code": payload["device_code"],
+            },
+        )
+
+        self.assertEqual(response.status_code, HTTP.BAD_REQUEST)
+        self.assertEqual(response.json()["error"], "access_denied")
+        self.assertFalse(IntegrationToken.objects.exists())
+        self.assertFalse(OAuthRefreshToken.objects.exists())
 
     def test_approved_device_exchange_issues_scoped_integration_token(self):
         """Successful OAuth access tokens reuse IntegrationToken enforcement."""

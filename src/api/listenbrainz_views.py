@@ -1,12 +1,17 @@
-# FORK: ListenBrainz-compatible ingest endpoints. Mounted at the root under
+# FORK: ListenBrainz-compatible endpoints. Mounted at the root under
 # /apis/listenbrainz/1/ rather than /api/v1/ so that any client accepting a
 # custom ListenBrainz URL (Multi-Scrobbler, Navidrome, Pano Scrobbler, ...) can
 # point at Floppy's base URL unmodified. Receive-only: Floppy never submits
-# listens outward. URL wiring lives in listenbrainz_urls.py.
+# listens outward. Besides ingest, it serves the token owner's own history and
+# statistics back, for clients that build recommendations from them. URL wiring
+# lives in listenbrainz_urls.py.
 import logging
-from datetime import UTC, datetime
+import re
+from collections import Counter
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus as HTTP  # noqa: N814
 
+from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import views as drf_views
 from rest_framework.response import Response
@@ -15,10 +20,15 @@ from api.authentication import ListenBrainzTokenAuthentication
 from api.contract_serializers import (
     DetailErrorSerializer,
     ListenBrainzErrorSerializer,
+    ListenBrainzGenreActivitySerializer,
     ListenBrainzListensSerializer,
     ListenBrainzStatusSerializer,
     ListenBrainzTokenSerializer,
+    ListenBrainzUserArtistsSerializer,
+    ListenBrainzUserRecordingsSerializer,
+    ListenBrainzUserReleaseGroupsSerializer,
 )
+from app.metadata_utils import normalize_genres
 from app.models import Music
 from integrations.webhooks.listenbrainz import ListenBrainzScrobbleProcessor
 
@@ -32,10 +42,50 @@ MAX_LISTENS_PER_SUBMISSION = 1000
 DEFAULT_LISTENS_PAGE_SIZE = 25
 MAX_LISTENS_PAGE_SIZE = 1000
 
+# The ranges ListenBrainz accepts on its user statistics. The "this_*" ranges
+# run to now; the others are the last complete period, as ListenBrainz does.
+STATS_RANGES = (
+    "this_week",
+    "this_month",
+    "this_year",
+    "week",
+    "month",
+    "quarter",
+    "half_yearly",
+    "year",
+    "all_time",
+)
+DEFAULT_STATS_RANGE = "all_time"
+DEFAULT_STATS_PAGE_SIZE = 25
+MAX_STATS_PAGE_SIZE = 100
+
+# Clients look these identifiers up on MusicBrainz, so only real MBIDs go out.
+_MBID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+)
+
 
 def _error(message, status=HTTP.BAD_REQUEST):
     """Return a ListenBrainz-shaped error response."""
     return Response({"code": int(status), "error": message}, status=status)
+
+
+def _mbid(value):
+    """Return a MusicBrainz identifier, or None when the value is not one."""
+    value = (value or "").strip().lower()
+    return value if _MBID_PATTERN.match(value) else None
+
+
+def _user_play_rows(user):
+    """History rows of the user's completed plays.
+
+    A play is one (entry, end_date) pair; several history rows can carry it
+    when the entry is edited afterwards, so callers deduplicate on that pair.
+    """
+    return Music.history.model.objects.filter(
+        id__in=Music.objects.filter(user=user).values("id"),
+        end_date__isnull=False,
+    )
 
 
 def _optional_int(params, name):
@@ -152,11 +202,7 @@ class UserListensView(drf_views.APIView):
             if request.query_params.get(name) not in (None, "") and value is None:
                 return _error(f"{name} must be an integer Unix timestamp.")
 
-        history_model = Music.history.model
-        rows = history_model.objects.filter(
-            id__in=Music.objects.filter(user=request.user).values("id"),
-            end_date__isnull=False,
-        )
+        rows = _user_play_rows(request.user)
         if min_ts is not None:
             rows = rows.filter(
                 end_date__gt=datetime.fromtimestamp(min_ts, tz=UTC),
@@ -208,6 +254,352 @@ class UserListensView(drf_views.APIView):
                     "latest_listen_ts": max(timestamps, default=0),
                     "oldest_listen_ts": min(timestamps, default=0),
                 },
+            },
+            status=HTTP.OK,
+        )
+
+
+def _shift_months(month_start, months):
+    """Move a first-of-the-month datetime by whole months."""
+    index = month_start.year * 12 + month_start.month - 1 + months
+    return month_start.replace(year=index // 12, month=index % 12 + 1)
+
+
+def _stats_window(range_, now):
+    """Return the (start, end) bounds of a statistics range, None when open."""
+    if range_ == "all_time":
+        return None, None
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week = today - timedelta(days=today.weekday())
+    month = today.replace(day=1)
+    year = month.replace(month=1)
+    quarter = month.replace(month=3 * ((month.month - 1) // 3) + 1)
+    half = month.replace(month=1 if month.month <= 6 else 7)  # noqa: PLR2004
+    return {
+        "this_week": (week, now),
+        "this_month": (month, now),
+        "this_year": (year, now),
+        "week": (week - timedelta(days=7), week),
+        "month": (_shift_months(month, -1), month),
+        "quarter": (_shift_months(quarter, -3), quarter),
+        "half_yearly": (_shift_months(half, -6), half),
+        "year": (_shift_months(year, -12), year),
+    }[range_]
+
+
+def _stats_query(request, username):
+    """Validate a statistics request.
+
+    Returns (range, start, end, now), or an error Response to send back.
+    """
+    if username.lower() != request.user.username.lower():
+        return _error("User not found.", status=HTTP.NOT_FOUND)
+    range_ = request.query_params.get("range") or DEFAULT_STATS_RANGE
+    if range_ not in STATS_RANGES:
+        return _error(f"Invalid range. Must be one of: {', '.join(STATS_RANGES)}.")
+    now = datetime.now(tz=UTC)
+    return (range_, *_stats_window(range_, now), now)
+
+
+def _plays_in(user, start, end):
+    """Return the user's plays in [start, end) as (entry id, end_date) pairs."""
+    rows = _user_play_rows(user)
+    if start is not None:
+        rows = rows.filter(end_date__gte=start)
+    if end is not None:
+        rows = rows.filter(end_date__lt=end)
+    return set(rows.values_list("id", "end_date"))
+
+
+def _entries_for(user, plays):
+    """Load the music entries behind a set of plays, keyed by id."""
+    entries = Music.objects.filter(
+        user=user,
+        id__in={entry_id for entry_id, _ in plays},
+    ).select_related("item", "artist", "album__artist", "track")
+    return {entry.id: entry for entry in entries}
+
+
+def _entry_artist(music):
+    """Return the entry's artist, falling back to its album's artist."""
+    return music.artist or (music.album.artist if music.album else None)
+
+
+def _artist_fields(music):
+    """Return the artist fields repeated on album and recording stats."""
+    artist = _entry_artist(music)
+    mbid = _mbid(artist.musicbrainz_id) if artist else None
+    return {
+        "artist_mbids": [mbid] if mbid else [],
+        "artist_name": artist.name if artist else "",
+    }
+
+
+def _entry_genres(music):
+    """Return a play's genres: its track's, else its album's, else its artist's."""
+    artist = _entry_artist(music)
+    for genres in (
+        getattr(music.track, "genres", None),
+        getattr(music.album, "genres", None),
+        getattr(artist, "genres", None),
+    ):
+        names = normalize_genres(genres)
+        if names:
+            return list(dict.fromkeys(name.lower() for name in names))
+    return []
+
+
+class _UserStatsView(drf_views.APIView):
+    """Shared body of the `stats/user/<username>/<entity>` endpoints.
+
+    Ranks the token owner's plays like ListenBrainz does. Subclasses name the
+    payload keys and say which entity a play counts towards.
+    """
+
+    authentication_classes = [ListenBrainzTokenAuthentication]
+    entity = ""
+    total_key = ""
+    name_field = ""
+
+    def describe(self, music):
+        """Return (key, fields) of the entity a play counts towards, or None."""
+        raise NotImplementedError
+
+    def get(self, request, username):
+        """Return one page of the ranking for the requested range."""
+        query = _stats_query(request, username)
+        if isinstance(query, Response):
+            return query
+        range_, start, end, now = query
+
+        params = request.query_params
+        page = {"count": DEFAULT_STATS_PAGE_SIZE, "offset": 0}
+        for name in list(page):
+            if params.get(name) in (None, ""):
+                continue
+            page[name] = _optional_int(params, name)
+            if page[name] is None:
+                return _error(f"{name} must be an integer.")
+        count, offset = page["count"], page["offset"]
+        if count < 1 or offset < 0:
+            return _error("count must be positive and offset not negative.")
+        count = min(count, MAX_STATS_PAGE_SIZE)
+
+        plays = _plays_in(request.user, start, end)
+        entries = _entries_for(request.user, plays)
+        ranked = {}
+        for entry_id, listens in Counter(entry_id for entry_id, _ in plays).items():
+            music = entries.get(entry_id)
+            described = self.describe(music) if music else None
+            if described is None:
+                continue
+            key, fields = described
+            stat = ranked.setdefault(key, {**fields, "listen_count": 0})
+            stat["listen_count"] += listens
+        ranking = sorted(
+            ranked.values(),
+            key=lambda stat: (-stat["listen_count"], stat[self.name_field].lower()),
+        )
+        page = ranking[offset : offset + count]
+
+        first_play = min((end_date for _, end_date in plays), default=now)
+        return Response(
+            {
+                "payload": {
+                    self.entity: page,
+                    "count": len(page),
+                    "offset": offset,
+                    "range": range_,
+                    f"total_{self.total_key}_count": len(ranking),
+                    "from_ts": int((start or first_play).timestamp()),
+                    "to_ts": int((end or now).timestamp()),
+                    "last_updated": int(now.timestamp()),
+                    "user_id": request.user.username,
+                },
+            },
+            status=HTTP.OK,
+        )
+
+
+def _stats_parameters(entity):
+    """OpenAPI parameters shared by the user statistics endpoints."""
+    return [
+        OpenApiParameter(
+            name="username",
+            type=str,
+            location=OpenApiParameter.PATH,
+            description="The token owner's Floppy username.",
+        ),
+        OpenApiParameter(
+            name="range",
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            enum=list(STATS_RANGES),
+            description=f"Time range of the statistics (default {DEFAULT_STATS_RANGE}).",
+        ),
+        OpenApiParameter(
+            name="count",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description=(
+                f"Maximum {entity} to return (default {DEFAULT_STATS_PAGE_SIZE}, "
+                f"at most {MAX_STATS_PAGE_SIZE})."
+            ),
+        ),
+        OpenApiParameter(
+            name="offset",
+            type=int,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description=f"Number of top {entity} to skip.",
+        ),
+    ]
+
+
+def _stats_schema(operation_id, entity, serializer):
+    """OpenAPI description of one user statistics endpoint."""
+    return extend_schema_view(
+        get=extend_schema(
+            operation_id=operation_id,
+            summary=f"Get top {entity} for a user (ListenBrainz-compatible)",
+            description=(
+                f"Ranks the token owner's {entity} by recorded plays, in "
+                "ListenBrainz's response shape, so clients that build "
+                "recommendations from ListenBrainz statistics can read them from "
+                "Floppy. A range without plays returns an empty ranking."
+            ),
+            parameters=_stats_parameters(entity),
+            responses={
+                200: serializer,
+                400: ListenBrainzErrorSerializer,
+                401: DetailErrorSerializer,
+                404: ListenBrainzErrorSerializer,
+            },
+        )
+    )
+
+
+@_stats_schema(
+    "getListenBrainzUserArtists", "artists", ListenBrainzUserArtistsSerializer
+)
+class UserArtistsView(_UserStatsView):
+    """ListenBrainz `stats/user/<username>/artists` endpoint."""
+
+    entity = "artists"
+    total_key = "artist"
+    name_field = "artist_name"
+
+    def describe(self, music):
+        """Count a play towards its artist."""
+        artist = _entry_artist(music)
+        if artist is None:
+            return None
+        return artist.id, {
+            "artist_mbid": _mbid(artist.musicbrainz_id),
+            "artist_name": artist.name,
+        }
+
+
+@_stats_schema(
+    "getListenBrainzUserReleaseGroups",
+    "release groups",
+    ListenBrainzUserReleaseGroupsSerializer,
+)
+class UserReleaseGroupsView(_UserStatsView):
+    """ListenBrainz `stats/user/<username>/release-groups` endpoint."""
+
+    entity = "release_groups"
+    total_key = "release_group"
+    name_field = "release_group_name"
+
+    def describe(self, music):
+        """Count a play towards its album's release group."""
+        album = music.album
+        if album is None:
+            return None
+        release_group = _mbid(album.musicbrainz_release_group_id)
+        return release_group or f"album:{album.id}", {
+            **_artist_fields(music),
+            "release_group_mbid": release_group,
+            "release_group_name": album.title,
+            "caa_id": None,
+            "caa_release_mbid": _mbid(album.musicbrainz_release_id),
+        }
+
+
+@_stats_schema(
+    "getListenBrainzUserRecordings", "recordings", ListenBrainzUserRecordingsSerializer
+)
+class UserRecordingsView(_UserStatsView):
+    """ListenBrainz `stats/user/<username>/recordings` endpoint."""
+
+    entity = "recordings"
+    total_key = "recording"
+    name_field = "track_name"
+
+    def describe(self, music):
+        """Count a play towards its recording."""
+        track, album = music.track, music.album
+        return f"track:{track.id}" if track else f"item:{music.item_id}", {
+            **_artist_fields(music),
+            "recording_mbid": _mbid(track.musicbrainz_recording_id) if track else None,
+            "release_mbid": _mbid(album.musicbrainz_release_id) if album else None,
+            "release_name": album.title if album else None,
+            "track_name": track.title if track else music.item.title,
+        }
+
+
+@extend_schema_view(
+    get=extend_schema(
+        operation_id="getListenBrainzUserGenreActivity",
+        summary="Get genre activity for a user (ListenBrainz-compatible)",
+        description=(
+            "Counts the token owner's plays per genre and hour of the day. A "
+            "play's genres are its track's, else its album's, else its artist's."
+        ),
+        parameters=_stats_parameters("genres")[:2],
+        responses={
+            200: ListenBrainzGenreActivitySerializer,
+            400: ListenBrainzErrorSerializer,
+            401: DetailErrorSerializer,
+            404: ListenBrainzErrorSerializer,
+        },
+    )
+)
+class UserGenreActivityView(drf_views.APIView):
+    """ListenBrainz `stats/user/<username>/genre-activity` endpoint."""
+
+    authentication_classes = [ListenBrainzTokenAuthentication]
+
+    def get(self, request, username):
+        """Return play counts per genre and local hour of the day."""
+        query = _stats_query(request, username)
+        if isinstance(query, Response):
+            return query
+        _range, start, end, _now = query
+
+        plays = _plays_in(request.user, start, end)
+        entries = _entries_for(request.user, plays)
+        activity = Counter()
+        for entry_id, end_date in plays:
+            music = entries.get(entry_id)
+            if music is None:
+                continue
+            hour = timezone.localtime(end_date).hour
+            for genre in _entry_genres(music):
+                activity[genre, hour] += 1
+
+        return Response(
+            {
+                "result": [
+                    {"genre": genre, "hour": hour, "listen_count": listens}
+                    for (genre, hour), listens in sorted(
+                        activity.items(),
+                        key=lambda item: (-item[1], item[0]),
+                    )
+                ],
             },
             status=HTTP.OK,
         )
