@@ -595,8 +595,10 @@ def sync_plex_mark_watched(user_id):
     user = get_user_model().objects.get(id=user_id)
     account = getattr(user, "plex_account", None)
     if not account or not account.mark_watched_sync_enabled:
+        logger.info("Plex watched-mark poll skipped for user %s: sync is off", user_id)
         return "Skipped: Plex watched-mark sync is off."
     library = user.plex_webhook_libraries or ["all"]
+    logger.info("Plex watched-mark poll starting for user %s", user_id)
     try:
         return import_media(plex.mark_watched_importer, library, user_id, "new")
     except helpers.MediaImportError as exc:

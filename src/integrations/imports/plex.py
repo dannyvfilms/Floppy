@@ -100,6 +100,15 @@ def mark_watched_importer(library, user, mode):
         since=previous,
     )
     result = plex_importer.import_data()
+    logger.info(
+        "Plex watched-mark poll user_id=%s since=%s libraries=%s counts=%s "
+        "warnings=%s",
+        user.id,
+        previous.isoformat(),
+        library,
+        dict(plex_importer.summary_counts),
+        plex_importer.warnings[:5],
+    )
 
     checkpoint = poll_started - MARK_WATCHED_OVERLAP
     failed_at = plex_importer.oldest_failed_viewed_at
