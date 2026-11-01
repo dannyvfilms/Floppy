@@ -4,7 +4,9 @@
          hasStoredPlexAccount: {% if plex_account %}true{% else %}false{% endif %},
          importFrequency: '{{ user.import_frequency }}',
          importTime: '{{ user.import_time }}',
-         importMode: '{{ user.import_mode }}',
+         importMode: '{% if import_slug == 'clz' and user.import_mode != 'overwrite' %}new{% else %}{{ user.import_mode }}{% endif %}',
+         clzWishlistStatus: '{{ user.clz_wishlist_status|default:'Planning'|escapejs }}',
+         clzWishlistTag: '{{ user.clz_wishlist_tag|escapejs }}',
          hasPlexSections: {% if plex_sections %}true{% else %}false{% endif %},
          plexSections: JSON.parse('{{ plex_sections_json|escapejs }}'),
          plexConnectionState: {% if plex_account %}'checking'{% else %}'disconnected'{% endif %},
@@ -224,7 +226,7 @@
            }
          }
        }"
-       @import-preferences-changed="importFrequency = $event.detail.frequency; importTime = $event.detail.time; importMode = $event.detail.mode"
+       @import-preferences-changed="importFrequency = $event.detail.frequency; importTime = $event.detail.time; importMode = $event.detail.mode; clzWishlistStatus = $event.detail.clzWishlistStatus; clzWishlistTag = $event.detail.clzWishlistTag"
        x-init="{% if import_slug == 'plex' %}initPlexStatus();{% endif %} const deepLinkSlug = new URLSearchParams(window.location.search).get('open'); if (deepLinkSlug) { openModal(deepLinkSlug); }">
 
     {% if provider_tab == 'import' %}
@@ -255,7 +257,8 @@
     {% else %}
     <form hx-post="{% url 'save_import_settings' %}"
           hx-trigger="change"
-          hx-swap="none">
+          hx-swap="none"
+          {% if provider_tab == 'import' and import_slug == 'clz' %}@change="$dispatch('import-preferences-changed', {frequency: importFrequency, time: importTime, mode: importMode, clzWishlistStatus: $refs.clzFallbackStatus.value, clzWishlistTag: $refs.clzFallbackTag.value})"{% endif %}>
       {% csrf_token %}
               {% if provider_navigation %}<input type="hidden" name="next" value="{{ request.GET.next|default:request.get_full_path }}">{% endif %}
     {% translate "Import preferences" as preferences_title %}
@@ -273,10 +276,15 @@
         <div class="grid grid-cols-1 {% if provider_tab != 'import' %}md:grid-cols-2{% endif %} gap-4">
           <div>
             <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Import Frequency" %}</label>
-            {% if provider_tab == 'import' and import_slug in 'mangabaka,clz,yamtrack_native,hltb,playnite,grouvee,imdb,goodreads,hardcover,storygraph,youtube,wetrakr,tvtime' %}
+            {% if provider_tab == 'import' and import_slug in 'mangabaka,clz,yamtrack_native,hltb,playnite,grouvee,imdb,goodreads,storygraph,youtube,wetrakr,tvtime' %}
               <input type="hidden" name="import_frequency" x-model="importFrequency">
-              <p class="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">{% translate "One-time import" %}</p>
-              <p class="mt-2 text-xs text-[var(--color-text-muted)]">{% translate "Files are imported once when uploaded." %}</p>
+              <div class="relative">
+                <select disabled aria-label="{% translate 'Import Frequency' %}" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 appearance-none">
+                  <option>{% translate "One Time Import" %}</option>
+                </select>
+                {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
+              </div>
+              <p class="mt-2 text-xs text-[var(--color-text-muted)]">{{ import_preferences.fixedFrequencyHelp }}</p>
             {% else %}
             <div class="relative">
               <select x-model="importFrequency"
@@ -299,6 +307,21 @@
             {% endif %}
           </div>
           <div>
+            {% if provider_tab == 'import' and import_slug == 'clz' %}
+              <label class="block text-sm text-[var(--color-text-muted)] mb-2" for="clz-fallback-mode">{% translate "Import Mode" %}</label>
+              <select id="clz-fallback-mode" disabled class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600"><option>{% translate "Collection and wishlist" %}</option></select>
+              <p class="mt-2 text-xs text-[var(--color-text-muted)]">{% translate "CLZ imports owned copies and wishlist entries. It does not import reading or viewing history." %}</p>
+              <label class="block text-sm text-[var(--color-text-muted)] mt-3 mb-2" for="clz-fallback-override">{% translate "Override mode" %}</label>
+              <select id="clz-fallback-override" x-model="importMode" name="import_mode" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600">
+                <option value="new">{% translate "New Items Only" %}</option><option value="overwrite">{% translate "Overwrite Existing" %}</option>
+              </select>
+              <label class="block text-sm text-[var(--color-text-muted)] mt-3 mb-2" for="clz-fallback-status">{% translate "Wishlist items" %}</label>
+              <select id="clz-fallback-status" x-ref="clzFallbackStatus" name="clz_wishlist_status" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600">
+                {% for option in import_preferences.statuses %}<option value="{{ option.value }}" {% if option.value == import_preferences.values.clzWishlistStatus %}selected{% endif %}>{{ option.label }}</option>{% endfor %}
+              </select>
+              <label class="block text-sm text-[var(--color-text-muted)] mt-3 mb-2" for="clz-fallback-tag">{% translate "Tag for wishlist items" %}</label>
+              <input id="clz-fallback-tag" x-ref="clzFallbackTag" name="clz_wishlist_tag" type="text" maxlength="50" value="{{ user.clz_wishlist_tag }}" class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600">
+            {% else %}
             <label class="block text-sm text-[var(--color-text-muted)] mb-2">{% translate "Import Mode" %}</label>
             <div class="relative">
               <select x-model="importMode"
@@ -314,6 +337,7 @@
               </select>
               {% include "app/icons/chevron-down.svg" with classes="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-text-muted)] pointer-events-none" %}
             </div>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -326,7 +350,7 @@
 
     {% translate "Import options" as options_title %}
     {% settings_card title=options_title enabled=inline_import %}
-    {% if provider_tab == 'import' and import_slug != 'plex' and not import_preferences.fixed %}
+    {% if provider_tab == 'import' and import_slug != 'plex' and import_slug != 'clz' and not import_preferences.fixed %}
       <p x-cloak x-show="standardImportsDisabled()" class="text-sm text-[var(--color-text-muted)]">{% translate "This import mode is not supported by this provider." %}</p>
     {% endif %}
     {% if provider_slug %}
@@ -343,7 +367,7 @@
       {% endif %}
     {% endif %}
     {% if provider_tab != 'import' %}<button type="button" @click="openModal('{{ import_slug }}')" class="px-4 py-2 rounded-md bg-indigo-600 text-white cursor-pointer">{% if provider_tab == 'connection' %}{% translate "Open connection setup" %}{% else %}{% translate "Open import options" %}{% endif %}</button>{% endif %}
-    {% if provider_tab == 'import' and not provider.state.account_saved and import_slug in 'radarr,sonarr,mylar,kapowarr,stremio,audiobookshelf,kavita,komga,storyteller,pocketcasts,gpodder,lastfm,koito,psn' %}
+    {% if provider_tab == 'import' and not provider.state.account_saved and import_slug in 'radarr,sonarr,mylar,kapowarr,stremio,kavita,komga,storyteller,pocketcasts,gpodder,lastfm,koito,psn' %}
       <div class="rounded-lg border border-[var(--color-surface-border)] bg-[var(--color-surface-strong)] p-4 text-sm text-[var(--color-text-muted)]">
         {% translate "Connect this provider before starting an import." %}
         <a href="{% url 'provider_detail' provider_slug %}?tab=connection" class="text-[var(--color-link)] hover:underline">{% translate "Open Connection" %}</a>
@@ -1065,6 +1089,9 @@
 
     {% endif %}
     {% if import_slug == 'audiobookshelf' %}
+    {% if provider_tab == 'import' and account_import_action %}
+      {% include "users/components/account_import_action.html" %}
+    {% else %}
         {# Audiobookshelf #}
         {% if provider_tab != 'import' %}
 <div x-show="activeModal === 'audiobookshelf'"
@@ -1155,6 +1182,7 @@
         </div>
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
+    {% endif %}
     {% endif %}
     {% if import_slug == 'kavita' %}
         {# Kavita #}
@@ -2625,6 +2653,12 @@
 
     {% endif %}
     {% if import_slug == 'clz' %}
+    {% if provider_tab == 'import' and clz_import %}
+      {{ clz_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/clz_import_fallback.html" %}
+      </div>
+    {% else %}
         {# CLZ (Collectorz) — header-mapped CSV/XML, columns become custom fields #}
         {% if provider_tab != 'import' %}
 <div x-show="activeModal === 'clz'"
@@ -2648,7 +2682,7 @@
                   <h4 class="font-medium">CLZ</h4>{% include "users/components/import_upload_badge.html" %}
                 </div>
               </div>
-              <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import a CLZ CSV or XML export. Columns Floppy has no built-in home for become custom collection fields." %}</p>
+              <p class="text-sm text-[var(--color-text-muted)] mb-3">{% blocktranslate %}Import a CSV or XML export from <a href="https://clz.com/" target="_blank" rel="noopener" class="text-[var(--color-link)] underline">CLZ (formerly Collectorz.com)</a>. Columns Floppy has no built-in home for become custom collection fields.{% endblocktranslate %}</p>
               <form method="post"
                     action="{% url 'import_clz' %}"
                     enctype="multipart/form-data">
@@ -2681,8 +2715,7 @@
                     <select id="clz_wishlist_status"
                             name="clz_wishlist_status"
                             class="w-full py-2 px-3 bg-[var(--color-surface)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:border-indigo-500 focus:outline-none focus:ring focus:ring-indigo-200 focus:ring-opacity-50 appearance-none">
-                      <option value="">{% translate "Add to the CLZ Wishlist list only" %}</option>
-                      <option value="Planning">{% translate "Also track as Planning" %}</option>
+                            <option value="Planning">{% translate "Also track as Planning" %}</option>
                       <option value="In progress">{% translate "Also track as In Progress" %}</option>
                       <option value="Paused">{% translate "Also track as Paused" %}</option>
                       <option value="Dropped">{% translate "Also track as Dropped" %}</option>
@@ -2712,6 +2745,7 @@
             </div>
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
+    {% endif %}
     {% endif %}
     {% if import_slug == 'yamtrack_native' %}
         {# Yamtrack (same import_yamtrack backend/CSV format as Floppy above) #}

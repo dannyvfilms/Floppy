@@ -14,7 +14,7 @@ from playwright.sync_api import expect, sync_playwright
 
 from app.providers import credentials
 from app.tests.live_server import SerialStaticLiveServerTestCase
-from integrations.models import ImportRun
+from integrations.models import AudiobookshelfAccount, ImportRun
 
 
 @tag("slow", "playwright")
@@ -278,6 +278,151 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             self.assertGreaterEqual(card.bounding_box()["y"] - heading.bounding_box()["y"] - heading.bounding_box()["height"], 18)
         self.assertEqual(self.errors, [])
 
+    @patch("integrations.views.tasks.import_audiobookshelf.delay")
+    @patch("integrations.views.AudiobookshelfClient.get_me", return_value={})
+    def test_account_connection_and_import_flow(self, mock_get_me, mock_import):
+        """Shared account form connects, runs an import, and disconnects in place."""
+        self.page.goto(f"{self.live_server_url}/settings/providers/audiobookshelf?tab=connection")
+        root = self.page.locator('[data-account-connection-root][data-react-mounted="true"]')
+        expect(root).to_be_visible()
+        expect(root.get_by_role("heading", name="Account connection")).to_be_visible()
+        activity_card = root.locator(".settings-card").filter(has=self.page.get_by_role("heading", name="Automatic import"))
+        expect(activity_card.get_by_text("Connecting starts an initial import and recurring sync.")).to_be_visible()
+        expect(activity_card.get_by_role("link", name="View activity")).to_have_attribute("href", "/settings/providers/audiobookshelf?tab=activity")
+        colors = self.page.evaluate("""() => ['Connect', 'View activity'].map(label => {
+          const element = Array.from(document.querySelectorAll('.ui-button')).find(node => node.textContent === label);
+          const style = getComputedStyle(element); return [style.backgroundColor, style.color, element.getBoundingClientRect().width];
+        })""")
+        self.assertEqual(colors[0], colors[1])
+        root.get_by_label("Base URL").fill("https://books.example.com")
+        root.get_by_label("API token").fill("browser-secret-token")
+        root.get_by_role("button", name="Connect", exact=True).click()
+        self.page.wait_for_url("**/settings/providers/audiobookshelf?tab=connection")
+        expect(self.page.get_by_role("button", name="Disconnect", exact=True)).to_be_visible()
+        mock_get_me.assert_called_once()
+        mock_import.assert_called_once()
+        self.assertNotIn("browser-secret-token", "".join(self.page.locator('script[type="application/json"]').all_text_contents()))
+        self.page.goto(f"{self.live_server_url}/settings/providers/audiobookshelf?tab=import")
+        self.page.get_by_role("button", name="Sync now", exact=True).click()
+        self.page.wait_for_url("**/settings/providers/audiobookshelf?tab=import")
+        self.assertEqual(mock_import.call_count, 2)
+        self.page.goto(f"{self.live_server_url}/settings/providers/audiobookshelf?tab=connection")
+        self.page.get_by_role("button", name="Disconnect", exact=True).click()
+        self.page.wait_for_url("**/settings/providers/audiobookshelf?tab=connection")
+        expect(self.page.get_by_label("API token")).to_be_visible()
+        self.assertFalse(AudiobookshelfAccount.objects.filter(user=self.user).exists())
+        self.assertEqual(self.errors, [])
+
+    def test_disconnected_account_import_uses_shared_action(self):
+        self.page.goto(f"{self.live_server_url}/settings/providers/audiobookshelf?tab=import")
+        root = self.page.locator('[data-account-import-action-root][data-react-mounted="true"]')
+        expect(root.get_by_text("Connect this provider before starting an import.")).to_be_visible()
+        expect(root.get_by_role("link", name="Open Connection")).to_have_attribute("href", "/settings/providers/audiobookshelf?tab=connection")
+        expect(root.locator(".settings-card")).to_have_count(0)
+        self.assertEqual(self.errors, [])
+
+    def test_file_import_frequency_and_clz_website(self):
+        """File-only imports display a locked one-time frequency without changing the saved preference."""
+        self.user.import_frequency = "daily"
+        self.user.save(update_fields=["import_frequency"])
+        self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
+        frequency = self.page.get_by_role("combobox", name="Import Frequency", exact=True)
+        expect(frequency).to_be_disabled()
+        expect(frequency).to_have_text("One Time Import")
+        self.page.get_by_role("button", name="Import frequency help").click()
+        expect(self.page.get_by_role("tooltip")).to_contain_text("automatic imports are unavailable")
+        expect(self.page.get_by_role("link", name="CLZ (formerly Collectorz.com)")).to_have_attribute("href", "https://clz.com/")
+        with self.page.expect_response(lambda response: "/settings/import/save-settings" in response.url):
+            self.choose_option("Override mode", "Overwrite Existing")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.import_frequency, "daily")
+        self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=overview")
+        card = self.page.get_by_role("link", name="Automatic import", exact=True)
+        expect(card).to_contain_text("File only")
+        expect(card).to_contain_text("Automatic imports are unavailable for file uploads")
+        self.page.goto(f"{self.live_server_url}/settings/providers/hardcover?tab=import")
+        frequency = self.page.get_by_role("combobox", name="Import Frequency", exact=True)
+        expect(frequency).to_be_enabled()
+        expect(frequency).to_have_text("Every Day")
+        self.assertEqual(self.errors, [])
+
+    @patch("integrations.views._queue_staged_task_or_message")
+    @patch("integrations.views._stage_upload_or_message", return_value="staged-clz.csv")
+    def test_clz_preferences_drive_shared_file_import(self, mock_stage, mock_queue):
+        """CLZ preferences submit both wishlist choices with the shared file control."""
+        self.user.import_mode = "watchlist"
+        self.user.save(update_fields=["import_mode"])
+        self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
+        expect(self.page.locator('[data-file-import-root][data-react-mounted="true"]')).to_be_visible()
+        mode = self.page.get_by_role("combobox", name="Import Mode", exact=True)
+        expect(mode).to_be_disabled()
+        expect(mode).to_have_text("Collection and wishlist")
+        self.page.get_by_role("button", name="Import mode help").click()
+        expect(self.page.get_by_role("tooltip")).to_contain_text("does not import reading or viewing history")
+        self.choose_option("Wishlist items", "Planning")
+        self.page.get_by_label("Tag for wishlist items").fill("Wanted comics")
+        self.choose_option("Override mode", "Overwrite Existing")
+        self.choose_option("Import as", "Comics")
+        with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
+            self.page.locator('input[name="clz_export"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title,Status\nExample,On Wish List\n"})
+        self.page.wait_for_url("**/settings/providers/clz?tab=import")
+        mock_stage.assert_called_once()
+        kwargs = mock_queue.call_args.kwargs
+        self.assertEqual(kwargs["mode"], "overwrite")
+        self.assertEqual(kwargs["media_type"], "comicissue")
+        self.assertEqual(kwargs["wishlist_status"], "Planning")
+        self.assertEqual(kwargs["wishlist_tag"], "Wanted comics")
+        self.user.refresh_from_db()
+        self.assertEqual((self.user.clz_wishlist_status, self.user.clz_wishlist_tag), ("Planning", "Wanted comics"))
+        self.assertEqual(self.errors, [])
+
+    @patch("integrations.views._queue_staged_task_or_message")
+    @patch("integrations.views._stage_upload_or_message", return_value="staged-clz.csv")
+    def test_clz_upload_fallback_receives_react_preferences(self, mock_stage, mock_queue):
+        self.context.route("**/static/ui/FileImport-*", lambda route: route.abort())
+        self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
+        expect(self.page.locator('[data-import-preferences-root][data-react-mounted="true"]')).to_be_visible()
+        self.choose_option("Wishlist items", "Planning")
+        self.page.get_by_label("Tag for wishlist items").fill("Wanted fallback")
+        self.choose_option("Override mode", "Overwrite Existing")
+        self.page.locator('input[name="clz_export"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title\nExample\n"})
+        with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
+            self.page.get_by_role("button", name="Import", exact=True).click()
+        mock_stage.assert_called_once()
+        self.assertEqual(mock_queue.call_args.kwargs["wishlist_status"], "Planning")
+        self.assertEqual(mock_queue.call_args.kwargs["wishlist_tag"], "Wanted fallback")
+        self.assertEqual(mock_queue.call_args.kwargs["mode"], "overwrite")
+
+    @patch("integrations.views._queue_staged_task_or_message")
+    @patch("integrations.views._stage_upload_or_message", return_value="staged-clz.csv")
+    def test_clz_react_upload_receives_fallback_preferences(self, mock_stage, mock_queue):
+        self.context.route("**/static/ui/ImportPreferences-*", lambda route: route.abort())
+        self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
+        expect(self.page.locator('[data-file-import-root][data-react-mounted="true"]')).to_be_visible()
+        self.page.get_by_label("Wishlist items", exact=True).select_option("Planning")
+        self.page.get_by_label("Tag for wishlist items").fill("Fallback preferences")
+        self.page.get_by_label("Override mode").select_option("overwrite")
+        with self.page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/import/clz")):
+            self.page.locator('input[name="clz_export"]').set_input_files({"name": "clz.csv", "mimeType": "text/csv", "buffer": b"Title\nExample\n"})
+        mock_stage.assert_called_once()
+        self.assertEqual(mock_queue.call_args.kwargs["wishlist_status"], "Planning")
+        self.assertEqual(mock_queue.call_args.kwargs["wishlist_tag"], "Fallback preferences")
+        self.assertEqual(mock_queue.call_args.kwargs["mode"], "overwrite")
+
+    def test_clz_file_import_fallback_without_bundle(self):
+        self.context.route("**/static/ui/FileImport-*", lambda route: route.abort())
+        self.page.goto(f"{self.live_server_url}/settings/providers/clz?tab=import")
+        expect(self.page.get_by_label("Import as")).to_be_visible()
+        expect(self.page.locator('input[name="clz_export"]')).to_be_visible()
+        expect(self.page.get_by_role("button", name="Import", exact=True)).to_be_visible()
+
+    def test_account_connection_fallback_without_bundle(self):
+        self.context.route("**/static/ui/AccountConnection-*", lambda route: route.abort())
+        self.page.goto(f"{self.live_server_url}/settings/providers/audiobookshelf?tab=connection")
+        expect(self.page.get_by_label("Base URL")).to_be_visible()
+        expect(self.page.get_by_label("API token")).to_be_visible()
+        expect(self.page.get_by_role("button", name="Connect", exact=True)).to_be_visible()
+
     def test_provider_activity_uses_shared_cards(self):
         """Activity fragments use the shared card headings, including undoable runs."""
         ImportRun.objects.create(user=self.user, source="pocketcasts", status="completed")
@@ -321,6 +466,22 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.go_back()
         expect(search).to_have_value("steam")
         expect(self.page.locator("#provider-results a")).to_have_count(2)
+        self.assertEqual(self.errors, [])
+
+    def test_directory_connection_and_pin_icons_match(self):
+        """The status and favorite glyphs remain equal and aligned."""
+        self.page.goto(f"{self.live_server_url}/settings/providers?capability=connection")
+        card = self.page.locator(".ui-catalog-item").first
+        expect(card.locator(".ui-status-icon svg")).to_be_visible()
+        geometry = card.evaluate("""element => {
+          const status = element.querySelector('.ui-status-icon svg').getBoundingClientRect();
+          const pin = element.querySelector('.ui-catalog-pin svg').getBoundingClientRect();
+          return {statusWidth: status.width, statusHeight: status.height, pinWidth: pin.width,
+            pinHeight: pin.height, statusCenter: status.top + status.height / 2, pinCenter: pin.top + pin.height / 2};
+        }""")
+        self.assertEqual(geometry["statusWidth"], geometry["pinWidth"])
+        self.assertEqual(geometry["statusHeight"], geometry["pinHeight"])
+        self.assertLessEqual(abs(geometry["statusCenter"] - geometry["pinCenter"]), 1)
         self.assertEqual(self.errors, [])
 
     def test_directory_pin_persists_and_sorts_first(self):
@@ -564,6 +725,48 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
             self.assertEqual(columns[0], columns[1])
         self.assertEqual(self.errors, [])
 
+    def test_audiobookshelf_metadata_explains_imports_and_library_sources(self):
+        self.user.book_metadata_source_default = "openlibrary"
+        self.user.save(update_fields=["book_metadata_source_default"])
+        credentials.set_user("hardcover", self.user, {"api_key": "browser-metadata-key"})
+        self.page.goto(f"{self.live_server_url}/settings/providers/audiobookshelf?tab=metadata")
+        expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
+        expect(self.page.get_by_text("Metadata for imported items", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("heading", name="Library sources")).to_be_visible()
+        rows = self.page.locator(".ui-library-row")
+        expect(rows).to_have_count(2)
+        expect(rows.nth(0)).to_contain_text("Books")
+        expect(rows.nth(0)).to_contain_text("Open Library")
+        expect(rows.nth(1)).to_contain_text("Podcasts")
+        expect(rows.nth(1)).to_contain_text("Pocket Casts")
+        self.page.get_by_role("button", name="Configure Podcasts", exact=True).click()
+        expect(self.page.get_by_text("Default for new titles: Pocket Casts")).to_be_visible()
+        expect(self.page.get_by_text("Imported items", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("img", name="Search results: From Open Library, Pocket Casts")).to_be_visible()
+        for width in (320, 390, 768, 1440):
+            self.page.set_viewport_size({"width": width, "height": 1000})
+            geometry = self.page.locator(".provider-page").evaluate("""root => {
+              const grid = root.querySelector('.ui-card-grid'), section = root.querySelector('.ui-library-section');
+              const row = root.querySelector('.ui-feature-list li'), text = row.querySelector('.ui-feature-state');
+              const gridBox = grid.getBoundingClientRect(), box = section.getBoundingClientRect(), status = text.getBoundingClientRect();
+              return {gridLeft: gridBox.left, gridRight: gridBox.right, gridBottom: gridBox.bottom,
+                left: box.left, right: box.right, top: box.top, statusRight: status.right,
+                cardRight: row.closest('.settings-card').getBoundingClientRect().right};
+            }""")
+            self.assertLessEqual(abs(geometry["left"] - geometry["gridLeft"]), 1)
+            self.assertLessEqual(abs(geometry["right"] - geometry["gridRight"]), 1)
+            self.assertGreaterEqual(geometry["top"], geometry["gridBottom"])
+            self.assertLessEqual(geometry["statusRight"], geometry["cardRight"])
+        self.page.get_by_role("button", name="Configure Books", exact=True).click()
+        self.choose_option("Provider for new titles", "Hardcover")
+        self.page.get_by_role("button", name="Save", exact=True).click()
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.book_metadata_source_default, "hardcover")
+        for width in (390, 768, 1440):
+            self.page.set_viewport_size({"width": width, "height": 1000})
+            self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
+        self.assertEqual(self.errors, [])
+
     def test_metadata_is_inline_and_saves_shared_primary_source(self):
         credentials.set_user("hardcover", self.user, {"api_key": "browser-metadata-key"})
         self.page.goto(f"{self.live_server_url}/settings/providers/hardcover?tab=metadata")
@@ -571,6 +774,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.get_by_role("heading", name="Metadata sources", exact=True)).to_be_visible()
         expect(self.page.get_by_role("heading", name="Provider settings", exact=True)).to_be_visible()
         expect(self.page.get_by_role("dialog")).to_have_count(0)
+        self.page.get_by_role("button", name="Configure Books", exact=True).click()
         self.choose_option("Provider for new titles", "Hardcover")
         self.page.get_by_role("button", name="Save", exact=True).click()
         self.page.wait_for_url("**/settings/providers/hardcover?tab=metadata")
@@ -578,7 +782,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.assertEqual(self.user.book_metadata_source_default, "hardcover")
         self.page.goto(f"{self.live_server_url}/settings/providers/openlibrary?tab=metadata")
         expect(self.page.locator('[data-provider-root][data-react-mounted="true"]')).to_have_count(1)
+        self.page.get_by_role("button", name="Configure Books", exact=True).click()
         expect(self.page.get_by_role("combobox", name="Provider for new titles", exact=True)).to_have_text("Hardcover")
+        expect(self.page.get_by_role("img", name="Search results: From Hardcover", exact=True)).to_be_visible()
         for width in (390, 768, 1440):
             self.page.set_viewport_size({"width": width, "height": 1000})
             self.assertFalse(self.page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"))
@@ -607,6 +813,8 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         expect(self.page.get_by_role("img", name="Title logos: Active", exact=True)).to_be_visible()
         expect(self.page.get_by_role("img", name="Search results: Not provided", exact=True)).to_be_visible()
         expect(self.page.get_by_role("img", name="Title details: Not provided", exact=True)).to_be_visible()
+        games = self.page.locator(".ui-library-row").filter(has=self.page.get_by_role("heading", name="Games", exact=True))
+        expect(games).to_contain_text("Internet Game Database")
         self.assertEqual(self.errors, [])
 
     @override_settings(STEAM_API_KEY="")
@@ -685,8 +893,9 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.choose_option("Override mode", "Overwrite Existing")
         expect(self.page.get_by_text("Could not save preferences. Try again.", exact=True)).to_be_visible()
         self.page.unroute(pattern)
-        self.page.get_by_role("button", name="Retry", exact=True).click()
-        expect(self.page.locator(".provider-page").get_by_role("status")).to_have_text("Saved")
+        with self.page.expect_response(lambda response: response.url.endswith("/settings/import/save-settings")):
+            self.page.get_by_role("button", name="Retry", exact=True).click()
+        expect(self.page.get_by_text("Could not save preferences. Try again.", exact=True)).to_be_hidden()
         self.user.refresh_from_db()
         self.assertEqual(self.user.import_mode, "overwrite")
         self.assertEqual(self.errors, [])

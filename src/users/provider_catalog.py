@@ -62,6 +62,14 @@ TRACKING = {
 }
 
 
+# These import actions require a user-supplied export and cannot recur.
+FILE_ONLY_IMPORTS = frozenset({
+    "clz", "yamtrack_native", "hltb", "playnite", "grouvee", "imdb", "goodreads",
+    "storygraph", "youtube", "wetrakr", "tvtime",
+})
+ONE_TIME_IMPORTS = FILE_ONLY_IMPORTS | {"mangabaka"}
+
+
 # Persisted setup is distinct from file input and from an enabled operation.
 ACCOUNT_IMPORTS = frozenset(
     {
@@ -342,6 +350,9 @@ def catalog():
         result[slug]["sync"] = True
     for slug in ("mal", "tmdb", "wetrakr"):
         result[slug]["sync"] = True
+    # Audiobookshelf supplies metadata for imported items, rather than acting as
+    # the selectable search/default provider for books or podcasts.
+    result["audiobookshelf"].update(metadata_role="imported", metadata_related_media={"book"})
     result["steam"].update(metadata=True, metadata_role="supplemental")
     result["trakt"]["media_types"].add("anime")
     result["libretro"] = {

@@ -1,0 +1,18 @@
+{% load i18n %}
+<div class="ui-account-action">
+  <p>{% blocktranslate %}Import a CSV or XML export from <a href="https://clz.com/" target="_blank" rel="noopener">CLZ (formerly Collectorz.com)</a>. Columns Floppy has no built-in home for become custom collection fields.{% endblocktranslate %}</p>
+  <form class="ui-form" method="post" action="{{ clz_import.action }}" enctype="multipart/form-data">
+    {% csrf_token %}<input type="hidden" name="next" value="{{ clz_import.next }}">
+    <input type="hidden" name="frequency" value="once"><input type="hidden" name="time" data-import-preference="time" value="{{ user.import_time }}">
+    <input type="hidden" name="mode" data-import-preference="mode" value="{% if user.import_mode == 'overwrite' %}overwrite{% else %}new{% endif %}">
+    <input type="hidden" name="clz_wishlist_status" data-import-preference="clzWishlistStatus" value="{{ user.clz_wishlist_status }}">
+    <input type="hidden" name="clz_wishlist_tag" data-import-preference="clzWishlistTag" value="{{ user.clz_wishlist_tag }}">
+    <div class="ui-field"><label for="clz-fallback-media">{% translate "Import as" %}</label>
+      <select id="clz-fallback-media" name="clz_media_type">{% for option in clz_import.mediaTypes %}<option value="{{ option.value }}">{{ option.label }}</option>{% endfor %}</select>
+    </div>
+    <div class="ui-field"><label for="clz-fallback-file">{% translate "Select CLZ Export" %}</label>
+      <input id="clz-fallback-file" type="file" name="clz_export" accept=".csv,.txt,.xml" required>
+    </div>
+    <button type="submit" class="ui-button">{% translate "Import" %}</button>
+  </form>
+</div>

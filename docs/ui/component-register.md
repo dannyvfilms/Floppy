@@ -65,11 +65,11 @@ can inform a focused completion pass.
 
 ### SETTINGS-CARD — Shared settings card shell
 
-- Purpose/usage: provider Connection instance/personal credentials and Import preferences/options.
+- Purpose/usage: provider Connection instance/personal credentials and account setup, Import preferences/options, and Metadata library source controls.
 - Implementation: `frontend/settings/SettingsCard.jsx`, shared `Chip.jsx`, `mount.jsx`, `index.js`, `settings-card.css`; `src/users/templatetags/ui_tags.py` and `src/templates/users/components/settings_card.html`. See [usage and ownership](settings-cards.md).
 - Contract: one title/badge/help/frame pattern with editable/read-only/neutral and public API tones. `Chip` shares passive/action/link styling across status badges, media pills and the provider-key link, with consistent hover/focus highlights and no text underline. AniList supplies React-owned children; retained partial consumers keep their server body outside the header root. Existing backend permissions and CSRF remain authoritative.
 - Data: presentation-only `json_script`; no credentials, server body HTML or transport in the shared React API. Shared source uses React Native primitives; the web adapter supplies DOM events and browser theme values.
-- Status: `Web Migrated` shared card presentation. AniList uses full React composition; other providers retain Django body slots and setup/restore dialogs until their controls are ported. This does not migrate `FORM-CONTROLS` as a whole.
+- Status: `Web Migrated` shared card presentation. AniList uses full React composition; Audiobookshelf uses reusable account connection and manual-import islands. Other providers retain Django body slots and setup/restore dialogs until their controls are ported. This does not migrate `FORM-CONTROLS` as a whole.
 - Verification: production assets build and collect through Django; targeted Django/theme tests passed. Chromium 151/macOS browser checks cover initial/HTMX/back-forward lifecycle, focus, real CSRF submissions, fallback, responsive widths and six theme states. iOS/Android not tested; no native compatibility claim.
 - Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793); user-authorized first React browser component pilot.
 - Deferrals: server-owned form bodies retire through scoped control ports after parity checks; native acceptance awaits actual iOS/Android runs and a native theme/transport boundary. Broader performance evidence remains required before larger component adoption.

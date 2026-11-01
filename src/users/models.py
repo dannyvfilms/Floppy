@@ -1302,6 +1302,8 @@ class User(AbstractUser):
     )
     watchlist_import_status = models.CharField(max_length=20, choices=Status.choices, default=Status.PLANNING)
     watchlist_import_tag = models.ForeignKey("app.Tag", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    clz_wishlist_status = models.CharField(max_length=20, choices=Status.choices, default=Status.PLANNING.value, blank=True)
+    clz_wishlist_tag = models.CharField(max_length=50, default="", blank=True)
 
     onboarding_status = models.CharField(
         max_length=20,

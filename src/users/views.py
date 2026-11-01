@@ -2262,6 +2262,12 @@ def save_import_settings(request):
     mode = request.POST.get("import_mode", "")
     watchlist_status = request.POST.get("watchlist_status")
     watchlist_tag = request.POST.get("watchlist_tag")
+    clz_status = request.POST.get("clz_wishlist_status")
+    clz_tag = request.POST.get("clz_wishlist_tag")
+    if clz_status is not None and clz_status and clz_status not in Status.values:
+        return HttpResponse(status=400)
+    if clz_tag is not None and len(clz_tag.strip()) > request.user._meta.get_field("clz_wishlist_tag").max_length:
+        return HttpResponse(status=400)
     if watchlist_status is not None and watchlist_status not in Status.values:
         return HttpResponse(status=400)
     if watchlist_tag and (not watchlist_tag.isdecimal() or not Tag.objects.filter(user=request.user, pk=watchlist_tag).exists()):
@@ -2283,6 +2289,13 @@ def save_import_settings(request):
     if watchlist_tag is not None:
         request.user.watchlist_import_tag_id = int(watchlist_tag) if watchlist_tag else None
         fields.append("watchlist_import_tag")
+
+    if clz_status is not None:
+        request.user.clz_wishlist_status = clz_status
+        fields.append("clz_wishlist_status")
+    if clz_tag is not None:
+        request.user.clz_wishlist_tag = " ".join(clz_tag.split())
+        fields.append("clz_wishlist_tag")
 
     if fields:
         request.user.save(update_fields=fields)

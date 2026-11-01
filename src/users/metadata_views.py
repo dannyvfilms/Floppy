@@ -70,7 +70,7 @@ def _existing_library_count(user, media_type, current_provider):
     return 0
 
 
-def _provider_summary(user, slug=None):
+def _provider_summary(user, slug=None, related_media=()):
     """Return one entry per enabled media type, showing its resolved provider.
 
     Every entry lists all sources the media type supports, whether or not each
@@ -100,7 +100,7 @@ def _provider_summary(user, slug=None):
     for media_type in media_types:
         all_sources = config.get_sources(media_type) or []
         if not all_sources or (
-            slug and slug not in {source.value for source in all_sources}
+            slug and slug not in {source.value for source in all_sources} and media_type not in related_media
         ):
             continue
         current = metadata_resolution.metadata_default_source(user, media_type)
@@ -216,7 +216,7 @@ def _promote_command(username):
     return f"python src/manage.py promote_superuser {username}"
 
 
-def metadata_context(user, slug=None):
+def metadata_context(user, slug=None, related_media=()):
     """Build the shared credentials and source-selection context.
 
     A provider page gets only its own credential fields and the global source
@@ -260,7 +260,7 @@ def metadata_context(user, slug=None):
 
         duplicate_anime_count = duplicate_pair_count(user_id=user.id)
 
-    provider_summary = _provider_summary(user, slug)
+    provider_summary = _provider_summary(user, slug, related_media)
     present_tags = {entry["media_tag"] for entry in provider_summary}
     for group in groups:
         for provider in group["providers"]:

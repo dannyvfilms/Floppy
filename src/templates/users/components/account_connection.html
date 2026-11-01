@@ -1,0 +1,39 @@
+{% load i18n ui_tags %}
+{{ account_connection|json_script:"account-connection-props" }}
+<div data-account-connection-root data-props-id="account-connection-props" x-ignore hx-disable>
+  <div class="ui-section-stack">
+    <h3>{% translate "Connection settings" %}</h3>
+    <div class="ui-card-grid ui-card-grid-start">
+      {% translate "Account connection" as title %}
+      {% if account_connection.connected %}{% translate "Connected" as badge %}{% firstof "success" as tone %}
+      {% elif account_connection.attention %}{% translate "Needs attention" as badge %}{% firstof "warning" as tone %}
+      {% else %}{% translate "Not connected" as badge %}{% firstof "neutral" as tone %}{% endif %}
+      {% settings_card title=title tone=tone badge=badge %}
+        {% if account_connection.connected %}<p>{{ account_connection.messages.connected }}</p>
+        {% else %}
+          <p>{% if account_connection.attention %}{{ account_connection.messages.attention }}{% else %}{{ account_connection.messages.disconnected }}{% endif %}</p>
+          <form class="ui-form" method="post" action="{{ account_connection.connectUrl }}">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ account_connection.next }}">
+            {% for field in account_connection.fields %}
+              <div class="ui-field"><label for="fallback-{{ field.name }}">{{ field.label }}</label><input id="fallback-{{ field.name }}" name="{{ field.name }}" type="{{ field.type }}" placeholder="{{ field.placeholder }}" required autocomplete="off"></div>
+            {% endfor %}
+            <button class="ui-button" type="submit">{% if account_connection.saved %}{% translate "Reconnect" %}{% else %}{% translate "Connect" %}{% endif %}</button>
+          </form>
+        {% endif %}
+        {% if account_connection.saved %}<form class="ui-form" method="post" action="{{ account_connection.disconnectUrl }}">
+          {% csrf_token %}<input type="hidden" name="next" value="{{ account_connection.next }}">
+          <button class="ui-button ui-button-danger" type="submit">{% translate "Disconnect" %}</button>
+        </form>{% endif %}
+      {% endsettings_card %}
+      {% if account_connection.followUp %}
+        {% settings_card title=account_connection.followUp.title %}
+          <p>{{ account_connection.followUp.description }}</p>
+          <a class="ui-button" href="{{ account_connection.followUp.url }}">{{ account_connection.followUp.label }}</a>
+        {% endsettings_card %}
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% if audiobookshelf_account.last_error_message %}
+  <div class="settings-card" role="alert"><p>{{ audiobookshelf_account.last_error_message }}</p></div>
+{% endif %}

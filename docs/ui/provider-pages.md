@@ -66,7 +66,7 @@ parallel framework owner inside either kind of root.
 
 ## Overview is actual state
 
-Overview cards are data-driven and use one card/grid renderer for every provider.
+Overview cards are data-driven, follow the provider tab order, and use one card/grid renderer for every provider.
 Overview and the directory use the same `CatalogGrid` container breakpoints.
 Only supported tabs get cards: AniList has Connection, Automatic import and Last
 active import; BoardGameGeek has Connection and Metadata. Bundled credential sources
@@ -176,8 +176,7 @@ libraries explain their fixed source. Supplemental providers keep their separate
 artwork/score roles. Overview distinguishes active primary/supplemental metadata,
 missing credentials and an available provider that is not selected.
 
-The left card shows actionable library source controls above the feature list and all alternatives with readiness
-and Connection links. The right card holds provider-specific settings, currently
+A full-width Library sources section below the Metadata cards shows one row per relevant media type, with its current provider and an inline Configure control, including relevant library rows for supplemental providers. The expanded row shows selectable sources where supported, fixed defaults, and alternatives with readiness and Connection links. The Metadata sources card describes the current provider’s contributions; unselected features identify effective sources when known. The right card holds provider-specific settings, currently
 TMDB's existing proxy form, or explains that there are no additional options.
 The Sources header leads with activity, not edit permissions. A shared `FeatureList`
 describes the outputs Floppy consumes and their Active, Needs setup, Not selected
@@ -208,3 +207,7 @@ or conversion is introduced.
 Provider directory pins are private per-user preferences and sort ahead of unpinned results, including filtered results.
 
 Import preferences share a React card across provider pages, with a server fallback. History maps its override to the existing new/overwrite import modes; Watchlist and Collection keep their existing modes. Watchlist status and an optional user-owned tag are applied to Plex watchlist imports, without changing existing items' statuses. Providers that do not support a mode retain their existing import guard. Fixed schedules remain read-only. Long activity lists scroll within their cards.
+
+Audiobookshelf provides metadata for imported items; book searches use the chosen book provider and podcast searches use the fixed Pocket Casts default. Imported titles retain their source. Audiobookshelf Connection uses the reusable account-connection island with a Django fallback. Its adapter supplies server URL and API token fields without serializing saved values; a separate card links to Activity and explains that connecting schedules and starts imports, and disconnected or broken accounts are directed to Connection. Import uses the shared account action for manual sync. Other account providers can adopt the same presentation with their own fields, status text and existing action handlers. Its detailed last error remains server-rendered rather than entering React props.
+
+Providers declared in `FILE_ONLY_IMPORTS` show file-only status on Overview and a locked one-time Import Frequency with help explaining why scheduling is unavailable. One-time API imports use their own explanation. These displayed values do not overwrite the user's general import preferences.

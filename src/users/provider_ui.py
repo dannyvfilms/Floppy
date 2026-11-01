@@ -21,7 +21,7 @@ from app.services import metadata_resolution
 from app.templatetags.app_tags import media_type_readable, media_type_readable_plural
 from integrations.models import ImportRun
 from users import helpers, views
-from users.provider_catalog import activity_sources
+from users.provider_catalog import FILE_ONLY_IMPORTS, ONE_TIME_IMPORTS, activity_sources
 from users.templatetags.user_tags import (
     SOURCES_CONFIG,
     translate_import_summary,
@@ -37,8 +37,6 @@ def import_preferences(request, slug, context=None):
     context = context or {}
     fixed = {"radarr", "sonarr", "mylar", "kapowarr", "stremio", "audiobookshelf", "kavita", "komga",
              "storyteller", "pocketcasts", "gpodder", "lastfm", "koito", "psn"}
-    once = {"mangabaka", "clz", "yamtrack_native", "hltb", "playnite", "grouvee", "imdb", "goodreads",
-            "hardcover", "storygraph", "youtube", "wetrakr", "tvtime"}
     fixed_values = None
     if slug in fixed:
         if slug in {"kavita", "komga"}:
@@ -65,18 +63,37 @@ def import_preferences(request, slug, context=None):
         "Import preferences", "Editable", "Read-only", "Import Mode", "History", "Watchlist", "Collection",
         "Override mode", "New Items Only", "Overwrite Existing", "Import Frequency", "One Time Import", "Every Day", "Every 2 Days",
         "Import Time", "Watchlist status", "Watchlist tag", "No tag", "Saving…", "Saved", "Could not save preferences. Try again.",
-        "Retry", "One-time import", "Files are imported once when uploaded.", "Override mode help",
+        "Retry", "One-time import", "Files are imported once when uploaded.", "Import frequency help", "Override mode help",
         "New items leaves existing entries unchanged. Overwrite replaces matching imported entries.",
+        "Collection and wishlist", "Import mode help", "CLZ imports owned copies and wishlist entries. It does not import reading or viewing history.",
+        "Wishlist items", "Tag for wishlist items", "Optional tag name", 'Create tag "{name}"',
     )}
     tags = list(user.tags.order_by("name").values("id", "name"))
     tag_ids = {tag["id"] for tag in tags}
     return {
         "values": {"frequency": user.import_frequency, "time": str(user.import_time)[:5], "mode": user.import_mode,
-                   "watchlistStatus": user.watchlist_import_status, "watchlistTag": str(user.watchlist_import_tag_id) if user.watchlist_import_tag_id in tag_ids else ""},
+                   "watchlistStatus": user.watchlist_import_status, "watchlistTag": str(user.watchlist_import_tag_id) if user.watchlist_import_tag_id in tag_ids else "",
+                   "clzWishlistStatus": user.clz_wishlist_status or Status.PLANNING.value, "clzWishlistTag": user.clz_wishlist_tag},
         "statuses": [{"value": value, "label": str(label)} for value, label in Status.choices],
+        "tagNames": [tag["name"] for tag in tags],
         "tags": [{"value": "", "label": _("No tag")}] + [{"value": str(tag["id"]), "label": tag["name"]} for tag in tags],
-        "fixed": fixed_values, "fixedFrequency": slug in once,
+        "fixed": fixed_values, "profile": "clz" if slug == "clz" else "", "fixedFrequency": slug in ONE_TIME_IMPORTS,
+        "fixedFrequencyHelp": _("Files are imported once when uploaded; automatic imports are unavailable.") if slug in FILE_ONLY_IMPORTS else
+            _("MangaBaka imports require a personal token and cannot run automatically.") if slug == "mangabaka" else "",
         "editable": not user.is_demo, "saveUrl": reverse("save_import_settings"), "csrf": get_token(request), "labels": labels,
+    }
+
+
+def account_connection(request, *, connected, saved, attention, fields, messages, follow_up, connect_url, disconnect_url):
+    """Describe an account form without serializing saved URLs or credentials."""
+    return {
+        "connected": connected, "saved": saved, "attention": attention, "fields": fields, "messages": messages, "followUp": follow_up,
+        "connectUrl": connect_url, "disconnectUrl": disconnect_url,
+        "csrf": get_token(request), "next": request.get_full_path(),
+        "labels": {text: _(text) for text in (
+            "Connection settings", "Account connection", "Connected", "Not connected", "Needs attention",
+            "Connect", "Reconnect", "Disconnect",
+        )},
     }
 
 
@@ -216,10 +233,13 @@ def overview_cards(user, provider, overview=None):
                 latest = {"status": _status(run.status), "date": user_datetime_format(run.started_at, user)}
             if not count and provider["state"]["capabilities"].get("import") == "Scheduled import enabled":
                 count, summary = 1, _("Scheduled import enabled")
+        one_time = slug in ONE_TIME_IMPORTS
         cards.append({"key": "import", "title": _("Automatic import"), "url": f"{base}?tab=import",
-                      "tone": "info" if count else "neutral", "badge": _("Active") if count else _("Inactive"),
-                      "subtitle": summary if count else _("No automatic imports configured"),
-                      "detail": _("Next import") + ": " + next_run if next_run else "", "tooltip": ""})
+                      "tone": "info" if count and not one_time else "neutral",
+                      "badge": _("File only") if slug in FILE_ONLY_IMPORTS else _("One-time") if one_time else _("Active") if count else _("Inactive"),
+                      "subtitle": _("Automatic imports are unavailable for file uploads") if slug in FILE_ONLY_IMPORTS else
+                          _("Automatic imports are unavailable for this provider") if one_time else summary if count else _("No automatic imports configured"),
+                      "detail": _("Next import") + ": " + next_run if next_run and not one_time else "", "tooltip": ""})
     if provider.get("activity") and provider.get("import"):
         cards.append({"key": "activity", "title": _("Last active import"), "url": f"{base}?tab=activity", "tone": "neutral", "badge": "",
                       "subtitle": latest["status"] if latest else _("No imports yet"), "detail": latest["date"] if latest else "", "tooltip": ""})
@@ -234,6 +254,8 @@ def overview_cards(user, provider, overview=None):
         else:
             cards.append({"key": tab, "title": _(tab.title()), "url": f"{base}?tab={tab}", "tone": "neutral", "badge": "",
                           "subtitle": _(provider["state"]["capabilities"].get(tab, "Available")), "detail": "", "tooltip": ""})
+    tab_order = {tab: index for index, tab in enumerate(provider["tabs"])}
+    cards.sort(key=lambda card: tab_order[card["key"]])
     return cards
 
 
@@ -246,6 +268,8 @@ def metadata_status(user, provider):
         from app.game_artwork.screenscraper import developer_credentials
 
         enabled = bool(developer_credentials())
+    if provider.get("metadata_role") == "imported":
+        return {"active": True, "state": "imported", "summary": _("Metadata for imported items")}
     primary = any(provider["slug"] in {str(source.value) for source in config.get_sources(media) or []}
                   and metadata_resolution.metadata_default_source(user, media) == provider["slug"]
                   for media in provider["media_types"])
@@ -258,9 +282,10 @@ def metadata_status(user, provider):
     return {"active": False, "state": "not_selected", "summary": _("Another provider is selected")}
 
 
-def metadata_contributions(provider, status):
+def metadata_contributions(provider, status, sources=()):
     """Describe the outputs Floppy actually consumes, not a provider's full API."""
     outputs = {
+        "audiobookshelf": {"details", "covers"},
         "igdb": {"search", "details", "covers", "backgrounds", "gallery", "scores", "trailers"},
         "steamgriddb": {"logos", "backgrounds", "gallery"},
         "thegamesdb": {"logos", "backgrounds", "gallery"},
@@ -286,9 +311,15 @@ def metadata_contributions(provider, status):
     elif provider["slug"] == "libretro":
         notes = {"logos": _("For retro games, when a logo is available"), "backgrounds": _("Title screens or screenshots for retro games")}
     shown = outputs | ({"search", "details", "covers", "logos", "backgrounds"} if "game" in provider["media_types"] else set())
+    if provider.get("metadata_role") == "imported":
+        shown.add("search")
+    selected = list(dict.fromkeys(source["currentLabel"] for source in sources if source["currentLabel"]))
+    supplied_by = _("From %(providers)s") % {"providers": ", ".join(selected)} if selected else ""
     return [{
         "key": key, "label": label, "note": notes.get(key, ""),
-        "status": _("Not provided") if key not in outputs else _("Active") if status["active"] else
+        "status": supplied_by if supplied_by and ((status["state"] == "not_selected" and key in outputs) or
+                    (status["state"] == "imported" and key == "search")) else
+            _("Not provided") if key not in outputs else _("Active") if status["active"] else
             _("Not selected") if status["state"] == "not_selected" else _("Needs setup"),
         "tone": "neutral" if key not in outputs or status["state"] == "not_selected" else "success" if status["active"] else "warning",
     } for key, label in labels.items() if key in shown]
@@ -305,7 +336,8 @@ def metadata_page(user, provider, context):
             "currentLabel": str(entry["current_label"]), "editable": entry["configurable"] and not user.is_demo,
             "action": reverse("set_media_type_provider", args=[media]) if entry["configurable"] else "",
             "choices": [{"value": row["value"], "label": str(row["label"]), "configured": row["configured"],
-                         "connectionUrl": context["metadata_source_connections"].get(row["value"], "")} for row in entry["choices"]],
+                         "connectionUrl": context["metadata_source_connections"].get(row["value"], ""),
+                         "imported": provider.get("metadata_role") == "imported" and row["value"] == provider["slug"]} for row in entry["choices"]],
             "animeMode": user.anime_library_mode if media == "anime" else None,
             "animeModes": [{"value": value, "label": str(label)} for value, label in context["anime_library_mode_choices"]],
             "existingCount": existing,
@@ -313,9 +345,10 @@ def metadata_page(user, provider, context):
         })
     status = metadata_status(user, provider)
     return {
-        "status": status, "sources": entries, "contributions": metadata_contributions(provider, status),
+        "status": status, "sources": entries, "contributions": metadata_contributions(provider, status, entries),
         "editable": any(entry["editable"] for entry in entries),
         "supplemental": provider.get("metadata_role") == "supplemental",
+        "imported": provider.get("metadata_role") == "imported",
         "proxy": {"configured": context["tmdb_proxy_configured"], "action": reverse("update_tmdb_proxy")} if provider["slug"] == "tmdb" else None,
     }
 
@@ -396,12 +429,16 @@ def provider_page(request, provider, tab, credential_context=None):
     elif tab == "metadata":
         page["metadata"] = metadata_page(user, provider, credential_context)
         page["labels"].update({text: _(text) for text in (
-            "Metadata settings", "Metadata sources", "Provider settings", "Editable", "Read-only", "Active", "Ready", "Not configured",
+            "Metadata settings", "Metadata sources", "Provider settings", "Library sources", "Editable", "Read-only", "Active", "Ready", "Not configured",
             "Provider for new titles", "Anime Library", "Save", "Configured", "Not configured", "TMDB Proxy", "Proxy URL",
             "Supplemental metadata", "Library metadata",
             "Each library uses one primary source. Supplemental providers keep their separate roles.",
             "Used for new titles. Existing entries keep their provider until you move them.",
             "This library uses its supported source directly; the default cannot be changed.",
+            "Default for new titles", "Imported items", "Available", "Default", "Configure", "Close",
+            "Choose where new titles come from. Existing titles keep their original provider.",
+            "The default cannot be changed. Imported titles keep their original source.",
+            "This provider supplies metadata for its imported items; library defaults apply to new searches.",
             "This provider adds metadata alongside the primary source; it does not replace it.",
             "This provider has no additional settings.", "Inactive",
             "Existing entries on another provider or format", "Moving preserves history when supported; entries that cannot be moved safely are left unchanged.",

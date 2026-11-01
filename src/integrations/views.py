@@ -3270,7 +3270,7 @@ def audiobookshelf_disconnect(request):
 
     _run_with_lock_retry("disconnect Audiobookshelf", _disconnect)
     messages.info(request, "Disconnected Audiobookshelf.")
-    return redirect("import_data")
+    return _integration_redirect(request)
 
 
 @require_POST
@@ -3279,7 +3279,7 @@ def import_audiobookshelf(request):
     account = getattr(request.user, "audiobookshelf_account", None)
     if not account:
         messages.error(request, "Connect Audiobookshelf before importing.")
-        return redirect("import_data")
+        return _integration_redirect(request)
 
     queued = _queue_task_or_message(request,
         tasks.import_audiobookshelf, user_id=request.user.id, mode="new"
@@ -3288,7 +3288,7 @@ def import_audiobookshelf(request):
 
     if queued is not False:
         messages.info(request, "Audiobookshelf import queued.")
-    return redirect("import_data")
+    return _integration_redirect(request)
 
 
 def _sync_interval(request, account_model, default=15):

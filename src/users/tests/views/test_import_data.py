@@ -9,7 +9,12 @@ from django.utils.crypto import get_random_string
 from django_celery_results.models import TaskResult
 
 from app.models import Status, Tag
-from integrations.models import LastFMAccount, LastFMHistoryImportStatus, PlexAccount
+from integrations.models import (
+    AudiobookshelfAccount,
+    LastFMAccount,
+    LastFMHistoryImportStatus,
+    PlexAccount,
+)
 from integrations.plex import PlexAuthError
 
 
@@ -41,6 +46,46 @@ class ImportDataViewTests(TestCase):
         self.assertEqual(self.client.post(url, {"watchlist_tag": ""}).status_code, 204)
         self.user.refresh_from_db()
         self.assertIsNone(self.user.watchlist_import_tag_id)
+
+    def test_clz_wishlist_preferences_are_saved_and_validated(self):
+        url = reverse("save_import_settings")
+        response = self.client.post(url, {"clz_wishlist_status": "Planning", "clz_wishlist_tag": "  Wanted  comics "})
+        self.assertEqual(response.status_code, 204)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.clz_wishlist_status, "Planning")
+        self.assertEqual(self.user.clz_wishlist_tag, "Wanted comics")
+        self.assertEqual(self.client.post(url, {"clz_wishlist_status": "Hoarding"}).status_code, 400)
+        self.assertEqual(self.client.post(url, {"clz_wishlist_tag": "x" * 51}).status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.clz_wishlist_status, "Planning")
+        self.assertEqual(self.user.clz_wishlist_tag, "Wanted comics")
+        self.assertEqual(self.client.post(url, {"clz_wishlist_status": "", "clz_wishlist_tag": ""}).status_code, 204)
+        self.user.refresh_from_db()
+        self.assertEqual((self.user.clz_wishlist_status, self.user.clz_wishlist_tag), ("", ""))
+
+    def test_audiobookshelf_connection_has_inline_shared_form_without_secrets(self):
+        url = reverse("provider_detail", args=["audiobookshelf"])
+        response = self.client.get(url, {"tab": "connection"})
+        self.assertContains(response, "data-account-connection-root")
+        self.assertContains(response, reverse("audiobookshelf_connect"))
+        self.assertContains(response, 'name="base_url"')
+        self.assertContains(response, 'name="api_token"')
+        self.assertNotContains(response, "Open connection setup")
+        self.assertContains(response, "Connecting starts an initial import and recurring sync.")
+        self.assertContains(response, reverse("provider_detail", args=["audiobookshelf"]) + "?tab=activity")
+        disconnected_import = self.client.get(url, {"tab": "import"})
+        self.assertNotContains(disconnected_import, reverse("import_audiobookshelf"))
+        self.assertContains(disconnected_import, "Open Connection")
+        account = AudiobookshelfAccount.objects.create(user=self.user, base_url="https://private.example/", api_token="encrypted-secret")
+        response = self.client.get(url, {"tab": "connection"})
+        self.assertContains(response, reverse("audiobookshelf_disconnect"))
+        self.assertNotContains(response, "encrypted-secret")
+        self.assertNotContains(response, "https://private.example/")
+        self.assertContains(self.client.get(url, {"tab": "import"}), reverse("import_audiobookshelf"))
+        account.connection_broken = True
+        account.save(update_fields=["connection_broken"])
+        self.assertContains(self.client.get(url, {"tab": "connection"}), reverse("audiobookshelf_connect"))
+        self.assertNotContains(self.client.get(url, {"tab": "import"}), reverse("import_audiobookshelf"))
 
     def test_import_data_ignores_structured_recurring_wrapper_results(self):
         """Recurring wrapper payloads should not break the import page."""
@@ -325,7 +370,10 @@ class ImportDataViewTests(TestCase):
                 start = html.index(action)
                 form_start = html.rindex("<form", 0, start)
                 form = html[form_start : html.index("</form>", start)]
-                self.assertIn(badge, html[:form_start])
+                if route == "import_clz":
+                    self.assertIn("One Time Import", html[:form_start])
+                else:
+                    self.assertIn(badge, html[:form_start])
                 self.assertNotIn("importFrequency", form.replace('x-model="importFrequency"', ""))
 
     @override_settings(

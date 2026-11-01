@@ -539,6 +539,7 @@ build artifacts. The Python composition tag is documented in the register.
 
 ## SET-PROVIDERS
 
+- `frontend/providers/AccountConnection.jsx`
 - `frontend/providers/Activity.jsx`
 - `frontend/providers/Connection.jsx`
 - `frontend/providers/Directory.jsx`
@@ -554,6 +555,8 @@ build artifacts. The Python composition tag is documented in the register.
 - `src/templates/users/providers/content_legacy.html`
 - `src/templates/users/providers/provider_legacy.html`
 
+- `src/templates/users/components/account_connection.html`
+- `src/templates/users/components/account_import_action.html`
 - `src/templates/users/components/provider_card.html`
 - `src/templates/users/components/provider_filter_dropdown.html`
 - `src/templates/users/components/provider_results.html`

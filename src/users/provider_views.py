@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import Http404, HttpResponse, JsonResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import urlencode
@@ -136,7 +137,10 @@ def provider_detail(request, slug):
         ],
     }
     if tab == "metadata" or (tab == "connection" and provider.get("credential")):
-        context.update(metadata_views.metadata_context(request.user, slug))
+        related_media = provider.get("metadata_related_media", ())
+        if provider.get("metadata_role") == "supplemental":
+            related_media = provider["media_types"]
+        context.update(metadata_views.metadata_context(request.user, slug, related_media))
     if (
         tab == "import"
         or (tab == "connection" and slug in ACCOUNT_IMPORTS and slug != "mal")
@@ -155,8 +159,57 @@ def provider_detail(request, slug):
                 request, slug, refresh_plex=tab not in {"import", "activity"}
             )
         )
+    if tab == "connection" and slug == "audiobookshelf":
+        account = context.get("audiobookshelf_account")
+        context["account_connection"] = provider_ui.account_connection(
+            request, connected=bool(account and account.is_connected), saved=bool(account),
+            attention=bool(account and account.connection_broken),
+            fields=[{"name": "base_url", "label": _("Base URL"), "type": "url", "placeholder": _("Server URL")},
+                    {"name": "api_token", "label": _("API token"), "type": "password", "placeholder": _("API token")}],
+            messages={"disconnected": _("Connect your account to enable imports."),
+                      "connected": _("Your account is connected and imports run automatically."),
+                      "attention": _("Reconnect to restore automatic imports.")},
+            follow_up={"title": _("Automatic import"),
+                       "description": _("Connecting starts an initial import and recurring sync."),
+                       "label": _("View activity"),
+                       "url": reverse("provider_detail", args=["audiobookshelf"]) + "?tab=activity"},
+            connect_url=reverse("audiobookshelf_connect"), disconnect_url=reverse("audiobookshelf_disconnect"),
+        )
     if tab == "import" and slug != "anilist":
         context["import_preferences"] = provider_ui.import_preferences(request, slug, context)
+        if slug == "clz":
+            preferences = context["import_preferences"]
+            context["clz_import"] = {
+                "action": reverse("import_clz"), "csrf": get_token(request), "next": request.get_full_path(),
+                "values": preferences["values"], "website": "https://clz.com/",
+                "intro": _("Import a CSV or XML export from"), "sourceLabel": _("CLZ (formerly Collectorz.com)"),
+                "description": _("Columns Floppy has no built-in home for become custom collection fields."),
+                "mediaField": "clz_media_type", "fileField": "clz_export", "accept": ".csv,.txt,.xml",
+                "fieldLabel": _("Import as"), "selectLabel": _("Select CLZ Export"),
+                "allowedModes": ["new", "overwrite"], "defaultMode": "new", "frequency": "once",
+                "postFields": [{"name": "mode", "key": "mode"}, {"name": "time", "key": "time"},
+                               {"name": "clz_wishlist_status", "key": "clzWishlistStatus"},
+                               {"name": "clz_wishlist_tag", "key": "clzWishlistTag"}],
+                "mediaTypes": [{"value": value, "label": _(label)} for value, label in (
+                    ("", "Detect from the export's columns"), ("comicissue", "Comics"), ("manga", "Manga"),
+                    ("book", "Books"), ("movie", "Movies"), ("game", "Games"),
+                )],
+                "labels": {text: _(text) for text in (
+                    "Import as", "Select CLZ Export", "Import a CSV or XML export from", "CLZ (formerly Collectorz.com)",
+                    "Columns Floppy has no built-in home for become custom collection fields.",
+                )},
+            }
+        if slug == "audiobookshelf":
+            account = context.get("audiobookshelf_account")
+            connected = bool(account and account.is_connected)
+            context["account_import_action"] = {
+                "description": _("Import the latest audiobook progress from your connected account.") if connected else
+                    _("Connect this provider before starting an import."),
+                "label": _("Sync now") if connected else _("Open Connection"),
+                "action": reverse("import_audiobookshelf") if connected else "",
+                "href": "" if connected else reverse("provider_detail", args=[slug]) + "?tab=connection",
+                "csrf": get_token(request), "next": request.get_full_path(),
+            }
     if slug in {"mal", "tmdb", "wetrakr"} and tab in {"connection", "sync", "activity"}:
         context.update(views.mal_export_context(request, slug))
     context["provider_page"] = provider_ui.provider_page(request, provider, tab, credential_context=context)

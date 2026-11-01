@@ -60,9 +60,10 @@ export function CardGrid({ children, auto = false, alignStart = false, className
   return <div className={`ui-card-grid${auto ? ' ui-card-grid-auto' : ''}${alignStart ? ' ui-card-grid-start' : ''} ${className}`}>{children}</div>;
 }
 
-export function Button({ children, danger = false, secondary = false, ...props }) {
-  return <button className={`ui-button${danger ? ' ui-button-danger' : ''}${secondary ? ' ui-button-secondary' : ''}`}
-    {...props}>{children}</button>;
+export function Button({ children, danger = false, secondary = false, href, ...props }) {
+  const Element = href ? 'a' : 'button';
+  return <Element href={href} className={`ui-button${danger ? ' ui-button-danger' : ''}${secondary ? ' ui-button-secondary' : ''}`}
+    {...props}>{children}</Element>;
 }
 
 export function Field({ label, labelHidden = false, icon, id, ...props }) {
@@ -70,6 +71,47 @@ export function Field({ label, labelHidden = false, icon, id, ...props }) {
   return <div className="ui-field"><label className={labelHidden ? 'ui-sr-only' : undefined} htmlFor={id}>{label}</label>
     {icon ? <div className="ui-input-with-icon">{input}<span aria-hidden="true">{icon}</span></div> : input}
   </div>;
+}
+
+// Free-text field that suggests existing names as you type and offers to create a new one inline.
+export function ComboField({ label, id, value, options, onChange, onCommit, createLabel, disabled, placeholder, maxLength }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const host = useRef(null);
+  const typed = value.trim(), query = typed.toLocaleLowerCase();
+  const items = options.filter(name => name.toLocaleLowerCase().includes(query)).map(name => ({ name, label: name }));
+  if (typed && !options.some(name => name.toLocaleLowerCase() === query)) items.push({ name: typed, label: createLabel(typed) });
+  function choose(item) { onChange(item.name); onCommit(item.name); setOpen(false); }
+  function keyDown(event) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!open) { setOpen(true); return; }
+      setActive((active + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length);
+    } else if (event.key === 'Enter' && open && items[active]) { event.preventDefault(); choose(items[active]); }
+    else if (event.key === 'Escape') setOpen(false);
+  }
+  return <div className="ui-field" ref={host} onBlur={event => {
+    if (!event.currentTarget.contains(event.relatedTarget)) { setOpen(false); onCommit(value); }
+  }}><label htmlFor={id}>{label}</label>
+    <div className="ui-select">
+      <input id={id} type="text" role="combobox" autoComplete="off" aria-expanded={open && items.length > 0} aria-controls={`${id}-options`}
+        aria-autocomplete="list" value={value} placeholder={placeholder} maxLength={maxLength} disabled={disabled}
+        onChange={event => { onChange(event.target.value); setActive(0); setOpen(true); }}
+        onFocus={() => setOpen(true)} onKeyDown={keyDown} />
+      {open && items.length > 0 && <div id={`${id}-options`} role="listbox" aria-label={label} className="ui-select-options">
+        {items.map((item, index) => <button key={item.name} type="button" role="option" tabIndex={-1} aria-selected={index === active}
+          onMouseDown={event => event.preventDefault()} onClick={() => choose(item)}>{item.label}</button>)}
+      </div>}
+    </div>
+  </div>;
+}
+
+// Native file input remains keyboard and screen-reader accessible.
+export function FilePicker({ label, onChange, ...props }) {
+  return <label className="ui-button ui-file-picker">
+    <input className="ui-sr-only" type="file" onChange={onChange} {...props} />
+    <span>{label}</span>
+  </label>;
 }
 
 export function SelectField({ label, labelHidden = false, id, options, value, onChange, name, disabled, variant = 'preference' }) {
@@ -138,8 +180,8 @@ export function FilterDropdown(props) {
   return <SelectField {...props} labelHidden variant="filter" />;
 }
 
-export function Form({ action, csrf, returnTo, children, confirm, className = '', onSubmit }) {
-  return <form action={action} method="post" className={`ui-form ${className}`} onSubmit={event => {
+export function Form({ action, csrf, returnTo, children, confirm, className = '', onSubmit, encType, id }) {
+  return <form id={id} action={action} method="post" encType={encType} className={`ui-form ${className}`} onSubmit={event => {
     if (confirm && !window.confirm(confirm)) { event.preventDefault(); return; }
     onSubmit?.(event);
   }}>
@@ -192,11 +234,30 @@ export function StatusIcon({ tone = 'neutral', label }) {
   </span>;
 }
 
+// Shared media-type icons mirror the app's existing navigation glyphs.
+export function MediaIcon({ type }) {
+  const shapes = {
+    tv: <><rect width="20" height="15" x="2" y="7" rx="2" /><path d="m17 2-5 5-5-5" /></>,
+    movie: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M7 3v18M17 3v18M3 8h4M3 16h4M17 8h4M17 16h4" /></>,
+    anime: <><circle cx="12" cy="12" r="10" /><path d="m10 8 6 4-6 4z" /></>,
+    book: <><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5Zm0 0A2.5 2.5 0 0 1 6.5 17H20" /></>,
+    manga: <><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7zM14 2v4a2 2 0 0 0 2 2h4M8 13h8M8 17h8" /></>,
+    comic: <><rect x="3" y="3" width="8" height="18" rx="1" /><path d="M7 3v18m4-16 4-2 6 16-4 2z" /></>,
+    game: <><path d="M7 5h10a4 4 0 0 1 4 3l1 8a3 3 0 0 1-5 2l-2-2H9l-2 2a3 3 0 0 1-5-2l1-8a4 4 0 0 1 4-3zM6 11h4M8 9v4m7-1h.01M18 10h.01" /></>,
+    boardgame: <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8" cy="8" r="1" /><circle cx="16" cy="16" r="1" /><path d="M16 8h.01M8 16h.01" /></>,
+    music: <><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></>,
+    podcast: <><rect x="9" y="1" width="6" height="14" rx="3" /><path d="M19 10v2a7 7 0 0 1-14 0v-2m7 9v4m-4 0h8" /></>,
+    video: <><rect x="2" y="5" width="20" height="14" rx="3" /><path d="m10 9 5 3-5 3z" /></>,
+  };
+  return <svg className="ui-media-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{shapes[type] || <circle cx="12" cy="12" r="9" />}</svg>;
+}
+
 export function FeatureList({ items }) {
   return <ul className="ui-feature-list">{items.map(item => <li key={item.key}>
     <StatusIcon tone={item.tone} label={`${item.label}: ${item.status}`} />
-    <div><span>{item.label}</span>{item.note && <p>{item.note}</p>}</div>
-    {item.tone !== 'success' && <span className="ui-feature-state">{item.status}</span>}
+    <div><span>{item.label}</span>{item.note && <p>{item.note}</p>}
+      {item.tone !== 'success' && <p className="ui-feature-state">{item.status}</p>}
+    </div>
   </li>)}</ul>;
 }
 

@@ -17,6 +17,7 @@ values and owns requests, validation, permissions and state.
 | `FilterDropdown` | Same dropdown interaction with Lists hub styling: funnel icon, filled trigger/menu, purple selected option; visually hidden accessible label; use in filter toolbars rather than preference forms |
 | `Tooltip` | Accessible help trigger with a viewport-clamped portal; usable from a legacy island with a title fallback |
 | `ActivityList` | Keyboard-scrollable bounded activity list for long histories |
+| `MediaIcon` | Shared media-type glyphs for provider and library rows |
 | `StatusIcon` | Accessible success/warning/neutral icon with a descriptive tooltip; feature code supplies the actual meaning |
 | `FeatureList` | Shared feature rows with `key`, `label`, optional `note`, `status` and semantic `tone`; leading accessible status icons replace repeated Active text, with other states labeled and no dividers |
 | `Button` | Purple primary action with secondary, danger and disabled variants |
@@ -69,4 +70,6 @@ uses container width, with two columns from 24rem, three from 38rem and four fro
 because the viewport crosses a desktop breakpoint. A native GET form and server
 cards remain available if the lazy module fails.
 
-Import preferences use `frontend/providers/ImportPreferences.jsx` in both React provider pages and a bounded legacy island. The provider retains its action and authentication logic; the shared controls save existing import mode values and user watchlist preferences.
+Import preferences use `frontend/providers/ImportPreferences.jsx` in both React provider pages and a bounded legacy island. The provider retains its action and authentication logic; the shared controls save existing import mode values and user watchlist preferences. File-only and other one-time imports show a disabled preference dropdown with a separate accessible tooltip, without saving the locked value over the user’s general frequency.
+
+Account-backed connections use `frontend/providers/AccountConnection.jsx`: the provider adapter supplies field metadata, state, messages and existing action URLs. The same module renders manual import actions using shared cards, fields, forms and buttons. Stored credentials and URLs do not enter React props; the server fallback remains usable if the island fails.

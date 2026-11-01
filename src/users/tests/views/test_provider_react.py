@@ -200,6 +200,8 @@ class SharedProviderPageTests(TestCase):
                 self.assertEqual(page["contentOwner"], "react")
                 self.assertContains(response, "data-provider-root")
                 self.assertEqual(page["provider"]["label"], provider["label"])
+                card_keys = [card["key"] for card in page["overviewCards"]]
+                self.assertEqual(card_keys, [tab for tab in provider["tabs"] if tab in card_keys])
                 for card in page["overviewCards"]:
                     self.assertIn(card["key"], provider["tabs"])
                     self.assertEqual(card["url"], reverse("provider_detail", args=[provider["slug"]]) + "?tab=" + card["key"])
@@ -214,6 +216,35 @@ class SharedProviderPageTests(TestCase):
         self.assertEqual(page["overviewCards"][0]["badge"], "Active")
         self.assertNotIn("bundled-boardgame-Z123", json.dumps(page))
         self.assertNotIn("Z123", json.dumps(page))
+
+    def test_file_only_providers_explain_unavailable_automatic_imports(self):
+        from users.provider_catalog import FILE_ONLY_IMPORTS
+
+        for slug in FILE_ONLY_IMPORTS:
+            with self.subTest(slug=slug):
+                response = self.client.get(reverse("provider_detail", args=[slug]))
+                card = next(card for card in response.context["provider_page"]["overviewCards"] if card["key"] == "import")
+                self.assertEqual(card["badge"], "File only")
+                self.assertEqual(card["subtitle"], "Automatic imports are unavailable for file uploads")
+                preferences = self.client.get(reverse("provider_detail", args=[slug]), {"tab": "import"}).context["import_preferences"]
+                self.assertTrue(preferences["fixedFrequency"])
+                self.assertIn("uploaded", preferences["fixedFrequencyHelp"])
+
+    def test_hardcover_account_sync_remains_schedulable(self):
+        url = reverse("provider_detail", args=["hardcover"])
+        card = next(card for card in self.client.get(url).context["provider_page"]["overviewCards"] if card["key"] == "import")
+        self.assertEqual(card["badge"], "Inactive")
+        preferences = self.client.get(url, {"tab": "import"}).context["import_preferences"]
+        self.assertFalse(preferences["fixedFrequency"])
+
+    def test_one_time_token_import_is_not_described_as_file_upload(self):
+        url = reverse("provider_detail", args=["mangabaka"])
+        card = next(card for card in self.client.get(url).context["provider_page"]["overviewCards"] if card["key"] == "import")
+        self.assertEqual(card["badge"], "One-time")
+        preferences = self.client.get(url, {"tab": "import"}).context["import_preferences"]
+        self.assertTrue(preferences["fixedFrequency"])
+        self.assertIn("personal token", preferences["fixedFrequencyHelp"])
+        self.assertNotIn("uploaded", preferences["fixedFrequencyHelp"])
 
     def test_retained_tab_has_shared_react_header_and_separate_server_body(self):
         response = self.client.get(reverse("provider_detail", args=["hardcover"]), {"tab": "connection"})
@@ -292,6 +323,41 @@ class SharedProviderPageTests(TestCase):
         grid = metadata("steamgriddb")
         self.assertEqual({row["key"] for row in grid["contributions"] if row["status"] == "Active"}, {"logos", "backgrounds", "gallery"})
         self.assertNotIn("personal-grid-key", json.dumps(grid))
+
+    def test_supplemental_metadata_includes_its_media_domain(self):
+        for slug in ("steam", "steamgriddb", "libretro"):
+            with self.subTest(slug=slug):
+                response = self.client.get(reverse("provider_detail", args=[slug]), {"tab": "metadata"})
+                sources = response.context["provider_page"]["metadata"]["sources"]
+                self.assertEqual([source["key"] for source in sources], ["game"])
+                self.assertEqual(sources[0]["current"], "igdb")
+                self.assertFalse(sources[0]["editable"])
+
+    def test_imported_metadata_shows_real_library_defaults_and_scope(self):
+        url = reverse("provider_detail", args=["audiobookshelf"])
+        metadata = self.client.get(url, {"tab": "metadata"}).context["provider_page"]["metadata"]
+        self.assertTrue(metadata["imported"])
+        self.assertEqual(metadata["status"]["summary"], "Metadata for imported items")
+        sources = {source["key"]: source for source in metadata["sources"]}
+        self.assertEqual(set(sources), {"book", "podcast"})
+        self.assertEqual(sources["podcast"]["current"], "pocketcasts")
+        self.assertFalse(sources["podcast"]["editable"])
+        self.assertTrue(sources["book"]["editable"])
+        self.assertTrue(any(choice["value"] == "audiobookshelf" and choice["imported"] for choice in sources["podcast"]["choices"]))
+        search = next(item for item in metadata["contributions"] if item["key"] == "search")
+        self.assertIn(sources["podcast"]["currentLabel"], search["status"])
+        self.assertIn(sources["book"]["currentLabel"], search["status"])
+        self.assertNotEqual(search["status"], "Not selected")
+
+    def test_unselected_provider_features_name_effective_source(self):
+        credentials.set_user("hardcover", self.user, {"api_key": "personal-test-key"})
+        self.user.book_metadata_source_default = "hardcover"
+        self.user.save(update_fields=["book_metadata_source_default"])
+        page = self.client.get(reverse("provider_detail", args=["openlibrary"]), {"tab": "metadata"}).context["provider_page"]
+        metadata = page["metadata"]
+        self.assertEqual(metadata["status"]["state"], "not_selected")
+        search = next(item for item in metadata["contributions"] if item["key"] == "search")
+        self.assertEqual(search["status"], "From Hardcover")
 
     @override_settings(STEAM_API_KEY="", SHARED_DEFAULT_CREDENTIALS={})
     def test_public_connection_is_distinct_from_instance_and_personal_keys(self):
