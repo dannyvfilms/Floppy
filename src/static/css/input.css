@@ -4435,6 +4435,13 @@ html.light .theme-toggle-icon-moon {
   justify-self: end;
 }
 
+/* Centered under the text on mobile only; right-aligned from the md breakpoint. */
+@media (min-width: 768px) {
+  .episode-card-actions {
+    justify-self: end;
+  }
+}
+
 .media-card-rate-empty .media-card-rate-star svg {
   fill: none;
 }

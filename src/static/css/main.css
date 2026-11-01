@@ -10046,6 +10046,11 @@ html.light .theme-toggle-icon-moon {
   grid-column: 2;
   justify-self: end;
 }
+@media (min-width: 768px) {
+  .episode-card-actions {
+    justify-self: end;
+  }
+}
 .media-card-rate-empty .media-card-rate-star svg {
   fill: none;
 }
