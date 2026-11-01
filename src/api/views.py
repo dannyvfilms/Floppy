@@ -2838,7 +2838,14 @@ class MediaSeasonChangesHistoryView(drf_views.APIView):
 class MediaSeasonEpisodesView(drf_views.APIView):
     """Season episodes view."""
 
-    @extend_schema(parameters=[MEDIA_TYPE_PARAM, LIBRARY_MEDIA_TYPE_PARAM])
+    @extend_schema(
+        parameters=[MEDIA_TYPE_PARAM, LIBRARY_MEDIA_TYPE_PARAM],
+        responses={
+            400: DetailErrorSerializer,
+            404: DetailErrorSerializer,
+            500: DetailErrorSerializer,
+        },
+    )
     def get(self, request, media_type, source, media_id, season_number):
         """Retrieve the episodes for a specific season of a tv serie."""
         user = request.user
@@ -2875,6 +2882,19 @@ class MediaSeasonEpisodesView(drf_views.APIView):
                 source,
                 [season_number],
                 language=metadata_resolution.metadata_language_default(request.user),
+            )
+        except services.ProviderAPIError as error:
+            if error.status_code == HTTP.NOT_FOUND:
+                return Response(
+                    {"detail": "Season not found."},
+                    status=HTTP.NOT_FOUND,
+                )
+            logger.exception("Failed to retrieve season episodes.")
+            return Response(
+                {
+                    "detail": "Failed to retrieve season episodes.",
+                },
+                status=HTTP.INTERNAL_SERVER_ERROR,
             )
         except Exception:
             logger.exception("Failed to retrieve season episodes.")

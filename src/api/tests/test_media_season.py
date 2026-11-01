@@ -1,9 +1,11 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.db.utils import OperationalError
 
 from api.serializers import EpisodeSerializer
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources
+from app.providers import services
 
 from .base import FloppyApiTestCase
 from .helpers import (
@@ -1369,6 +1371,29 @@ class MediaSeasonTests(FloppyApiTestCase):
         )
 
         self.assertEqual(response.status_code, 500)
+
+    def test_season_episodes_get_provider_404_returns_not_found(self):
+        """A season the provider does not have should return 404, not 500."""
+        tv_item = self.items_by_type[MediaTypes.TV.value][0]
+        error = services.ProviderAPIError(
+            Sources.TMDB.value,
+            SimpleNamespace(response=SimpleNamespace(status_code=404, headers={})),
+        )
+
+        with patch("api.views.services.get_media_metadata", side_effect=error):
+            response = self.call_api(
+                "get",
+                "api_media_season_episodes",
+                args=(
+                    MediaTypes.TV.value,
+                    tv_item.source,
+                    tv_item.media_id,
+                    999,
+                ),
+                headers=self.auth_headers,
+            )
+
+        self.assertEqual(response.status_code, 404)
 
     def test_season_changes_history_get_returns_paginated_payload(self):
         """Season changes-history endpoint should return paginated entries."""
