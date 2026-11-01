@@ -23,7 +23,7 @@ from app.library_query.adapters import filter_values_from_media_list_filters
 from app.library_query.spec import STATUS_MATCH_ANY
 from app.media_list_filters import parse_media_list_filters
 from app.media_list_views import MEDIA_LIST_NO_STATUS, MEDIA_LIST_NO_STATUS_LABEL
-from app.models import MediaTypes
+from app.models import Item, MediaTypes
 from app.providers import (
     services,  # noqa: F401 — kept so legacy test patches on lists.views.services still work
 )
@@ -121,6 +121,20 @@ def list_detail(request, list_reference):
         # Render current membership now; refresh it in the background so the
         # write-heavy sync never runs inside a GET request.
         list_tasks.schedule_smart_list_sync(custom_list)
+
+    if request.user.is_authenticated and custom_list.user_can_edit(request.user):
+        # Quick-add once filed searched podcasts under a second Item; fold
+        # those into the tracked show so status and removal work again.
+        from app.services.podcast_import import merge_stray_podcast_items
+
+        merge_stray_podcast_items(
+            Item.objects.filter(
+                customlistitem__custom_list=custom_list,
+                media_type=MediaTypes.PODCAST.value,
+                episode_number__isnull=True,
+                season_number__isnull=True,
+            ),
+        )
 
     # Determine if this is a public view (anonymous user viewing public list)
     can_edit = custom_list.user_can_edit(request.user)
