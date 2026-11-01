@@ -68,3 +68,8 @@ class SettingsPageTests(TestCase):
         self.assertContains(response, 'data-testid="media-tag-filter"')
         self.assertContains(response, "All Sources")
         self.assertContains(response, "Backups")
+
+
+class ProviderTagCoverageTests(SimpleTestCase):
+    def test_tmdb_is_listed_under_anime_because_anime_can_use_it(self):
+        self.assertIn("anime_manga", credentials.REGISTRY["tmdb"].media_tags)

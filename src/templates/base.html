@@ -219,7 +219,9 @@
         {# Sidebar #}
         {% if not public_view|default:False %}
           <aside class="fixed top-0 left-0 z-[43] h-dvh w-64 pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] bg-[var(--color-sidebar)] transform transition-[transform,translate,visibility] duration-300 ease-in-out border-r border-[var(--color-border)] -translate-x-full lg:translate-x-0 lg:sticky flex flex-col"
-                 :class="isMobileMenuOpen ? 'translate-x-0' : 'max-lg:invisible'">
+                 :class="isMobileMenuOpen ? 'translate-x-0' : 'max-lg:invisible'"
+                 x-data="sidebarNavigation('{{ user.pk|escapejs }}')"
+                 @sidebar-lists-changed.window="onPinnedListsChanged()">
             <div class="h-16 border-b border-[var(--color-border)] flex items-center px-6">
               <h1 class="flex items-center">
                 {% if user.is_authenticated and user.logo_style == 'monochrome' %}
@@ -241,10 +243,10 @@
             </div>
             {# hx-boost: swap the body instead of reloading on sidebar navigation #}
             <nav id="sidebar-nav"
-                 class="p-4 flex-1 overflow-y-auto"
+                 class="p-4 flex-1 min-h-0 overflow-y-auto"
                  hx-boost="true"
                  style="-webkit-overflow-scrolling: touch">
-              <ul class="space-y-1 mb-6">
+              <ul class="space-y-1">
                 <li>
                   <a href="{% url 'home' %}"
                      class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == "/" %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
@@ -291,114 +293,25 @@
                 {% endfor %}
               </ul>
 
-              <div class="border-t border-[var(--color-border)] pt-4">
-                <ul class="space-y-1">
-                  {% url 'create_entry' as create_entry_url %}
-                  {% url 'history' as history_url %}
-                  {% url 'calendar' as calendar_url %}
-                  <li>
-                    <a href="{{ calendar_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == calendar_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:calendar_url %}
-                        {% include "app/icons/calendar.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
+            </nav>
 
-                      {% else %}
-                        {% include "app/icons/calendar.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Calendar" %}</span>
-                    </a>
-                  </li>
-
-                  {% url 'collection_list' as collection_list_url %}
-                  <li>
-                    <a href="{{ collection_list_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == collection_list_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:collection_list_url %}
-                        {% include "app/icons/cube.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/cube.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Collection" %}</span>
-                    </a>
-                  </li>
-
-                  <li>
-                    <a href="{{ create_entry_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == create_entry_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:create_entry_url %}
-                        {% include "app/icons/circle-plus.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/circle-plus.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Custom" context "navigation" %}</span>
-                    </a>
-                  </li>
-
-                  {% get_history_saved_views user as history_saved_views %}
-                  {% if history_saved_views %}
-                    {% trans "History" as history_label %}
-                    {% include "app/components/sidebar_saved_views.html" with group_key="history" group_url=history_url group_label=history_label group_current=request.path|str_equals:history_url saved_views=history_saved_views %}
-                  {% else %}
-                    <li>
-                      <a href="{{ history_url }}"
-                         class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == history_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                        {% icon 'history' is_active=request.path|str_equals:history_url %}
-                        <span>{% trans "History" %}</span>
-                      </a>
-                    </li>
-                  {% endif %}
-
-                  {% url 'lists' as lists_url %}
-                  <li>
-                    <a href="{{ lists_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == lists_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:lists_url %}
-                        {% include "app/icons/folder-plus.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/folder-plus.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Lists" %}</span>
-                    </a>
-                  </li>
-
-                  {% url 'statistics' as statistics_url %}
-                  <li>
-                    <a href="{{ statistics_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == statistics_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:statistics_url %}
-                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/bars-pyramid.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Statistics" %}</span>
-                    </a>
-                  </li>
-
-                  {% url 'tag_index' as tag_index_url %}
-                  <li>
-                    <a href="{{ tag_index_url }}"
-                       class="flex items-center space-x-3 px-4 py-2 rounded-md transition-colors duration-200 text-sm {% if request.path == tag_index_url %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
-                      {% if request.path|str_equals:tag_index_url %}
-                        {% include "app/icons/tag.svg" with classes="w-5 h-5 text-[var(--color-link)] " %}
-
-                      {% else %}
-                        {% include "app/icons/tag.svg" with classes="w-5 h-5" %}
-
-                      {% endif %}
-                      <span>{% trans "Tags" %}</span>
-                    </a>
-                  </li>
-                </ul>
-              </div>
+            <nav class="border-t border-[var(--color-border)] px-4 py-4"
+                 hx-boost="true"
+                 x-cloak
+                 x-show="navOpen || pinned.length"
+                 x-transition:enter="transition duration-200"
+                 x-transition:leave="transition duration-200">
+                <div x-ref="navigationItems" class="overflow-y-auto max-h-[40dvh]"
+                     style="-webkit-overflow-scrolling: touch">
+                  <div x-cloak x-sidebar-reveal="navOpen">
+                    <ul class="space-y-1">
+                      {% include "app/components/sidebar_navigation_items.html" with pinned_section=False %}
+                    </ul>
+                  </div>
+                  <ul class="space-y-1">
+                    {% include "app/components/sidebar_navigation_items.html" with pinned_section=True %}
+                  </ul>
+                </div>
             </nav>
 
             {% if request.user.is_authenticated and request.user.onboarding_status == "in_progress" %}
@@ -407,6 +320,17 @@
 
             <div class="p-4 border-t border-[var(--color-border)] mt-auto">
               <div class="space-y-2">
+                <div x-cloak x-show="hasUnpinned()">
+                    <button type="button"
+                            class="flex w-full items-center gap-3 px-4 py-2 rounded-md text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)] cursor-pointer"
+                            :aria-expanded="navOpen.toString()"
+                            @click="navOpen = !navOpen; if (navOpen) $nextTick(() => { $refs.navigationItems.scrollTop = $refs.navigationItems.scrollHeight })">
+                      <span class="transition-transform duration-200" :class="navOpen ? '' : 'rotate-180'">
+                        {% include "app/icons/chevron-down.svg" with classes="w-5 h-5" %}
+                      </span>
+                      <span>{% trans "Explore" %}</span>
+                    </button>
+                </div>
                 {% url 'account' as account_url %}
                 {% url 'notifications' as notifications_url %}
                 {% url 'sidebar' as sidebar_url %}

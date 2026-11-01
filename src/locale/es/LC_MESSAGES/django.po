@@ -14772,3 +14772,27 @@ msgstr "Preferencias actualizadas correctamente."
 
 #~ msgid "Enabled - show recommendations"
 #~ msgstr "Activadas - mostrar recomendaciones"
+
+
+#: templates/users/home_screen.html users/models.py
+msgid "Up Next"
+msgstr "A continuación"
+
+#: app/templatetags/app_tags.py
+msgid "Behind"
+msgstr "Sin ver"
+
+#: app/templatetags/app_tags.py
+msgid "day"
+msgid_plural "days"
+msgstr[0] "día"
+msgstr[1] "días"
+
+#: users/home_screen.py
+msgid "Up Next requires the TV library."
+msgstr "«A continuación» requiere la biblioteca de series."
+
+
+#: users/home_screen.py
+msgid "All media supports library and Up Next rows."
+msgstr "Todos los medios admite filas de biblioteca y «A continuación»."

@@ -813,12 +813,36 @@ function initStatisticsCharts() {
       });
       cell.classList.remove(...HEATMAP_LEVEL_CLASSES);
       cell.classList.add(HEATMAP_LEVEL_CLASSES[heatmapLevel(count)]);
-      // The server rendered the translated tooltip for 0, 1 and 2 (the locale's
-      // plural rule decides which wording each uses); swap in the real count
-      // first (the template has no other digits), then the date.
+    });
+  }
+
+  // Cells carry no per-cell date or title (all-time history is thousands of
+  // weeks); the tooltip is built on hover from the cell's position in the grid.
+  // The server rendered the translated tooltip for 0, 1 and 2 (the locale's
+  // plural rule decides which wording each uses); swap in the real count first
+  // (the template has no other digits), then the date.
+  const heatmapGrid = document.querySelector("#activityHistory [data-heatmap-grid]");
+  if (heatmapGrid) {
+    const start = new Date(heatmapGrid.dataset.heatmapStart + "T00:00:00Z");
+    heatmapGrid.addEventListener("mouseover", function (event) {
+      const cell = event.target;
+      if (!(cell instanceof HTMLElement) || !cell.classList.contains("hm")) return;
+      const column = cell.parentElement;
+      const offset = Array.prototype.indexOf.call(heatmapGrid.children, column) * 7 + Array.prototype.indexOf.call(column.children, cell);
+      const date = new Date(start.getTime() + offset * 86400000).toISOString().slice(0, 10);
+      if (cell.classList.contains("hm-f")) {
+        cell.title = date;
+        return;
+      }
+      const types = getCurrentMediaTypes();
+      let count = 0;
+      (cell.dataset.heatmapCounts || "").split(",").forEach(function (pair) {
+        const [type, n] = pair.split(":");
+        if (type && (types.length === 0 || types.includes(type))) count += Number(n) || 0;
+      });
       const marker = count > 2 ? "2" : String(count);
-      const template = heatmap.getAttribute("data-title-" + marker);
-      cell.title = template.replace(marker, String(count)).replace("__DATE__", cell.dataset.heatmapDate);
+      const heatmap = document.getElementById("activityHistory");
+      cell.title = heatmap.getAttribute("data-title-" + marker).replace(marker, String(count)).replace("__DATE__", date);
     });
   }
 

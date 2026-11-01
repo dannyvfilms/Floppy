@@ -35,6 +35,7 @@ from django.db.utils import IntegrityError
 
 from app.models import TV, Episode, Item, MediaTypes, Season, Sources
 from app.providers import tmdb
+from app.services.sync_lock import invalidate_item_contexts
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +176,7 @@ def merge_item(loser: Item, keeper: Item) -> None:
         raise ValueError(msg)
 
     with transaction.atomic():
+        invalidate_item_contexts([loser.pk, keeper.pk])
         _repoint(loser, keeper)
         loser.delete()
 

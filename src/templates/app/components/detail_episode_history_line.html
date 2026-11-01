@@ -3,32 +3,38 @@
 {% load user_tags %}
 {% load app_tags %}
 
-<p id="episode-history-{{ episode.item.id }}"
+<div id="episode-history-{{ episode.item.id }}"
    {% if history_oob %}hx-swap-oob="true"{% endif %}
-   class="text-xs text-[var(--color-text-muted)] mt-2 px-4"
-   {% if not episode.history and not episode.collection_entry %}style="display: none;"{% endif %}>
+   class="contents text-xs text-[var(--color-text-muted)]"
+   {% if public_view or not episode.history and not episode.collection_entry and not episode.watched_by_progress %}style="display: none;"{% endif %}>
   {% if episode.history %}
     {% with first=episode.history.0 watched=episode.history|watched_count %}
+      <p class="col-start-1 row-start-1">
       {% if first.dropped and watched == 0 %}
         {% translate "Dropped" %}
       {% else %}
-        {% if first.start_date %}{% blocktranslate trimmed with value_1=first.start_date|datetime_format:user %}Started: {{ value_1 }} •{% endblocktranslate %}{% endif %}
+        {% if first.start_date %}<span class="hidden md:inline">{% blocktranslate trimmed with value_1=first.start_date|datetime_format:user %}Started: {{ value_1 }} •{% endblocktranslate %}</span>{% endif %}
         {% translate "Ended:" %}
         {% if first.end_date %}
-          {{ first.end_date|datetime_format:user }}
+          <span class="md:hidden" title="{{ first.end_date|datetime_format:user }}">{{ first.end_date|user_date_format:user }}</span>
+          <span class="hidden md:inline">{{ first.end_date|datetime_format:user }}</span>
         {% else %}
           {% translate "No date provided" %}
         {% endif %}
-        {% if watched > 1 %}{% blocktranslate trimmed with value_1=watched %}• Watched {{ value_1 }} times{% endblocktranslate %}{% endif %}
         {% if first.notes %}
           • <span class="inline-flex items-center gap-1 align-middle" title="{% translate "You wrote a note" %}">
             {% include "app/icons/page.svg" with classes="w-3 h-3 inline" %}{% translate "Note" %}
           </span>
         {% endif %}
       {% endif %}
-      {% if episode.collection_entry %}{% translate "• Collected" %}{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}{% endif %}
+      </p>
+      <p class="col-start-1 row-start-2">
+        {% if watched > 0 %}<span class="whitespace-nowrap">{% blocktranslate trimmed with value_1=watched %}{{ value_1 }}× watched{% endblocktranslate %}</span>{% endif %}
+        {% if watched > 0 and episode.collection_entry %} · {% endif %}<span class="whitespace-nowrap">{% if episode.collection_entry %}{% translate "Collected" %}{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}{% endif %}</span>
+      </p>
     {% endwith %}
-  {% elif episode.collection_entry %}
-    {% translate "Collected" %}{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}
+  {% else %}
+    <p class="col-start-1 row-start-1">{% if episode.watched_by_progress %}{% translate "Watched" %}{% endif %}</p>
+    <p class="col-start-1 row-start-2">{% if episode.collection_entry %}{% translate "Collected" %}{% if episode.collection_entry.resolution %}: {{ episode.collection_entry.resolution }}{% endif %}{% endif %}</p>
   {% endif %}
-</p>
+</div>

@@ -511,6 +511,7 @@ class RewatchRatingVisibility(TestCase):
             "item": self.episode_item,
             "history": history,
             "all_history": all_history,
+            "unwatched_score": None,
         }
 
     def _render(self, episode_payload):
@@ -528,11 +529,25 @@ class RewatchRatingVisibility(TestCase):
             },
         )
 
-    def test_rating_is_offered_for_an_episode_not_yet_replayed(self):
-        """Mid-pass the episode has no play in the window, but it is still rated."""
-        html = self._render(self._payload([], [self.play]))
+    def _render_card_rating(self, episode_payload):
+        """Render the season episode card, where its rating control now lives."""
+        return render_to_string(
+            "app/components/episode_card_rating.html",
+            {
+                "episode": episode_payload,
+                "current_instance": self.season,
+                "user": self.user,
+                "MediaTypes": MediaTypes,
+                "public_view": False,
+            },
+        )
 
-        self.assertIn("Rate episode", html)
+    def test_rating_is_offered_for_an_episode_not_yet_replayed(self):
+        """A past score remains available when the current pass has no play."""
+        html = self._render_card_rating(self._payload([], [self.play]))
+
+        self.assertIn('aria-label="Rate"', html)
+        self.assertIn("initialRating: 8", html)
 
     def test_row_renders_no_leaked_template_comment(self):
         """A `{# #}` comment only spans one line; a longer one renders as text."""
@@ -540,11 +555,12 @@ class RewatchRatingVisibility(TestCase):
 
         self.assertNotIn("{#", html)
 
-    def test_rating_is_hidden_for_an_episode_never_watched(self):
-        """An untouched episode still offers no rating."""
-        html = self._render(self._payload([], []))
+    def test_unwatched_episode_offers_an_empty_card_rating(self):
+        """An untouched episode offers a blank rating, never an invented score."""
+        html = self._render_card_rating(self._payload([], []))
 
-        self.assertNotIn("Rate episode", html)
+        self.assertIn('aria-label="Rate"', html)
+        self.assertIn("initialRating: null", html)
 
     def _render_chip(self, episode_payload):
         return render_to_string(

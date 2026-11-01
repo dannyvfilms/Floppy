@@ -62,7 +62,8 @@ class BaseWebhookProcessor:
         "Movie": MediaTypes.MOVIE.value,
     }
     # True when an episode payload's TVDB/IMDb ids name the episode itself
-    # (Jellyfin, Emby). See `_find_tv_media_id(episode_ids=...)`.
+    # (Jellyfin, Emby). See `_find_tv_media_id(episode_ids=...)`. A processor
+    # that only knows this per payload sets ``ids["tvdb_is_episode"]`` instead.
     TV_IDS_ARE_EPISODE_LEVEL = False
 
     # Structured result of this run, logged by the worker so a delayed event
@@ -454,6 +455,7 @@ class BaseWebhookProcessor:
         elif (
             ids.get("tvdb_id")
             and not self.TV_IDS_ARE_EPISODE_LEVEL
+            and not ids.get("tvdb_is_episode")
             and not self._extract_payload_tmdb_id(payload)
             and str(tv_metadata.get("tvdb_id") or "") != str(ids["tvdb_id"])
         ):
@@ -1072,7 +1074,12 @@ class BaseWebhookProcessor:
     def _remember_tvdb_override(self, media_id, ids):
         """Persist a preferred TVDB ID for a resolved TMDB show when available."""
         tvdb_id = ids.get("tvdb_id")
-        if not media_id or not tvdb_id or self.TV_IDS_ARE_EPISODE_LEVEL:
+        if (
+            not media_id
+            or not tvdb_id
+            or self.TV_IDS_ARE_EPISODE_LEVEL
+            or ids.get("tvdb_is_episode")
+        ):
             return
 
         app.providers.tmdb.set_tvdb_id_override(media_id, tvdb_id)
@@ -1332,6 +1339,7 @@ class BaseWebhookProcessor:
             tuple: (media_id, season_number, episode_number)
         """
         ids = dict(ids)
+        episode_ids = episode_ids or bool(ids.get("tvdb_is_episode"))
         if ids.get("tvmaze_id") and not (
             ids.get("tvdb_id") or ids.get("imdb_id") or ids.get("tmdb_id")
         ):

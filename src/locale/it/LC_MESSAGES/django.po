@@ -14784,3 +14784,27 @@ msgstr "Preferenze aggiornate con successo."
 
 #~ msgid "Enabled - show recommendations"
 #~ msgstr ""
+
+
+#: templates/users/home_screen.html users/models.py
+msgid "Up Next"
+msgstr "Da guardare"
+
+#: app/templatetags/app_tags.py
+msgid "Behind"
+msgstr "Da vedere"
+
+#: app/templatetags/app_tags.py
+msgid "day"
+msgid_plural "days"
+msgstr[0] "giorno"
+msgstr[1] "giorni"
+
+#: users/home_screen.py
+msgid "Up Next requires the TV library."
+msgstr "Da guardare richiede la libreria delle serie TV."
+
+
+#: users/home_screen.py
+msgid "All media supports library and Up Next rows."
+msgstr "Tutti i media supporta le righe della libreria e Da guardare."

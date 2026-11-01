@@ -321,7 +321,7 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
         ),
         ProviderCredentialSpec(
             slug="tmdb",
-            media_tags=("screen",),
+            media_tags=("screen", "anime_manga"),
             user_scope=True,
             validator=_validate_tmdb,
             label="TMDB",

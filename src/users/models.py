@@ -142,6 +142,16 @@ def relabel_end_date_sort_choice(media_type, choices):
     ]
 
 
+def relabel_author_sort_choice(media_type, choices):
+    """Call a video's author sort Channel, since its channel is stored as the author."""
+    if media_type != MediaTypes.VIDEO.value:
+        return choices
+    return [
+        (value, _("Channel")) if value == MediaSortChoices.AUTHOR else (value, label)
+        for value, label in choices
+    ]
+
+
 class MediaStatusChoices(models.TextChoices):
     """Choices for media list status options."""
 
@@ -444,6 +454,7 @@ class PlannedHomeDisplayChoices(models.TextChoices):
 class HomeScreenRowTypeChoices(models.TextChoices):
     """Supported row sources for the configurable home screen."""
 
+    UP_NEXT = "up_next", _("Up Next")
     LIBRARY_QUERY = "library_query", _("Library Row")
     CUSTOM_LIST = "custom_list", _("List / Smart List")
     RECENTLY_UNRATED = "recently_unrated", _("Recently Played - Not Rated")
@@ -1670,7 +1681,9 @@ class User(AbstractUser):
             ),
             models.CheckConstraint(
                 name="list_detail_layout_valid",
-                condition=models.Q(list_detail_layout__in=ListDetailLayoutChoices.values),
+                condition=models.Q(
+                    list_detail_layout__in=ListDetailLayoutChoices.values
+                ),
             ),
             models.CheckConstraint(
                 name="music_layout_valid",
@@ -2105,7 +2118,8 @@ class User(AbstractUser):
         task_results = (
             TaskResult.objects.filter(
                 task_result_filters,
-                task_name__in=result_import_task_names,
+                Q(task_name__startswith="Import ")
+                | Q(task_name__in=result_import_task_names),
                 date_created__gte=seven_days_ago,
             )
             .exclude(
@@ -2134,7 +2148,10 @@ class User(AbstractUser):
                     task.traceback = async_result.traceback
                     task.save(update_fields=["traceback"])
 
-            source = result_task_to_source[task.task_name]
+            source = result_task_to_source.get(
+                task.task_name,
+                task.task_name.removeprefix("Import from ").removeprefix("Import "),
+            )
             processed_task = helpers.process_task_result(task)
 
             progress = None
@@ -2192,18 +2209,17 @@ class User(AbstractUser):
         )
         periodic_tasks = PeriodicTask.objects.filter(
             periodic_tasks_filter,
-            task__in=schedule_import_task_names,
+            Q(task__startswith="Import ") | Q(task__in=schedule_import_task_names),
             enabled=True,
         ).select_related("crontab", "interval")
 
         # Build schedules list
         schedules = []
         for periodic_task in periodic_tasks:
-            source = schedule_task_to_source.get(periodic_task.task, "unknown")
-
-            # Skip if source is unknown (task not in our mapping)
-            if source == "unknown":
-                continue
+            source = schedule_task_to_source.get(
+                periodic_task.task,
+                periodic_task.task.removeprefix("Import from ").removeprefix("Import "),
+            )
 
             # Extract username from task name if available
             username = ""

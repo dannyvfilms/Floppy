@@ -3,6 +3,7 @@ from django.db import models
 from django.db.models import UniqueConstraint
 
 from app.models.item import Item
+from app.services.sync_lock import serialized_state_write
 
 
 class PlaybackProgress(models.Model):
@@ -52,3 +53,8 @@ class PlaybackProgress(models.Model):
     def __str__(self):
         """Return a readable position label."""
         return f"{self.user_id}:{self.item_id}@{self.position_seconds}s"
+
+    @serialized_state_write
+    def save(self, *args, **kwargs):
+        """Commit progress and its event together."""
+        return super().save(*args, **kwargs)

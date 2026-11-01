@@ -95,7 +95,7 @@
         {% if result.status %}
           {% if result.summary %}<div class="text-sm text-[var(--color-text-secondary)]">{{ result.summary|translate_import_summary }}</div>{% endif %}
 
-          {% if result.status == "STARTED" and result.progress_current %}
+          {% if result.status == "STARTED" and result.progress_current != None %}
             <div class="mt-2">
               {% if result.progress_total %}
                 <div class="flex items-center justify-between text-xs text-[var(--color-text-muted)] mb-1">
@@ -108,7 +108,11 @@
                 </div>
               {% else %}
                 <div class="text-xs text-[var(--color-text-muted)]">
-                  {% blocktranslate with value1=result.progress_label|default:"Gathering items…" value2=result.progress_current %}{{ value1 }} ({{ value2 }} found){% endblocktranslate %}
+                  {% if result.progress_current %}
+                    {% blocktranslate with value1=result.progress_label|default:"Gathering items…" value2=result.progress_current %}{{ value1 }} ({{ value2 }} found){% endblocktranslate %}
+                  {% else %}
+                    {{ result.progress_label|default:"Gathering items…" }}
+                  {% endif %}
                 </div>
               {% endif %}
             </div>

@@ -1,4 +1,5 @@
 import re
+import threading
 from datetime import UTC, datetime, timedelta
 from html import unescape
 from pathlib import Path
@@ -65,6 +66,19 @@ from events.calendar.helpers import date_parser
 from integrations.models import PlexAccount
 from lists.models import CustomList, CustomListItem
 from users.models import DateFormatChoices, RatingScaleChoices, TimeFormatChoices
+
+
+def _record_sleep_threads(mock_sleep):
+    """Record which threads call the patched ``time.sleep``.
+
+    ``time.sleep`` is process-wide, so a background thread can trip a plain
+    ``assert_not_called``. Tests check only their own thread instead.
+    """
+    threads = []
+    mock_sleep.side_effect = lambda *args, **kwargs: threads.append(
+        threading.get_ident()
+    )
+    return threads
 
 
 class MediaDetailsViewTests(TestCase):
@@ -2546,6 +2560,70 @@ class MediaDetailsViewTests(TestCase):
             external_entry["chip_classes"], "border-amber-400/18 bg-amber-500/[0.07]"
         )
         self.assertEqual(external_entry["logo_src"], "/static/img/hltb-logo.png")
+
+    @patch("app.media_details_views._queue_game_lengths_refresh", return_value=True)
+    @patch("app.providers.services.get_media_metadata")
+    def test_game_details_show_estimated_youtube_watch_time(
+        self,
+        mock_get_metadata,
+        _mock_queue_game_lengths_refresh,
+    ):
+        """Videos YouTube tags with the game show apart from playtime."""
+        from django.utils import timezone
+
+        from app.models import Video, VideoGameTag
+
+        mock_get_metadata.return_value = {
+            "media_id": "325609",
+            "title": "Dispatch",
+            "media_type": MediaTypes.GAME.value,
+            "source": Sources.IGDB.value,
+            "image": "http://example.com/image.jpg",
+            "synopsis": "Test overview",
+            "details": {},
+            "related": {},
+        }
+        Item.objects.create(
+            media_id="325609",
+            source=Sources.IGDB.value,
+            media_type=MediaTypes.GAME.value,
+            title="Dispatch",
+        )
+        video_item = Item.objects.create(
+            media_id="HQp_b8VHtgI",
+            source=Sources.YOUTUBE.value,
+            media_type=MediaTypes.VIDEO.value,
+            title="Dispatch ep 1",
+        )
+        VideoGameTag.objects.create(
+            item=video_item,
+            status=VideoGameTag.Status.FOUND,
+            game_title="Dispatch",
+            checked_at=timezone.now(),
+        )
+        Video.objects.create(
+            item=video_item,
+            user=self.user,
+            status=Status.IN_PROGRESS.value,
+            progress=1800,
+            length_seconds=3600,
+        )
+
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.IGDB.value,
+                    "media_type": MediaTypes.GAME.value,
+                    "media_id": "325609",
+                    "title": "dispatch",
+                },
+            ),
+            {"fragment": "secondary"},
+        )
+
+        self.assertContains(response, "Watched on YouTube")
+        self.assertEqual(response.context["youtube_watch"]["seconds"], 1800)
 
     @patch("app.providers.services.get_media_metadata")
     def test_media_details_notes_button_opens_notes_for_latest_entry(
@@ -7073,6 +7151,7 @@ class MediaDetailsViewTests(TestCase):
         mock_get_or_create,
         _mock_sleep,
     ):
+        sleeping_threads = _record_sleep_threads(_mock_sleep)
         mock_get_or_create.side_effect = OperationalError("database is locked")
         mock_get_metadata.return_value = {
             "media_id": "325609",
@@ -7115,7 +7194,7 @@ class MediaDetailsViewTests(TestCase):
             "Some metadata updates were deferred because the database is busy.",
         )
         self.assertTrue(response.context["detail_persistence_deferred"])
-        _mock_sleep.assert_not_called()
+        self.assertNotIn(threading.get_ident(), sleeping_threads)
         self.assertFalse(
             Item.objects.filter(
                 media_id="325609",
@@ -7133,6 +7212,7 @@ class MediaDetailsViewTests(TestCase):
         mock_update_or_create,
         _mock_sleep,
     ):
+        sleeping_threads = _record_sleep_threads(_mock_sleep)
         item = Item.objects.create(
             media_id="52991",
             source=Sources.MAL.value,
@@ -7179,7 +7259,7 @@ class MediaDetailsViewTests(TestCase):
         )
         self.assertFalse(response.context["detail_persistence_deferred"])
         mock_update_or_create.assert_not_called()
-        _mock_sleep.assert_not_called()
+        self.assertNotIn(threading.get_ident(), sleeping_threads)
 
     def test_game_media_details_renders_when_metadata_save_hits_retryable_lock(self):
         # Deterministic starting point: whether the view reaches the metadata
@@ -7257,6 +7337,7 @@ class MediaDetailsViewTests(TestCase):
         mock_sync_credits,
         _mock_sleep,
     ):
+        sleeping_threads = _record_sleep_threads(_mock_sleep)
         item = Item.objects.create(
             media_id="1396",
             source=Sources.TMDB.value,
@@ -7308,7 +7389,7 @@ class MediaDetailsViewTests(TestCase):
             "Some metadata updates were deferred because the database is busy.",
         )
         self.assertTrue(response.context["detail_persistence_deferred"])
-        _mock_sleep.assert_not_called()
+        self.assertNotIn(threading.get_ident(), sleeping_threads)
 
     @patch("integrations.tasks.fetch_collection_metadata_for_item.delay")
     @patch("app.views.credits.sync_item_credits_from_metadata")
@@ -12375,3 +12456,64 @@ class EpisodePickerTemplateContractTests(SimpleTestCase):
             'class="block min-w-0 flex-1 truncate text-sm font-medium"',
             template,
         )
+
+
+class ManualComicIssueDetailsTests(TestCase):
+    """What the Metadata editor saves on a comic issue shows on its page."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username="issue-details", password="x"
+        )
+        self.client.login(username="issue-details", password="x")
+        self.item = Item.objects.create(
+            media_id="manual-issue-details",
+            source=Sources.MANUAL.value,
+            media_type=MediaTypes.COMIC_ISSUE.value,
+            title="Manual Issue",
+            publishers="Nova Press",
+            format="Trade Paperback",
+            country="US",
+            languages=["English", "French"],
+            authors=["Ada Writer", "Ben Artist"],
+            genres=["Sci-Fi"],
+            manual_metadata={
+                "synopsis": "Lost signal.",
+                "genres": ["Sci-Fi"],
+                "details": {
+                    "release_date": "2024-03-06",
+                    "publisher": "Nova Press",
+                    "format": "Trade Paperback",
+                    "country": "US",
+                    "languages": ["English", "French"],
+                    "author": ["Ada Writer", "Ben Artist"],
+                },
+            },
+        )
+        CollectionEntry.objects.create(user=self.user, item=self.item)
+        MetadataProviderPreference.objects.create(
+            user=self.user,
+            item=self.item,
+            provider=Sources.MANUAL.value,
+        )
+
+    def test_saved_metadata_is_visible_on_the_page(self):
+        response = self.client.get(
+            reverse(
+                "media_details",
+                kwargs={
+                    "source": Sources.MANUAL.value,
+                    "media_type": MediaTypes.COMIC_ISSUE.value,
+                    "media_id": "manual-issue-details",
+                    "title": "manual-issue",
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Nova Press")
+        self.assertContains(response, "Trade Paperback")
+        self.assertContains(response, "English, French")
+        self.assertContains(response, "Ada Writer, Ben Artist")
+        self.assertContains(response, "Sci-Fi")
+        self.assertContains(response, "2024-03-06")

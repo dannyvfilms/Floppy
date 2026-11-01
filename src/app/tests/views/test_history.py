@@ -547,6 +547,48 @@ class SessionHistoryModalTests(TestCase):
                     "app/components/session_history_modal.html",
                 )
 
+    def test_episode_modal_filters_both_season_and_episode_number(self):
+        """An episode action must not show neighboring episodes or seasons."""
+        tv_item = self._create_item(MediaTypes.TV.value, "scoped-show", "Show")
+        tv = TV.objects.create(item=tv_item, user=self.user)
+        for season_number in (1, 2):
+            season_item = self._create_item(
+                MediaTypes.SEASON.value,
+                "scoped-show",
+                "Season",
+                season_number=season_number,
+            )
+            season = Season.objects.create(
+                item=season_item, related_tv=tv, user=self.user,
+            )
+            for episode_number in (1, 2):
+                episode_item = self._create_item(
+                    MediaTypes.EPISODE.value,
+                    "scoped-show",
+                    f"Episode {episode_number}",
+                    season_number=season_number,
+                    episode_number=episode_number,
+                )
+                Episode.objects.create(
+                    item=episode_item,
+                    related_season=season,
+                    end_date=self.base_time,
+                    notes=f"unique-note-s{season_number}e{episode_number}",
+                )
+
+        response = self.client.get(
+            *self._url(
+                media_type=MediaTypes.TV.value,
+                media_id="scoped-show",
+                source=Sources.MANUAL.value,
+                season_number=1,
+                episode_number=2,
+            ),
+        )
+        self.assertContains(response, "unique-note-s1e2")
+        for excluded in ("unique-note-s1e1", "unique-note-s2e1", "unique-note-s2e2"):
+            self.assertNotContains(response, excluded)
+
     def test_movie_repeat_rows_include_notes_scores_and_all_markers(self):
         """Repeated movie instances remain separate rows across their days."""
         item = self._create_item(MediaTypes.MOVIE.value, "repeat-movie", "Repeat Movie")

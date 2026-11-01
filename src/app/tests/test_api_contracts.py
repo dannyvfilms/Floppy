@@ -717,6 +717,20 @@ class OpenAPIArtifactTests(SimpleTestCase):
                 "validateListenBrainzToken",
                 {"200", "401"},
             ),
+            *(
+                (
+                    f"/apis/listenbrainz/1/stats/user/{{username}}/{entity}/",
+                    "get",
+                    operation_id,
+                    {"200", "400", "401", "404"},
+                )
+                for entity, operation_id in (
+                    ("artists", "getListenBrainzUserArtists"),
+                    ("release-groups", "getListenBrainzUserReleaseGroups"),
+                    ("recordings", "getListenBrainzUserRecordings"),
+                    ("genre-activity", "getListenBrainzUserGenreActivity"),
+                )
+            ),
         ):
             operation = paths[path][method]
             self.assertEqual(operation["operationId"], operation_id)
@@ -997,7 +1011,7 @@ class SchemaFindingContractTests(SimpleTestCase):
         self.assertIn(SCHEMA_REGENERATION_COMMAND, message)
 
     def test_reviewed_baseline_has_expected_unique_counts(self):
-        self.assertEqual(len(EXPECTED_SCHEMA_ERRORS), 86)
+        self.assertEqual(len(EXPECTED_SCHEMA_ERRORS), 84)
         self.assertEqual(len(EXPECTED_SCHEMA_WARNINGS), 18)
 
     def test_generated_schema_findings_match_reviewed_baseline(self):

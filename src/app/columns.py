@@ -106,6 +106,11 @@ def _show_author(media_type: str, _current_sort: str, _user: Any) -> bool:
     )
 
 
+def _show_channel(media_type: str, _current_sort: str, _user: Any) -> bool:
+    # A video's channel is stored as its author.
+    return media_type == MediaTypes.VIDEO.value
+
+
 MEDIA_COLUMNS: list[ColumnDef] = [
     ColumnDef(
         key="image",
@@ -135,6 +140,16 @@ MEDIA_COLUMNS: list[ColumnDef] = [
         cell_template="app/components/cells/media_author_cell.html",
         table_types=("media",),
         is_visible=_show_author,
+        default_order=25,
+    ),
+    ColumnDef(
+        key="channel",
+        label=gettext_noop("Channel"),
+        th_classes="p-2 pe-6",
+        td_classes="p-2 pe-6 text-gray-200",
+        cell_template="app/components/cells/media_author_cell.html",
+        table_types=("media",),
+        is_visible=_show_channel,
         default_order=25,
     ),
     ColumnDef(

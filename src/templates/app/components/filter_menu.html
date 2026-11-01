@@ -271,7 +271,7 @@
             <button class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="view = 'author'; resetSearch()"
                     type="button">
-              <span class="flex-shrink-0 mr-3">{% translate "Author" %}</span>
+              <span class="flex-shrink-0 mr-3">{% if filter_data.author_is_channel %}{% translate "Channel" %}{% else %}{% translate "Author" %}{% endif %}</span>
               <span class="ml-auto text-xs text-[var(--color-text-muted)] block min-w-0 truncate max-w-[8rem]"
                     x-text="author || gettext('Any')"></span>
               <span class="ml-2">{% include "app/icons/chevron-right.svg" with classes="w-3.5 h-3.5" %}</span>
@@ -1398,12 +1398,12 @@
             <button class="p-1 rounded hover:bg-[var(--color-surface-hover)] transition-colors cursor-pointer"
                     @click="view = 'root'"
                     type="button">{% include "app/icons/chevron-left.svg" with classes="w-4 h-4" %}</button>
-            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% translate "Author" %}</div>
+            <div class="text-xs uppercase tracking-wide text-[var(--color-text-secondary)]">{% if filter_data.author_is_channel %}{% translate "Channel" %}{% else %}{% translate "Author" %}{% endif %}</div>
           </div>
           <div class="px-2 py-2">
             <input type="text"
                    x-model="authorSearch"
-                   placeholder="{% translate "Filter Author" %}"
+                   placeholder="{% if filter_data.author_is_channel %}{% translate "Filter Channel" %}{% else %}{% translate "Filter Author" %}{% endif %}"
                    class="w-full px-3 py-2 rounded-md bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] placeholder-[var(--color-text-muted)] border border-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
           </div>
           <div class="max-h-64 overflow-y-auto">
@@ -1415,7 +1415,7 @@
                     class="flex items-center w-full px-4 py-2 text-left text-sm transition-colors cursor-pointer text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)]"
                     @click="author = ''; open = false; view = 'root'; setTimeout(() => applyFilterChange('{{ filter_hx_endpoint }}', '{{ filter_hx_target }}', '{{ resolved_filter_form_id }}'), 0); {{ filter_on_change }}"
                     type="button">
-              <span>{% translate "All Authors" %}</span>
+              <span>{% if filter_data.author_is_channel %}{% translate "All Channels" %}{% else %}{% translate "All Authors" %}{% endif %}</span>
               <span class="ml-auto" x-show="author === ''">
                 {% include "app/icons/checkmark.svg" with classes="w-4 h-4 text-green-400" %}
               </span>

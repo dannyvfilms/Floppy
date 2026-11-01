@@ -2,8 +2,8 @@
 {% load i18n %}
 {% load app_tags %}
 {% url 'saved_view_reorder' as saved_view_reorder_url %}
-<li x-data="savedViewGroup('{{ group_key|escapejs }}', '{{ saved_view_reorder_url|escapejs }}', '{{ csrf_token|escapejs }}')">
-  <div class="group flex items-center rounded-md transition-colors duration-200 text-sm {% if group_current %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
+<li {% if sidebar_pin_key %}x-show="isPinned('{{ sidebar_pin_key }}') === {% if sidebar_section_pinned %}true{% else %}false{% endif %}"{% endif %} x-data="savedViewGroup('{{ group_key|escapejs }}', '{{ saved_view_reorder_url|escapejs }}', '{{ csrf_token|escapejs }}')">
+  <div class="group relative flex items-center rounded-md transition-colors duration-200 text-sm {% if group_current %}text-[var(--color-text)] bg-[var(--color-border)]{% else %}text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-hover-dim)]{% endif %}">
     <a href="{{ group_url }}"
        class="flex-1 min-w-0 flex items-center space-x-3 pl-4 py-2">
       {% icon group_key is_active=group_current %}
@@ -19,6 +19,9 @@
         {% include "app/icons/chevron-down.svg" with classes="w-4 h-4" %}
       </span>
     </button>
+    {% if sidebar_pin_key %}
+      {% include "app/components/sidebar_pin_menu.html" with pin_key=sidebar_pin_key %}
+    {% endif %}
   </div>
   <ul class="mt-1 ml-8 space-y-1" x-ref="list" x-show="open" x-cloak>
     {% for saved_view in saved_views %}

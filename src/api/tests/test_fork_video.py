@@ -1,7 +1,9 @@
 """Video play upsert."""
 
+import json
 from unittest.mock import patch
 
+from django.apps import apps as django_apps
 from django.urls import reverse
 from django.utils import timezone
 
@@ -209,6 +211,110 @@ class VideoPlayApiTests(FloppyApiTestCase):
             "What this video is about.",
         )
 
+    def test_video_details_render_backdrop_and_channel_avatar_fragment(self):
+        self._post(
+            media_id="vidAAAAAAAA",
+            channel="Example Channel",
+            thumbnailUrl="https://i.ytimg.com/vi/vidAAAAAAAA/hqdefault.jpg",
+        )
+        self._metadata_patcher.stop()
+        self.client.force_login(self.user1)
+        url = reverse(
+            "media_details",
+            kwargs={
+                "source": "youtube",
+                "media_type": MediaTypes.VIDEO.value,
+                "media_id": "vidAAAAAAAA",
+                "title": "a-video",
+            },
+        )
+        response = self.client.get(url)
+        self.assertContains(response, "detail-carousel-content")
+        self.assertContains(response, "detail-carousel-overview-caption")
+        self.assertContains(response, "detail-carousel-overview-extension")
+        self.assertContains(response, "video-channel-avatar")
+        self.assertContains(response, "md:justify-start")
+        self.assertContains(response, 'class="detail-carousel-grid__title min-w-0"')
+        html = response.content.decode()
+        self.assertLess(
+            html.index('class="detail-carousel-grid__synopsis"'),
+            html.index('<h1 class="text-2xl'),
+        )
+        self.assertContains(response, "maxresdefault.jpg")
+        self.assertContains(response, "hqdefault.jpg")
+        self.assertContains(response, "data-image-fallback-on-small")
+        self.assertContains(response, "selected = 1; videoPlaying = true")
+        self.assertContains(response, "detail-carousel-preview--bounded")
+        self.assertNotContains(response, "detail-carousel-overview-player")
+        with patch(
+            "app.youtube_channel_art.video_details",
+            return_value={
+                "avatar": "https://yt3.ggpht.com/avatar",
+                "description": "Example description <script>alert(1)</script>",
+            },
+        ):
+            response = self.client.get(url, {"fragment": "video-metadata"})
+        self.assertContains(response, "yt3.ggpht.com/avatar")
+        self.assertContains(response, "Example description")
+        self.assertNotContains(response, "<script>alert(1)</script>")
+        self.assertEqual(Item.objects.get(media_id="vidAAAAAAAA").synopsis, "")
+
+    def test_fetched_description_does_not_replace_stored_description(self):
+        self._post(media_id="vidAAAAAAAA", description="Description from client")
+        self._metadata_patcher.stop()
+        self.client.force_login(self.user1)
+        url = reverse(
+            "media_details",
+            kwargs={
+                "source": "youtube",
+                "media_type": "video",
+                "media_id": "vidAAAAAAAA",
+                "title": "a-video",
+            },
+        )
+        with patch(
+            "app.youtube_channel_art.video_details",
+            return_value={"avatar": "", "description": "Fetched description"},
+        ):
+            response = self.client.get(url, {"fragment": "video-metadata"})
+        self.assertNotContains(response, "Fetched description")
+        self.assertEqual(
+            Item.objects.get(media_id="vidAAAAAAAA").synopsis, "Description from client"
+        )
+
+    def test_video_player_does_not_require_stored_thumbnail(self):
+        self._post(media_id="vidAAAAAAAA", channel="Example Channel")
+        self._metadata_patcher.stop()
+        self.client.force_login(self.user1)
+        url = reverse(
+            "media_details",
+            kwargs={
+                "source": "youtube",
+                "media_type": "video",
+                "media_id": "vidAAAAAAAA",
+                "title": "a-video",
+            },
+        )
+        response = self.client.get(url)
+        self.assertContains(response, "selected = 1; videoPlaying = true")
+        self.assertContains(response, "vidAAAAAAAA")
+        self.assertContains(response, "maxresdefault.jpg")
+
+    def test_youtube_player_wrapper_sends_only_the_origin(self):
+        url = reverse("youtube_player")
+        response = self.client.get(url, {"v": "vidAAAAAAAA"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.headers["Referrer-Policy"], "strict-origin-when-cross-origin"
+        )
+        self.assertEqual(response.headers["X-Frame-Options"], "SAMEORIGIN")
+        self.assertContains(response, 'src="https://www.youtube.com/embed/vidAAAAAAAA"')
+        self.assertNotContains(response, "autoplay=1")
+        response = self.client.get(url, {"v": "vidAAAAAAAA", "autoplay": "1"})
+        self.assertContains(response, "/embed/vidAAAAAAAA?autoplay=1")
+        response = self.client.get(url, {"v": "<invalid>"})
+        self.assertEqual(response.status_code, 400)
+
     def test_the_details_page_shows_what_the_client_reported(self):
         """Channel and length in the sidebar, description and YouTube link on the page."""
         self._post(
@@ -291,6 +397,28 @@ class VideoPlayApiTests(FloppyApiTestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["results"], [])
+
+
+class VideoGameTagTriggerTests(FloppyApiTestCase):
+    """A first post queues one game-tag lookup, later posts do not."""
+
+    def test_first_post_queues_one_lookup(self):
+        url = reverse(
+            "api_video_play",
+            kwargs={"source": "youtube", "media_id": "HQp_b8VHtgI"},
+        )
+        payload = {
+            "title": "A Minecraft video",
+            "lengthSeconds": 1000,
+            "progressSeconds": 100,
+            "externalId": "youtube:HQp_b8VHtgI:2026-10-02",
+        }
+        with (
+            patch("api.fork_views_video.lookup_youtube_game_tag.delay") as delay,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            self.client.post(url, payload, format="json", **self.auth_headers)
+        delay.assert_called_once_with(Item.objects.get(media_id="HQp_b8VHtgI").pk)
 
 
 class VideoPlayManageApiTests(FloppyApiTestCase):
@@ -422,3 +550,131 @@ class VideoPlayManageApiTests(FloppyApiTestCase):
             self.client.get(self._plays_url(), **self.auth_headers).status_code,
             404,
         )
+
+
+class VideoChannelTests(FloppyApiTestCase):
+    """A video's channel is its author: filter, sort, lists and saved views."""
+
+    def _post(self, media_id, channel, title=None):
+        url = reverse(
+            "api_video_play",
+            kwargs={"source": "youtube", "media_id": media_id},
+        )
+        return self.client.post(
+            url,
+            {
+                "title": title or f"Video {media_id}",
+                "channel": channel,
+                "lengthSeconds": 1000,
+                "progressSeconds": 900,
+                "externalId": f"youtube:{media_id}:2026-10-02",
+            },
+            format="json",
+            **self.auth_headers,
+        )
+
+    def setUp(self):
+        """Two channels, signed in for the web pages."""
+        super().setUp()
+        self._post("vidA", "Beyond Babish")
+        self._post("vidB", "Beyond Babish")
+        self._post("vidC", "Home Gadgets")
+        self.client.force_login(self.user1)
+
+    def test_the_first_channel_becomes_the_author_once(self):
+        """The item is shared, so a later post never renames the channel."""
+        self._post("vidA", "Someone Else")
+        self.assertEqual(Item.objects.get(media_id="vidA").authors, ["Beyond Babish"])
+
+    def test_the_list_filters_by_channel(self):
+        """Choosing a channel narrows the Videos list."""
+        response = self.client.get("/medialist/video", {"author": "Beyond Babish"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["media_list"].paginator.count, 2)
+        response = self.client.get("/medialist/video", {"author": "Home Gadgets"})
+        self.assertEqual(response.context["media_list"].paginator.count, 1)
+
+    def test_the_filter_menu_offers_channels_not_formats(self):
+        """Channels are listed and named as such. Formats stay a reading filter."""
+        response = self.client.get("/medialist/video")
+        filter_data = response.context["filter_data"]
+        self.assertTrue(filter_data["show_authors"])
+        self.assertTrue(filter_data["author_is_channel"])
+        self.assertFalse(filter_data["show_formats"])
+        self.assertEqual(
+            [author["value"] for author in filter_data["authors"]],
+            ["Beyond Babish", "Home Gadgets"],
+        )
+        self.assertContains(response, "All Channels")
+
+    def test_the_sort_menu_calls_it_channel_and_sorts_by_it(self):
+        """The author sort reads Channel on videos and orders by channel."""
+        response = self.client.get(
+            "/medialist/video", {"sort": "author", "direction": "desc"}
+        )
+        self.assertIn(("author", "Channel"), response.context["sort_choices"])
+        titles = [
+            entry.item.title for entry in response.context["media_list"].object_list
+        ]
+        self.assertEqual(titles[0], "Video vidC")
+
+    def test_the_table_has_a_channel_column(self):
+        """The table layout shows each video's channel."""
+        response = self.client.get("/medialist/video", {"layout": "table"})
+        self.assertEqual(response.status_code, 200)
+        self.assertRegex(response.content.decode(), r"<th[^>]*>\s*Channel")
+        self.assertRegex(
+            response.content.decode(), r"<td[^>]*>\s*<span[^>]*>\s*Beyond Babish"
+        )
+
+    def test_other_media_types_keep_the_author_wording(self):
+        """Books still say Author and still offer Format."""
+        response = self.client.get("/medialist/book")
+        filter_data = response.context["filter_data"]
+        self.assertFalse(filter_data["author_is_channel"])
+        self.assertTrue(filter_data["show_formats"])
+        self.assertIn(("author", "Author"), response.context["sort_choices"])
+
+    def test_a_saved_view_keeps_the_channel(self):
+        """The saved query carries the author parameter."""
+        response = self.client.post(
+            reverse("saved_view_create"),
+            {"media_type": "video", "name": "Babish", "author": "Beyond Babish"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("author=Beyond+Babish", response.json()["url"])
+
+    def test_a_smart_list_can_match_a_channel(self):
+        """A smart list of videos from one channel."""
+        from lists.models import CustomList
+
+        smart = CustomList.objects.create(
+            name="Babish", owner=self.user1, is_smart=True
+        )
+        response = self.client.post(
+            reverse("list_smart_rules_update", args=[smart.id]),
+            json.dumps({"media_types": ["video"], "author": "Beyond Babish"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            sorted(smart.items.values_list("media_id", flat=True)),
+            ["vidA", "vidB"],
+        )
+        page = self.client.get(f"/list/{smart.id}")
+        self.assertContains(page, "Channel:")
+        self.assertContains(page, "Beyond Babish")
+
+    def test_the_migration_copies_existing_channels(self):
+        """Videos stored before this change get their channel as author."""
+        import importlib
+
+        migration = importlib.import_module(
+            "app.migrations.0214_video_channel_as_author"
+        )
+        item = Item.objects.get(media_id="vidA")
+        item.authors = []
+        item.save(update_fields=["authors"])
+        migration.copy_channel_to_authors(django_apps, None)
+        item.refresh_from_db()
+        self.assertEqual(item.authors, ["Beyond Babish"])

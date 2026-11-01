@@ -338,7 +338,9 @@ class MediaCollectionView(drf_views.APIView):
 
         A PUT for a show Floppy doesn't have yet creates the episode in the
         default library even with ``library_media_type=anime``, so calls with
-        the same parameter fall back there to find it.
+        the same parameter fall back there to find it. A watch in the anime
+        library can add a second item there later, so the default item also
+        wins when only it holds this API's copy.
         """
         library_media_type = request.query_params.get("library_media_type")
 
@@ -353,8 +355,15 @@ class MediaCollectionView(drf_views.APIView):
             ).first()
 
         item = lookup(library_media_type)
-        if item is None and library_media_type:
-            item = lookup(None)
+        if not library_media_type:
+            return item
+        default_item = lookup(None)
+        if item is None or (
+            default_item is not None
+            and not self._api_entries(request.user, item).exists()
+            and self._api_entries(request.user, default_item).exists()
+        ):
+            return default_item
         return item
 
     def _api_entries(self, user, item):

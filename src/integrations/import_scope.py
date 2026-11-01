@@ -79,25 +79,37 @@ class ImportScopedQuerySet(models.QuerySet):
     def update(self, **kwargs):
         """Reject changes within an active replacement scope."""
         guard_queryset(self)
-        return super().update(**kwargs)
+        from app.services.sync_lock import tracking_mutation
+
+        with tracking_mutation(self):
+            return super().update(**kwargs)
 
     def delete(self):
         """Reject deletion within an active replacement scope."""
         guard_queryset(self)
-        return super().delete()
+        from app.services.sync_lock import tracking_mutation
+
+        with tracking_mutation(self, publish_quiet=True):
+            return super().delete()
 
     def bulk_create(self, objs, *args, **kwargs):
         """Reject new tracking rows within an active replacement scope."""
         objs = list(objs)
         guard_instances(objs)
-        return super().bulk_create(objs, *args, **kwargs)
+        from app.services.sync_lock import tracking_mutation
+
+        with tracking_mutation(self, instances=objs):
+            return super().bulk_create(objs, *args, **kwargs)
 
     def bulk_update(self, objs, fields, *args, **kwargs):
         """Check existing scope as well as reassigned item/owner identities."""
         objs = list(objs)
         guard_instances(objs)
         guard_queryset(self.filter(pk__in=[row.pk for row in objs]))
-        return super().bulk_update(objs, fields, *args, **kwargs)
+        from app.services.sync_lock import tracking_mutation
+
+        with tracking_mutation(self.filter(pk__in=[row.pk for row in objs]), instances=objs):
+            return super().bulk_update(objs, fields, *args, **kwargs)
 
 
 ImportScopedManager = models.Manager.from_queryset(ImportScopedQuerySet)
