@@ -66,7 +66,18 @@ EPISODE_STILL_SUCCESS_SECONDS = 60 * 60 * 24 * 7
 EPISODE_STILL_FAILURE_SECONDS = 60 * 60
 
 
-def _cache_key(user_id: int) -> str:
+# Manual check-ins each get their own card, one per media type (see
+# ``app.checkin``). A real scrobble keeps using the default, unnamed card.
+CHECKIN_SLOTS = (
+    MediaTypes.MOVIE.value,
+    MediaTypes.TV.value,
+    *SESSION_MEDIA_TYPES,
+)
+
+
+def _cache_key(user_id: int, slot: str | None = None) -> str:
+    if slot:
+        return f"{PLAYBACK_CACHE_PREFIX}:{user_id}:checkin:{slot}"
     return f"{PLAYBACK_CACHE_PREFIX}:{user_id}"
 
 
@@ -148,10 +159,14 @@ def _extract_episode_numbers(payload: dict) -> tuple[int | None, int | None]:
     return season_number, episode_number
 
 
-def set_user_playback_state(user_id: int, state: dict) -> None:
+def set_user_playback_state(
+    user_id: int,
+    state: dict,
+    slot: str | None = None,
+) -> None:
     """Write playback state dict to cache."""
     cache.set(
-        _cache_key(user_id),
+        _cache_key(user_id, slot),
         state,
         timeout=PLAYBACK_CACHE_TIMEOUT_SECONDS,
     )
@@ -186,14 +201,14 @@ def _queue_playback_webhook(user_id: int) -> None:
     post_playback_webhook.delay(user_id)
 
 
-def peek_user_playback_state(user_id: int) -> dict | None:
+def peek_user_playback_state(user_id: int, slot: str | None = None) -> dict | None:
     """Return the cached card state as stored, without expiry side effects."""
-    return cache.get(_cache_key(user_id))
+    return cache.get(_cache_key(user_id, slot))
 
 
-def clear_user_playback_state(user_id: int) -> None:
+def clear_user_playback_state(user_id: int, slot: str | None = None) -> None:
     """Remove playback state from cache."""
-    cache.delete(_cache_key(user_id))
+    cache.delete(_cache_key(user_id, slot))
 
 
 def get_session_start(
@@ -395,12 +410,32 @@ def store_playback_progress(
     )
 
 
-def _release_checkin_card(user_id: int, state: dict | None) -> None:
-    """Tell the check-in a real event is replacing its card (see ``app.checkin``)."""
-    if state and state.get("checkin_token"):
-        from app import checkin
+def _release_checkin_card(
+    user_id: int,
+    playback_media_type: str | None,
+    media_id: str | None,
+) -> None:
+    """Tell a check-in of the same title that a real event is taking its card.
 
-        checkin.mark_taken_over(user_id, state.pop("checkin_token"))
+    Only the check-in for this very title is affected; check-ins of other
+    media types keep their own cards (see ``app.checkin``).
+    """
+    slot = (
+        MediaTypes.TV.value
+        if playback_media_type == MediaTypes.EPISODE.value
+        else playback_media_type
+    )
+    if slot not in CHECKIN_SLOTS:
+        return
+    card = cache.get(_cache_key(user_id, slot))
+    if not card or not card.get("checkin_token"):
+        return
+    if media_id is None or str(card.get("media_id")) != str(media_id):
+        return
+    from app import checkin
+
+    cache.delete(_cache_key(user_id, slot))
+    checkin.mark_taken_over(user_id, card["checkin_token"])
 
 
 def apply_playback_event(
@@ -425,6 +460,7 @@ def apply_playback_event(
     checkin_token: str | None = None,
     ends_at_ts: int | None = None,
     event_ts: int | None = None,
+    slot: str | None = None,
 ) -> None:
     """Update live playback cache state from a webhook event.
 
@@ -438,6 +474,9 @@ def apply_playback_event(
     ``store_progress`` mirrors webhook positions into the durable store.
     ``provider_completed`` is an explicit completion value when the source
     provides one; ``None`` leaves completion inference source-agnostic.
+
+    ``slot`` names the card a manual Check-in keeps for its media type, so
+    check-ins of different types show side by side; real events leave it unset.
 
     ``checkin_token`` marks the card as a manual Check-in's (see
     ``app.checkin``); any later event for the title rebuilds the state without
@@ -462,7 +501,7 @@ def apply_playback_event(
     if event_type == "media.resume":
         event_type = "media.play"
 
-    key = _cache_key(user_id)
+    key = _cache_key(user_id, slot)
     existing_state = cache.get(key)
     now_ts = _now_ts()
     event_ts = _coerce_int(event_ts)
@@ -486,6 +525,8 @@ def apply_playback_event(
         )
 
     if event_type == "media.stop":
+        if not out_of_order:
+            _release_checkin_card(user_id, playback_media_type, media_id)
         if not out_of_order and (
             existing_state
             and (
@@ -498,7 +539,6 @@ def apply_playback_event(
                 or not rating_key
             )
         ):
-            _release_checkin_card(user_id, existing_state)
             # Grace period instead of immediate deletion — keeps the
             # card visible across auto-play transitions and brief gaps.
             stop_offset = view_offset_seconds
@@ -575,7 +615,7 @@ def apply_playback_event(
         return
 
     if not checkin_token:
-        _release_checkin_card(user_id, existing_state)
+        _release_checkin_card(user_id, playback_media_type, media_id)
 
     offset_seconds = view_offset_seconds
     dur_seconds = duration_seconds
@@ -721,7 +761,7 @@ def apply_playback_event(
         # allowed here; the request path only ever reads the result.
         _attach_resolved_image(state)
 
-    set_user_playback_state(user_id, state)
+    set_user_playback_state(user_id, state, slot)
 
     if not checkin_token:
         _learn_runtime(state, dur_seconds)
@@ -813,33 +853,37 @@ def _estimate_progress_seconds(state: dict, now_ts: int) -> int:
     return max(0, estimated)
 
 
-def get_user_playback_state(user_id: int, now=None) -> dict | None:
+def get_user_playback_state(
+    user_id: int,
+    now=None,
+    slot: str | None = None,
+) -> dict | None:
     """Return active playback state if it is still valid."""
-    state = cache.get(_cache_key(user_id))
+    state = cache.get(_cache_key(user_id, slot))
     if not state:
         return None
 
     now_ts = _now_ts(now)
     expires_at_ts = _coerce_int(state.get("expires_at_ts"), 0)
     if expires_at_ts and now_ts >= expires_at_ts:
-        clear_user_playback_state(user_id)
+        clear_user_playback_state(user_id, slot)
         return None
 
     if state.get("status") == PLAYBACK_STATUS_PAUSED:
         pause_expires_at_ts = _coerce_int(state.get("pause_expires_at_ts"), 0)
         if pause_expires_at_ts and now_ts >= pause_expires_at_ts:
-            clear_user_playback_state(user_id)
+            clear_user_playback_state(user_id, slot)
             return None
 
     if state.get("status") == PLAYBACK_STATUS_STOPPED:
         stop_expires_at_ts = _coerce_int(state.get("stop_expires_at_ts"), 0)
         if stop_expires_at_ts and now_ts >= stop_expires_at_ts:
-            clear_user_playback_state(user_id)
+            clear_user_playback_state(user_id, slot)
             return None
 
     scrobble_expires_at_ts = _coerce_int(state.get("scrobble_expires_at_ts"), 0)
     if scrobble_expires_at_ts and now_ts >= scrobble_expires_at_ts:
-        clear_user_playback_state(user_id)
+        clear_user_playback_state(user_id, slot)
         return None
 
     state_copy = dict(state)
@@ -1136,14 +1180,14 @@ def _attach_resolved_image(state: dict) -> None:
         state["image_resolved_at_ts"] = _now_ts()
 
 
-def resolve_state_image(user_id: int) -> None:
+def resolve_state_image(user_id: int, slot: str | None = None) -> None:
     """Resolve and persist artwork for the cached playback state."""
-    state = cache.get(_cache_key(user_id))
+    state = cache.get(_cache_key(user_id, slot))
     if not state or state.get("image"):
         return
     _attach_resolved_image(state)
     if state.get("image"):
-        set_user_playback_state(user_id, state)
+        set_user_playback_state(user_id, state, slot)
 
 
 def _stored_episode_image_is_inherited(state_item):
@@ -1237,9 +1281,38 @@ def _resolve_landscape_image(state, state_item):
     return settings.IMG_NONE, "none"
 
 
-def build_home_playback_card(user) -> dict | None:
-    """Build template context for the home-page live playback card."""
-    state = get_user_playback_state(user.id)
+def active_slots(user_id: int) -> list[str | None]:
+    """Return the cards showing now: the real playback first (``None``), then check-ins.
+
+    Check-ins are ordered by when they started, oldest first.
+    """
+    slots: list[str | None] = []
+    if get_user_playback_state(user_id):
+        slots.append(None)
+    running = []
+    for slot in CHECKIN_SLOTS:
+        state = get_user_playback_state(user_id, slot=slot)
+        if state:
+            running.append(
+                (_coerce_int(state.get("started_at_ts"), 0), CHECKIN_SLOTS.index(slot), slot),
+            )
+    slots.extend(slot for *_, slot in sorted(running))
+    return slots
+
+
+def build_home_playback_cards(user) -> list[dict]:
+    """Build the template context for every live playback card on Home."""
+    cards = []
+    for slot in active_slots(user.id):
+        card = build_home_playback_card(user, slot=slot)
+        if card:
+            cards.append(card)
+    return cards
+
+
+def build_home_playback_card(user, slot: str | None = None) -> dict | None:
+    """Build template context for one home-page live playback card."""
+    state = get_user_playback_state(user.id, slot=slot)
     if not state:
         return None
 
@@ -1266,11 +1339,11 @@ def build_home_playback_card(user) -> dict | None:
             image, image_source = state_item.image, "primary"
         else:
             image, image_source = settings.IMG_NONE, "pending"
-        guard_key = f"{IMAGE_RESOLVE_GUARD_PREFIX}:{user.id}"
+        guard_key = f"{IMAGE_RESOLVE_GUARD_PREFIX}:{user.id}:{slot or ''}"
         if cache.add(guard_key, True, IMAGE_RESOLVE_GUARD_SECONDS):
             from app.tasks_interactive import resolve_playback_image
 
-            resolve_playback_image.delay(user.id)
+            resolve_playback_image.delay(user.id, slot)
 
     status = state.get("status") or PLAYBACK_STATUS_PLAYING
 

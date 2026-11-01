@@ -420,6 +420,22 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
             fields=(CredentialField("api_key", "RapidAPI key", "OPENCRITIC_API_KEY"),),
         ),
         ProviderCredentialSpec(
+            slug="podcastindex",
+            media_tags=("podcasts",),
+            user_scope=True,
+            label="Podcast Index",
+            description="Open podcast directory. Finds shows other sources miss.",
+            docs_url="https://api.podcastindex.org/signup",
+            fields=(
+                CredentialField("api_key", "API key", "PODCASTINDEX_API_KEY"),
+                CredentialField(
+                    "api_secret",
+                    "API secret",
+                    "PODCASTINDEX_API_SECRET",
+                ),
+            ),
+        ),
+        ProviderCredentialSpec(
             slug="bgg",
             media_tags=("games",),
             user_scope=True,
@@ -506,8 +522,9 @@ REGISTRY: dict[str, ProviderCredentialSpec] = {
 # Threading a user argument through every provider function would mean touching
 # ~150 signatures across TMDB, TVDB and friends. Instead the request-serving
 # user is published here, mirroring services.interactive_request_scope(). A
-# Celery task runs no middleware, so this stays unset there and background work
-# keeps using the instance key.
+# Celery task runs no middleware, so a task acting for one user (an import, a
+# webhook, a sync) must open this scope itself; work that does not keeps using
+# the instance key.
 _current_user: contextvars.ContextVar = contextvars.ContextVar(
     "_provider_credential_user",
     default=None,
