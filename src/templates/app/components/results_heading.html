@@ -1,0 +1,6 @@
+{% load i18n %}
+{# The "Online Results (Source)" heading with an info tip. Pass title (the source's name), tip and label (both already translated). #}
+<div class="relative flex items-center gap-x-2 mb-4">
+  <h3 class="text-lg font-semibold text-[var(--color-text-secondary)]">{% blocktranslate with value_1=title %}Online Results ({{ value_1 }}){% endblocktranslate %}</h3>
+  {% include "users/components/info_tip.html" with tip=tip label=label %}
+</div>
