@@ -147,6 +147,8 @@ def _field_view(spec, field, user):
     source = credentials.source_of(spec.slug, field.name, user)
     env = credentials.env_value(field)
     stored = credentials.instance_value(spec.slug, field.name)
+    default = credentials.default_value(field)
+    personal = credentials.user_value(spec, field, user)
     return {
         "name": field.name,
         "label": field.label,
@@ -156,10 +158,13 @@ def _field_view(spec, field, user):
         "setting": field.setting,
         "source": source,
         "locked": bool(env),
-        "preview": _mask(env or stored),
+        "preview": _mask(env or stored or default),
+        "has_fallback_value": bool(env or stored or default),
+        "using_default": bool(default and not (env or stored)),
         "has_instance_value": bool(stored),
         "personal": field.name in {f.name for f in spec.personal_fields()},
-        "has_personal_value": bool(credentials.user_value(spec, field, user)),
+        "has_personal_value": bool(personal),
+        "personal_preview": _mask(personal),
     }
 
 

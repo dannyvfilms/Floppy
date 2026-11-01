@@ -18,8 +18,8 @@ points; the map enumerates every member. Existing backend contracts remain autho
 inspection only, browser migration not performed, native not tested. Test references
 are available regression targets, **not executed test results**. Related work and
 recurring deferrals: none recorded; attach real issue/PR links when known. The
-foundation proof blocks every migration; no component is `Ready` yet. Ordinary
-unassessed components stay `Existing` rather than prematurely becoming exceptions.
+settings-card shell is the first authorized browser pilot; native proof remains open.
+Ordinary unassessed components stay `Existing` rather than prematurely becoming exceptions.
 
 When a component changes, update affected paths/contracts and add explicit fields:
 `Status`, `Verification` (commands/results, surfaces, platforms/versions and limits),
@@ -36,7 +36,7 @@ High shared leverage: `MEDIA-CARD`, `RATING`, `FILTERS`, `RAILS`, `DATE-TIME`,
 inline settings dropdowns, shell controls, card/table metadata and media-type visual
 mappings in `date-range.js` versus `app/config.py`. Consolidate only matching contracts.
 
-Page composition index (all currently entirely on the existing stack):
+Page composition index (existing stack except shared card shells and the full AniList provider region):
 
 - Home: `SHELL`, `HOME`, `RAILS`, `MEDIA-CARD`, `PLAYBACK`, `PROGRESS`.
 - Library/search/discover: `LIBRARY`, `FILTERS`, `TABLES`, `BULK`, `SEARCH`, `DISCOVER`, `MEDIA-CARD`.
@@ -63,17 +63,29 @@ can inform a focused completion pass.
 - Reuse/blockers: share navigation values/tokens; document layout, history and Safari rail need platform adapters. Do not merge distinct public/auth semantics.
 - Validation targets: `src/app/tests/views/test_boosted_navigation.py`; menu/focus parity needs browser observation.
 
+### SETTINGS-CARD — Shared settings card shell
+
+- Purpose/usage: provider Connection instance/personal credentials and Import preferences/options.
+- Implementation: `frontend/settings/SettingsCard.jsx`, shared `Chip.jsx`, `mount.jsx`, `index.js`, `settings-card.css`; `src/users/templatetags/ui_tags.py` and `src/templates/users/components/settings_card.html`. See [usage and ownership](settings-cards.md).
+- Contract: one title/badge/help/frame pattern with editable/read-only/neutral tones. `Chip` shares passive/action/link styling across status badges, media pills and the provider-key link, with consistent hover/focus highlights and no text underline. AniList supplies React-owned children; retained partial consumers keep their server body outside the header root. Existing backend permissions and CSRF remain authoritative.
+- Data: presentation-only `json_script`; no credentials, server body HTML or transport in the shared React API. Shared source uses React Native primitives; the web adapter supplies DOM events and browser theme values.
+- Status: `Web Migrated` shared card presentation. AniList uses full React composition; other providers retain Django body slots and setup/restore dialogs until their controls are ported. This does not migrate `FORM-CONTROLS` as a whole.
+- Verification: production assets build and collect through Django; targeted Django/theme tests passed. Chromium 151/macOS browser checks cover initial/HTMX/back-forward lifecycle, focus, real CSRF submissions, fallback, responsive widths and six theme states. iOS/Android not tested; no native compatibility claim.
+- Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793); user-authorized first React browser component pilot.
+- Deferrals: server-owned form bodies retire through scoped control ports after parity checks; native acceptance awaits actual iOS/Android runs and a native theme/transport boundary. Broader performance evidence remains required before larger component adoption.
+
 ### FORM-CONTROLS — Fields, popovers, dialogs and feedback
 
 - Purpose/usage: repeated buttons, inputs/selectors/tabs, confirmations, help/errors and notifications across forms, settings, filters and modals.
-- Implementation: inline templates, `src/templates/users/components/info_tip.html`, `form_save_bar.html`, allauth fields, base modal/toast infrastructure, `src/static/js/keepPopupsOnScreen.js`.
+- Implementation: [app-wide React controls](react-components.md), `frontend/ui/controls.jsx` and `controls.css`, consumed by provider Overview/Connection/Import/Activity. Legacy consumers include inline templates, `src/templates/users/components/info_tip.html`, `form_save_bar.html`, allauth fields, base modal/toast infrastructure and `src/static/js/keepPopupsOnScreen.js`.
 - Contract: labels, selected/disabled/busy states, errors/CSRF, click-away/Escape and existing focus behavior, viewport-safe popups, dirty-save live announcements. A universal modal focus trap is not established.
 - Data: owning Django forms/errors/messages, Alpine state and response events; feature endpoints retain action semantics.
-- Reuse/blockers: strong primitive reuse; dropdowns are duplicated inline implementations. Define only needed primitives; native focus/portal/keyboard behavior needs proof.
+- Reuse/blockers: use shared `SelectField` for preference forms and `FilterDropdown` for Lists-style filter toolbars. Both share keyboard/typeahead/dismissal behavior but retain distinct appearances. Legacy dropdowns remain inline until their UI is reworked; native behavior still needs proof.
 - Validation targets: owning feature tests, `src/users/tests/views/test_preferences.py`; general accessibility interaction coverage unverified.
-- Status: `Existing`. Provider credential access and setup dialogs use the existing Alpine/teleport stack, contain keyboard focus, and restore focus to their triggering badges on close.
+- Status: `Web Migrated` for shared React buttons, labeled fields/selects, chips/toggle chips, tabs, dialogs and card grids, used throughout AniList. Other consumers retain legacy controls until reworked. Reuse these components by element, without requiring a whole provider/page port. Provider-specific authentication and transport remain in feature code.
 - Verification: both provider Connection dialogs opened and dismissed with Escape, including focus return and setup-dialog Tab/Shift+Tab wrapping, in Chromium 151 on macOS at 1440×1000 and 390×844 in system light and dark. Native and assistive-technology testing not performed.
-- Related work: [provider consolidation #1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: broader shared dialog primitives await the separately authorized foundation proof.
+- Verification: 17 Chromium tests pass across all AniList tabs, six theme states and phone/tablet/desktop widths. Public/private switching via pointer and keyboard preserves entered username and existing credential gating; surface borders, inset arrows and purple actions are checked in light/dark. Shared toggle/dialog/link chips show focus rings for keyboard navigation only; dialog focus restoration is preserved. Native and assistive-technology verification remain pending.
+- Related work: [provider consolidation #1793](https://github.com/dannyvfilms/Floppy/issues/1793). Broader legacy adoption follows component redesigns; the shared browser controls are available now.
 
 ### TOKENS — Theme, typography, motion and icons
 
@@ -461,14 +473,15 @@ templates are compatibility/composition sources, not equally active parallel pag
 ### SET-PROVIDERS — Catalog and capability tabs
 
 - Purpose/usage: current provider browser/detail and status cards.
-- Implementation: `src/templates/users/providers.html`, `provider_detail.html`, provider result/card/filter/status/row components.
+- Implementation: `frontend/providers/Directory.jsx` and shared catalog/toolbar controls; `src/templates/users/providers.html` and provider result/card templates provide the server fallback. `provider_detail.html` and provider status/row components retain other consumers. The former Alpine filter-dropdown template has no active directory consumer.
 - Contract: query/capability/media, 300ms search/URL/history, supported tabs and connection health.
-- Data: `src/users/provider_views.py`, `provider_catalog.py`; HTML responses.
+- Data: `src/users/provider_views.py`, `provider_catalog.py`, `provider_ui.directory_page`; HTML fallback and authenticated private/no-store JSON with explicit presentation fields only.
 - Reuse/blockers: catalog/status values shared; do not assume services available standalone.
 - Validation targets: `src/users/tests/views/test_provider_navigation.py`, `test_provider_catalog.py`, `test_provider_integration_sections.py`.
-- Status: `Existing`. Provider detail tabs share one outer settings surface; the sidebar provides navigation back to the catalog.
-- Verification: provider Connection, Metadata and Import pages rendered in Chromium 151 on macOS at 1440×1000 and 390×844 in system light and dark; no horizontal overflow observed. Native not tested.
-- Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: cross-platform presentation awaits the foundation proof.
+- Status: `Web Migrated` for the Providers directory and AniList's full provider region: header, media chips, tabs, three-card Overview, Connection, Import and Activity. The directory reuses app-wide `CatalogCard`, `CatalogGrid`, `FilterToolbar`, fields and selects; other providers remain `Existing`/partial card consumers. See [provider-page ownership and data](provider-pages.md).
+- Verification: 184 targeted provider/credential/model/import/action/OAuth tests and 15 Chromium 151/macOS browser checks passed. The browser checks exercise all four AniList tabs at phone/tablet/desktop widths and six theme states, form submissions, activity diagnostics/actions, fallback and navigation lifecycle. Native not tested.
+- Directory verification: 51 targeted Django tests and all 21 provider Chromium checks pass. Directory checks cover container-based columns, combined filters, capability-specific links, Connection status icons, empty results, Back navigation and bundle-failure native form submission. Shared preference/filter menu appearances, typeahead, Escape/click-away and focus return are checked. Desktop dark/mobile light screenshots were reviewed. Native not tested.
+- Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: provider-specific forms and navigation remain legacy until scoped ports; native verification remains open.
 
 ### SET-METADATA — Credentials, defaults and repair
 
@@ -478,7 +491,7 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: `src/users/metadata_views.py`, credential services/repair handlers.
 - Reuse/blockers: field/status reusable; authorization/secrets remain server-owned, mobile endpoint/secret audit required.
 - Validation targets: `src/users/tests/views/test_metadata_settings.py`.
-- Status: `Existing`. Instance and personal credential forms render inline, with editable/read-only and environment-lock states. The Read-only badge opens permission details; the key badge opens setup instructions when present or links directly to the provider.
+- Status: `Web Migrated` for AniList instance/personal credential forms and permission dialog. Other providers remain inline Django forms with shared React card headings. Preserve editable/read-only/environment locks; saved values and previews never enter the AniList page model.
 - Verification: 78 targeted provider, metadata, sync and import tests passed with `FLOPPY_TEST_FAST_DB=1` (migrations not replayed); Chromium 151 on macOS, system light/dark at 1440×1000 and 390×844, including permission dialog focus and Escape. Native and assistive-technology testing not performed.
 - Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: the legacy metadata template retains its modal for compatibility; retire that consumer when the retained legacy template is removed. Native credential transport and secure storage await separate design and the foundation proof.
 
@@ -490,8 +503,8 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: import context/settings in `src/users/views.py`, `src/integrations/views.py`, account/task records.
 - Reuse/blockers: field/status/schedule primitives; keep distinct provider flows/server-required jobs.
 - Validation targets: `src/users/tests/views/test_import_data.py`, `src/integrations/tests/test_plex_import_views.py`.
-- Status: `Existing`. Provider import and scoped activity sections use the provider shell's surface; the shared data-management and central activity surfaces retain their own containers.
-- Verification: the 78 targeted tests above include provider import and scoped history; import options opened and closed in Chromium 151 on macOS at desktop and phone widths in system light/dark. Native not tested.
+- Status: `Web Migrated` for AniList preferences, serialized auto-save, public username import and credential-gated private OAuth form. Uses app-wide fields/selects/buttons/card grid and a reusable Public/Private `ToggleChip`; provider code retains authentication semantics. Other providers retain Django body controls within the shared `SETTINGS-CARD` shell; data management retains its restore dialog.
+- Verification: targeted provider catalog and import tests cover scheduling, credentials, uploads and scoped activity; Chromium on macOS checked AniList, Pocket Casts and Playnite at desktop and phone widths in dark mode. Native not tested.
 - Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: native upload, scheduling and server-job adapters await the foundation proof and separately authorized client work.
 
 ### SET-ACTIVITY — Import and operational activity
@@ -502,8 +515,8 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: provider activity handler, ImportRun/tasks and cancel/rollback/cleanup handlers.
 - Reuse/blockers: status/activity presentation shared; transport/job control adapters must not erase user work on refresh.
 - Validation targets: `src/users/tests/views/test_cancel_import_run.py`, `test_cancel_pending_import.py`, `test_rollback_import_run.py`.
-- Status: `Existing`. Provider-scoped import activity uses the provider shell's surface; central Activity retains its containers and the same records and actions.
-- Verification: the targeted provider catalog and import tests above cover scoped history and polling; Chromium 151 on macOS loaded scoped Import and Activity tabs at desktop and phone widths in system light/dark. Native not tested.
+- Status: `Web Migrated` for AniList scoped schedules, paged history, run actions and source cleanup. React owns polling and preserves expanded diagnostics. Other provider/central Activity surfaces retain their current records/actions and templates.
+- Verification: scoped JSON tests cover exact ownership, pagination and token exclusion; existing cancel/undo/source cleanup tests pass. Chromium 151/macOS checks polling pause, error details and schedule removal returning to Activity. Native not tested.
 - Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: native activity transport and job controls await separate client work and the foundation proof.
 
 ### SET-SYNC — Integrations, outbound sync and health
@@ -514,7 +527,7 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: `src/users/views.py`, `src/integrations/state/settings_view.py`, integration actions; connection-health contract applies.
 - Reuse/blockers: status/fields shared; background integrations require server capabilities and distinct provider semantics.
 - Validation targets: `src/integrations/tests/test_sync_settings.py`, `src/users/tests/views/test_provider_sync_templates.py`.
-- Status: `Existing`. Provider-scoped MAL and outbound sections use the provider shell's surface; central Activity retains its own containers.
+- Status: `Existing`. Watched-state configuration is on the supported media server Sync tabs; Activity surfaces conflicts when present. Provider-scoped MAL and outbound sections use the provider shell's surface.
 - Verification: the 78 targeted tests above include `test_provider_sync_templates`; Chromium 151 on macOS at desktop and phone widths in system light/dark covered the disconnected MAL Sync page, but not a connected outbound account. Native not tested.
 - Related work: [#1793](https://github.com/dannyvfilms/Floppy/issues/1793). Deferral: native sync settings and server integration adapters await the foundation proof.
 

@@ -1,7 +1,6 @@
 import base64
 import json
 import logging
-import re
 import uuid
 from datetime import timedelta
 from io import BytesIO
@@ -2688,15 +2687,16 @@ def about(request):
     )
 
 
-def _import_source_media_summary(user):
+def _import_source_media_summary(user, sources=None):
     """Return media type/source/count rows the user has importer-tagged data for."""
     summary = []
     for media_type in MediaTypes.values:
         if media_type == MediaTypes.EPISODE.value:
             continue
         model = apps.get_model(app_label="app", model_name=media_type)
+        scope = {"import_run__source__in": sources} if sources is not None else {}
         rows = (
-            model.objects.filter(user=user, import_run__isnull=False)
+            model.objects.filter(user=user, import_run__isnull=False, **scope)
             .values("import_run__source")
             .annotate(count=Count("id"))
             .order_by("import_run__source")
@@ -2722,11 +2722,11 @@ def bulk_delete_by_import_source(request, media_type, source):
     """
     if media_type == MediaTypes.EPISODE.value or media_type not in MediaTypes.values:
         messages.error(request, "Unknown media type.")
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     if not ImportRun.objects.filter(user=request.user, source=source).exists():
         messages.error(request, "Unknown import source.")
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     # A running import writes Music rows and re-creates trackers as it goes, so
     # deleting underneath it leaves rows the sweep has already walked past.
@@ -2740,7 +2740,7 @@ def bulk_delete_by_import_source(request, media_type, source):
             request,
             "Cancel the running import from this source before deleting it.",
         )
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     model = apps.get_model(app_label="app", model_name=media_type)
     doomed = model.objects.filter(user=request.user, import_run__source=source)
@@ -2763,7 +2763,7 @@ def bulk_delete_by_import_source(request, media_type, source):
         messages.success(request, f"Permanently deleted {deleted_count} item(s).")
     else:
         messages.info(request, "Nothing to delete.")
-    return redirect("import_data")
+    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
 
 # Cap on ids per `__in` lookup. A >100k-scrobble library can reference more
@@ -3069,7 +3069,7 @@ def cancel_import_run(request, run_id):
 
     if run.status != ImportRun.Status.RUNNING:
         messages.error(request, "This import is not running.")
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     if run.task_id:
         celery_app.control.revoke(run.task_id, terminate=True)
@@ -3081,7 +3081,7 @@ def cancel_import_run(request, run_id):
     )
     _reset_history_import_status(request.user, run.source)
     messages.success(request, "Import cancelled.")
-    return redirect("import_data")
+    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
 
 def _reset_history_import_status(user, source):
@@ -3158,7 +3158,7 @@ def cancel_pending_import(request, task_id):
             "This import is no longer queued. A running import can be cancelled "
             "from Recent Import Runs.",
         )
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     already_started = AsyncResult(task_id).status == states.STARTED
     celery_app.control.revoke(task_id, terminate=already_started)
@@ -3174,7 +3174,7 @@ def cancel_pending_import(request, task_id):
         )
     _reset_history_import_status(request.user, pending["source"])
     messages.success(request, "Import cancelled.")
-    return redirect("import_data")
+    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
 
 @require_POST
@@ -3193,7 +3193,7 @@ def rollback_import_run(request, run_id):
 
     if run.status == ImportRun.Status.RUNNING:
         messages.error(request, "Cancel the import before rolling it back.")
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     rollback_media_types = [
         media_type
@@ -3222,25 +3222,12 @@ def rollback_import_run(request, run_id):
         messages.success(request, f"Undo complete: {' and '.join(parts)}.")
     else:
         messages.info(request, "Nothing to remove for this import.")
-    return redirect("import_data")
+    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
 
 def _task_belongs_to_user(task, user):
-    """Return whether a periodic task's kwargs name exactly this user.
-
-    A plain substring test reads `"user_id": 1` out of `"user_id": 11`, so
-    the id has to be anchored on the delimiter that follows it. Quoting and
-    spacing vary with how the kwargs were written.
-    """
-    if not task.kwargs:
-        return False
-
-    return bool(
-        re.search(
-            rf"""['"]user_id['"]:\s*{user.id}\s*[,}}]""",
-            task.kwargs,
-        ),
-    )
+    """Verify the parsed owner, including legacy Python-repr task kwargs."""
+    return helpers.task_kwargs_belong_to_user(task.kwargs, user.pk)
 
 
 @require_POST
@@ -3251,7 +3238,7 @@ def delete_import_schedule(request):
         task = PeriodicTask.objects.get(name=task_name)
     except PeriodicTask.DoesNotExist:
         messages.error(request, "Import schedule not found.")
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     # Last.fm polling is a single shared task covering every connected
     # user (it has no per-user kwargs), so it can never match the
@@ -3260,11 +3247,11 @@ def delete_import_schedule(request):
     if task.task == "Poll Last.fm for all users":
         LastFMAccount.objects.filter(user=request.user).delete()
         messages.info(request, "Disconnected Last.fm.")
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     if not _task_belongs_to_user(task, request.user):
         messages.error(request, "Import schedule not found.")
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     if task.task == WATCHLIST_TASK_NAME:
         PlexAccount.objects.filter(user=request.user).update(
@@ -3276,7 +3263,7 @@ def delete_import_schedule(request):
         )
     task.delete()
     messages.success(request, "Import schedule deleted.")
-    return redirect("import_data")
+    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
 
 @require_POST

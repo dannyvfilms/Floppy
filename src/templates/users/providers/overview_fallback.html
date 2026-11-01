@@ -1,0 +1,24 @@
+{% load i18n ui_tags %}
+<div class="provider-overview ui-card-grid ui-card-grid-auto">
+  {% translate "Connection" as connection_title %}
+  <a class="ui-card-link" href="{{ provider_page.urls.connection }}"
+     {% if provider_page.overview.connection == 'none' %}title="{% translate 'Public username imports do not require provider credentials.' %}"{% elif provider_page.overview.instanceFallback %}title="{% translate 'Uses instance fallback for fields without a personal value.' %}"{% endif %}>
+  {% settings_card title=connection_title %}
+    <p>{% if provider_page.overview.connection == 'personal' %}{% translate "Personal credentials active" %}{% elif provider_page.overview.connection == 'instance' %}{% translate "Instance credentials active" %}{% else %}{% translate "No credentials active" %}{% endif %}</p>
+  {% endsettings_card %}
+  </a>
+  {% translate "Automatic import" as import_title %}
+  <a class="ui-card-link" href="{{ provider_page.urls.import }}">
+  {% settings_card title=import_title %}
+    <p>{% if provider_page.overview.scheduleCount %}{{ provider_page.overview.scheduleSummary }}{% else %}{% translate "No automatic imports configured" %}{% endif %}</p>
+    {% if provider_page.overview.nextImport %}<p>{% translate "Next import" %}: {{ provider_page.overview.nextImport }}</p>{% endif %}
+  {% endsettings_card %}
+  </a>
+  {% translate "Last active import" as activity_title %}
+  <a class="ui-card-link" href="{{ provider_page.urls.activity }}">
+  {% settings_card title=activity_title %}
+    <p>{% if provider_page.overview.latestImport %}{{ provider_page.overview.latestImport.status }}{% else %}{% translate "No imports yet" %}{% endif %}</p>
+    {% if provider_page.overview.latestImport %}<p>{{ provider_page.overview.latestImport.date }}</p>{% endif %}
+  {% endsettings_card %}
+  </a>
+</div>

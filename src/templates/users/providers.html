@@ -2,6 +2,8 @@
 {% load i18n %}
 {% block title %}{% translate "Providers - Floppy" %}{% endblock title %}
 {% block settings_content %}
+  {{ provider_directory|json_script:"provider-directory-model" }}
+  <div data-provider-directory-root data-props-id="provider-directory-model" x-ignore hx-disable>
   <div class="bg-[var(--color-surface)] rounded-lg p-6 space-y-6">
     <div>
       <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
@@ -13,14 +15,7 @@
       </div>
       <p class="text-sm text-[var(--color-text-muted)]">{% translate "Find services and their available settings." %}</p>
     </div>
-    <form id="provider-filter-form" method="get"
-          class="flex flex-col md:flex-row gap-4"
-          x-data="{ capability: '{{ capability|escapejs }}', media: '{{ media|escapejs }}' }"
-          hx-get="{% url 'providers' %}" hx-target="#provider-results" hx-select="#provider-results" hx-swap="outerHTML"
-          hx-trigger="submit, input changed delay:300ms from:#provider-search"
-          hx-push-url="true" hx-sync="this:replace">
-      <input type="hidden" name="capability" value="{{ capability }}" x-model="capability">
-      <input type="hidden" name="media" value="{{ media }}" x-model="media">
+    <form id="provider-filter-form" method="get" class="flex flex-col md:flex-row gap-4">
       <div class="relative flex-1 min-w-0">
         <label for="provider-search" class="sr-only">{% translate "Search providers" %}</label>
         <input id="provider-search" name="q" type="search" value="{{ query }}" autocomplete="off"
@@ -29,10 +24,18 @@
         {% include "app/icons/magnifying-glass.svg" with classes="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--color-text-muted)] w-5 h-5" %}
       </div>
       <div class="flex gap-4 md:gap-2 flex-wrap filter-toolbar lists-filter-toolbar">
-        {% include "users/components/provider_filter_dropdown.html" with field="capability" options=capability_options selected_label=capability_label filter_label="Filter by capability" %}
-        {% include "users/components/provider_filter_dropdown.html" with field="media" options=media_options selected_label=media_label filter_label="Filter by media type" %}
+        <label class="sr-only" for="fallback-capability">{% translate "Filter by capability" %}</label>
+        <select id="fallback-capability" name="capability">
+          {% for option in capability_options %}<option value="{{ option.key }}" {% if option.key == capability %}selected{% endif %}>{% translate option.label %}</option>{% endfor %}
+        </select>
+        <label class="sr-only" for="fallback-media">{% translate "Filter by media type" %}</label>
+        <select id="fallback-media" name="media">
+          {% for option in media_options %}<option value="{{ option.key }}" {% if option.key == media %}selected{% endif %}>{% translate option.label %}</option>{% endfor %}
+        </select>
+        <button type="submit">{% translate "Search providers" %}</button>
       </div>
     </form>
-    {% include "users/components/provider_results.html" %}
+    <div class="ui-catalog">{% include "users/components/provider_results.html" %}</div>
+  </div>
   </div>
 {% endblock settings_content %}

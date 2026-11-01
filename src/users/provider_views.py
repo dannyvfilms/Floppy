@@ -1,12 +1,12 @@
 """Provider settings navigation using the existing forms and action handlers."""
 
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.http import urlencode
 from django.views.decorators.http import require_GET
 
-from users import metadata_views, views
+from users import metadata_views, provider_ui, views
 from users.provider_catalog import (
     ACCOUNT_IMPORTS,
     CAPABILITIES,
@@ -20,8 +20,9 @@ from users.provider_catalog import (
 def providers(request):
     """Search all supported providers by capability and library type."""
     query = request.GET.get("q", "").strip()
+    directory_filters = ("connection", *CAPABILITIES)
     capability = request.GET.get("capability", "")
-    if capability not in CAPABILITIES:
+    if capability not in directory_filters:
         capability = ""
     media = request.GET.get("media", "")
     if media not in dict(MEDIA_CHOICES):
@@ -36,7 +37,7 @@ def providers(request):
                 item["label"] + " " + item["description"] + " " + item["card_description"]
             ).casefold()
         ]
-    if capability in CAPABILITIES:
+    if capability in directory_filters:
         items = [item for item in items if item.get(capability)]
     if media:
         items = [item for item in items if media in item["media_types"]]
@@ -48,12 +49,17 @@ def providers(request):
         "capability": capability,
         "media": media,
         "capability_options": [{"key": "", "label": "All Capabilities"}]
-        + [{"key": key, "label": key.title()} for key in CAPABILITIES],
+        + [{"key": key, "label": key.title()} for key in directory_filters],
         "media_options": [{"key": "", "label": "All Types"}]
         + [{"key": key, "label": label} for key, label in MEDIA_CHOICES],
         "capability_label": capability.title() if capability else "All Capabilities",
         "media_label": dict(MEDIA_CHOICES).get(media, "All Types"),
     }
+    context["provider_directory"] = provider_ui.directory_page(context)
+    if request.GET.get("format") == "json":
+        response = JsonResponse(context["provider_directory"])
+        response["Cache-Control"] = "private, no-store"
+        return response
     template = (
         "users/components/provider_results.html"
         if request.headers.get("HX-Target") == "provider-results"
@@ -72,10 +78,23 @@ def provider_detail(request, slug):
     tab = request.GET.get("tab", "overview")
     if tab not in provider["tabs"]:
         raise Http404
+    if slug == "anilist" and request.GET.get("format") == "json":
+        if tab != "activity":
+            raise Http404
+        try:
+            page = int(request.GET.get("page", "1"))
+        except ValueError as error:
+            raise Http404 from error
+        if not 1 <= page <= provider_ui.MAX_ACTIVITY_PAGES:
+            raise Http404
+        response = JsonResponse(provider_ui.anilist_activity(request.user, page))
+        response["Cache-Control"] = "private, no-store"
+        return response
     context = {
         "provider": provider,
         "provider_slug": slug,
         "provider_tab": tab,
+        "inline_import": tab == "import",
         "activity_source": slug,
         "provider_navigation": True,
         "capability_rows": [
@@ -89,9 +108,12 @@ def provider_detail(request, slug):
         tab == "import"
         or (tab == "connection" and slug in ACCOUNT_IMPORTS and slug != "mal")
     ) and provider.get("import_slug"):
-        context.update(views.import_data_context(request))
+        if slug == "anilist":
+            context["plex_sections_json"] = "[]"
+        else:
+            context.update(views.import_data_context(request))
         context["import_slug"] = provider["import_slug"]
-    if tab == "activity" or (
+    if (tab == "activity" and slug != "anilist") or (
         provider.get("integration")
         and tab in {"connection", "import", "tracking", "sync"}
     ):
@@ -102,6 +124,8 @@ def provider_detail(request, slug):
         )
     if slug in {"mal", "tmdb", "wetrakr"} and tab in {"connection", "sync", "activity"}:
         context.update(views.mal_export_context(request, slug))
+    if slug == "anilist":
+        context["provider_page"] = provider_ui.anilist_page(request, provider, tab, credential_context=context)
     return render(request, "users/provider_detail.html", context)
 
 

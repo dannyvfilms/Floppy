@@ -330,7 +330,8 @@ def catalog():
                     {"game"} if "games" in spec.media_tags else set()
                 )
     result["jellyfin"]["import"] = True
-    result["jellyfin"]["sync"] = True
+    for slug in ("jellyfin", "emby", "kodi"):
+        result[slug]["sync"] = True
     for slug in ("mal", "tmdb", "wetrakr"):
         result[slug]["sync"] = True
     result["steam"].update(metadata=True, metadata_role="supplemental")
@@ -455,7 +456,9 @@ def provider_state(provider, user):
     elif account_saved:
         connection = "Account saved"
     elif credentials_available:
-        connection = "Credentials available"
+        spec = credentials.REGISTRY.get(slug)
+        sources = {credentials.source_of(slug, field.name, user) for field in spec.fields if field.required} if spec else set()
+        connection = "Bundled credentials available" if sources == {credentials.SOURCE_DEFAULT} else "Credentials available"
     elif provider.get("connection"):
         connection = "Needs setup"
     else:
@@ -503,6 +506,8 @@ def provider_state(provider, user):
         "account_saved": account_saved,
         "attention": attention,
         "connection": connection,
+        "connection_tone": "warning" if connection in {"Needs attention", "Awaiting authorization"} else
+            "success" if connection in {"Account saved", "Credentials available", "Bundled credentials available", "Webhook events received"} else "neutral",
         "summary": connection if provider.get("connection") else "Available",
         "capabilities": capabilities,
     }

@@ -243,6 +243,38 @@ class MetadataSettingsPageTests(TestCase):
 
         self.assertNotContains(response, 'value="personal-token"')
 
+    @override_settings(
+        BGG_API_TOKEN="bundled-bgg-AB12",
+        COMICVINE_API="bundled-comic-CD34",
+        SHARED_DEFAULT_CREDENTIALS={"BGG_API_TOKEN": "bundled-bgg-AB12", "COMICVINE_API": "bundled-comic-CD34"},
+    )
+    def test_bundled_defaults_are_identified_and_masked_for_members_and_admins(self, _probe):
+        for user in (self.user, self.admin):
+            self.client.force_login(user)
+            for slug, field, secret in (("bgg", "token", "bundled-bgg-AB12"), ("comicvine", "api_key", "bundled-comic-CD34")):
+                with self.subTest(user=user.pk, slug=slug):
+                    response = self.client.get(reverse("provider_detail", args=[slug]), {"tab": "connection"})
+                    self.assertContains(response, "Bundled default")
+                    self.assertNotContains(response, secret)
+                    soup = BeautifulSoup(response.content, "html.parser")
+                    input_field = soup.select_one(f"#{slug}-{field}")
+                    self.assertEqual(input_field.get("placeholder") if user.is_superuser else input_field.get("value"), "••••••••" + secret[-4:])
+                    self.assertNotContains(response, "Remove stored credentials")
+            directory = self.client.get(reverse("providers"), {"format": "json", "capability": "connection"}).json()
+            items = {item["slug"]: item for item in directory["items"]}
+            for slug in ("bgg", "comicvine"):
+                self.assertEqual(items[slug]["status"], {"tone": "success", "label": "Bundled credentials available"})
+
+    @override_settings(HARDCOVER_API="")
+    def test_personal_key_hint_shows_a_masked_preview_only(self, _probe):
+        secret = "personal-credential-X9K2"
+        credentials.set_user("hardcover", self.user, {"api_key": secret})
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("provider_detail", args=["hardcover"]), {"tab": "connection"})
+        soup = BeautifulSoup(response.content, "html.parser")
+        self.assertIn("••••••••X9K2", soup.select_one("#hardcover-personal-api_key")["placeholder"])
+        self.assertNotContains(response, secret)
+
     @override_settings(HARDCOVER_API="")
     def test_a_normal_user_cannot_write_instance_credentials(self, _probe):
         self.client.force_login(self.user)

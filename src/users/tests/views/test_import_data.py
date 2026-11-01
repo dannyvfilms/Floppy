@@ -43,7 +43,9 @@ class ImportDataViewTests(TestCase):
         response = self.client.get(reverse("provider_detail", args=["plex"]) + "?tab=import")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, reverse("import_data_activity"))
+        self.assertNotContains(response, reverse("import_data_activity"))
+        activity = self.client.get(reverse("provider_detail", args=["plex"]) + "?tab=activity")
+        self.assertContains(activity, reverse("import_data_activity"))
         mock_get_import_tasks.assert_not_called()
 
     def test_import_data_activity_renders_history_and_schedules(self):
@@ -281,8 +283,7 @@ class ImportDataViewTests(TestCase):
                 start = html.index(action)
                 form_start = html.rindex("<form", 0, start)
                 form = html[form_start : html.index("</form>", start)]
-                modal_start = html.rindex('x-show="activeModal ===', 0, form_start)
-                self.assertIn(badge, html[modal_start:form_start])
+                self.assertIn(badge, html[:form_start])
                 self.assertNotIn("importFrequency", form.replace('x-model="importFrequency"', ""))
 
     @override_settings(

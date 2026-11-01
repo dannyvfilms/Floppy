@@ -352,16 +352,43 @@ Models/migrations and divergent UI normally require manual adaptation. Provider 
 - For meaningful UI work, consult `docs/ui/component-register.md` and its source map;
   follow `docs/architecture/ui-modernization.md`. Update affected records when
   components change, move, consolidate or retire; record blockers and verification.
-- Until the separately authorized web/iOS/Android architecture proof passes, identify
-  opportunities using the current stack; do not independently introduce a framework.
-  After it passes, prefer the validated shared implementation alongside relevant UI
-  work when feasible. This is a bounded exception to preferring existing patterns,
-  not authorization for a rewrite, new application or speculative tooling.
+- **Modernize as components are redesigned.** Meaningful UI component creation,
+  redesign or consolidation should implement/reuse the shared React pattern as part
+  of that work, rather than adding another legacy-only component and deferring the
+  port. The Connection/Import settings-card pilot is the first authorized browser
+  implementation; follow `docs/ui/settings-cards.md` for the working island boundary,
+  build, fallback and lifecycle pattern. Prefer React Native primitives for shared
+  presentation and explicit web adapters for Django/DOM behavior.
+- AniList's complete provider region is the reference for a full component port:
+  see `docs/ui/provider-pages.md`. When a task calls for the complete component,
+  migrate its content and interactions too; do not stop at a React heading around
+  legacy controls. Keep one framework owner per subtree. Other providers' partial
+  card shells and Django form slots remain explicit, documented migration consumers.
+- **The migration unit is a reusable component, not a provider or page.** New or
+  redesigned fields, buttons, chips, tabs, dialogs and card layouts must reuse or
+  extend `frontend/ui/controls.jsx`; see `docs/ui/react-components.md`. Keep domain
+  data, permissions and transport in the consuming feature. Adopt these components
+  as other UI is reworked without requiring a whole-page port or duplicating an
+  AniList layout. Register bounded islands with the existing loader and runtime.
+- **Layout and responsive redesigns count as component work.** When adjusting a
+  legacy page's grid, cards or filter layout, port those affected components to
+  shared React in the same change. Do not treat a breakpoint/layout request as a
+  CSS-only exemption. Preserve useful server fallbacks and migrate only the owned
+  region; unrelated components can remain legacy.
+- This is authorization for incremental browser components, not a whole-app rewrite,
+  a SPA, a second frontend runtime or native applications. Preserve Django routes,
+  server permissions and existing action contracts. Never serialize stored credentials or raw
+  server HTML as React presentation props. User-entered credentials belong only
+  in current-page form state and its POST body. Native acceptance still requires actual
+  iOS and Android verification; browser adoption does not imply that gate passed.
 - Preserve behavior, appearance, responsive states, accessibility, permissions and
   performance unless the issue explicitly approves a redesign. Migration alone does
   not authorize simplification or removal of functionality.
-- Defer modernization when it disproportionately expands a narrow fix; record the
-  opportunity/blocker. Trivial copy or styling edits need no migration or full audit.
+- Defer modernization only when it disproportionately expands a narrow fix or a
+  concrete compatibility blocker prevents a safe port; record the reason and
+  reopening condition in the component register. Trivial copy or styling edits need
+  no migration or full audit. Do not use the pending native proof as a blanket reason
+  to skip an otherwise bounded browser component port.
 - Replace legacy consumers where practical. Document necessary coexistence and its
   retirement condition. Record web implementation and native verification separately;
   never claim native compatibility from React syntax or a web build alone.

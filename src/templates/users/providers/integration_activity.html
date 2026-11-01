@@ -37,6 +37,6 @@
         </div>
       </section>
     {% endif %}
-{% include "users/components/sync_state_section.html" %}
+{% if sync_conflicts %}{% include "users/components/sync_state_section.html" with activity_conflicts_only=True %}{% endif %}
 
 </div>

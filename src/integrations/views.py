@@ -2190,7 +2190,7 @@ def import_anilist_public(request):
     username = request.POST.get("user")
     if not username:
         messages.error(request, "AniList username is required.")
-        return redirect("import_data")
+        return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
     mode = request.POST["mode"]
     frequency = request.POST["frequency"]
@@ -2203,7 +2203,7 @@ def import_anilist_public(request):
             mode=mode,
             username=username,
         ) is False:
-            return redirect("import_data")
+            return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
         messages.info(request, "AniList import queued.")
     else:
         helpers.create_import_schedule(
@@ -2214,7 +2214,7 @@ def import_anilist_public(request):
             import_time=import_time,
             source="AniList",
         )
-    return redirect("import_data")
+    return redirect(app_helpers.safe_return_url(request, request.POST.get("next"), reverse("import_data")))
 
 
 @require_POST

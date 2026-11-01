@@ -10,6 +10,7 @@ from integrations.models import (
     ExternalReference,
     ExternalReferenceReviewStatus,
     ImportRun,
+    PocketCastsAccount,
 )
 from users.provider_catalog import TAB_ORDER, catalog
 from users.templatetags.user_tags import source_display
@@ -21,6 +22,39 @@ class ProviderSettingsTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="provider-user")
         self.client.force_login(self.user)
+
+    @patch("app.providers.credentials.is_configured", return_value=False)
+    def test_anilist_public_import_does_not_require_credentials(self, _configured):
+        response = self.client.get(reverse("provider_detail", args=["anilist"]), {"tab": "import"})
+        self.assertContains(response, reverse("import_anilist_public"))
+        self.assertNotContains(response, reverse("import_anilist_oauth"))
+        self.assertContains(response, "Private imports require provider credentials")
+        self.assertNotContains(response, "Open import options")
+
+    @patch("app.providers.credentials.is_configured", return_value=True)
+    def test_anilist_private_import_is_available_with_credentials(self, _configured):
+        response = self.client.get(reverse("provider_detail", args=["anilist"]), {"tab": "import"})
+        self.assertContains(response, reverse("import_anilist_oauth"))
+        self.assertContains(response, reverse("import_anilist_public"))
+
+    def test_media_server_sync_controls_have_provider_tabs(self):
+        for slug in ("jellyfin", "emby", "kodi"):
+            with self.subTest(slug=slug):
+                response = self.client.get(reverse("provider_detail", args=[slug]), {"tab": "sync"})
+                self.assertContains(response, "Watched-state sync")
+
+    def test_pocketcasts_uses_its_fixed_schedule_and_requires_connection(self):
+        response = self.client.get(reverse("provider_detail", args=["pocketcasts"]), {"tab": "import"})
+        self.assertContains(response, "Every 2 hours")
+        self.assertContains(response, "Only sync new items")
+        self.assertContains(response, "Connect this provider before starting an import")
+        self.assertNotContains(response, 'name="import_frequency"')
+        self.assertNotContains(response, reverse("pocketcasts_connect"))
+
+    def test_anilist_activity_has_no_unrelated_sync_settings(self):
+        response = self.client.get(reverse("provider_detail", args=["anilist"]), {"tab": "activity"})
+        self.assertNotContains(response, "Watched-state sync")
+        self.assertContains(response, reverse("import_data_activity"))
 
     def test_metadata_game_filter_includes_primary_and_artwork_sources(self):
         response = self.client.get(
@@ -44,9 +78,8 @@ class ProviderSettingsTests(TestCase):
     def test_directory_and_credentials_share_existing_provider_components(self):
         directory = self.client.get(reverse("providers"))
         self.assertTemplateUsed(directory, "users/components/provider_card.html")
-        self.assertTemplateUsed(
-            directory, "users/components/provider_filter_dropdown.html"
-        )
+        self.assertContains(directory, "data-provider-directory-root")
+        self.assertIn("provider_directory", directory.context)
         credentials = self.client.get(
             reverse("provider_detail", args=["hardcover"]), {"tab": "connection"}
         )
@@ -82,6 +115,35 @@ class ProviderSettingsTests(TestCase):
         self.assertContains(response, "SteamGridDB")
         self.assertNotContains(response, 'id="provider-filter-form"')
         self.assertNotContains(response, "Goodreads")
+
+    def test_directory_json_preserves_combined_filters_and_safe_presentation(self):
+        response = self.client.get(reverse("providers"), {
+            "format": "json", "q": "steam", "capability": "metadata", "media": "game",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Cache-Control"], "private, no-store")
+        model = response.json()
+        self.assertEqual({item["slug"] for item in model["items"]}, {"steam", "steamgriddb"})
+        for item in model["items"]:
+            self.assertEqual(set(item), {"slug", "title", "description", "logo", "url", "attention", "status", "openLabel"})
+            self.assertTrue(item["url"].endswith("?tab=metadata"))
+            self.assertIsNone(item["status"])
+
+    @patch("app.providers.credentials.is_configured", side_effect=lambda slug, user: slug == "anilist")
+    def test_connection_filter_exposes_setup_status_without_claiming_live_health(self, _configured):
+        PocketCastsAccount.objects.create(user=self.user, connection_broken=True)
+        response = self.client.get(reverse("providers"), {"format": "json", "capability": "connection"})
+        model = response.json()
+        items = {item["slug"]: item for item in model["items"]}
+        self.assertIn({"value": "connection", "label": "Connection"}, model["capabilities"])
+        self.assertEqual(items["anilist"]["status"], {"tone": "success", "label": "Credentials available"})
+        self.assertEqual(items["anilist"]["url"], reverse("provider_detail", args=["anilist"]) + "?tab=connection")
+        self.assertEqual(items["hardcover"]["status"], {"tone": "neutral", "label": "Needs setup"})
+        self.assertEqual(items["pocketcasts"]["status"], {"tone": "warning", "label": "Needs attention"})
+        self.assertNotIn("goodreads", items)
+        self.assertEqual(set(items), {item["slug"] for item in catalog() if item.get("connection")})
+        html = self.client.get(reverse("providers"), {"capability": "connection", "q": "anilist"})
+        self.assertContains(html, 'aria-label="Credentials available"')
 
     def test_file_only_providers_do_not_expose_connection(self):
         for slug in (

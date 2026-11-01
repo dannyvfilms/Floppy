@@ -1,0 +1,1 @@
+import{a as d,b as o,d as n,e as i,f as a}from"./chunk-CP3JFBK6.js";import{b as t}from"./chunk-SQE76S5B.js";var u=t(d());var f=t(o());function c(e,r){return a(e,(0,f.jsx)(n,{...r,palette:i,framed:!1,onInfo:r.info_label?m=>{e.dispatchEvent(new CustomEvent("settings-card:info",{bubbles:!0,detail:{trigger:m.currentTarget}}))}:void 0}))}export{c as mountCard};

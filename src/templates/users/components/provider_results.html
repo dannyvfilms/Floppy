@@ -1,5 +1,5 @@
 {% load i18n %}
-<div id="provider-results" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" hx-history="false">
+<div id="provider-results" class="ui-catalog-grid" hx-history="false">
   {% for provider in providers %}
     {% include "users/components/provider_card.html" with selected_capability=capability %}
   {% empty %}

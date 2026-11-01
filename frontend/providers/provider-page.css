@@ -1,0 +1,43 @@
+.provider-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  background: var(--color-surface);
+  border-radius: var(--theme-radius, .5rem);
+  padding: 1.5rem;
+  min-width: 0;
+  font-size: .875rem;
+  line-height: 1.5;
+  color: var(--color-text);
+}
+.provider-page h2 { font-size: 1.25rem; font-weight: 600; margin: 0; }
+.provider-page h3 { font-size: 1.125rem; font-weight: 600; margin: 0; }
+.provider-page h4 { font-weight: 500; margin: 0; }
+.provider-page p { color: var(--color-text-muted); margin: 0; }
+.provider-page :where(a) { color: var(--color-link); }
+.provider-page :where(a:hover) { text-decoration: underline; }
+/* Outline appearance is immediate: interpolating the default currentColor/medium
+   outline produces a thick white flash before the themed hover/focus ring. */
+.provider-page :where(a) {
+  transition-property: background-color, border-color, color, box-shadow;
+}
+.provider-name { display: flex; align-items: center; gap: .75rem; }
+.provider-name img { width: 2rem; height: 2rem; object-fit: contain; }
+.provider-identity > div > p { margin-top: .25rem; }
+.provider-media { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-left: auto; }
+.provider-media .settings-chip { --settings-card-badge-background: var(--color-surface-strong); }
+.provider-small { font-size: .75rem; color: var(--color-text-muted); }
+.provider-disabled { padding: 1rem; border: 1px solid var(--color-surface-border); border-radius: .5rem; background: var(--color-surface); color: var(--color-text-muted); }
+.provider-activity { display: flex; flex-direction: column; gap: 1.5rem; }
+.provider-activity-row { background: var(--color-surface); border: 1px solid var(--color-surface-border); border-radius: .5rem; padding: 1rem; min-width: 0; }
+.provider-activity-row > * + * { margin-top: .5rem; }
+.provider-activity-row details { min-width: 0; }
+.provider-activity-row summary { cursor: pointer; color: var(--color-link); }
+.provider-error-details pre { overflow: auto; max-width: 100%; white-space: pre; font-size: .75rem; }
+.provider-activity progress { width: 100%; accent-color: var(--color-accent); }
+.provider-directory { display: flex; flex-direction: column; gap: 1.5rem; padding: 1.5rem;
+  min-width: 0; border-radius: var(--theme-radius, .5rem); background: var(--color-surface); }
+.provider-directory header h2 { display: flex; align-items: center; gap: .75rem; font-size: 1.25rem; font-weight: 600; }
+.provider-directory header h2 svg { width: 1.5rem; height: 1.5rem; color: var(--color-link); }
+.provider-directory header p { margin-top: 1rem; font-size: .875rem; color: var(--color-text-muted); }
+.provider-directory header a { font-size: .75rem; color: var(--color-link); text-decoration: underline; }

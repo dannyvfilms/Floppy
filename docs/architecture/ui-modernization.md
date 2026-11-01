@@ -3,11 +3,20 @@
 ## Decision and limits
 
 Keep Django's server-rendered web application, backend, domain rules, integrations,
-database and API. React Native with Expo and React Native Web (RNW) is the leading
-candidate for shared presentation, **pending a separately authorized proof**. No
-production component has been migrated or verified on native platforms. This
-document establishes migration boundaries and acceptance gates, not an approved
-framework rollout. Use the [component register](../ui/component-register.md) for
+database and API. The shared settings-card shell on provider Connection and Import
+is the first authorized React/React Native Web browser pilot. Its implementation
+and coexistence boundary are documented in [settings cards](../ui/settings-cards.md).
+AniList now extends that shared shell into a [fully React-owned provider
+region](../ui/provider-pages.md): Overview, Connection, Import and Activity. The
+global Django shell and other providers remain incrementally migrated.
+Meaningful component redesigns now include incremental React modernization where
+bounded and safe; do not automatically defer the port to a future task. No component
+has been verified on iOS or Android, and native products remain separately scoped.
+The migration unit is the reusable component, not a provider or page. Use the
+[shared controls](../ui/react-components.md) for fields, selects, buttons, chips,
+tabs, dialogs and card layouts wherever those elements are reworked. Feature code
+supplies domain behavior; a bounded component adoption needs no whole-page rewrite.
+Use the [component register](../ui/component-register.md) for
 component status and the [source map](../ui/source-map.md) for ownership.
 
 The product direction supports the existing self-hosted web experience, eventual
@@ -44,7 +53,7 @@ behavior still require platform testing.
 
 - Continue Django/HTMX/Alpine: smallest current maintenance burden and good server
   rendering, but offers no shared native view implementation. Remains the default
-  until the experiment passes.
+  for untouched components and explicitly documented migration deferrals.
 - React DOM islands alone: workable web composition, but their DOM views would
   need native replacements. Useful only for explicitly web-specific exceptions.
 - Whole Expo web application or SPA: potentially shares more screens, but adds
@@ -59,8 +68,11 @@ behavior still require platform testing.
 `src/templates/base.html` owns navigation, search, common scripts, HTMX boost,
 authentication redirects, CSRF injection, modal containers and response events.
 `base_public.html` supplies a distinct public/authentication shell. Inline Alpine
-code matters as much as files in `src/static/js/`. `package.json` currently contains
-Tailwind development dependencies only; there is no React or native build pipeline.
+code matters as much as files in `src/static/js/`. `package.json` pins React,
+React DOM, RNW and esbuild alongside Tailwind. `npm run build:ui` emits committed,
+self-hosted assets under `src/static/ui`; `npm run check:ui` checks reproducibility.
+The tiny page loader fetches the shared React runtime only when an island appears.
+There is no native application or Expo build pipeline.
 The deployed stylesheet is `src/static/css/main.css`, generated from `input.css`.
 
 Media cards already have one contract in `app/card_surfaces.py` and a template tag;
@@ -94,7 +106,14 @@ models/intent where useful and choose platform renderers only when needed.
    Exercise boosted navigation, back/forward, partial and out-of-band swaps.
 3. Pass escaped, serializable props using Django's `json_script` or an equivalent
    existing safe serialization boundary. Never embed raw template context or HTML
-   as a shared component API. Django HTML is not React hydration output.
+   as a shared component API. Django HTML is not React hydration output. For the
+   retained partial settings-card consumers, a Django block tag composes a React-owned header and a
+   **sibling** Django-owned body slot. The latter is intentionally partial migration,
+   not HTML injected into React. Its controls retain their existing owners until
+   separately ported. No React root contains an Alpine/HTMX form.
+   AniList uses one full provider root, with React-owned forms and dialogs posting
+   to the existing Django handlers. Its legacy descendants are a fallback replaced
+   before interaction; they are not initialized by Alpine/HTMX within that root.
 4. Preserve useful server-rendered content and links on public/indexable pages.
    Do not introduce a JavaScript-only public replacement. Choose fallback or
    separately justified SSR only if the experiment demonstrates a need; do not
@@ -135,7 +154,7 @@ pluralization, title preferences and accessible names supplied explicitly.
 
 ### Smallest tooling experiment
 
-When Phase B is authorized, pin compatible React, React DOM, RN, RNW and Expo
+For native Phase B work, pin compatible React, React DOM, RN, RNW and Expo
 versions after checking their supported combination. First try one web entry with
 a small build command and a `react-native` to RNW alias, emitted through Django's
 existing static asset path and container collection. A disposable Expo test harness
@@ -148,7 +167,7 @@ collection, offline/self-hosted deployment without a CDN, and publication workfl
 requirements. Measure compressed/transferred JS, parse/execution, layout shift,
 mount latency and repeated-navigation memory before/after on representative mobile
 and desktop browsers. Set explicit acceptable budgets in the experiment before
-acceptance; there are no measured budgets or results yet. One runtime per page is
+acceptance; the browser pilot's budgets/results are in its component guide. One runtime per page is
 required; loading cost may make a tiny component an unsuitable production island.
 
 ## Behavioral parity and verification gate
@@ -175,18 +194,18 @@ working component, record the blocker and reassess the architecture. Do not set
 ## Progression and maintenance
 
 - **A — Inventory/preparation:** maintain the register, source ownership and these
-  constraints. Production UI remains on the current stack.
-- **B — Architecture proof, separately authorized:** start with the read-only rating
-  presentation in `media_card_rating.html`, preserving its unrated/public behavior
-  and boundaries with `media_card_rate_button.html` and `rating_picker.html`. It is
-  reusable across card surfaces and bounded, yet can expose font/theme/reset and
-  native text accessibility differences. Verify the complete island lifecycle and
-  both native platforms before accepting a broader standard. If runtime cost is
-  disproportionate, keep it as proof evidence and reconsider the production unit;
-  do not force adoption. The interactive picker is a subsequent, larger experiment.
-- **C — Opportunistic modernization:** once B passes, meaningful UI issues should
-  prefer the validated implementation when within scope. Narrow fixes and copy or
-  spacing edits may defer migration. Record concrete blockers/opportunities.
+  constraints. Unchanged components retain their existing implementations.
+- **B — Architecture proof:** the user authorized provider Connection/Import cards
+  as the first browser pilot, replacing the proposed rating-only starting point.
+  Validate the island lifecycle, existing form ownership, themes, fallback and
+  deployment before extending the pattern. Native parity remains unverified;
+  verify the same source on iOS and Android before native acceptance. If runtime
+  cost is disproportionate, record it and reassess rather than force adoption.
+- **C — Opportunistic modernization:** component redesigns and consolidations
+  should include the shared React implementation in the same task where bounded.
+  Reuse the card pilot's web boundary; do not create a parallel app or bundle/runtime
+  per component. Native proof is not a blanket blocker for browser ports. Narrow
+  fixes and copy or spacing edits may defer migration with concrete reasons.
 - **D — Completion passes:** use register status, affected surfaces and dependencies
   to plan focused consolidation and retire duplicate implementations.
 - **E — Native products:** separately approve server-connected native applications;

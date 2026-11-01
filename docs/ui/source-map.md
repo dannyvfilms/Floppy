@@ -5,7 +5,7 @@ Each path has one primary owner; cross-family consumption is described in the
 register. Ownership does not mean every member can share one native renderer.
 Inline scripts/styles belong to their owning template.
 
-This map covers application HTML/text templates, JavaScript modules/selfchecks,
+This map covers application HTML/text templates, the frontend component/build sources, JavaScript modules/selfchecks,
 vendored scripts/localizations, and CSS. Template SVG icons, fonts, logos, favicons
 and the web manifest belong to `TOKENS`/`WEB-UTILITIES` as assets, not independent
 components. Translation catalogs, generated staticfiles, third-party admin templates
@@ -31,13 +31,22 @@ import re
 register = Path("docs/ui/component-register.md").read_text()
 source_map = Path("docs/ui/source-map.md").read_text()
 ids = set(re.findall(r"^### ([A-Z][A-Z-]+) —", register, re.M))
-paths = re.findall(r"^- `(src/[^`]+)`$", source_map, re.M)
+patterns = re.findall(r"^- `((?:src|frontend|scripts)/[^`]+)`$", source_map, re.M)
+paths = []
+for pattern in patterns:
+    if "*" in pattern:
+        paths.extend([str(p) for p in Path(".").glob(pattern)] or [pattern])
+    else:
+        paths.append(pattern)
 expected = set()
 for root, suffixes in [("src/templates", {".html", ".txt"}),
                        ("src/static/js", {".js", ".mjs"}),
-                       ("src/static/css", {".css"})]:
+                       ("src/static/css", {".css"}),
+                       ("src/static/ui", {".js", ".css"}),
+                       ("frontend", {".js", ".jsx", ".css"})]:
     expected.update(str(p) for p in Path(root).rglob("*")
                     if p.is_file() and p.suffix in suffixes)
+expected.add("scripts/build_ui.mjs")
 missing = sorted(expected - set(paths))
 stale = sorted(set(paths) - expected)
 duplicates = sorted(p for p, count in Counter(paths).items() if count > 1)
@@ -58,8 +67,29 @@ PY
 - `src/templates/base.html`
 - `src/templates/base_public.html`
 
+## SETTINGS-CARD
+
+- `frontend/settings/Chip.jsx`
+
+- `frontend/settings/SettingsCard.jsx`
+- `frontend/settings/index.js`
+- `frontend/settings/mount.jsx`
+- `frontend/settings/root.jsx`
+- `frontend/settings/webPalette.js`
+- `frontend/settings/settings-card.css`
+- `scripts/build_ui.mjs`
+- `src/static/ui/*.js`
+- `src/static/ui/*.css`
+- `src/templates/users/components/settings_card.html`
+
+The generated UI subtree belongs to this island runtime; globs cover content-hashed
+chunks without renaming ownership records on every build. License notices are
+build artifacts. The Python composition tag is documented in the register.
+
 ## FORM-CONTROLS
 
+- `frontend/ui/controls.jsx`
+- `frontend/ui/controls.css`
 - `src/static/css/libraries/select2-4.1.0.min.css`
 - `src/static/js/i18n/de.js`
 - `src/static/js/i18n/en.js`
@@ -507,6 +537,17 @@ PY
 - `src/templates/users/home_screen.html`
 
 ## SET-PROVIDERS
+
+- `frontend/providers/Activity.jsx`
+- `frontend/providers/Connection.jsx`
+- `frontend/providers/Directory.jsx`
+- `frontend/providers/Import.jsx`
+- `frontend/providers/ProviderPage.jsx`
+- `frontend/providers/mount.jsx`
+- `frontend/providers/provider-page.css`
+- `frontend/providers/web.jsx`
+- `src/templates/users/providers/overview_fallback.html`
+- `src/templates/users/providers/provider_legacy.html`
 
 - `src/templates/users/components/provider_card.html`
 - `src/templates/users/components/provider_filter_dropdown.html`
