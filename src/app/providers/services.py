@@ -41,6 +41,8 @@ from app.providers import (
     musicbrainz,
     openlibrary,
     pocketcasts,
+    podcast_links,
+    podcastindex,
     tmdb,
     tvdb,
 )
@@ -1734,6 +1736,53 @@ def search_by_id(media_type, query, source=None, user=None):
     return helpers.format_search_response(1, 1, 1, [result])
 
 
+# Modules rather than functions, so each search is looked up when it runs.
+_PODCAST_SEARCHERS = {
+    Sources.POCKETCASTS.value: pocketcasts,
+    Sources.GPODDER.value: gpodder,
+    Sources.PODCASTINDEX.value: podcastindex,
+}
+
+
+def _search_podcasts(query, page, source):
+    """Search podcasts, resolving pasted links and falling back across sources.
+
+    A pasted Apple Podcasts link or RSS feed address names one show, so it is
+    answered directly whichever source tab is selected. A name that the chosen
+    source cannot find is retried on the other sources, and the response says
+    which one answered so the page can explain why the tab differs.
+    """
+    if page == 1:
+        linked = podcast_links.resolve(query)
+        if linked is not None:
+            return linked
+
+    search_module = _PODCAST_SEARCHERS.get(source)
+    response = search_module.search(query, page) if search_module else None
+    if response is not None and (response["results"] or page != 1):
+        return response
+    if not query.strip():
+        return response
+
+    for fallback_source, fallback_module in _PODCAST_SEARCHERS.items():
+        if fallback_source == source:
+            continue
+        if fallback_source == Sources.PODCASTINDEX.value and not podcastindex.enabled():
+            continue
+        try:
+            fallback = fallback_module.search(query, page)
+        except ProviderAPIError as exc:
+            logger.debug(
+                "Podcast fallback search failed: %s",
+                exception_summary(exc),
+            )
+            continue
+        if fallback["results"]:
+            fallback["fallback_source"] = fallback_source
+            return fallback
+    return response
+
+
 def search(
     media_type,
     query,
@@ -1830,13 +1879,7 @@ def search(
         ),
         MediaTypes.BOARDGAME.value: lambda: bgg.search(query, page),
         MediaTypes.MUSIC.value: lambda: musicbrainz.search_combined(query, page),
-        MediaTypes.PODCAST.value: lambda: (
-            pocketcasts.search(query, page)
-            if source == Sources.POCKETCASTS.value
-            else gpodder.search(query, page)
-            if source == Sources.GPODDER.value
-            else None
-        ),
+        MediaTypes.PODCAST.value: lambda: _search_podcasts(query, page, source),
         # Videos arrive from clients, so there is no provider to search.
         MediaTypes.VIDEO.value: lambda: None,
     }
