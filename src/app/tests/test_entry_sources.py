@@ -119,9 +119,9 @@ class EntrySourceSuggestionsTests(TestCase):
             ),
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '<datalist id="entry-source-suggestions">')
-        self.assertContains(response, '<option value="Theatre">', html=False)
-        self.assertContains(response, 'list="entry-source-suggestions"', html=False)
+        self.assertContains(response, 'id="entry-source-suggestions"', html=False)
+        self.assertContains(response, '["Theatre"]', html=False)
+        self.assertContains(response, 'x-ref="source"', html=False)
         self.assertNotContains(response, 'name="entry_source" value=')
 
 

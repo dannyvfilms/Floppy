@@ -156,10 +156,24 @@
                     {% include "app/components/date_time_picker.html" with field_name=field.name field_value=field.value|default_if_none:"" field_id=field.id_for_label field_label=field.label mobile_label=_("End:") track_time=TRACK_TIME suggestion_label=date_suggestion.label suggestion_date=date_suggestion.date suggestion_runtime_minutes=date_suggestion.runtime_minutes suggestion_extras=date_suggestion.extras runtime_minutes=date_suggestion.runtime_minutes week_start=user.week_start_day use_12_hour=user|user_uses_12_hour_format copy_from=form.fields.start_date|yesno:"start_date," copy_from_label=_("Start") quick_action_mode="end" only %}
                   {% elif field.name == "entry_source" %}
                     {% entry_source_suggestions user as source_suggestions %}
-                    {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"|attr:"list:entry-source-suggestions" }}
-                    <datalist id="entry-source-suggestions">
-                      {% for source_name in source_suggestions %}<option value="{{ source_name }}">{% endfor %}
-                    </datalist>
+                    {{ source_suggestions|json_script:"entry-source-suggestions" }}
+                    <div class="relative w-full"
+                         x-data="{ open: false, query: '', options: JSON.parse(document.getElementById('entry-source-suggestions').textContent), get shown() { const q = this.query.trim().toLowerCase(); return this.options.filter((name) => name.toLowerCase() !== q && name.toLowerCase().includes(q)); } }"
+                         x-init="query = $refs.source.value"
+                         @click.outside="open = false"
+                         @keydown.escape="open = false">
+                      {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]"|attr:"x-ref:source"|attr:"autocomplete:off"|attr:"@focus:open = true"|attr:"@input:query = $el.value; open = true" }}
+                      <div class="absolute left-0 right-0 top-full z-40 mt-1 max-h-48 overflow-y-auto bg-[var(--color-surface-strong)] rounded-md shadow-lg border border-gray-700"
+                           x-show="open && shown.length"
+                           x-cloak>
+                        <template x-for="name in shown" :key="name">
+                          <button type="button"
+                                  class="block w-full px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text)] transition-colors cursor-pointer"
+                                  x-text="name"
+                                  @click="$refs.source.value = name; query = name; open = false"></button>
+                        </template>
+                      </div>
+                    </div>
                   {% else %}
                     {{ field|add_class:"w-full p-2 bg-[var(--color-surface-strong)] rounded-md text-[var(--color-text)] text-sm border border-gray-600 focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]" }}
                   {% endif %}
