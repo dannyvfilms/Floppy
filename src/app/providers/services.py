@@ -989,7 +989,8 @@ def _podcast_show_metadata(show):
                 "author": show.author,
                 "description": show.description,
                 "language": show.language,
-                "rss_feed_url": show.rss_feed_url,
+                # No rss_feed_url: shows are a shared catalog and an imported
+                # feed URL can carry the importing user's private token.
                 "website_url": show.website_url,
                 "show_website_url": show.website_url,
             },

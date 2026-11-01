@@ -39,6 +39,19 @@ def show_key_for_feed(normalized_feed):
     return f"gp_{hashlib.md5(normalized_feed.encode(), usedforsecurity=False).hexdigest()}"
 
 
+UNKNOWN_SHOW_TITLE = "Unknown Podcast"
+
+
+def legacy_url_title(normalized_feed):
+    """Return the title older imports derived from a feed URL with no title."""
+    return slugify(normalized_feed).replace("-", " ")[:255]
+
+
+def legacy_url_slug(normalized_feed):
+    """Return the slug older imports derived from a feed URL with no title."""
+    return slugify(normalized_feed)[:255]
+
+
 def importer(identifier, user, mode):
     """Import podcast history from a GPodder-compatible server."""
     gpodder_importer = GPodderImporter(user, mode)
@@ -218,12 +231,13 @@ class GPodderImporter:
                 podcast_uuid=self._show_key(normalized_feed)
             ).first()
 
+        # Never derive a title or slug from the feed URL: shows are a shared
+        # catalog and a private feed URL carries its subscriber's token.
+        title = (rss_metadata.get("title") or "")[:255]
         defaults = {
             "source": Sources.GPODDER.value,
-            "title": rss_metadata.get("title")
-            or slugify(normalized_feed).replace("-", " ")[:255]
-            or "Podcast",
-            "slug": slugify(rss_metadata.get("title") or normalized_feed)[:255],
+            "title": title,
+            "slug": slugify(title)[:255],
             "author": rss_metadata.get("author", "")[:255],
             "description": rss_metadata.get("description", ""),
             "language": rss_metadata.get("language", "")[:10],
@@ -233,12 +247,22 @@ class GPodderImporter:
         }
 
         if show is None:
+            if not title:
+                defaults["title"] = UNKNOWN_SHOW_TITLE
+                defaults["slug"] = slugify(UNKNOWN_SHOW_TITLE)
             show = PodcastShow.objects.create(
                 podcast_uuid=self._show_key(normalized_feed),
                 **defaults,
             )
         else:
             update_fields = []
+            # Repair a title or slug an older import derived from this URL.
+            if not title and show.title == legacy_url_title(normalized_feed):
+                show.title = UNKNOWN_SHOW_TITLE
+                update_fields.append("title")
+            if not title and show.slug == legacy_url_slug(normalized_feed):
+                show.slug = slugify(show.title)[:255]
+                update_fields.append("slug")
             for field, value in defaults.items():
                 if value and getattr(show, field) != value:
                     setattr(show, field, value)
