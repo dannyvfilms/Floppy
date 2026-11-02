@@ -24,9 +24,21 @@
 }
 .provider-name { display: flex; align-items: center; gap: .75rem; }
 .provider-name img { width: 2rem; height: 2rem; object-fit: contain; }
-.provider-identity > div > p { margin-top: .25rem; }
-.provider-media { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-left: auto; }
+.provider-identity { min-width: 0; }
+.provider-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; min-width: 0; }
+.provider-name { min-width: 0; }
+.provider-identity > p { margin-top: .25rem; }
+.provider-media { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; margin-left: auto; min-width: 0; }
 .provider-media .settings-chip { --settings-card-badge-background: var(--color-surface-strong); }
+.provider-media-chip { border: 1px solid var(--settings-card-badge-border); border-radius: 9999px; padding: 4px 8px;
+  background: var(--settings-card-badge-background); color: var(--settings-card-badge-text); font-size: 12px; line-height: 16px; }
+.provider-fallback-pending,
+[data-provider-credentials-root]:not([data-react-mounted]),
+[data-import-preferences-root]:not([data-react-mounted]),
+[data-file-import-root]:not([data-react-mounted]),
+[data-account-connection-root]:not([data-react-mounted]),
+[data-account-import-action-root]:not([data-react-mounted]) { visibility: hidden; animation: provider-fallback-reveal 0s 4s forwards; }
+@keyframes provider-fallback-reveal { to { visibility: visible; } }
 .provider-small { font-size: .75rem; color: var(--color-text-muted); }
 .provider-disabled { padding: 1rem; border: 1px solid var(--color-surface-border); border-radius: .5rem; background: var(--color-surface); color: var(--color-text-muted); }
 .provider-activity { display: flex; flex-direction: column; gap: 1.5rem; }

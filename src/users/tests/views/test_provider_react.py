@@ -107,7 +107,7 @@ class AniListReactTests(TestCase):
         serialized = json.dumps(page)
         for secret in ("private-environment-client", "private-environment-secret", "private-personal-client", "private-personal-secret"):
             self.assertNotIn(secret, serialized)
-        self.assertTrue(all(field["personalStored"] for field in page["credentials"]["fields"]))
+        self.assertEqual([field["name"] for field in page["credentials"]["personalFields"]], ["client_id", "client_secret"])
         self.assertFalse(page["credentials"]["editable"])
 
     def test_activity_json_excludes_other_users_sources_and_stored_task_tokens(self):

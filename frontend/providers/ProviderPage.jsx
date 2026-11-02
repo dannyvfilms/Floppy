@@ -10,10 +10,12 @@ export function ProviderPage({ model, draft }) {
   const t = text => model.labels[text] ?? text;
   return <PageContext.Provider value={{ model, t }}>
     <div className={model.contentOwner === 'server' ? 'provider-page-content' : 'provider-page'}>
-      <div className="ui-heading provider-identity">
-        <div><div className="provider-name">{model.provider.logo && <img src={model.provider.logo} alt="" />}<h2>{model.provider.label}</h2></div>
-          <p>{model.provider.description}</p></div>
-        <div className="provider-media" aria-label={t('Media types')}>{model.provider.media.map(media => <Chip key={media} label={media} pill />)}</div>
+      <div className="provider-identity">
+        <div className="provider-title-row">
+          <div className="provider-name">{model.provider.logo && <img src={model.provider.logo} alt="" />}<h2>{model.provider.label}</h2></div>
+          <div className="provider-media" aria-label={t('Media types')}>{model.provider.media.map(media => <Chip key={media} label={media} pill />)}</div>
+        </div>
+        <p>{model.provider.description}</p>
       </div>
       <Tabs items={model.tabs} selected={model.tab} label={t('Provider sections')} />
       {model.onboardingUrl && <a href={model.onboardingUrl}>{t('Continue Guided Setup')}</a>}

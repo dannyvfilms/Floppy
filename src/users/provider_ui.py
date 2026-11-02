@@ -32,6 +32,35 @@ ACTIVITY_PAGE_SIZE = 50
 MAX_ACTIVITY_PAGES = 1000
 
 
+FILE_IMPORTS = {
+    "yamtrack": ("import_yamtrack", "yamtrack_csv", ".csv", "Import a Floppy backup (media + lists)", "Select CSV File"),
+    "yamtrack_native": ("import_yamtrack", "yamtrack_csv", ".csv", "Import a CSV exported from Yamtrack (media + lists)", "Select CSV File"),
+    "hltb": ("import_hltb", "hltb_csv", ".csv", "Import games", "Select CSV File"),
+    "playnite": ("import_playnite", "playnite_csv", ".csv", "Import a Playnite library backup", "Select CSV File"),
+    "grouvee": ("import_grouvee", "grouvee_json", ".json,.zip", "Import games", "Select File"),
+    "imdb": ("import_imdb", "imdb_csv", ".csv", "Import movies and TV shows from your ratings", "Select CSV File"),
+    "goodreads": ("import_goodreads", "goodreads_csv", ".csv", "Import from Goodreads backup", "Select CSV File"),
+    "storygraph": ("import_storygraph", "storygraph_csv", ".csv", "Import from StoryGraph export (Profile -> Manage Account -> Export StoryGraph Library)", "Select CSV File"),
+}
+CSV_FORMAT_DOCS = "https://github.com/dannyvfilms/Floppy/wiki/6.-Admin-and-Operations#csv-import-floppy--yamtrack-format"
+
+
+def file_import(request, slug, preferences):
+    """Shared single-file import presentation; the file is the only upload."""
+    action, field, accept, description, label = FILE_IMPORTS[slug]
+    model = {
+        "action": reverse(action), "csrf": get_token(request), "next": request.get_full_path(),
+        "values": preferences["values"], "description": _(description), "selectLabel": _(label),
+        "fileField": field, "accept": accept, "mediaTypes": [],
+        "postFields": [{"name": name, "key": name} for name in ("frequency", "time", "mode")],
+        "blockedLabel": _("This import mode is not supported by this provider."),
+        "oneTime": {"label": _("One-time"), "title": _("File uploads can't be scheduled. This file imports once, now.")},
+    }
+    if slug in {"yamtrack", "yamtrack_native"}:
+        model["docs"] = {"url": CSV_FORMAT_DOCS, "label": _("View CSV format documentation")}
+    return model
+
+
 def import_preferences(request, slug, context=None):
     """Shared import controls and saved preferences, with no provider secrets."""
     context = context or {}
@@ -84,15 +113,20 @@ def import_preferences(request, slug, context=None):
     }
 
 
-def account_connection(request, *, connected, saved, attention, fields, messages, follow_up, connect_url, disconnect_url):
-    """Describe an account form without serializing saved URLs or credentials."""
+def account_connection(request, *, connected, saved, attention, fields, messages, follow_up, connect_url, disconnect_url,
+                       instances=None, description=""):
+    """Describe an account form without serializing saved URLs or credentials.
+
+    ``instances`` lists connections that can coexist (one row per saved server);
+    their addresses are shown as labels and no keys are serialized.
+    """
     return {
         "connected": connected, "saved": saved, "attention": attention, "fields": fields, "messages": messages, "followUp": follow_up,
-        "connectUrl": connect_url, "disconnectUrl": disconnect_url,
+        "connectUrl": connect_url, "disconnectUrl": disconnect_url, "instances": instances, "description": description,
         "csrf": get_token(request), "next": request.get_full_path(),
         "labels": {text: _(text) for text in (
             "Connection settings", "Account connection", "Connected", "Not connected", "Needs attention",
-            "Connect", "Reconnect", "Disconnect",
+            "Connect", "Reconnect", "Disconnect", "Add Instance", "Disconnected", "Connections",
         )},
     }
 
@@ -400,6 +434,63 @@ def anilist_activity(user, page=1):
     }
 
 
+CREDENTIAL_LABELS = (
+    "Provider credentials", "Get a key from {name}", "Get a key", "Instance credentials", "Public API", "Editable", "Read-only",
+    "Read-only: explain instance credential access", "These credentials are shared across the instance.", "(optional)",
+    "Environment", "Bundled default", "Stored", "Not set", "Leave a field blank to keep the current fallback.", "Save",
+    "Remove stored credentials", "Personal credentials", "Your key may avoid shared instance or bundled rate limits.", "Your",
+    "Save personal key", "Make this the default provider for", "Close", "Instance credential access",
+)
+CREDENTIAL_ACCESS_LABELS = (
+    "Only superusers can change instance-wide credentials. Values set in the environment are read-only here and take precedence over stored credentials.",
+    "You are not a superuser", "Instance-wide keys can only be changed by a superuser. You can still add your own personal key.",
+    "Ask an administrator, or promote your own account", "This instance has no superuser yet",
+    "Run this on the host running the container:", "Run this where Floppy is installed:",
+    "Then sign out and back in. Add --list to see accounts first.",
+)
+
+
+def provider_credentials(request, context):
+    """Serialize one provider's credential form; stored values and previews stay server-side."""
+    provider = context["metadata_provider"]
+    slug = provider["slug"]
+    user = request.user
+
+    def fields(rows, personal=False):
+        return [{
+            "name": field["name"], "label": _(field["label"]), "secret": field["secret"], "required": field["required"],
+            "placeholder": _(field["placeholder"]) if field["placeholder"] else "",
+            "disabled": False if personal else field["locked"] or not context["can_edit_instance"],
+            "environment": field["locked"], "setting": field["setting"], "stored": field["has_instance_value"],
+            "usingDefault": field["using_default"], "fallback": field["has_fallback_value"],
+        } for field in rows]
+
+    editable = context["can_edit_instance"] and not provider["locked"]
+    can_clear = context["can_edit_instance"] and provider["has_instance_value"]
+    model = {
+        "slug": slug, "label": provider["label"], "csrf": get_token(request), "next": request.get_full_path(),
+        "editable": editable, "canClear": can_clear,
+        "getKeyUrl": provider["docs_url"], "setupHint": _(provider["setup_hint"]) if provider["setup_hint"] else "",
+        "publicAccess": bool(context.get("public_access")),
+        "fields": fields(provider["fields"]),
+        "personalFields": fields(provider["personal_fields"], personal=True) if provider["user_scope"] else None,
+        "saveUrl": reverse("save_provider_credential", args=[slug]),
+        "clearUrl": reverse("clear_provider_credential", args=[slug]),
+        "personalUrl": reverse("save_personal_credential", args=[slug]),
+        "defaults": [{"mediaType": media, "action": reverse("set_media_type_provider", args=[media]),
+                      "label": _("Set as default for %(type)s") % {"type": media_type_readable_plural(media)}}
+                     for media in provider["settable_media_types"]],
+        "superuser": user.is_superuser, "promoteCommand": context.get("promote_command", ""),
+        "hasSuperuser": context.get("instance_has_superuser", True),
+        "inContainer": context.get("in_container", False),
+        "labels": {text: _(text) for text in CREDENTIAL_LABELS if text != "Remove stored credentials" or can_clear},
+    }
+    model["labels"].update({text: _(text) for text in CREDENTIAL_ACCESS_LABELS if not editable})
+    if not editable and user.is_superuser:
+        model["labels"].pop("You are not a superuser", None)
+    return model
+
+
 def provider_page(request, provider, tab, credential_context=None):
     """Build safe browser props. Saved credential values/previews are never serialized."""
     user = request.user
@@ -450,24 +541,7 @@ def provider_page(request, provider, tab, credential_context=None):
     elif tab == "connection":
         context = credential_context
         provider = context["metadata_provider"]
-        page["credentials"] = {
-            "editable": context["can_edit_instance"] and not provider["locked"],
-            "canClear": context["can_edit_instance"] and provider["has_instance_value"],
-            "getKeyUrl": provider["docs_url"],
-            "publicAccess": context.get("public_access"),
-            "fields": [{
-                "name": field["name"], "label": _(field["label"]), "secret": field["secret"],
-                "disabled": field["locked"] or not context["can_edit_instance"],
-                "environment": field["locked"], "setting": field["setting"],
-                "stored": field["has_instance_value"], "personalStored": field["has_personal_value"],
-            } for field in provider["fields"]],
-            "saveUrl": reverse("save_provider_credential", args=["anilist"]),
-            "clearUrl": reverse("clear_provider_credential", args=["anilist"]),
-            "personalUrl": reverse("save_personal_credential", args=["anilist"]),
-            "superuser": user.is_superuser, "promoteCommand": context.get("promote_command", ""),
-            "hasSuperuser": context.get("instance_has_superuser", True),
-            "inContainer": context.get("in_container", False),
-        }
+        page["credentials"] = provider_credentials(request, context)
     elif tab == "import":
         configured = credentials.is_configured("anilist", user)
         preferences = import_preferences(request, "anilist")

@@ -1,6 +1,7 @@
 {% load i18n ui_tags %}
 {% if metadata_provider %}
   {% with provider=metadata_provider %}
+    {% if credentials_model %}{{ credentials_model|json_script:"provider-credentials-props" }}<div data-provider-credentials-root data-props-id="provider-credentials-props" x-ignore hx-disable>{% endif %}
     <div class="space-y-5" x-data="{ credentialInfoOpen: false, credentialInfoTrigger: null, setupInfoOpen: false }"
          @settings-card:info="credentialInfoTrigger = $event.detail.trigger; credentialInfoOpen = true; $nextTick(() => $refs.credentialInfoClose.focus())">
       <div class="flex flex-wrap items-center justify-between gap-3">
@@ -108,5 +109,6 @@
       </template>
       {% endif %}
     </div>
+      {% if credentials_model %}</div>{% endif %}
   {% endwith %}
 {% endif %}

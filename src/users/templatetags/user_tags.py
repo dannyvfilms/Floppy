@@ -229,7 +229,7 @@ SOURCES_CONFIG = {
     },
     "gpodder": {
         "name": "GPodder",
-        "logo": static("favicon/apple-touch-icon.png"),
+        "logo": static("img/gpodder-logo.svg"),
     },
     "lastfm": {
         "name": "Last.fm",

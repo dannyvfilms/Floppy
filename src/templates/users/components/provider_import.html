@@ -2619,6 +2619,12 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
 {% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center">{% if provider_tab != 'import' %}{% source_display "yamtrack" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
@@ -2649,6 +2655,7 @@
             </label>
           </form>
         </div>
+{% endif %}
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}
@@ -2764,6 +2771,12 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
 {% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center">{% if provider_tab != 'import' %}{% source_display "yamtrack_native" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
@@ -2794,6 +2807,7 @@
             </label>
           </form>
         </div>
+{% endif %}
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}
@@ -2814,6 +2828,12 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
 {% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "hltb" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import games" %}</p>
@@ -2838,6 +2858,7 @@
             </label>
           </form>
         </div>
+{% endif %}
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}
@@ -2858,6 +2879,12 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
 {% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "playnite" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import a Playnite library backup" %}</p>
@@ -2882,6 +2909,7 @@
             </label>
           </form>
         </div>
+{% endif %}
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}
@@ -2902,6 +2930,12 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
 {% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "grouvee" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import games" %}</p>
@@ -2926,6 +2960,7 @@
             </label>
           </form>
         </div>
+{% endif %}
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}
@@ -3201,6 +3236,12 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
 {% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center">{% if provider_tab != 'import' %}{% source_display "imdb" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
@@ -3227,6 +3268,7 @@
             </label>
           </form>
         </div>
+{% endif %}
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}
@@ -3247,6 +3289,12 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
 {% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "goodreads" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import from Goodreads backup" %}</p>
@@ -3271,6 +3319,7 @@
             </label>
           </form>
         </div>
+{% endif %}
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}
@@ -3369,6 +3418,12 @@
               {% include "app/icons/x.svg" with classes="w-4 h-4" %}
             </button>
 {% endif %}
+{% if provider_tab == 'import' and file_import %}
+      {{ file_import|json_script:"file-import-props" }}
+      <div data-file-import-root data-props-id="file-import-props" x-ignore hx-disable>
+        {% include "users/components/file_import_fallback.html" %}
+      </div>
+{% else %}
         <div class="{% if provider_tab != 'import' %}bg-[var(--color-surface-strong)] p-4 rounded-lg{% endif %}">
           <div class="flex items-center mb-3">{% if provider_tab != 'import' %}{% source_display "storygraph" %}{% endif %}{% include "users/components/import_upload_badge.html" %}</div>
           <p class="text-sm text-[var(--color-text-muted)] mb-3">{% translate "Import from StoryGraph export (Profile -> Manage Account -> Export StoryGraph Library)" %}</p>
@@ -3393,6 +3448,7 @@
             </label>
           </form>
         </div>
+{% endif %}
 {% if provider_tab != 'import' %}</div></div>{% endif %}
 
     {% endif %}

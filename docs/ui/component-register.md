@@ -558,7 +558,7 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Data: `src/users/provider_views.py`, `provider_catalog.py`, `provider_ui.directory_page`; HTML fallback and authenticated private/no-store JSON with explicit presentation fields only.
 - Reuse/blockers: catalog/status values shared; do not assume services available standalone.
 - Validation targets: `src/users/tests/views/test_provider_navigation.py`, `test_provider_catalog.py`, `test_provider_integration_sections.py`.
-- Status: `Web Migrated` for the Providers directory and every provider's header, media chips, tabs and Overview. All use `ProviderPage` and data-driven shared cards; AniList also owns Connection, Import and Activity bodies. Other tab bodies remain server-owned siblings with partial shared card consumers. The directory reuses app-wide catalog and filter controls. See [provider-page ownership and data](provider-pages.md).
+- Status: `Web Migrated` for the Providers directory and every provider's header, media chips, tabs and Overview. All use `ProviderPage` and data-driven shared cards; AniList also owns Connection, Import and Activity bodies. Other tab bodies remain server-owned siblings with partial shared card consumers. The directory reuses app-wide catalog and filter controls. The server `header_fallback.html` shares the React header's classes (`provider-identity`, `provider-media-chip`, `ui-tabs`) so the mount causes no reflow; media chips sit in the title row itself (wrapping among themselves, never below the title); React-owned tab bodies and unmounted island roots stay hidden until mount (4s CSS reveal as the failure fallback); the activity loader placeholders use the same `settings_card` shell as the loaded partial. Browser-verified only; iOS/Android not verified. See [provider-page ownership and data](provider-pages.md).
 - Verification: 184 targeted provider/credential/model/import/action/OAuth tests and 15 Chromium 151/macOS browser checks passed. The browser checks exercise all four AniList tabs at phone/tablet/desktop widths and six theme states, form submissions, activity diagnostics/actions, fallback and navigation lifecycle. Native not tested.
 - Directory verification: 51 targeted Django tests and all 21 provider Chromium checks pass. Directory checks cover container-based columns, combined filters, capability-specific links, Connection status icons, empty results, Back navigation and bundle-failure native form submission. Shared preference/filter menu appearances, typeahead, Escape/click-away and focus return are checked. Desktop dark/mobile light screenshots were reviewed. Native not tested.
 - Shared provider structure verification: 121 targeted view/import/model tests and 22 Chromium checks pass. Every catalog Overview is checked against the common model and supported tab links; browser checks compare BoardGameGeek, AniList and a file-only provider, then verify retained credential forms mount beside the shared header. Overview reads stored task state without refreshing or writing it. Native not tested.
@@ -584,6 +584,17 @@ templates are compatibility/composition sources, not equally active parallel pag
 - Source inventory: shared file import is `frontend/providers/FileImport.jsx`;
   `clz_import_fallback.html` is its retained server fallback. Their ownership is
   recorded here; this alphabet change does not alter their migration state.
+- Migration status (browser-verified only; iOS/Android unverified): single-file imports for
+  Yamtrack/Floppy, HLTB, Playnite, Grouvee, IMDb, Goodreads and StoryGraph use `FileImport.jsx`
+  through `provider_ui.FILE_IMPORTS` with `file_import_fallback.html` as the hidden-until-mount
+  fallback. Credentials on every provider Connection tab use `Credentials.jsx`
+  (`provider_ui.provider_credentials`, island `data-provider-credentials-root`, fallback is the legacy
+  `provider_connection.html`). Kapowarr, Mylar, Radarr, Sonarr and GPodder Connection use
+  `AccountConnection.jsx` (instances list for the arr family). Remaining legacy: Hardcover, YouTube,
+  WeTrakr and TV Time uploads, Plex/Jellyfin/Emby/Kodi/Stremio/Kavita/Komga/Last.fm/Koito/Pocket
+  Casts/PSN/Xbox/Storyteller/KOReader/MDBList/Seerr/Nuvio/Navidrome/MAL connection and import bodies;
+  retire each when its connection model moves to `account_connection` or a dedicated island. Masked
+  credential previews are not serialized to React; the fallback still shows them.
 - Implementation: provider-import/schedule/game-sync/Plex-selector/upload-badge components, `users/_reading_server_card.html`, `_reading_server_modal.html`; retained import page.
 - Contract: connect/disconnect/import/upload/schedule, provider-specific fields/library/content kinds, errors/busy state.
 - Data: import context/settings in `src/users/views.py`, `src/integrations/views.py`, account/task records.

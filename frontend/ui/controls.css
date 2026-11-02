@@ -83,7 +83,7 @@ a.ui-button:hover { color: white; text-decoration: none; }
 .ui-option-list { display: flex; flex-direction: column; gap: .5rem; }
 .ui-option-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
 .ui-feature-list { list-style: none; padding: 0; margin: 0; }
-.ui-feature-list > li { display: flex; align-items: start; gap: .5rem; padding: .375rem 0; }
+.ui-feature-list > li { display: flex; align-items: center; gap: .5rem; padding: .375rem 0; }
 .ui-feature-list > li > div { flex: 1; min-width: 0; }
 .ui-feature-list p { font-size: .75rem; margin-top: .25rem; color: var(--color-text-muted); }
 .ui-feature-state { display: block; min-width: 0; overflow-wrap: anywhere; font-size: .75rem; color: var(--color-text-muted); }
@@ -169,4 +169,5 @@ a.ui-card-link:focus-visible { outline: 2px solid var(--color-accent); outline-o
 
 .ui-section-stack { display: flex; flex-direction: column; gap: 1.25rem; }
 
+.ui-instance-row { display: flex; flex-direction: column; gap: .5rem; padding: .75rem; min-width: 0; border-radius: .5rem; background: var(--color-surface); }
 .ui-account-action { display: flex; flex-direction: column; gap: .75rem; }

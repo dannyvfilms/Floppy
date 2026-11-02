@@ -1,23 +1,38 @@
 import React from 'react';
-import { Button, Card, CardGrid, Field, Form } from '../ui/controls';
+import { Button, Card, CardGrid, Chip, Field, Form } from '../ui/controls';
 import { mountRoot } from '../settings/root';
 
 // Presentation and actions are supplied by the provider adapter, never stored secrets.
 export function AccountConnection({ model, draft = {} }) {
   const t = text => model.labels[text] || text;
   const status = model.connected ? 'Connected' : model.attention ? 'Needs attention' : 'Not connected';
+  const form = { csrf: model.csrf, returnTo: model.next };
+  const fields = model.fields.map(field => <Field key={field.name} id={`account-${field.name}`} name={field.name}
+    label={field.label} type={field.type} placeholder={field.placeholder} required={field.required !== false}
+    autoComplete="off" defaultValue={draft[field.name] || ''} />);
   return <div className="ui-section-stack">
     <h3>{t('Connection settings')}</h3>
     <CardGrid alignStart><Card title={t('Account connection')} tone={model.connected ? 'success' : model.attention ? 'warning' : 'neutral'} badge={t(status)}>
-      <p>{model.messages[model.connected ? 'connected' : model.attention ? 'attention' : 'disconnected']}</p>
-      {!model.connected && <Form action={model.connectUrl} csrf={model.csrf} returnTo={model.next}>
-          {model.fields.map(field => <Field key={field.name} id={`account-${field.name}`} name={field.name}
-            label={field.label} type={field.type} placeholder={field.placeholder} required autoComplete="off" defaultValue={draft[field.name] || ''} />)}
-          <Button type="submit">{t(model.saved ? 'Reconnect' : 'Connect')}</Button>
-        </Form>}
-      {model.saved && <Form action={model.disconnectUrl} csrf={model.csrf} returnTo={model.next}>
-        <Button type="submit" danger>{t('Disconnect')}</Button>
-      </Form>}
+      {model.description && <p>{model.description}</p>}
+      {model.instances ? <>
+        {model.instances.map(instance => <div className="ui-instance-row" key={instance.id}>
+          <div className="ui-heading"><strong>{instance.name}</strong>
+            <Chip tone={instance.connected ? 'success' : 'neutral'} label={t(instance.connected ? 'Connected' : 'Disconnected')} /></div>
+          <p className="provider-small">{instance.url}</p>
+          {instance.error && <p className="provider-small">{instance.error}</p>}
+          <Form action={model.disconnectUrl} {...form}>
+            <input type="hidden" name="instance_id" value={instance.id} />
+            <Button type="submit" danger>{t('Disconnect')}</Button>
+          </Form>
+        </div>)}
+        <p>{model.messages[model.instances.length ? 'connected' : 'disconnected']}</p>
+        <Form action={model.connectUrl} {...form}>{fields}<Button type="submit">{model.submitLabel}</Button></Form>
+      </> : <>
+        <p>{model.messages[model.connected ? 'connected' : model.attention ? 'attention' : 'disconnected']}</p>
+        {!model.connected && <Form action={model.connectUrl} {...form}>{fields}
+          <Button type="submit">{model.submitLabel || t(model.saved ? 'Reconnect' : 'Connect')}</Button></Form>}
+        {model.saved && <Form action={model.disconnectUrl} {...form}><Button type="submit" danger>{t('Disconnect')}</Button></Form>}
+      </>}
     </Card>
       {model.followUp && <Card title={model.followUp.title}>
         <p>{model.followUp.description}</p>

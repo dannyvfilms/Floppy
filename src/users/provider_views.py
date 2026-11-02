@@ -11,6 +11,7 @@ from django.utils.http import urlencode
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
+from app.log_safety import redact_secrets
 from users import metadata_views, provider_ui, views
 from users.provider_catalog import (
     ACCOUNT_IMPORTS,
@@ -101,6 +102,27 @@ def pin_provider(request):
     return redirect(safe_return_url(request, request.POST.get("next", ""), reverse("providers")))
 
 
+INSTANCE_CONNECTIONS = {
+    "radarr": ("Radarr", "Sync owned movies from Radarr every 2 hours and reconcile quality metadata with Plex.",
+               "Connect %(name)s using your server URL and API key.", "Connect another %(name)s instance.",
+               "https://radarr.local:7878", "Radarr API key"),
+    "sonarr": ("Sonarr", "Sync owned TV collection from Sonarr every 2 hours and reconcile ownership with Plex.",
+               "Connect %(name)s using your server URL and API key.", "Connect another %(name)s instance.",
+               "https://sonarr.local:8989", "Sonarr API key"),
+    "mylar": ("Mylar3", "Sync the comic issues Mylar3 has downloaded every 2 hours and mark them as owned in your collection.",
+              "Connect %(name)s using your server URL and API key (Mylar3 Settings, Web Interface, API).", "Connect another %(name)s instance.",
+              "https://mylar.local:8090", "Mylar3 API key"),
+    "kapowarr": ("Kapowarr", "Sync the comic issues Kapowarr has downloaded every 2 hours and mark them as owned in your collection.",
+                 "Connect %(name)s using your server URL and API key (Kapowarr Settings, General, Security).", "Connect another %(name)s instance.",
+                 "https://kapowarr.local:5656", "Kapowarr API key"),
+}
+
+
+def _flag(value):
+    """Model flags are properties on some accounts and methods on others."""
+    return value() if callable(value) else value
+
+
 @require_GET
 def provider_detail(request, slug):
     """Render one provider with only its supported capability tabs."""
@@ -141,6 +163,8 @@ def provider_detail(request, slug):
         if provider.get("metadata_role") == "supplemental":
             related_media = provider["media_types"]
         context.update(metadata_views.metadata_context(request.user, slug, related_media))
+        if tab == "connection" and slug != "anilist":
+            context["credentials_model"] = provider_ui.provider_credentials(request, context)
     if (
         tab == "import"
         or (tab == "connection" and slug in ACCOUNT_IMPORTS and slug != "mal")
@@ -175,8 +199,44 @@ def provider_detail(request, slug):
                        "url": reverse("provider_detail", args=["audiobookshelf"]) + "?tab=activity"},
             connect_url=reverse("audiobookshelf_connect"), disconnect_url=reverse("audiobookshelf_disconnect"),
         )
+    if tab == "connection" and slug in INSTANCE_CONNECTIONS:
+        label, intro, first, another, url_hint, key_label = INSTANCE_CONNECTIONS[slug]
+        instances = context.get(f"{slug}_instances", [])
+        context["account_connection"] = provider_ui.account_connection(
+            request, connected=any(_flag(row.is_connected) for row in instances), saved=bool(instances),
+            attention=any(row.last_error_message for row in instances),
+            fields=[{"name": "name", "label": _("Label (optional)"), "type": "text", "placeholder": _("Label (optional)"), "required": False},
+                    {"name": "base_url", "label": _("Server URL"), "type": "url", "placeholder": url_hint},
+                    {"name": "api_key", "label": key_label, "type": "password", "placeholder": key_label}],
+            messages={"disconnected": _(first) % {"name": label}, "connected": _(another) % {"name": label},
+                      "attention": _(another) % {"name": label}},
+            follow_up=None, connect_url=reverse(f"{slug}_connect"), disconnect_url=reverse(f"{slug}_disconnect"),
+            description=_(intro),
+            instances=[{"id": row.pk, "name": row.display_name, "connected": bool(_flag(row.is_connected)), "url": row.base_url,
+                        "error": redact_secrets(row.last_error_message or "")} for row in instances],
+        )
+        context["account_connection"]["submitLabel"] = _("Add Instance") if instances else _("Connect %(name)s") % {"name": label}
+    if tab == "connection" and slug == "gpodder":
+        account = context.get("gpodder_account")
+        context["account_connection"] = provider_ui.account_connection(
+            request, connected=bool(account and _flag(account.is_connected)), saved=bool(account),
+            attention=bool(account and not _flag(account.is_connected)),
+            fields=[{"name": "server_url", "label": _("Server URL"), "type": "url", "placeholder": _("Server URL")},
+                    {"name": "username", "label": _("Username"), "type": "text", "placeholder": _("Your GPodder username")},
+                    {"name": "password", "label": _("Password / App Password"), "type": "password", "placeholder": _("Your password or app password")},
+                    {"name": "device_filter", "label": _("Optional Device Filter"), "type": "text", "placeholder": _("antenna-pod-device"), "required": False}],
+            messages={"disconnected": _("Recurring podcast history sync for GPodder, AntennaPod, and self-hosted compatible servers every 2 hours."),
+                      "connected": _("Recurring podcast history sync for GPodder, AntennaPod, and self-hosted compatible servers every 2 hours."),
+                      "attention": _("Reconnect to restore automatic imports.")},
+            follow_up={"title": _("Automatic import"), "description": _("Connecting starts recurring history sync."),
+                       "label": _("View activity"), "url": reverse("provider_detail", args=["gpodder"]) + "?tab=activity"},
+            connect_url=reverse("gpodder_connect"), disconnect_url=reverse("gpodder_disconnect"),
+        )
+        context["account_connection"]["submitLabel"] = _("Connect GPodder")
     if tab == "import" and slug != "anilist":
         context["import_preferences"] = provider_ui.import_preferences(request, slug, context)
+        if slug in provider_ui.FILE_IMPORTS:
+            context["file_import"] = provider_ui.file_import(request, slug, context["import_preferences"])
         if slug == "clz":
             preferences = context["import_preferences"]
             context["clz_import"] = {

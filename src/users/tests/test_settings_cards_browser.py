@@ -686,7 +686,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
     def test_retained_provider_still_uses_shared_header_islands(self):
         """The full-page port does not orphan partial migrations on other providers."""
         self.page.goto(f"{self.live_server_url}/settings/providers/hardcover?tab=connection")
-        expect(self.page.locator("[data-settings-card-root][data-react-mounted=true]")).to_have_count(2)
+        expect(self.page.locator("[data-provider-credentials-root][data-react-mounted=true]")).to_have_count(1)
         expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
         expect(self.page.get_by_role("navigation", name="Provider sections")).to_be_visible()
         expect(self.page.get_by_text("Your key may avoid shared instance or bundled rate limits.", exact=True)).to_be_visible()
@@ -710,7 +710,7 @@ class SettingsCardsBrowserTests(SerialStaticLiveServerTestCase):
         self.page.locator(".provider-overview").get_by_role("link", name="Connection", exact=True).click()
         expect(self.page.get_by_role("heading", name="Instance credentials", exact=True)).to_be_visible()
         expect(self.page.locator("[data-provider-root][data-react-mounted=true]")).to_have_count(1)
-        expect(self.page.locator("[data-settings-card-root][data-react-mounted=true]")).to_have_count(2)
+        expect(self.page.locator("[data-provider-credentials-root][data-react-mounted=true]")).to_have_count(1)
         self.assertEqual(self.errors, [])
 
     def test_overview_and_directory_share_column_breakpoints(self):
