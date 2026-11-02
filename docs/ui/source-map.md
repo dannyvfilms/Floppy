@@ -83,6 +83,7 @@ PY
 - `src/static/ui/*.css`
 - `src/templates/users/components/settings_card.html`
 - `src/templates/users/components/settings_link_chip.html`
+- `src/templates/app/components/detail_secondary_content.html` (Book "Other Formats" fact)
 
 The generated UI subtree belongs to this island runtime; globs cover content-hashed
 chunks without renaming ownership records on every build. License notices are

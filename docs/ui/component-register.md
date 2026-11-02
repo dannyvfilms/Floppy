@@ -305,6 +305,7 @@ can inform a focused completion pass.
 - Data: `src/app/media_details_views.py`, `season_details_views.py`, detail builders and user layout configuration.
 - Reuse/blockers: share typed sections while preserving medium composition and swaps; template contexts are not portable APIs.
 - Validation targets: `src/app/tests/views/test_media_details.py`, `test_save_response_fragments.py`, `src/app/tests/views/test_trakt_series_graph.py`, `src/app/tests/test_detail_builders.py`.
+- Book format links: an "Other Formats" fact (eBook, Audiobook, each a link) in the Details card of Book pages, shown only when the viewer tracks another format of the same work. Status: legacy, not migrated. Blocker: the Details card is a server-rendered fact list with no shared React equivalent, and porting it is a whole-card migration, not part of this change. Reopen when the DETAIL sidebar facts get a shared React component; this row moves with it. Data: `build_other_book_formats` (ISBN, or title plus author, among the viewer's own tracked books; never merges Items). Verification: browser only; no iOS/Android.
 
 ### CHILDREN — Seasons, episodes and issue rows
 

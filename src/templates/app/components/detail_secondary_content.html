@@ -206,6 +206,16 @@
               {% endif %}
             {% endif %}
           {% endfor %}
+          {% if other_book_formats %}
+            <div class="detail-sidebar-fact mb-4">
+              <h3 class="text-sm font-semibold text-[var(--color-text-muted)] tracking-wide">{% translate "Other Formats" %}</h3>
+              <div class="flex flex-col gap-1">
+                {% for other in other_book_formats %}
+                  <a href="{{ other.href }}" class="text-sm text-[var(--color-text-secondary)] hover:text-indigo-500 transition-colors duration-200">{{ other.label }}</a>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
           {% if authors_linked %}
             <div class="detail-sidebar-fact mb-4">
               <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">{% blocktranslate trimmed count count=authors_linked|length %}AUTHOR{% plural %}AUTHORs{% endblocktranslate %}</h3>
